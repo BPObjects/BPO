@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Building Product Objects — Le catalogue 3D des composants du bâtiment</title>
+<style>
+  :root{
+    --ink:#0a0c10;        /* noir profond (logo)      */
+    --ink2:#11151c;       /* noir légèrement relevé   */
+    --node:#3ba4f0;       /* bleu des nœuds (accent)  */
+    --node-soft:#6fc0f7;  /* bleu clair               */
+    --paper:#ffffff;      /* blanc des sections       */
+    --paper2:#f5f7fa;     /* gris très clair          */
+    --tx:#1a2230;         /* texte sombre             */
+    --dm:#5f6b7d;         /* texte secondaire         */
+    --ln:#e4e9f0;         /* lignes claires           */
+    --steel:#aab4c2;      /* gris acier (BP du logo)  */
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    color:var(--tx);background:var(--paper);line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ---------- type ---------- */
+  h1,h2,h3{font-weight:300;letter-spacing:-0.02em;line-height:1.1;}
+  .eyebrow{font-size:12px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;}
+
+  /* ===================== HERO (sombre, logo lumineux) ===================== */
+  .hero{
+    position:relative;min-height:100vh;background:var(--ink);color:#fff;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  #nodes{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  .hero-grad{position:absolute;inset:0;
+    background:radial-gradient(ellipse 80% 60% at 70% 40%, rgba(59,164,240,0.10), transparent 70%);
+    pointer-events:none;}
+
+  .topbar{position:relative;z-index:5;display:flex;align-items:center;justify-content:space-between;
+    padding:22px 7vw;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand img{height:38px;width:auto;display:block;}
+  .brand-mark{display:inline-flex;align-items:center;font-weight:200;font-size:26px;letter-spacing:-0.02em;
+    background:linear-gradient(180deg,#f4f7fb,#aab4c2 60%,#6b7585);-webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;}
+  .brand-mark .o-dot{width:14px;height:14px;border-radius:50%;margin-left:3px;
+    background:radial-gradient(circle at 35% 35%,#6fc0f7,#3ba4f0 70%);box-shadow:0 0 10px rgba(59,164,240,.6);}
+  .foot-brand .brand-mark{font-size:20px;} .foot-brand .brand-mark .o-dot{width:11px;height:11px;}
+  .brand-txt{font-size:14px;letter-spacing:0.04em;color:#cdd6e2;font-weight:400;}
+  .brand-txt b{color:#fff;font-weight:600;letter-spacing:0.12em;}
+  .nav-mini{display:flex;gap:26px;font-size:13.5px;}
+  .nav-mini a{color:#9fb0c4;text-decoration:none;transition:color .2s;}
+  .nav-mini a:hover{color:#fff;}
+
+  .hero-body{position:relative;z-index:5;flex:1;display:flex;flex-direction:column;
+    justify-content:center;align-items:center;text-align:center;padding:0 7vw 8vh;}
+
+  /* --- lockup logo : BP + sphère animée --- */
+  .logo-stage{margin-bottom:38px;display:flex;flex-direction:column;align-items:center;}
+  .logo-lockup{display:flex;align-items:center;justify-content:center;gap:0;line-height:1;}
+  .bp{font-size:clamp(90px,16vw,190px);font-weight:200;letter-spacing:-0.03em;line-height:1;
+    background:linear-gradient(180deg,#f4f7fb 0%,#aab4c2 55%,#6b7585 100%);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+    filter:drop-shadow(0 2px 18px rgba(170,184,200,0.15));}
+  /* la sphère = le "O" : son diamètre s'aligne sur la HAUTEUR DES CAPITALES (~0.72
+     de la font-size), avec un léger débord optique (×1.06) comme un vrai O.
+     Le calc reproduit le clamp du BP pour rester proportionnel à toutes tailles. */
+  #sphere{
+    width:clamp(70px,12.4vw,147px);
+    height:clamp(70px,12.4vw,147px);
+    display:block;
+    margin-left:clamp(-10px,-1.1vw,-6px);   /* chevauchement léger comme dans un mot */
+    align-self:center;
+    transform:translateY(9%);   /* descend le O au centre optique des capitales (calc: +8.4%) */
+  }
+  .logo-word{margin-top:14px;font-size:clamp(11px,1.5vw,16px);letter-spacing:0.42em;
+    color:#9fb0c4;font-weight:400;padding-left:0.42em;}
+
+  .hero h1{font-size:clamp(20px,2.8vw,34px);color:#fff;margin-bottom:38px;font-weight:300;
+    white-space:nowrap;}
+  .hero h1 .thin{color:var(--steel);}
+  .hero h1 .glow{color:var(--node);}
+  .hero-cta{display:flex;gap:16px;flex-wrap:wrap;}
+  .scroll-hint{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);z-index:5;
+    font-size:11px;letter-spacing:0.2em;text-transform:uppercase;
+    color:#5f718a;display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .scroll-hint .arrow{width:1px;height:30px;background:linear-gradient(var(--node),transparent);}
+
+  /* ---------- buttons ---------- */
+  .btn{display:inline-flex;align-items:center;gap:9px;padding:15px 30px;border-radius:9px;
+    font-size:15px;font-weight:500;text-decoration:none;cursor:pointer;border:1px solid transparent;
+    transition:transform .18s, box-shadow .25s, background .2s;}
+  .btn:hover{transform:translateY(-2px);}
+  .btn-primary{background:var(--node);color:#04121f;box-shadow:0 8px 30px rgba(59,164,240,0.35);}
+  .btn-primary:hover{box-shadow:0 12px 40px rgba(59,164,240,0.5);background:var(--node-soft);}
+  .btn-ghost{background:rgba(255,255,255,0.06);color:#fff;border-color:rgba(255,255,255,0.18);}
+  .btn-ghost:hover{background:rgba(255,255,255,0.12);}
+  .btn-dark{background:var(--ink);color:#fff;}
+  .btn-dark:hover{background:var(--ink2);box-shadow:0 12px 30px rgba(10,12,16,0.25);}
+  .btn-arrow{font-size:18px;transition:transform .2s;}
+  .btn:hover .btn-arrow{transform:translateX(3px);}
+
+  /* ===================== SECTION : deux accès ===================== */
+  .access{padding:clamp(70px,10vh,130px) 7vw;background:var(--paper);}
+  .access-head{text-align:center;max-width:680px;margin:0 auto 60px;}
+  .access-head .eyebrow{color:var(--node);margin-bottom:16px;}
+  .access-head h2{font-size:clamp(28px,4vw,46px);margin-bottom:18px;}
+  .access-head p{color:var(--dm);font-size:17px;}
+
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:28px;max-width:1000px;margin:0 auto;}
+  .card{border:1px solid var(--ln);border-radius:18px;padding:44px 40px;background:var(--paper);
+    display:flex;flex-direction:column;transition:transform .25s, box-shadow .3s, border-color .3s;
+    position:relative;overflow:hidden;}
+  .card:hover{transform:translateY(-4px);box-shadow:0 22px 50px rgba(20,30,45,0.10);border-color:#cdd9e8;}
+  .card-ico{width:54px;height:54px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+    margin-bottom:24px;font-size:25px;}
+  .card-arch .card-ico{background:rgba(59,164,240,0.12);}
+  .card-mfr  .card-ico{background:var(--ink);}
+  .card h3{font-size:25px;font-weight:400;margin-bottom:12px;letter-spacing:-0.01em;}
+  .card .role{font-size:12px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--node);margin-bottom:18px;}
+  .card-mfr .role{color:var(--dm);}
+  .card p{color:var(--dm);font-size:15.5px;margin-bottom:26px;flex:1;}
+  .card ul{list-style:none;margin-bottom:30px;}
+  .card li{font-size:14.5px;color:var(--tx);padding:7px 0 7px 26px;position:relative;}
+  .card li::before{content:'';position:absolute;left:0;top:14px;width:7px;height:7px;border-radius:50%;
+    background:var(--node);}
+  .card-mfr li::before{background:var(--steel);}
+
+  /* ===================== bandeau valeur ===================== */
+  .value{background:var(--paper2);padding:clamp(60px,8vh,100px) 7vw;}
+  .value-grid{max-width:1000px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:40px;}
+  .v-item h3{font-size:34px;font-weight:300;color:var(--node);margin-bottom:6px;}
+  .v-item p{color:var(--dm);font-size:15px;}
+  .v-item .vlabel{font-size:13px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;
+    color:var(--tx);margin-bottom:10px;}
+
+  /* ===================== business / fabricants ===================== */
+  .biz{padding:clamp(70px,10vh,130px) 7vw;background:var(--ink);color:#fff;position:relative;overflow:hidden;}
+  .biz-grad{position:absolute;inset:0;background:radial-gradient(circle at 80% 20%,rgba(59,164,240,0.12),transparent 60%);pointer-events:none;}
+  .biz-inner{max-width:900px;margin:0 auto;position:relative;z-index:2;text-align:center;}
+  .biz .eyebrow{color:var(--node);margin-bottom:18px;}
+  .biz h2{font-size:clamp(26px,3.6vw,42px);color:#fff;margin-bottom:22px;}
+  .biz p{color:#aebccd;font-size:17px;max-width:640px;margin:0 auto 40px;}
+
+  /* ===================== footer ===================== */
+  footer{background:var(--ink2);color:#8595a8;padding:50px 7vw;font-size:13px;}
+  .foot-row{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;
+    align-items:center;flex-wrap:wrap;gap:20px;}
+  .foot-brand{display:flex;align-items:center;gap:10px;}
+  .foot-brand img{height:30px;}
+  .foot-brand b{color:#dde5ef;font-weight:600;letter-spacing:0.1em;}
+  footer a{color:#8595a8;text-decoration:none;}
+  footer a:hover{color:#fff;}
+  .copyr{font-size:12px;color:#5f6f84;}
+
+  /* ===================== responsive ===================== */
+  @media(max-width:760px){
+    .nav-mini{display:none;}
+    .cards{grid-template-columns:1fr;}
+    .value-grid{grid-template-columns:1fr;gap:30px;text-align:center;}
+    .hero-cta{flex-direction:column;}
+    .btn{justify-content:center;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    #nodes{display:none;}
+    /* la sphère reste affichée (le script fige la rotation) */
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================ HERO ============================ -->
+<section class="hero">
+  <canvas id="nodes"></canvas>
+  <div class="hero-grad"></div>
+
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-mark" role="img" aria-label="BPO">BP<span class="o-dot"></span></span>
+    </div>
+    <nav class="nav-mini">
+      <a href="#access">Accès</a>
+      <a href="#value">La plateforme</a>
+      <a href="#fabricants">Fabricants</a>
+    </nav>
+  </div>
+
+  <div class="hero-body">
+    <div class="logo-stage">
+      <!-- BP typographique + O = sphère filaire animée -->
+      <div class="logo-lockup">
+        <span class="bp">BP</span>
+        <canvas id="sphere" width="320" height="320" aria-label="O"></canvas>
+      </div>
+      <div class="logo-word">BUILDING PRODUCT OBJECTS</div>
+    </div>
+
+    <h1><span class="thin">Les composants du bâtiment,</span>
+        <span class="glow">en 3D paramétrique.</span></h1>
+
+    <div class="hero-cta">
+      <a href="#access" class="btn btn-primary">Entrer dans le catalogue <span class="btn-arrow">→</span></a>
+      <a href="#fabricants" class="btn btn-ghost">Vous êtes fabricant ?</a>
+    </div>
+  </div>
+
+  <div class="scroll-hint"><span>Découvrir</span><span class="arrow"></span></div>
+</section>
+
+<!-- ============================ DEUX ACCÈS ============================ -->
+<section class="access" id="access">
+  <div class="access-head">
+    <div class="eyebrow">Deux portes d'entrée</div>
+    <h2>Choisissez votre accès</h2>
+    <p>Une plateforme, deux usages :<br>les architectes explorent et exportent,
+       les fabricants exposent leurs produits.</p>
+  </div>
+
+  <div class="cards">
+    <!-- Architectes -->
+    <div class="card card-arch">
+      <div class="card-ico">📐</div>
+      <div class="role">Architectes &amp; prescripteurs</div>
+      <h3>Explorer le catalogue</h3>
+      <p>Configurez chaque objet à vos dimensions, choisissez les finitions et
+         matériaux, puis exportez vers votre logiciel BIM.</p>
+      <ul>
+        <li>Objets paramétriques : murs, dalles, poteaux, poutres, profils acier…</li>
+        <li>Finitions RAL, textures matériaux, import de vos propres images</li>
+        <li>Export OBJ, DAE et IFC pour ArchiCAD &amp; Revit</li>
+        <li>Accès libre et gratuit</li>
+      </ul>
+      <a href="meuble.html" class="btn btn-primary">Ouvrir le configurateur <span class="btn-arrow">→</span></a>
+    </div>
+
+    <!-- Fabricants -->
+    <div class="card card-mfr">
+      <div class="card-ico">🏭</div>
+      <div class="role">Fabricants &amp; industriels</div>
+      <h3>Promouvoir vos produits</h3>
+      <p>Faites modéliser vos gammes en objets 3D configurables et placez-les
+         devant les architectes au moment où ils conçoivent.</p>
+      <ul>
+        <li>Vos produits réels, aux cotes exactes, dans les projets BIM</li>
+        <li>Visibilité auprès des prescripteurs au stade de la conception</li>
+        <li>Modélisation prise en charge par notre équipe</li>
+        <li>Présence sur la plateforme par abonnement</li>
+      </ul>
+      <a href="#fabricants" class="btn btn-dark">Référencer mes produits <span class="btn-arrow">→</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ VALEUR ============================ -->
+<section class="value" id="value">
+  <div class="value-grid">
+    <div class="v-item">
+      <div class="vlabel">Pour l'architecte</div>
+      <h3>0 €</h3>
+      <p>Accès libre au catalogue et à tous les exports. La plateforme est
+         financée par les fabricants.</p>
+    </div>
+    <div class="v-item">
+      <div class="vlabel">Au bon format</div>
+      <h3>IFC</h3>
+      <p>Chaque objet s'exporte aux standards BIM et s'importe proprement
+         dans ArchiCAD, Revit ou tout outil compatible.</p>
+    </div>
+    <div class="v-item">
+      <div class="vlabel">Toujours juste</div>
+      <h3>1:1</h3>
+      <p>Les produits sont modélisés aux dimensions réelles des fabricants —
+         pas d'approximation dans vos maquettes.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ FABRICANTS / BUSINESS ============================ -->
+<section class="biz" id="fabricants">
+  <div class="biz-grad"></div>
+  <div class="biz-inner">
+    <div class="eyebrow">Espace fabricants</div>
+    <h2>Vos produits, dans les projets, dès la conception</h2>
+    <p>Quand un architecte place un objet de votre gamme dans sa maquette,
+       votre produit entre dans le projet. Nous modélisons vos composants en
+       objets 3D paramétriques ; vous gagnez en prescription. Gratuit pour les
+       architectes, par abonnement pour les fabricants.</p>
+    <a href="mailto:contact@buildingproductobjects.com" class="btn btn-primary">
+      Devenir fabricant partenaire <span class="btn-arrow">→</span>
+    </a>
+  </div>
+</section>
+
+<!-- ============================ FOOTER ============================ -->
+<footer>
+  <div class="foot-row">
+    <div class="foot-brand">
+      <span class="brand-mark" role="img" aria-label="BPO">BP<span class="o-dot"></span></span>
+      <span><b>BUILDING PRODUCT OBJECTS</b></span>
+    </div>
+    <div class="copyr">© 2026 Building Product Objects — Antoine Lacronique, architecte</div>
+  </div>
+</footer>
+
+<script>
+/* ============================================================================
+   LE « O » DE BPO — sphère géodésique filaire 3D animée
+   ----------------------------------------------------------------------------
+   Vrais sommets répartis sur une sphère (spirale de Fibonacci), arêtes vers les
+   voisins proches, rotation 3D continue, projection perspective. Nœuds lumineux
+   bleus + halos, exactement dans l'esprit du logo BPO mais vivant.
+   ============================================================================ */
+(function(){
+  var cv=document.getElementById('sphere');
+  if(!cv) return;
+  var ctx=cv.getContext('2d');
+  var DPR=Math.min(window.devicePixelRatio||1,2);
+  var SZ;
+  function fit(){
+    SZ=cv.clientWidth||200;
+    cv.width=SZ*DPR; cv.height=SZ*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  fit();
+  window.addEventListener('resize',fit);
+
+  /* --- sommets sur une sphère via spirale de Fibonacci (répartition régulière) --- */
+  var N=58, R=1, verts=[];
+  var gold=Math.PI*(3-Math.sqrt(5));
+  for(var i=0;i<N;i++){
+    var y=1-(i/(N-1))*2;          /* -1 .. 1 */
+    var rad=Math.sqrt(1-y*y);
+    var th=gold*i;
+    verts.push([Math.cos(th)*rad, y, Math.sin(th)*rad]);
+  }
+  /* --- arêtes : relie chaque sommet à ses voisins proches --- */
+  var edges=[];
+  for(var i=0;i<N;i++){
+    /* distances aux autres */
+    var ds=[];
+    for(var j=0;j<N;j++) if(j!==i){
+      var dx=verts[i][0]-verts[j][0],dy=verts[i][1]-verts[j][1],dz=verts[i][2]-verts[j][2];
+      ds.push([dx*dx+dy*dy+dz*dz,j]);
+    }
+    ds.sort(function(a,b){return a[0]-b[0];});
+    for(var k=0;k<3;k++){           /* 3 voisins les plus proches */
+      var j=ds[k][1];
+      var key=i<j?i+'_'+j:j+'_'+i;
+      if(!edges._seen) edges._seen={};
+      if(!edges._seen[key]){ edges._seen[key]=1; edges.push([i,j]); }
+    }
+  }
+
+  var ang=0;
+  function rotY(p,a){ var c=Math.cos(a),s=Math.sin(a); return [p[0]*c+p[2]*s, p[1], -p[0]*s+p[2]*c]; }
+  function rotX(p,a){ var c=Math.cos(a),s=Math.sin(a); return [p[0], p[1]*c-p[2]*s, p[1]*s+p[2]*c]; }
+
+  function frame(){
+    ctx.clearRect(0,0,SZ,SZ);
+    var cx=SZ/2, cy=SZ/2, scale=SZ*0.425, persp=2.6;
+    /* projette tous les sommets */
+    var P=[];
+    for(var i=0;i<N;i++){
+      var p=rotX(rotY(verts[i],ang),ang*0.45);
+      var zc=p[2]+persp;
+      var f=persp/zc;                 /* perspective */
+      P.push({x:cx+p[0]*scale*f, y:cy-p[1]*scale*f, z:p[2], f:f});
+    }
+    /* arêtes (les plus profondes d'abord) */
+    var order=edges.slice().sort(function(a,b){
+      return (P[a[0]].z+P[a[1]].z)-(P[b[0]].z+P[b[1]].z);
+    });
+    for(var e=0;e<order.length;e++){
+      var a=P[order[e][0]], b=P[order[e][1]];
+      var depth=( (a.z+b.z)/2 +1)/2;        /* 0 arrière .. 1 avant */
+      var al=0.12+depth*0.55;
+      ctx.strokeStyle='rgba(59,164,240,'+al.toFixed(3)+')';
+      ctx.lineWidth=0.5+depth*1.0;
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    }
+    /* nœuds (avant par-dessus) */
+    var nodeOrder=[];
+    for(var i=0;i<N;i++) nodeOrder.push(i);
+    nodeOrder.sort(function(a,b){return P[a].z-P[b].z;});
+    for(var k=0;k<N;k++){
+      var i=nodeOrder[k], p=P[i];
+      var depth=(p.z+1)/2;
+      var r=(0.9+depth*2.0);
+      /* halo */
+      var grd=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*4);
+      grd.addColorStop(0,'rgba(120,196,250,'+(0.5+depth*0.45).toFixed(2)+')');
+      grd.addColorStop(1,'rgba(120,196,250,0)');
+      ctx.fillStyle=grd;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r*4,0,6.283); ctx.fill();
+      /* cœur */
+      ctx.fillStyle='rgba(228,244,255,'+(0.55+depth*0.45).toFixed(2)+')';
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,6.283); ctx.fill();
+    }
+    ang+=0.006;
+    if(!REDUCED) requestAnimationFrame(frame);
+  }
+  var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(REDUCED){ ang=0.6; frame(); }   /* une seule frame, sphère figée sous un bel angle */
+  else frame();
+})();
+
+/* ============================================================================
+   Réseau de nœuds en fond (ambiance discrète derrière le hero).
+   ============================================================================ */
+(function(){
+  var cv = document.getElementById('nodes');
+  if(!cv) return;
+  var ctx = cv.getContext('2d');
+  var W, H, pts, DPR = Math.min(window.devicePixelRatio||1, 2);
+  var N = 54, LINK = 150;
+  function resize(){
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W*DPR; cv.height = H*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  function init(){
+    resize(); pts = [];
+    for(var i=0;i<N;i++){
+      pts.push({x:Math.random()*W, y:Math.random()*H,
+        vx:(Math.random()-0.5)*0.28, vy:(Math.random()-0.5)*0.28,
+        r:Math.random()*1.4+0.7});
+    }
+  }
+  function step(){
+    ctx.clearRect(0,0,W,H);
+    for(var i=0;i<N;i++){
+      var a=pts[i];
+      for(var j=i+1;j<N;j++){
+        var b=pts[j], dx=a.x-b.x, dy=a.y-b.y, d=Math.sqrt(dx*dx+dy*dy);
+        if(d<LINK){
+          var al=(1-d/LINK)*0.22;     /* plus discret que le logo */
+          ctx.strokeStyle='rgba(59,164,240,'+al.toFixed(3)+')';
+          ctx.lineWidth=0.5;
+          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        }
+      }
+    }
+    for(var i=0;i<N;i++){
+      var p=pts[i];
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0||p.x>W) p.vx*=-1;
+      if(p.y<0||p.y>H) p.vy*=-1;
+      ctx.fillStyle='rgba(120,180,230,0.35)';
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.283); ctx.fill();
+    }
+    requestAnimationFrame(step);
+  }
+  var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  window.addEventListener('resize', function(){ resize(); });
+  init();
+  if(!REDUCED) step();   /* en mouvement reduit le canvas est masque : inutile de l'animer */
+})();
+</script>
+</body>
+</html>
