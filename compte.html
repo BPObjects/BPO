@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mon compte — Building Product Objects</title>
+<style>
+ :root{--bg:#1a1d23;--pn:#20242c;--p2:#262b34;--ln:#343a45;--tx:#e8e9ec;--dm:#8b92a0;--am:#ff8a3d;--cy:#5eb8ff;--gr:#48c78e;--rd:#f06d6d;}
+ *{box-sizing:border-box;margin:0;padding:0;} body{background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;line-height:1.5;}
+ header{display:flex;align-items:center;gap:8px;padding:14px 20px;background:var(--pn);border-bottom:1px solid var(--ln);}
+ .dot{width:8px;height:8px;border-radius:50%;background:var(--am);display:inline-block;}
+ .wrap{max-width:440px;margin:40px auto;padding:0 18px;}
+ .card{background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:24px;margin-bottom:16px;}
+ h1{font-size:20px;margin-bottom:4px;} h2{font-size:15px;margin-bottom:12px;}
+ .sub{color:var(--dm);font-size:13px;margin-bottom:18px;}
+ label{display:block;font-size:12px;color:var(--dm);margin:10px 0 5px;font-weight:600;}
+ input{width:100%;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:7px;padding:10px 11px;font-size:13px;outline:none;}
+ input:focus{border-color:var(--cy);}
+ button{width:100%;background:var(--am);color:#1a1d23;border:none;border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;margin-top:14px;}
+ button.alt{background:transparent;border:1px solid var(--ln);color:var(--tx);}
+ button:hover{filter:brightness(1.06);}
+ .row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--ln);}
+ .row:last-child{border:none;}
+ .badge{padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;}
+ .b-ok{background:rgba(72,199,142,.15);color:var(--gr);} .b-warn{background:rgba(255,138,61,.15);color:var(--am);} .b-no{background:rgba(240,109,109,.15);color:var(--rd);}
+ .link{color:var(--cy);font-size:12px;text-align:center;cursor:pointer;margin-top:12px;display:block;}
+ .check{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--dm);margin-top:10px;}
+ .check input{width:auto;margin-top:2px;}
+ .msg{font-size:12px;margin-top:10px;text-align:center;min-height:16px;}
+ .msg.err{color:var(--rd);} .msg.ok{color:var(--gr);}
+ .hidden{display:none;}
+</style></head>
+<body>
+<header><span class="dot"></span><b>Building Product Objects</b></header>
+<div class="wrap">
+
+  <!-- AUTH (déconnecté) -->
+  <div id="auth" class="card hidden">
+    <h1 id="authTitle">Connexion</h1>
+    <p class="sub" id="authSub">Accédez à votre compte.</p>
+    <div id="nameFld" class="hidden"><label>Nom complet</label><input id="fname" type="text" autocomplete="name"></div>
+    <label>E-mail</label><input id="email" type="email" autocomplete="email">
+    <label>Mot de passe</label><input id="pwd" type="password" autocomplete="current-password">
+    <label class="check hidden" id="nlFld"><input id="nl" type="checkbox"><span>Recevoir la newsletter (nouveautés, mises à jour).</span></label>
+    <button id="doAuth">Se connecter</button>
+    <span class="link" id="toggle">Pas encore de compte ? Créer un compte (essai 15 jours gratuit)</span>
+    <span class="link" id="magic">Recevoir un lien de connexion par e-mail</span>
+    <div class="msg" id="authMsg"></div>
+  </div>
+
+  <!-- COMPTE (connecté) -->
+  <div id="account" class="hidden">
+    <div class="card">
+      <h1>Mon compte</h1>
+      <p class="sub" id="who"></p>
+      <div class="row"><span>Statut</span><span id="statusBadge" class="badge"></span></div>
+      <div class="row"><span id="periodLbl">Essai</span><span id="periodVal"></span></div>
+      <button id="openApp">Ouvrir le configurateur</button>
+      <button id="subscribe" class="hidden">S'abonner — 50 € / an</button>
+      <button id="portal" class="alt hidden">Gérer mon abonnement</button>
+      <div class="msg" id="accMsg"></div>
+    </div>
+    <div class="card">
+      <h2>Préférences</h2>
+      <label class="check"><input id="nlToggle" type="checkbox"><span>Abonné à la newsletter</span></label>
+      <button id="logout" class="alt">Se déconnecter</button>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SUPABASE_URL, SUPABASE_ANON, SITE_URL, TRIAL_DAYS } from "./bpo-config.js";
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+const $ = id => document.getElementById(id);
+let mode = "login"; // login | signup
+
+function show(el){ el.classList.remove("hidden"); } function hide(el){ el.classList.add("hidden"); }
+function setMsg(el,t,ok){ el.textContent=t||""; el.className="msg "+(ok?"ok":"err"); }
+
+$("toggle").onclick = () => {
+  mode = mode==="login" ? "signup" : "login";
+  const sign = mode==="signup";
+  $("authTitle").textContent = sign ? "Créer un compte" : "Connexion";
+  $("authSub").textContent = sign ? "Essai de "+TRIAL_DAYS+" jours, sans carte bancaire." : "Accédez à votre compte.";
+  $("doAuth").textContent = sign ? "Créer mon compte" : "Se connecter";
+  $("toggle").textContent = sign ? "Déjà un compte ? Se connecter" : "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)";
+  $("nameFld").classList.toggle("hidden", !sign);
+  $("nlFld").classList.toggle("hidden", !sign);
+  setMsg($("authMsg"),"");
+};
+
+$("doAuth").onclick = async () => {
+  const email=$("email").value.trim(), pwd=$("pwd").value;
+  if(!email||!pwd){ return setMsg($("authMsg"),"E-mail et mot de passe requis."); }
+  $("doAuth").disabled=true;
+  try{
+    if(mode==="signup"){
+      const { error } = await sb.auth.signUp({ email, password:pwd,
+        options:{ data:{ full_name:$("fname").value.trim(), newsletter:$("nl").checked }, emailRedirectTo: SITE_URL+"/compte.html" } });
+      if(error) throw error;
+      setMsg($("authMsg"),"Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.",true);
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password:pwd });
+      if(error) throw error;
+      await render();
+    }
+  } catch(e){ setMsg($("authMsg"), e.message||"Erreur."); }
+  $("doAuth").disabled=false;
+};
+
+$("magic").onclick = async () => {
+  const email=$("email").value.trim(); if(!email) return setMsg($("authMsg"),"Saisissez votre e-mail.");
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: SITE_URL+"/compte.html" } });
+  setMsg($("authMsg"), error? error.message : "Lien de connexion envoyé par e-mail.", !error);
+};
+
+$("logout").onclick = async () => { await sb.auth.signOut(); await render(); };
+$("openApp").onclick = () => { location.href = "./meuble.html"; };
+$("nlToggle").onchange = async () => {
+  const { data:{ user } } = await sb.auth.getUser();
+  await sb.from("profiles").update({ newsletter_opt_in: $("nlToggle").checked }).eq("id", user.id);
+};
+
+async function callFn(name){
+  const { data:{ session } } = await sb.auth.getSession();
+  const r = await fetch(SUPABASE_URL+"/functions/v1/"+name, {
+    method:"POST", headers:{ "Authorization":"Bearer "+session.access_token, "Content-Type":"application/json" },
+    body: JSON.stringify({ returnUrl: SITE_URL+"/compte.html" }) });
+  return r.json();
+}
+$("subscribe").onclick = async () => {
+  setMsg($("accMsg"),"Redirection vers le paiement…",true);
+  try{ const j=await callFn("create-checkout"); if(j.url) location.href=j.url; else throw new Error(j.error||"Erreur"); }
+  catch(e){ setMsg($("accMsg"), e.message); }
+};
+$("portal").onclick = async () => {
+  try{ const j=await callFn("create-portal"); if(j.url) location.href=j.url; else throw new Error(j.error||"Erreur"); }
+  catch(e){ setMsg($("accMsg"), e.message); }
+};
+
+async function render(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ hide($("account")); show($("auth")); return; }
+  hide($("auth")); show($("account"));
+  const { data: prof } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
+  $("who").textContent = (prof?.full_name? prof.full_name+" — ":"") + session.user.email;
+  const active = prof?.plan === "active";
+  const trialLeft = prof? Math.ceil((new Date(prof.trial_ends_at)-Date.now())/86400000) : 0;
+  const trialing = !active && trialLeft>0;
+  const b=$("statusBadge");
+  if(active){ b.textContent="Abonné"; b.className="badge b-ok"; $("periodLbl").textContent="Abonnement jusqu'au"; $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe")); show($("portal")); }
+  else if(trialing){ b.textContent="Essai"; b.className="badge b-warn"; $("periodLbl").textContent="Jours d'essai restants"; $("periodVal").textContent = trialLeft; show($("subscribe")); hide($("portal")); }
+  else { b.textContent="Expiré"; b.className="badge b-no"; $("periodLbl").textContent="Essai terminé"; $("periodVal").textContent="—"; show($("subscribe")); hide($("portal")); $("openApp").disabled=true; }
+  $("nlToggle").checked = !!prof?.newsletter_opt_in;
+  if(new URLSearchParams(location.search).get("paid")) setMsg($("accMsg"),"Merci ! Votre abonnement est en cours d'activation.",true);
+}
+sb.auth.onAuthStateChange(()=>render());
+render();
+</script>
+</body></html>

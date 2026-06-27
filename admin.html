@@ -54,6 +54,11 @@
       <button id="pickFile" type="button">＋ Fichier .dae / images</button>
       <button id="pickDir" type="button">📁 Dossier de textures</button>
     </div>
+    <div style="font-size:11.5px;color:var(--dm);margin-top:8px;line-height:1.5">
+      Glisse <b>le .dae + le dossier de textures ensemble</b> (sélectionne les deux dans l'explorateur, puis dépose).<br>
+      <b style="color:var(--am)">Pour conserver tes objets déjà publiés</b>, glisse aussi tes fichiers actuels
+      <code>fabricants.js</code> et <code>textured-objects.js</code> — le nouvel objet s'ajoutera aux autres.
+    </div>
     <div id="files" class="files"></div>
     <div class="row" style="margin-top:10px">
       <button id="convert" class="primary" disabled>Convertir →</button>
@@ -273,12 +278,15 @@ function texToDataURI(file){ return new Promise(function(res,rej){
 /* =========================================================================
    État + UI
    ========================================================================= */
-var DAE_TEXT=null, TEX_FILES={}, RESULT=null;
+var DAE_TEXT=null, TEX_FILES={}, RESULT=null, SEEDED={fab:false,tex:false};
 var dropEl=document.getElementById('drop'), fileInput=document.getElementById('file'), filesEl=document.getElementById('files');
-function refreshFiles(){ var l=[]; if(DAE_TEXT) l.push('• modèle .dae ('+(DAE_TEXT.length/1024|0)+' Ko)'); Object.keys(TEX_FILES).forEach(function(n){ l.push('• '+n); }); filesEl.textContent=l.join('\n')||'(aucun fichier)'; document.getElementById('convert').disabled=!DAE_TEXT; }
+function refreshFiles(){ var l=[]; if(DAE_TEXT) l.push('• modèle .dae ('+(DAE_TEXT.length/1024|0)+' Ko)'); var ti=Object.keys(TEX_FILES); if(ti.length) l.push('• '+ti.length+' texture(s)'); if(SEEDED.fab||SEEDED.tex) l.push('• catalogue chargé : '+FAB.length+' fabricants, '+Object.keys(TEXO).length+' objets texturés'); filesEl.textContent=l.join('\n')||'(aucun fichier)'; document.getElementById('convert').disabled=!DAE_TEXT; }
 function takeFiles(list){ Array.prototype.forEach.call(list,function(f){ var n=f.name.toLowerCase();
   if(n.endsWith('.dae')){ var r=new FileReader(); r.onload=function(e){ DAE_TEXT=e.target.result; refreshFiles(); }; r.readAsText(f); }
-  else if(f.type.indexOf('image')===0||/\.(png|jpg|jpeg)$/i.test(n)){ TEX_FILES[f.name]=f; refreshFiles(); } }); }
+  else if(f.type.indexOf('image')===0||/\.(png|jpg|jpeg)$/i.test(n)){ TEX_FILES[f.name]=f; refreshFiles(); }
+  else if(/fabricants[^/]*\.js$/i.test(n)){ var r=new FileReader(); r.onload=function(e){ try{ var db=new Function(e.target.result+'\nreturn FABRICANTS_DB;')(); FAB=JSON.parse(JSON.stringify(db)); SEEDED.fab=true; rebuildMakers(); refreshFiles(); }catch(err){ alert('fabricants.js illisible : '+err.message); } }; r.readAsText(f); }
+  else if(/textured[-_]?objects[^/]*\.js$/i.test(n)){ var r=new FileReader(); r.onload=function(e){ try{ TEXO=new Function(e.target.result+'\nreturn TEX_OBJECTS;')(); SEEDED.tex=true; refreshFiles(); }catch(err){ alert('textured-objects.js illisible : '+err.message); } }; r.readAsText(f); }
+ }); }
 var dirInput=document.getElementById('dir');
 dropEl.onclick=function(){ fileInput.click(); };
 document.getElementById('pickFile').onclick=function(e){ e.stopPropagation(); fileInput.click(); };
@@ -338,8 +346,9 @@ function autofill(){ var pid=document.getElementById('pid'); if(!pid.value){ pid
 /* fabricant select */
 var FAB = (typeof FABRICANTS_DB!=='undefined') ? JSON.parse(JSON.stringify(FABRICANTS_DB)) : [];
 var TEXO = (typeof TEX_OBJECTS!=='undefined') ? TEX_OBJECTS : {};
-(function fillMakers(){ var sel=document.getElementById('maker'); FAB.forEach(function(f){ var o=document.createElement('option'); o.value=f.id; o.textContent=f.label; sel.appendChild(o); }); var o=document.createElement('option'); o.value='__new'; o.textContent='+ Nouveau fabricant…'; sel.appendChild(o);
-  sel.onchange=function(){ document.getElementById('makerNew').style.display = sel.value==='__new'?'block':'none'; }; })();
+function rebuildMakers(){ var sel=document.getElementById('maker'); sel.innerHTML=''; FAB.forEach(function(f){ var o=document.createElement('option'); o.value=f.id; o.textContent=f.label+(f.subs&&f.subs.length?(' ('+f.subs.length+')'):''); sel.appendChild(o); }); var o=document.createElement('option'); o.value='__new'; o.textContent='+ Nouveau fabricant…'; sel.appendChild(o);
+  sel.onchange=function(){ document.getElementById('makerNew').style.display = sel.value==='__new'?'block':'none'; }; }
+rebuildMakers();
 
 /* Ajouter au catalogue (en mémoire) */
 document.getElementById('add').onclick=function(){

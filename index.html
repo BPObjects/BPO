@@ -42,12 +42,6 @@
     padding:22px 7vw;}
   .brand{display:flex;align-items:center;gap:12px;}
   .brand img{height:38px;width:auto;display:block;}
-  .brand-mark{display:inline-flex;align-items:center;font-weight:200;font-size:26px;letter-spacing:-0.02em;
-    background:linear-gradient(180deg,#f4f7fb,#aab4c2 60%,#6b7585);-webkit-background-clip:text;background-clip:text;
-    -webkit-text-fill-color:transparent;}
-  .brand-mark .o-dot{width:14px;height:14px;border-radius:50%;margin-left:3px;
-    background:radial-gradient(circle at 35% 35%,#6fc0f7,#3ba4f0 70%);box-shadow:0 0 10px rgba(59,164,240,.6);}
-  .foot-brand .brand-mark{font-size:20px;} .foot-brand .brand-mark .o-dot{width:11px;height:11px;}
   .brand-txt{font-size:14px;letter-spacing:0.04em;color:#cdd6e2;font-weight:400;}
   .brand-txt b{color:#fff;font-weight:600;letter-spacing:0.12em;}
   .nav-mini{display:flex;gap:26px;font-size:13.5px;}
@@ -179,12 +173,13 @@
 
   <div class="topbar">
     <div class="brand">
-      <span class="brand-mark" role="img" aria-label="BPO">BP<span class="o-dot"></span></span>
+      <img src="bpo-logo.png" alt="BPO">
     </div>
     <nav class="nav-mini">
       <a href="#access">Accès</a>
       <a href="#value">La plateforme</a>
       <a href="#fabricants">Fabricants</a>
+      <a href="compte.html">Mon compte</a>
     </nav>
   </div>
 
@@ -215,7 +210,7 @@
   <div class="access-head">
     <div class="eyebrow">Deux portes d'entrée</div>
     <h2>Choisissez votre accès</h2>
-    <p>Une plateforme, deux usages :<br>les architectes explorent et exportent,
+    <p>Une plateforme, deux usages : les architectes explorent et exportent,
        les fabricants exposent leurs produits.</p>
   </div>
 
@@ -288,7 +283,7 @@
        votre produit entre dans le projet. Nous modélisons vos composants en
        objets 3D paramétriques ; vous gagnez en prescription. Gratuit pour les
        architectes, par abonnement pour les fabricants.</p>
-    <a href="mailto:contact@buildingproductobjects.com" class="btn btn-primary">
+    <a href="espace-fabricants.html" class="btn btn-primary">
       Devenir fabricant partenaire <span class="btn-arrow">→</span>
     </a>
   </div>
@@ -298,10 +293,17 @@
 <footer>
   <div class="foot-row">
     <div class="foot-brand">
-      <span class="brand-mark" role="img" aria-label="BPO">BP<span class="o-dot"></span></span>
+      <img src="bpo-logo.png" alt="BPO">
       <span><b>BUILDING PRODUCT OBJECTS</b></span>
     </div>
     <div class="copyr">© 2026 Building Product Objects — Antoine Lacronique, architecte</div>
+  </div>
+  <div style="text-align:center;padding:10px 18px 22px;font-size:12px;opacity:.75;display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+    <a href="mentions-legales.html" style="color:inherit;">Mentions légales</a>
+    <a href="cgu.html" style="color:inherit;">CGU</a>
+    <a href="cgv.html" style="color:inherit;">CGV</a>
+    <a href="politique-confidentialite.html" style="color:inherit;">Confidentialité</a>
+    <a href="espace-fabricants.html" style="color:inherit;">Espace fabricants</a>
   </div>
 </footer>
 
@@ -453,10 +455,8 @@
     }
     requestAnimationFrame(step);
   }
-  var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
   window.addEventListener('resize', function(){ resize(); });
-  init();
-  if(!REDUCED) step();   /* en mouvement reduit le canvas est masque : inutile de l'animer */
+  init(); step();
 })();
 </script>
 </body>
