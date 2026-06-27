@@ -38,12 +38,12 @@ var FABRICANTS_DB=[
         "description": "Poste de travail complet, modèle texturé haute fidélité."
       },
       {
-        "id": "objet_hgn1",
-        "label": "BENCH 2P AVEC SEPARATEUR",
+        "id": "objet_1eb9",
+        "label": "Bench 2P",
         "render": "webgl-tex",
-        "data": "TEX_OBJECTS.objet_hgn1",
-        "categorie": "BUREAU",
-        "description": "BENCH 2 PLACES AVEC SEPARATEUR"
+        "data": "TEX_OBJECTS.objet_1eb9",
+        "categorie": "Bureau",
+        "description": "Bench 2 Places"
       }
     ]
   },
