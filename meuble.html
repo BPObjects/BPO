@@ -439,8 +439,8 @@ WGL.render=function(){
   if(WGL.txActive) return WGL.renderT();
   if(WGL.gActive) return WGL.renderG();
   var gl=WGL.gl,cv=gl.canvas,cam=WGL.cam;
-  var ex=cam.r*Math.sin(cam.ph)*Math.sin(cam.th),ey=cam.ty+cam.r*Math.cos(cam.ph),ez=cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
-  var mv=WGL._look([ex,ey,ez],[0,cam.ty,0],[0,1,0]);
+  var tx=cam.tx||0,tz=cam.tz||0,ex=tx+cam.r*Math.sin(cam.ph)*Math.sin(cam.th),ey=cam.ty+cam.r*Math.cos(cam.ph),ez=tz+cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
+  var mv=WGL._look([ex,ey,ez],[tx,cam.ty,tz],[0,1,0]);
   var _as=cv.width/cv.height, _fa=Math.max(100, cam.r*3+60);
   var pr=ORTHO?WGL._ortho(cam.r*Math.tan(0.95/2),_as,0.02,_fa):WGL._persp(0.95,_as,0.02,_fa);var mvp=WGL._mul(pr,mv);
   var e=WGL.ENVS[WGL.env];
@@ -570,8 +570,8 @@ function chairMat(){
 WGL.renderT=function(){
   var gl=WGL.gl, cv=gl.canvas, cam=WGL.cam, M=WGL.texModel, P=WGL.progT;
   if(!M||!P) return;
-  var ex=cam.r*Math.sin(cam.ph)*Math.sin(cam.th),ey=cam.ty+cam.r*Math.cos(cam.ph),ez=cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
-  var mv=WGL._look([ex,ey,ez],[0,cam.ty,0],[0,1,0]);
+  var tx=cam.tx||0,tz=cam.tz||0,ex=tx+cam.r*Math.sin(cam.ph)*Math.sin(cam.th),ey=cam.ty+cam.r*Math.cos(cam.ph),ez=tz+cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
+  var mv=WGL._look([ex,ey,ez],[tx,cam.ty,tz],[0,1,0]);
   var prj=WGL._persp(0.95,cv.width/cv.height,0.02,100); var mvp=WGL._mul(prj,mv);
   var e=WGL.ENVS[WGL.env];
   gl.clearColor(0.082,0.09,0.106,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
@@ -633,15 +633,28 @@ WGL.initGGL=function(){
   function sh(t,src){var o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
   var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(pr));
+  /* shader sol texturé (carte) */
+  var gvs='attribute vec3 p;attribute vec2 uv;uniform mat4 pv;varying vec2 vuv;void main(){gl_Position=pv*vec4(p,1.0);vuv=uv;}';
+  var gfs='precision highp float;varying vec2 vuv;uniform sampler2D map;void main(){gl_FragColor=texture2D(map,vuv);}';
+  var pg=gl.createProgram();gl.attachShader(pg,sh(gl.VERTEX_SHADER,gvs));gl.attachShader(pg,sh(gl.FRAGMENT_SHADER,gfs));gl.linkProgram(pg);WGL.progGround=pg;
   WGL.progG=pr; return true;
+};
+WGL.makeMapTex=function(){ var gl=WGL.gl; if(!gl||typeof SITE==='undefined'||!SITE.mapCanvas) return;
+  if(!WGL.mapTex) WGL.mapTex=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,WGL.mapTex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,SITE.mapCanvas);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  WGL.mapTexReady=true;
 };
 WGL.uploadFC=function(faces){
   var gl=WGL.gl;
   if(WGL._gbufs){ WGL._gbufs.forEach(function(b){gl.deleteBuffer(b);}); }
   WGL._gbufs=[];
-  var PO=[],NO=[],CO=[], PT=[],NT=[],CT=[];
+  var PO=[],NO=[],CO=[], PT=[],NT=[],CT=[], PG=[],UG=[];
   for(var i=0;i<faces.length;i++){
     var f=faces[i], v=f.verts, al=(f.al==null?1:f.al), c=f.col||[200,200,200], isT=(al<1);
+    if(f.tex==='sitemap' && f.uv){ for(var kk=1;kk<v.length-1;kk++){ var og=[0,kk,kk+1]; for(var jj=0;jj<3;jj++){ var pp=v[og[jj]], uu=f.uv[og[jj]]; PG.push(pp[0],pp[1],pp[2]); UG.push(uu[0],uu[1]); } } continue; }
     var P=isT?PT:PO, N=isT?NT:NO, C=isT?CT:CO;
     for(var k=1;k<v.length-1;k++){
       var oi=[0,k,k+1];
@@ -654,14 +667,16 @@ WGL.uploadFC=function(faces){
   }
   function mk(arr){var b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(arr),gl.STATIC_DRAW);WGL._gbufs.push(b);return b;}
   WGL.gbuf={ pO:mk(PO),nO:mk(NO),cO:mk(CO),countO:PO.length/3,
-             pT:mk(PT),nT:mk(NT),cT:mk(CT),countT:PT.length/3 };
+             pT:mk(PT),nT:mk(NT),cT:mk(CT),countT:PT.length/3,
+             pMap:mk(PG),uvMap:mk(UG),countMap:PG.length/3 };
 };
 WGL.renderG=function(){
   var gl=WGL.gl,cv=gl.canvas,cam=WGL.cam,P=WGL.progG,G=WGL.gbuf;
   if(!P||!G) return;
-  var ex=cam.r*Math.sin(cam.ph)*Math.sin(cam.th),ey=cam.ty+cam.r*Math.cos(cam.ph),ez=cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
-  var mv=WGL._look([ex,ey,ez],[0,cam.ty,0],[0,1,0]);
-  var prj=WGL._persp(0.95,cv.width/cv.height,0.02,100), pv=WGL._mul(prj,mv);
+  var tx=cam.tx||0,tz=cam.tz||0,ex=tx+cam.r*Math.sin(cam.ph)*Math.sin(cam.th),ey=cam.ty+cam.r*Math.cos(cam.ph),ez=tz+cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
+  var mv=WGL._look([ex,ey,ez],[tx,cam.ty,tz],[0,1,0]);
+  var _as=cv.width/cv.height, _fa=Math.max(100,cam.r*3+60);
+  var prj=ORTHO?WGL._ortho(cam.r*Math.tan(0.95/2),_as,0.02,_fa):WGL._persp(0.95,_as,0.02,_fa), pv=WGL._mul(prj,mv);
   var e=WGL.ENVS[WGL.env];
   gl.clearColor(0.102,0.110,0.130,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   gl.useProgram(P);
@@ -681,6 +696,14 @@ WGL.renderG=function(){
   }
   gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND);
   draw(G.pO,G.nO,G.cO,G.countO);
+  if(G.countMap && typeof SITE!=='undefined' && SITE.on){ if(!WGL.mapTexReady) WGL.makeMapTex();
+    if(WGL.mapTexReady){ gl.useProgram(WGL.progGround); gl.uniformMatrix4fv(gl.getUniformLocation(WGL.progGround,'pv'),false,pv);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,WGL.mapTex); gl.uniform1i(gl.getUniformLocation(WGL.progGround,'map'),0);
+      var gp=gl.getAttribLocation(WGL.progGround,'p'), gu=gl.getAttribLocation(WGL.progGround,'uv');
+      gl.bindBuffer(gl.ARRAY_BUFFER,G.pMap); gl.enableVertexAttribArray(gp); gl.vertexAttribPointer(gp,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,G.uvMap); gl.enableVertexAttribArray(gu); gl.vertexAttribPointer(gu,2,gl.FLOAT,false,0,0);
+      gl.drawArrays(gl.TRIANGLES,0,G.countMap); gl.useProgram(P); }
+  }
   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
   draw(G.pT,G.nT,G.cT,G.countT);
   gl.depthMask(true); gl.disable(gl.BLEND);
@@ -1559,7 +1582,7 @@ var PD = {
    par une trame poteaux + poutres, hauteurs d'étage éditables par niveau,
    sections auto-proportionnées à la portée et au nombre d'étages.
    ============================================================================ */
-var IMM_INFO=null, IMM_COTE_HITS=[];
+var IMM_INFO=null, IMM_COTE_HITS=[], IMM_STRUCT=null;
 var PIM = {
   shape:'rect', len:2000, wid:1500,
   lx:600, lz:600, ux:600, uz:600, lcorner:'tr', tb:600, tw:800,
@@ -1726,15 +1749,15 @@ var CATALOG = {
   generiques: {
     label: 'Génériques',
     cats: [
+      {id:'immeuble',   label:'Immeuble',         status:'ready'},  /* -> immeuble parametrique */
+      {id:'hangar',     label:'Hangar métallique', status:'ready'},
       {id:'mur',        label:'Mur',              status:'ready'},  /* -> mur multicouche */
       {id:'dalle',      label:'Dalle',            status:'ready'},  /* -> dalle multicouche */
-      {id:'immeuble',   label:'Immeuble',         status:'ready'},  /* -> immeuble parametrique */
       {id:'poteau',     label:'Poteau',           status:'ready'},
       {id:'poutre',     label:'Poutre',           status:'ready'},
       {id:'porte',      label:'Porte',            status:'ready'},
       {id:'fenetre',    label:'Fenêtre',          status:'ready'},
       {id:'murrideau',  label:'Mur-rideau',       status:'ready'},
-      {id:'hangar',     label:'Hangar métallique', status:'ready'},
       {id:'objets',     label:'Objets',           status:'ready'},  /* -> bibliothèque mobilier */
       {id:'lampe',      label:'Lampe',            status:'todo'},
       {id:'toiture',    label:'Toiture',          status:'todo'},
@@ -1765,7 +1788,7 @@ var CATALOG = {
 
 /* État de navigation du catalogue */
 var BRANCH = 'generiques';   /* onglet principal actif */
-var CAT    = 'objets';       /* catégorie active (par défaut : Objets = bibliothèque) */
+var CAT    = 'immeuble';       /* catégorie active (par défaut : Objets = bibliothèque) */
 
 /* Renvoie la catégorie courante {id,label,status} */
 function curCat(){
@@ -1834,7 +1857,7 @@ function norm(v){ var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return l<1e-9?
 
 /* CAM = position de la caméra en coordonnées sphériques autour du meuble.
    r=distance, th=azimut, ph=élévation, ty=hauteur du point visé. */
-var CAM = { r:4, th:-0.5, ph:1.0, ty:1.0 };
+var CAM = { r:4, th:-0.5, ph:1.0, ty:1.0, tx:0, tz:0 };
 
 /* Direction de la lumière (pour l'ombrage des faces) */
 var LIGHT = norm([0.5, 0.8, 0.35]);
@@ -1914,14 +1937,22 @@ function removePolyVertex(i){
   _polySync(); build(); DIRTY=true;
 }
 function getCam(){
-  var r=CAM.r, th=CAM.th, ph=CAM.ph, ty=CAM.ty;
-  var ex = r*Math.sin(ph)*Math.sin(th);
+  var r=CAM.r, th=CAM.th, ph=CAM.ph, ty=CAM.ty, tx=CAM.tx||0, tz=CAM.tz||0;
+  var ex = tx + r*Math.sin(ph)*Math.sin(th);
   var ey = ty + r*Math.cos(ph);
-  var ez = r*Math.sin(ph)*Math.cos(th);
-  var fwd   = norm([-ex, ty-ey, -ez]);          /* axe avant (vers la cible) */
+  var ez = tz + r*Math.sin(ph)*Math.cos(th);
+  var fwd   = norm([tx-ex, ty-ey, tz-ez]);          /* axe avant (vers la cible) */
   var right = norm(cross(fwd,[0,1,0]));          /* axe droite                */
   var up    = cross(right, fwd);                 /* axe haut                  */
   return {ex:ex, ey:ey, ez:ez, fwd:fwd, right:right, up:up};
+}
+/* panView() : déplace la cible (pan) selon un glissé écran. */
+function panView(dx,dy){
+  var H=cv.height||600, cam=getCam(), wpp=2*CAM.r/(2.14*H);
+  CAM.tx += (-dx*cam.right[0] + dy*cam.up[0])*wpp;
+  CAM.ty += (-dx*cam.right[1] + dy*cam.up[1])*wpp;
+  CAM.tz += (-dx*cam.right[2] + dy*cam.up[2])*wpp;
+  if(WGL&&WGL.cam){ WGL.cam.tx=CAM.tx; WGL.cam.ty=CAM.ty; WGL.cam.tz=CAM.tz; }
 }
 
 /* proj() : projette un point 3D du monde vers un pixel 2D de l'écran.
@@ -1954,6 +1985,7 @@ var DIMS = {w:1, h:1, d:1};  /* dimensions hors-tout du meuble en mètres */
 /* _CURTEX : id de texture courante posée par les builders (null = aucune).
    box/boxV/face l'attachent aux faces qu'ils créent, pour le rendu texturé. */
 var _CURTEX = null;
+var _IFCTAG = null;   /* tag IFC courant {st,ty} pour structurer l'immeuble */
 function box(x,y,z, w,h,d, col, al){
   al = al || 1;
   var hw=w/2, hh=h/2, hd=d/2;
@@ -1964,7 +1996,7 @@ function box(x,y,z, w,h,d, col, al){
   var fi=[[0,1,2,3],[4,7,6,5],[0,3,7,4],[1,5,6,2],[0,4,5,1],[3,2,6,7]];
   var nm=[[0,0,-1],[0,0,1],[-1,0,0],[1,0,0],[0,-1,0],[0,1,0]];
   for(var i=0;i<6;i++){
-    FC.push({ verts: fi[i].map(function(j){return vt[j];}), n:nm[i], col:col, al:al, tex:_CURTEX });
+    FC.push({ verts: fi[i].map(function(j){return vt[j];}), n:nm[i], col:col, al:al, tex:_CURTEX, ifc:_IFCTAG });
   }
   PRIMS.push({ x:x, y:y, z:z, w:w, h:h, d:d, col:col, al:al });
 }
@@ -1982,7 +2014,7 @@ function boxV(vt, col, al){
     var p=fi[i].map(function(j){return vt[j];});
     /* normale = produit vectoriel de 2 arêtes de la face */
     var u=sub(p[1],p[0]), v=sub(p[3],p[0]), nf=norm(cross(u,v));
-    FC.push({ verts:p, n:nf, col:col, al:al, tex:_CURTEX });
+    FC.push({ verts:p, n:nf, col:col, al:al, tex:_CURTEX, ifc:_IFCTAG });
   }
 }
 
@@ -2329,6 +2361,212 @@ function _onEdge(x,z,poly){
   return false;
 }
 /* buildImmeuble() : immeuble multi-niveaux (dalles + poteaux + poutres). */
+
+/* ============================================================================
+   SITE / GÉOLOCALISATION — implantation + fond de carte OpenStreetMap
+   ============================================================================ */
+var SITE={on:0, lat:48.8584, lon:2.2945, alt:35, north:0, zoom:18, ready:0, extentM:0, cxFrac:0.5, cyFrac:0.5, addr:'', posX:0, posY:0, posZ:0, mapStyle:'plan'};
+/* ----- contexte urbain : bâtiments 3D environnants (OSM via Overpass) ----- */
+var CTX={on:0, buildings:[]};
+var MOVE_SITE=false, SDRAG=false, SITE_G0=null, ERASE_MODE=false, ROT_MODE=false, RDRAG=false, RLAST=0;
+var SG=null, GZ=null, GZ_G0=null;
+var OVERPASS_MIRRORS=['https://overpass.openstreetmap.fr/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+function loadContext(cb){
+  if(typeof fetch==='undefined'){ if(cb)cb('indisponible'); return; }
+  var lat=SITE.lat, lon=SITE.lon, R=Math.round(Math.min(900, Math.max(200,(SITE.extentM||300)/1.4)));
+  var q='[out:json][timeout:25];(way["building"](around:'+R+','+lat+','+lon+');way["building:part"](around:'+R+','+lat+','+lon+');relation["building"](around:'+R+','+lat+','+lon+'););out body;>;out skel qt;';
+  var i=0;
+  function attempt(){
+    if(i>=OVERPASS_MIRRORS.length){ if(cb) cb('serveurs indisponibles'); return; }
+    var srv=OVERPASS_MIRRORS[i++];
+    fetch(srv+'?data='+encodeURIComponent(q))
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(j){ var n=parseContext(j); if(cb) cb(n>0?(n+' bâtiments'):'aucun bâtiment ici'); })
+      .catch(function(e){ console.warn('Overpass KO',srv,e); attempt(); });
+  }
+  attempt();
+}
+function parseContext(j){
+  if(!j||!j.elements) return 0;
+  var mLat=110540, mLon=111320*Math.cos(SITE.lat*Math.PI/180), nodes={}, ways={}, bs=[], inRel={};
+  j.elements.forEach(function(el){ if(el.type==='node') nodes[el.id]=[(el.lon-SITE.lon)*mLon, -(el.lat-SITE.lat)*mLat]; else if(el.type==='way') ways[el.id]=el; });
+  function ringOf(w){ var r=[]; (w.nodes||[]).forEach(function(id){ if(nodes[id]) r.push(nodes[id]); }); return r; }
+  function hOf(t){ var h=t&&t.height?parseFloat(t.height):(t&&t['building:levels']?parseFloat(t['building:levels'])*3:9); return (!h||isNaN(h))?9:h; }
+  j.elements.forEach(function(el){ if(el.type==='relation' && el.tags && el.tags.building){
+    var outer=[], holes=[];
+    (el.members||[]).forEach(function(m){ if(m.type==='way' && ways[m.ref]){ var rg=ringOf(ways[m.ref]); if(rg.length>=3){ (m.role==='inner'?holes:outer).push(rg); } inRel[m.ref]=1; } });
+    outer.forEach(function(o){ bs.push({poly:o, holes:holes, h:hOf(el.tags)}); });
+  }});
+  j.elements.forEach(function(el){ if(el.type==='way' && el.tags && (el.tags.building||el.tags['building:part']) && !inRel[el.id]){ var rg=ringOf(el); if(rg.length>=3) bs.push({poly:rg, holes:[], h:hOf(el.tags)}); }});
+  CTX.buildings=bs; CTX.on=1; build(); DIRTY=true; if(WGL&&WGL.gActive) WGL.render();
+  return bs.length;
+}
+/* aire signée d'un anneau */
+function _ringArea(p){ var a=0; for(var i=0;i<p.length;i++){ var q=p[(i+1)%p.length]; a+=p[i][0]*q[1]-q[0]*p[i][1]; } return a/2; }
+/* fusionne des trous dans un contour (méthode du pont) -> polygone simple triangulable */
+function mergeHoles(outer, holes){
+  var O=outer.slice();
+  if(_ringArea(O)<0) O.reverse();                 /* outer en CCW */
+  holes.forEach(function(h){ var H=h.slice(); if(_ringArea(H)>0) H.reverse();  /* trou en CW */
+    var hi=0; for(var i=1;i<H.length;i++) if(H[i][0]>H[hi][0]) hi=i;
+    var bi=0,bd=Infinity; for(var i=0;i<O.length;i++){ var d=Math.hypot(O[i][0]-H[hi][0],O[i][1]-H[hi][1]); if(O[i][0]>=H[hi][0]-1e-9 && d<bd){bd=d;bi=i;} }
+    var seq=[]; for(var k=0;k<=H.length;k++) seq.push(H[(hi+k)%H.length]);
+    O=O.slice(0,bi+1).concat(seq).concat([O[bi]]).concat(O.slice(bi+1));
+  });
+  return O;
+}
+/* bâtiment de contexte avec trous éventuels (murs ext+int + toit troué) */
+function ctxBuilding(outer, holes, y0, h, col){
+  /* masse pleine du contour extérieur (robuste, sans artefact). Les cours
+     intérieures sont récupérées via les relations mais rendues pleines en v1. */
+  dallePrism(outer, y0, h, col);
+}
+function addContext(){
+  if(!(CTX.on && CTX.buildings.length)) return;
+  var ox=-(SITE.posX||0), oz=-(SITE.posZ||0), oy=-0.05-(SITE.posY||0);
+  var rad=(SITE.north||0)*Math.PI/180, rc=Math.cos(rad), rs=Math.sin(rad);
+  function T(p){ var x=p[0]+ox, z=p[1]+oz; return [x*rc-z*rs, x*rs+z*rc]; }
+  CTX.buildings.forEach(function(b){
+    var outer=b.poly.map(T), holes=(b.holes||[]).map(function(h){return h.map(T);});
+    ctxBuilding(outer, holes, oy, b.h, [228,228,226]);
+  });
+}
+
+function _osmTX(lon,z){ return (lon+180)/360*Math.pow(2,z); }
+function _osmTY(lat,z){ var r=lat*Math.PI/180; return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z); }
+function _osmMpp(lat,z){ return 156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,z); }
+/* charge une grille de tuiles OSM autour de lat/lon -> texture 'sitemap' */
+function loadSiteMap(){
+  if(typeof document==='undefined') return;
+  var z=Math.max(1,Math.min(19,SITE.zoom|0)), lat=SITE.lat, lon=SITE.lon;
+  var n=Math.pow(2,z), cx=_osmTX(lon,z), cy=_osmTY(lat,z), mpp=_osmMpp(lat,z);
+  var need=Math.max(DIMS.w||30,DIMS.d||30), R=Math.max(1,Math.min(4,Math.ceil(need/(256*mpp))+1));
+  var x0=Math.floor(cx)-R, y0=Math.floor(cy)-R, cnt=2*R+1, sz=cnt*256;
+  var cvs=document.createElement('canvas'); cvs.width=sz; cvs.height=sz; var c2=cvs.getContext('2d');
+  c2.fillStyle='#e9e7e1'; c2.fillRect(0,0,sz,sz);
+  SITE.ready=0; var done=0, total=cnt*cnt;
+  for(var ix=0;ix<cnt;ix++) for(var iy=0;iy<cnt;iy++){ (function(ix,iy){
+    var tx=((x0+ix)%n+n)%n, ty=y0+iy, img=new Image(); img.crossOrigin='anonymous';
+    img.onload=function(){ try{c2.drawImage(img,ix*256,iy*256);}catch(e){} fin(); };
+    img.onerror=fin;
+    img.src=(SITE.mapStyle==='satellite')?('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/'+z+'/'+ty+'/'+tx):('https://tile.openstreetmap.org/'+z+'/'+tx+'/'+ty+'.png');
+  })(ix,iy); }
+  function fin(){ if(++done<total) return;
+    try{ var d=c2.getImageData(0,0,sz,sz); TEX_IMAGES['sitemap']={data:d.data,w:sz,h:sz}; }
+    catch(e){ console.warn('Carte: canvas verrouillé (CORS)',e); }
+    SITE.extentM=sz*mpp; SITE.cxFrac=(cx-x0)/cnt; SITE.cyFrac=(cy-y0)/cnt; SITE.mapCanvas=cvs; if(typeof WGL!=='undefined') WGL.mapTexReady=false;
+    SITE.ready=1; SITE.on=1; build(); DIRTY=true; if(WGL&&WGL.gActive) WGL.render();
+  }
+}
+/* géocodage d'adresse via Nominatim (OpenStreetMap) */
+function geocodeAddr(q, cb){
+  if(typeof fetch==='undefined'){ cb(null); return; }
+  fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))
+    .then(function(r){return r.json();})
+    .then(function(j){ cb(j&&j[0]?{lat:parseFloat(j[0].lat),lon:parseFloat(j[0].lon)}:null); })
+    .catch(function(){ cb(null); });
+}
+/* ajoute le sol-carte au modèle (appelé en fin de build) */
+function addSiteGround(){
+  if(!(SITE.on && SITE.ready && TEX_IMAGES['sitemap'])) return;
+  var ext=SITE.extentM, qx0=-SITE.cxFrac*ext-(SITE.posX||0), qz0=-SITE.cyFrac*ext-(SITE.posZ||0), y=-0.05-(SITE.posY||0), N=16, st=ext/N;
+  var rad=(SITE.north||0)*Math.PI/180, rc=Math.cos(rad), rs=Math.sin(rad);
+  function _R(x,z){ return [x*rc-z*rs, x*rs+z*rc]; }
+  _CURTEX='sitemap';
+  for(var gi=0;gi<N;gi++) for(var gj=0;gj<N;gj++){
+    var x0=qx0+gi*st, x1=x0+st, z0=qz0+gj*st, z1=z0+st;
+    var u0=gi/N, u1=(gi+1)/N, v0=gj/N, v1=(gj+1)/N;
+    var A=_R(x0,z0),B=_R(x1,z0),C=_R(x1,z1),D=_R(x0,z1);
+    face([[A[0],y,A[1]],[B[0],y,B[1]],[C[0],y,C[1]],[D[0],y,D[1]]], [0,1,0], [205,203,197], 1);
+    FC[FC.length-1].uv=[[u0,v0],[u1,v0],[u1,v1],[u0,v1]];
+  }
+  _CURTEX=null;
+}
+
+/* unprojY() : intersection du rayon écran avec le plan horizontal y=yp. */
+function unprojY(px,py,W,H,cam,yp){
+  var fL=2.14, asp=W/H;
+  if(ORTHO){ var r=CAM.r, ox=(px-W/2)*asp*r/(fL*(W/2)), oy=(H/2-py)*r/(fL*(H/2));
+    var Ox=cam.ex+cam.right[0]*ox+cam.up[0]*oy, Oy=cam.ey+cam.right[1]*ox+cam.up[1]*oy, Oz=cam.ez+cam.right[2]*ox+cam.up[2]*oy;
+    if(Math.abs(cam.fwd[1])<1e-6) return null; var tt=(yp-Oy)/cam.fwd[1]; return [Ox+cam.fwd[0]*tt, Oz+cam.fwd[2]*tt]; }
+  var sx=(px-W/2)*asp/(fL*(W/2)), sy=(H/2-py)/(fL*(H/2));
+  var dx=cam.right[0]*sx+cam.up[0]*sy+cam.fwd[0], dy=cam.right[1]*sx+cam.up[1]*sy+cam.fwd[1], dz=cam.right[2]*sx+cam.up[2]*sy+cam.fwd[2];
+  if(Math.abs(dy)<1e-6) return null; var t=(yp-cam.ey)/dy; return [cam.ex+t*dx, cam.ez+t*dz];
+}
+/* pickContext() : index du bâtiment de contexte sous le pixel (mx,my), ou -1. */
+function pickContext(mx,my){
+  if(!(CTX.on&&CTX.buildings.length)) return -1;
+  var cam=getCam(), W=cv.width, H=cv.height, ox=-(SITE.posX||0), oz=-(SITE.posZ||0), oy=-0.05-(SITE.posY||0);
+  var best=-1, bestD=Infinity;
+  for(var i=0;i<CTX.buildings.length;i++){ var rad=(SITE.north||0)*Math.PI/180, rc=Math.cos(rad), rs=Math.sin(rad);
+    var b=CTX.buildings[i], poly=b.poly.map(function(pp){ var x=pp[0]+ox, z=pp[1]+oz; return [x*rc-z*rs, x*rs+z*rc]; });
+    var ys=[oy, oy+b.h];
+    for(var t=0;t<2;t++){ var g=unprojY(mx,my,W,H,cam,ys[t]); if(!g) continue;
+      if(_inPoly(g[0],g[1],poly)){ var d=Math.hypot(g[0]-cam.ex,ys[t]-cam.ey,g[1]-cam.ez); if(d<bestD){bestD=d;best=i;} } }
+  }
+  return best;
+}
+/* ============================================================================
+   SOLEIL / OMBRES — position solaire (date+heure+lat/lon) + ombres portées
+   ============================================================================ */
+var SUN={on:0, date:'2025-06-21', hour:14, az:0, elev:0};
+/* position du soleil : renvoie {az (depuis le nord, horaire), elev} en degrés. */
+function sunPos(lat, lon, dt){
+  var rad=Math.PI/180, jd=dt/86400000+2440587.5, n=jd-2451545.0;
+  var L=((280.460+0.9856474*n)%360+360)%360;
+  var g=(((357.528+0.9856003*n)%360+360)%360)*rad;
+  var lam=(L+1.915*Math.sin(g)+0.020*Math.sin(2*g))*rad;
+  var eps=(23.439-0.0000004*n)*rad;
+  var decl=Math.asin(Math.sin(eps)*Math.sin(lam));
+  var RA=Math.atan2(Math.cos(eps)*Math.sin(lam), Math.cos(lam));
+  var GMST=((280.46061837+360.98564736629*n)%360+360)%360;
+  var H=(GMST+lon)*rad - RA, latr=lat*rad;
+  var elev=Math.asin(Math.sin(latr)*Math.sin(decl)+Math.cos(latr)*Math.cos(decl)*Math.cos(H));
+  var az=Math.atan2(-Math.sin(H), Math.tan(decl)*Math.cos(latr)-Math.sin(latr)*Math.cos(H));
+  return {elev:elev/rad, az:((az/rad)%360+360)%360};
+}
+function computeSun(){
+  var pr=(SUN.date||'2025-06-21').split('-');
+  var ms=Date.UTC(+pr[0],(+pr[1])-1,+pr[2],0,0,0)+(SUN.hour-(SITE.lon/15))*3600000;
+  var sp=sunPos(SITE.lat, SITE.lon, new Date(ms)); SUN.az=sp.az; SUN.elev=sp.elev;
+}
+/* enveloppe convexe 2D (monotone chain) */
+function convexHull2D(pts){
+  pts=pts.slice().sort(function(a,b){return a[0]-b[0]||a[1]-b[1];});
+  if(pts.length<3) return pts;
+  function cr(o,a,b){return (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);}
+  var lo=[],i; for(i=0;i<pts.length;i++){ while(lo.length>=2 && cr(lo[lo.length-2],lo[lo.length-1],pts[i])<=0) lo.pop(); lo.push(pts[i]); }
+  var up=[]; for(i=pts.length-1;i>=0;i--){ while(up.length>=2 && cr(up[up.length-2],up[up.length-1],pts[i])<=0) up.pop(); up.push(pts[i]); }
+  lo.pop(); up.pop(); return lo.concat(up);
+}
+function groundPoly(hull, y, col, al){
+  if(hull.length<3) return;
+  var top=hull.map(function(p){return [p[0],y,p[1]];}), tri=triangulateFace(top,[0,1,0]);
+  for(var k=0;k<tri.length;k+=3) face([top[tri[k]],top[tri[k+1]],top[tri[k+2]]],[0,1,0],col,al);
+}
+function addShadows(){
+  if(!SUN.on) return; computeSun(); if(SUN.elev<=2) return;
+  var elr=SUN.elev*Math.PI/180, azr=SUN.az*Math.PI/180;
+  var tsx=Math.sin(azr), tsz=-Math.cos(azr);
+  var rad=(SITE.north||0)*Math.PI/180, rc=Math.cos(rad), rs=Math.sin(rad);
+  var wx=tsx*rc-tsz*rs, wz=tsx*rs+tsz*rc, Lh=1/Math.tan(elr);
+  var ax=-wx*Lh, az2=-wz*Lh, gy=-0.05-(SITE.posY||0)+0.03, col=[34,36,42], al=0.34;
+  if(typeof IMM_INFO!=='undefined' && IMM_INFO){
+    var I=IMM_INFO, h=I.roofTop||I.levelY[I.levelY.length-1];
+    var base=[[I.x0,I.z0],[I.x1,I.z0],[I.x1,I.z1],[I.x0,I.z1]];
+    var top=base.map(function(p){return [p[0]+ax*h, p[1]+az2*h];});
+    groundPoly(convexHull2D(base.concat(top)), gy, col, al);
+  }
+  if(typeof CTX!=='undefined' && CTX.on){
+    var ox=-(SITE.posX||0), oz=-(SITE.posZ||0);
+    CTX.buildings.forEach(function(b){
+      var bp=b.poly.map(function(p){ var x=p[0]+ox, z=p[1]+oz; return [x*rc-z*rs, x*rs+z*rc]; });
+      var tp=bp.map(function(p){return [p[0]+ax*b.h, p[1]+az2*b.h];});
+      groundPoly(convexHull2D(bp.concat(tp)), gy, col, al);
+    });
+  }
+}
+
 function buildImmeuble(){
   var cl=function(v,a,b){return v<a?a:(v>b?b:v);};
   var libre=(PIM.shape==='libre'), POLY=libre?parsePoly(PIM.verts):null;
@@ -2351,6 +2589,7 @@ function buildImmeuble(){
   var N=Math.max(1, PIM.nFloors|0), HS=[];
   for(var i=0;i<N;i++){ HS.push(((PIM.heights&&PIM.heights[i]!=null)?PIM.heights[i]:300)/100); }
   var levelY=[0]; for(var i=0;i<N;i++) levelY.push(levelY[i]+HS[i]);
+  IMM_STRUCT={levelY:levelY.slice(), e:e, slabs:[], cols:[], beams:[], cores:[], facades:[], acro:[]};
   var slCol=[176,176,172], cCol=[164,164,162], bCol=[150,150,148], coreCol=[150,150,148];
   var gx=[]; for(var j=0;j<=nbX;j++) gx.push(x0+j*spanX);
   var gz=[]; for(var k=0;k<=nbY;k++) gz.push(z0+k*spanZ);
@@ -2363,38 +2602,49 @@ function buildImmeuble(){
   function insideP(x,z,pl){ var px=0,pz=0,m=pl.length; for(var q=0;q<m;q++){px+=pl[q][0];pz+=pl[q][1];} px/=m;pz/=m; return _inPoly(x+(px-x)*0.002, z+(pz-z)*0.002, pl); }
   /* DALLES */
   for(var i=0;i<=N;i++){ var yT=levelY[i], dd=debOf(Math.min(i,N-1)), pl=polyAt(i);
+    _IFCTAG={st:Math.min(i,N-1),ty:'slab'};
     var sp = dd>0 ? _expandOut(pl,dd) : pl;
+    IMM_STRUCT.slabs.push({st:i, poly:sp, yTop:yT, t:e});
     if(dd>0 || insetOf(i)>0 || libre){ dallePrism(sp, yT-e, e, slCol); }
     else { rects.forEach(function(r){ box(r.cx, yT-e/2, r.cz, r.w, e, r.d, slCol,1); }); }
   }
   /* POTEAUX continus : du sol au soffite du dernier niveau porté (touchent toutes les dalles) */
+  _IFCTAG={st:0,ty:'column'};
   for(var j=0;j<=nbX;j++) for(var k=0;k<=nbY;k++){
     var sMax=0; for(var s=1;s<=N;s++){ if(insideP(gx[j],gz[k],polyAt(s))) sMax=s; }
-    if(sMax>=1){ var yb=levelY[0]-0.02, yt=levelY[sMax]-e+0.02; box(gx[j], (yb+yt)/2, gz[k], colw, yt-yb, colw, cCol,1); }
+    if(sMax>=1){ var yb=levelY[0]-0.02, yt=levelY[sMax]-e+0.02; box(gx[j], (yb+yt)/2, gz[k], colw, yt-yb, colw, cCol,1);
+      for(var cs=1;cs<=sMax;cs++) IMM_STRUCT.cols.push({st:cs-1, cx:gx[j], cz:gz[k], w:colw, y0:levelY[cs-1], y1:levelY[cs]}); }
   }
   /* POUTRES sous chaque dalle */
   if(PIM.poutres){
     for(var i=1;i<=N;i++){ var yTop=levelY[i]-e+0.02, plb=polyAt(i);
-      for(var ei=0;ei<plb.length;ei++){ var a=plb[ei], b=plb[(ei+1)%plb.length]; beamSeg(a[0],a[1],b[0],b[1], yTop-bh, yTop, bw, bCol); }
-      for(var k=0;k<=nbY;k++) for(var j=0;j<nbX;j++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j+1],gz[k],plb) && !_onEdge((gx[j]+gx[j+1])/2, gz[k], plb)) beamSeg(gx[j],gz[k],gx[j+1],gz[k], yTop-bh, yTop, bw, bCol); }
-      for(var j=0;j<=nbX;j++) for(var k=0;k<nbY;k++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j],gz[k+1],plb) && !_onEdge(gx[j], (gz[k]+gz[k+1])/2, plb)) beamSeg(gx[j],gz[k],gx[j],gz[k+1], yTop-bh, yTop, bw, bCol); }
+      _IFCTAG={st:Math.max(0,Math.min(i-1,N-1)),ty:'beam'};
+      for(var ei=0;ei<plb.length;ei++){ var a=plb[ei], b=plb[(ei+1)%plb.length]; beamSeg(a[0],a[1],b[0],b[1], yTop-bh, yTop, bw, bCol); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:a[0],az:a[1],bx:b[0],bz:b[1],w:bw,h:bh,yTop:levelY[i]-e}); }
+      for(var k=0;k<=nbY;k++) for(var j=0;j<nbX;j++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j+1],gz[k],plb) && !_onEdge((gx[j]+gx[j+1])/2, gz[k], plb)){ beamSeg(gx[j],gz[k],gx[j+1],gz[k], yTop-bh, yTop, bw, bCol); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:gx[j],az:gz[k],bx:gx[j+1],bz:gz[k],w:bw,h:bh,yTop:levelY[i]-e}); } }
+      for(var j=0;j<=nbX;j++) for(var k=0;k<nbY;k++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j],gz[k+1],plb) && !_onEdge(gx[j], (gz[k]+gz[k+1])/2, plb)){ beamSeg(gx[j],gz[k],gx[j],gz[k+1], yTop-bh, yTop, bw, bCol); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:gx[j],az:gz[k],bx:gx[j],bz:gz[k+1],w:bw,h:bh,yTop:levelY[i]-e}); } }
     }
   }
   /* NOYAU central (cage ascenseur/escalier) */
-  if(PIM.coreOn){ var cw=Math.max(1,(PIM.coreW||400)/100)/2, cd=Math.max(1,(PIM.coreD||400)/100)/2;
+  if(PIM.coreOn){ _IFCTAG={st:0,ty:'wall'}; var cw=Math.max(1,(PIM.coreW||400)/100)/2, cd=Math.max(1,(PIM.coreD||400)/100)/2;
     var cpts=[[cx-cw,cz-cd],[cx+cw,cz-cd],[cx+cw,cz+cd],[cx-cw,cz+cd]];
-    for(var ei=0;ei<4;ei++){ var a=cpts[ei], b=cpts[(ei+1)%4]; beamSeg(a[0],a[1],b[0],b[1], 0, levelY[N], 0.2, coreCol); }
+    for(var ei=0;ei<4;ei++){ var a=cpts[ei], b=cpts[(ei+1)%4]; beamSeg(a[0],a[1],b[0],b[1], 0, levelY[N], 0.2, coreCol); IMM_STRUCT.cores.push({ax:a[0],az:a[1],bx:b[0],bz:b[1],t:0.2,y0:0,y1:levelY[N]}); }
   }
   /* FAÇADES par orientation (sur le contour de l'étage) */
   var anyFac=(PIM.facN&&PIM.facN!=='none')||(PIM.facS&&PIM.facS!=='none')||(PIM.facE&&PIM.facE!=='none')||(PIM.facO&&PIM.facO!=='none');
   if(anyFac){ for(var s=1;s<=N;s++){ var plf=polyAt(s), fy1=(s===N)?levelY[N]-e:levelY[s];
+    _IFCTAG={st:Math.min(s-1,N-1),ty:'facade'};
     var fo=Math.max(0,(PIM.facOffset||0)/100); var pf=fo>0?_expandOut(plf,fo):plf;
     for(var ei=0;ei<pf.length;ei++){ var a=pf[ei], b=pf[(ei+1)%pf.length];
-      var o=_orient(a[0],a[1],b[0],b[1],cx,cz); facadeEdge(a[0],a[1],b[0],b[1], levelY[s-1], fy1, PIM['fac'+o]); } } }
+      var o=_orient(a[0],a[1],b[0],b[1],cx,cz), ft=PIM['fac'+o]; facadeEdge(a[0],a[1],b[0],b[1], levelY[s-1], fy1, ft);
+      if(ft&&ft!=='none'){ var rcf={ax:a[0],az:a[1],bx:b[0],bz:b[1],y0:levelY[s-1],y1:fy1,st:Math.min(s-1,N-1)};
+        if(ft==='rideau'){ rcf.ent='IFCCURTAINWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.06; rcf.col=_glassCol(); rcf.al=0.4; rcf.nm='Mur-rideau'; }
+        else if(ft==='mur'){ rcf.ent='IFCWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.16; rcf.col=[202,200,195]; rcf.al=1; rcf.nm='Mur'; }
+        else { rcf.ent='IFCWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.12; rcf.col=[172,170,166]; rcf.al=1; rcf.nm='Bardage'; }
+        IMM_STRUCT.facades.push(rcf); } } } }
   var rp=polyAt(N), rxs=rp.map(function(p){return p[0];}), rzs=rp.map(function(p){return p[1];});
   var rx0=Math.min.apply(null,rxs), rx1=Math.max.apply(null,rxs), rz0=Math.min.apply(null,rzs), rz1=Math.max.apply(null,rzs);
   var roof=levelY[N];
-  var roofH=buildImmRoof(rp, rx0,rx1,rz0,rz1, roof);
+  _IFCTAG={st:N,ty:'roof'}; var roofH=buildImmRoof(rp, rx0,rx1,rz0,rz1, roof); _IFCTAG=null;
   IMM_INFO={levelY:levelY.slice(), x0:x0, x1:x1, z0:z0, z1:z1, e:e, roofTop:roof+roofH};
   DIMS={ w:L, h:roof+e+roofH, d:W, cy:(roof+roofH-e)/2 };
   return DIMS;
@@ -2447,7 +2697,8 @@ function buildImmRoof(poly,x0,x1,z0,z1,yBase){
     face(v,n,rcol,1); }
   if(t==='terrasse'){
     var ac=Math.max(0,(PIM.acro||0))/100;
-    if(ac>0){ for(var i=0;i<poly.length;i++){ var a=poly[i], b=poly[(i+1)%poly.length]; beamSeg(a[0],a[1],b[0],b[1], yBase, yBase+ac, 0.2, rcol); } }
+    if(ac>0){ _IFCTAG=null; for(var i=0;i<poly.length;i++){ var a=poly[i], b=poly[(i+1)%poly.length]; beamSeg(a[0],a[1],b[0],b[1], yBase, yBase+ac, 0.2, rcol);
+      if(typeof IMM_STRUCT!=='undefined'&&IMM_STRUCT) IMM_STRUCT.acro.push({ax:a[0],az:a[1],bx:b[0],bz:b[1],t:0.2,y0:yBase,y1:yBase+ac}); } }
     return ac;
   }
   var ov=Math.max(0,(PIM.debToit||0))/100; x0-=ov; x1+=ov; z0-=ov; z1+=ov; xc=(x0+x1)/2; zc=(z0+z1)/2;
@@ -2734,7 +2985,7 @@ function buildGardeCorps(){
    lissé (Gouraud) qui fond les facettes entre elles. Sans vn, ombrage plat.
    Contrairement à box(), n'alimente PAS PRIMS. */
 function face(verts, n, col, al, vn){
-  FC.push({ verts:verts, n:n, col:col, al:al||1, vn:vn||null, tex:_CURTEX });
+  FC.push({ verts:verts, n:n, col:col, al:al||1, vn:vn||null, tex:_CURTEX, ifc:_IFCTAG });
 }
 
 /* ----------------------------------------------------------------------------
@@ -2869,6 +3120,7 @@ var PPORTE = {
   panel:'plein', mv:1, mh:1,
   imposteOn:false, imposte:40,
   handle:true, handleType:'bequille', handleH:105,
+  hScale:1, hRotX:0, hRotY:0, hRotZ:0, hOff:0,
   open:18
 };
 /* rotation autour d'un axe vertical en (hx, z=0) */
@@ -2927,8 +3179,32 @@ function buildFramedLeaf(T, x0,x1,y0,y1,zc,lt,style,colL,colP,colG,colH, handleE
   if(handle) buildHandle(T, x0,x1, handleEdge, handleY, zc, lt, colH, PPORTE.handleType);
 }
 /* Poignées : plusieurs types (béquille, bouton, barre de tirage, cuvette). */
+/* ===== Béquille importée (DAE Glutz) — maillage embarqué ===== */
+var HANDLE_MESH={"pos":[-0.01225,-0.09043,0.056,-0.03225,-0.05343,0.056,-0.01425,-0.07643,0.056,-0.01425,-0.07643,0.056,-0.03225,-0.05343,0.056,-0.01525,-0.07443,0.056,-0.01425,-0.06343,0.056,-0.03225,-0.05343,0.056,-0.01225,-0.06143,0.056,-0.03225,-0.10343,0.056,-0.03225,-0.05343,0.056,-0.01225,-0.09243,0.056,-0.01225,-0.09243,0.056,-0.03225,-0.05343,0.056,-0.01225,-0.09143,0.056,-0.03225,-0.05343,0.056,-0.01225,-0.09043,0.056,-0.01225,-0.09143,0.056,-0.01525,-0.06543,0.056,-0.03225,-0.05343,0.056,-0.01425,-0.06343,0.056,-0.01725,-0.06943,0.056,-0.03225,-0.05343,0.056,-0.01625,-0.06743,0.056,-0.01625,-0.06743,0.056,-0.03225,-0.05343,0.056,-0.01525,-0.06543,0.056,-0.01225,-0.09243,0.056,-0.01125,-0.09343,0.056,-0.03225,-0.10343,0.056,-0.01525,-0.07443,0.056,-0.03225,-0.05343,0.056,-0.01625,-0.07243,0.056,-0.01725,-0.06943,0.056,-0.01625,-0.07243,0.056,-0.03225,-0.05343,0.056,0.01775,-0.05343,0.064,0.01775,-0.05343,0.056,0.01775,-0.05343,0.056,-0.00725,-0.06043,0.056,-0.01025,-0.06043,0.056,-0.03225,-0.05343,0.056,-0.00725,-0.06043,0.056,0.01775,-0.05343,0.064,-0.03225,-0.10343,0.064,0.01775,-0.10343,0.064,-0.03225,-0.05343,0.064,-0.01025,-0.06043,0.056,-0.01225,-0.06143,0.056,-0.03225,-0.05343,0.064,-0.03225,-0.10343,0.056,-0.00925,-0.09443,0.056,0.01775,-0.10343,0.056,-0.00925,-0.09443,0.056,-0.03225,-0.10343,0.056,-0.01025,-0.09443,0.056,0.01775,-0.10343,0.064,-0.03225,-0.10343,0.064,0.01775,-0.10343,0.056,-0.01125,-0.09343,0.056,-0.01025,-0.09443,0.056,-0.03225,-0.10343,0.056,-0.01425,-0.07643,0.056,-0.01225,-0.07743,0.056,-0.00525,-0.06043,0.056,-0.00325,-0.06143,0.056,-0.03225,-0.10343,0.064,-0.03225,-0.05343,0.056,-0.03225,-0.10343,0.056,-0.00325,-0.09243,0.056,-0.00325,-0.09143,0.056,-0.03225,-0.05343,0.064,-0.00825,-0.09543,0.056,-0.00625,-0.09543,0.056,-0.00125,-0.07643,0.056,-0.00325,-0.09043,0.056,-0.00325,-0.07743,0.056,-0.00525,-0.09443,0.056,-0.00425,-0.09343,0.056,-0.00125,-0.06343,0.056,-0.00125,-0.07643,0.056,0.00075,-0.07443,0.056,0.00075,-0.06543,0.056,-0.00325,-0.09243,0.056,0.01775,-0.05343,0.056,0.01775,-0.10343,0.056,-0.00325,-0.09043,0.056,-0.00325,-0.09043,0.056,-0.00125,-0.07643,0.056,0.01775,-0.05343,0.056,0.00175,-0.06743,0.056,0.00075,-0.07243,0.056,0.00175,-0.06943,0.056,0.01775,-0.05343,0.056,0.01775,-0.05343,0.064,0.01775,-0.10343,0.056,0.01775,-0.10343,0.064,0.01775,-0.10343,0.056,0.01775,-0.10343,0.064,0.01775,-0.05343,0.064,0.01775,-0.05343,0.056,0.00075,-0.07243,0.056,0.00075,-0.07443,0.056,0.01775,-0.05343,0.056,0.00175,-0.06743,0.056,0.00175,-0.06943,0.056,0.00075,-0.06543,0.056,0.01775,-0.05343,0.056,-0.00125,-0.07643,0.056,-0.00325,-0.09043,0.056,-0.00325,-0.09043,0.056,-0.00325,-0.09143,0.056,0.01775,-0.10343,0.056,0.01775,-0.05343,0.056,-0.00325,-0.09243,0.056,-0.00125,-0.06343,0.056,-0.00125,-0.07643,0.056,-0.00325,-0.06143,0.056,0.01775,-0.10343,0.056,-0.00325,-0.09243,0.056,-0.00425,-0.09343,0.056,-0.00525,-0.09443,0.056,-0.00625,-0.09543,0.056,-0.00325,-0.07743,0.056,-0.00325,-0.09043,0.056,-0.00125,-0.07643,0.056,-0.00825,-0.09543,0.056,-0.00925,-0.09443,0.056,-0.03225,-0.10343,0.064,-0.03225,-0.05343,0.056,-0.03225,-0.05343,0.064,-0.03225,-0.10343,0.056,-0.00525,-0.06043,0.056,-0.00725,-0.06043,0.056,-0.01225,-0.07743,0.056,-0.01425,-0.07643,0.056,-0.01225,-0.09043,0.056,0.01775,-0.10343,0.056,-0.03225,-0.10343,0.056,-0.03225,-0.10343,0.064,-0.03225,-0.10343,0.056,-0.01025,-0.09443,0.056,-0.01125,-0.09343,0.056,0.01775,-0.10343,0.064,-0.01025,-0.09443,0.056,-0.03225,-0.10343,0.056,-0.00925,-0.09443,0.056,0.01775,-0.05343,0.064,-0.03225,-0.05343,0.064,-0.03225,-0.05343,0.056,-0.01225,-0.06143,0.056,-0.01025,-0.06043,0.056,-0.03225,-0.05343,0.056,0.01775,-0.05343,0.064,-0.03225,-0.10343,0.064,-0.03225,-0.05343,0.064,0.01775,-0.10343,0.064,-0.00725,-0.06043,0.056,-0.03225,-0.05343,0.056,-0.01025,-0.06043,0.056,0.01775,-0.05343,0.056,-0.01625,-0.07243,0.056,-0.01725,-0.06943,0.056,-0.01625,-0.07243,0.056,-0.03225,-0.05343,0.056,-0.01525,-0.07443,0.056,-0.03225,-0.10343,0.056,-0.01125,-0.09343,0.056,-0.01225,-0.09243,0.056,-0.01525,-0.06543,0.056,-0.03225,-0.05343,0.056,-0.01625,-0.06743,0.056,-0.01625,-0.06743,0.056,-0.03225,-0.05343,0.056,-0.01725,-0.06943,0.056,-0.01425,-0.06343,0.056,-0.03225,-0.05343,0.056,-0.01525,-0.06543,0.056,-0.01225,-0.09143,0.056,-0.01225,-0.09143,0.056,-0.03225,-0.05343,0.056,-0.01225,-0.09243,0.056,-0.01225,-0.09243,0.056,-0.03225,-0.05343,0.056,-0.03225,-0.10343,0.056,-0.01225,-0.06143,0.056,-0.03225,-0.05343,0.056,-0.01425,-0.06343,0.056,-0.01525,-0.07443,0.056,-0.03225,-0.05343,0.056,-0.01425,-0.07643,0.056,-0.01425,-0.07643,0.056,-0.03225,-0.05343,0.056,-0.01225,-0.09043,0.056,-0.01025,-0.06043,0.051,-0.01225,-0.06143,0.051,-0.01025,-0.06043,0.056,-0.01525,-0.06543,0.051,-0.01525,-0.06543,0.056,-0.01425,-0.06343,0.051,-0.01225,-0.06143,0.056,-0.01425,-0.06343,0.056,-0.01425,-0.06343,0.051,-0.01425,-0.06343,0.056,-0.01225,-0.06143,0.056,-0.01225,-0.06143,0.051,-0.01725,-0.06943,0.051,-0.01725,-0.06943,0.056,-0.01625,-0.06743,0.051,-0.01625,-0.06743,0.056,-0.01625,-0.07243,0.056,-0.01725,-0.06943,0.051,-0.01625,-0.07243,0.051,-0.01725,-0.06943,0.056,-0.01625,-0.06743,0.051,-0.01625,-0.06743,0.056,-0.01525,-0.06543,0.051,-0.01525,-0.06543,0.056,-0.01525,-0.07443,0.056,-0.01625,-0.07243,0.051,-0.01525,-0.07443,0.051,-0.01625,-0.07243,0.056,-0.01425,-0.07643,0.056,-0.01525,-0.07443,0.051,-0.01425,-0.07643,0.051,-0.01525,-0.07443,0.056,-0.01225,-0.07743,0.056,-0.01425,-0.07643,0.056,-0.01225,-0.07743,0.051,-0.01425,-0.07643,0.051,-0.01225,-0.09043,0.051,-0.01225,-0.09043,0.056,-0.01225,-0.07743,0.051,-0.01225,-0.07743,0.056,-0.01225,-0.09143,0.056,-0.01225,-0.09043,0.051,-0.01225,-0.09143,0.051,-0.01225,-0.09043,0.056,-0.01225,-0.09143,0.051,-0.01225,-0.09243,0.051,-0.01225,-0.09243,0.056,-0.01225,-0.09143,0.056,-0.01125,-0.09343,0.056,-0.01225,-0.09243,0.051,-0.01125,-0.09343,0.051,0.00075,-0.06543,0.051,-0.01525,-0.06543,0.051,-0.00125,-0.06343,0.051,-0.01425,-0.06343,0.051,-0.00325,-0.06143,0.051,-0.01225,-0.06143,0.051,-0.00525,-0.06043,0.051,-0.01025,-0.06043,0.051,-0.01625,-0.07243,0.051,-0.01725,-0.06943,0.051,0.00175,-0.06943,0.051,0.00175,-0.06743,0.051,-0.01625,-0.06743,0.051,0.00075,-0.07243,0.051,-0.01625,-0.06743,0.051,0.00075,-0.06543,0.051,0.00175,-0.06743,0.051,-0.01525,-0.07443,0.051,0.00075,-0.07443,0.051,-0.01525,-0.07443,0.051,0.00075,-0.07243,0.051,-0.01425,-0.07643,0.051,-0.01525,-0.07443,0.051,0.00075,-0.07443,0.051,-0.01225,-0.07743,0.051,-0.01425,-0.07643,0.051,-0.00125,-0.07643,0.051,0.00075,-0.07443,0.051,-0.00325,-0.07743,0.051,-0.01225,-0.09143,0.051,-0.01225,-0.09043,0.051,-0.00325,-0.09043,0.051,-0.00325,-0.09043,0.051,-0.01225,-0.09043,0.051,-0.00325,-0.07743,0.051,-0.01225,-0.09043,0.051,-0.01225,-0.07743,0.051,-0.00325,-0.07743,0.051,-0.00325,-0.09143,0.051,-0.01225,-0.09143,0.051,-0.00325,-0.09043,0.051,-0.01225,-0.09243,0.051,-0.01225,-0.09143,0.051,-0.00325,-0.09143,0.051,-0.00325,-0.09243,0.051,-0.01225,-0.09243,0.051,-0.00325,-0.09143,0.051,-0.01125,-0.09343,0.051,-0.00725,-0.06043,0.051,-0.00725,-0.06043,0.056,-0.00525,-0.06043,0.056,-0.01025,-0.06043,0.051,-0.00725,-0.06043,0.056,-0.00725,-0.06043,0.051,-0.00525,-0.06043,0.051,-0.00725,-0.06043,0.051,-0.01225,-0.09243,0.056,-0.01025,-0.06043,0.056,-0.00325,-0.09243,0.056,-0.00425,-0.09343,0.051,-0.00325,-0.09243,0.051,-0.01025,-0.09443,0.056,-0.01125,-0.09343,0.056,-0.01025,-0.09443,0.051,-0.01125,-0.09343,0.051,-0.00425,-0.09343,0.051,-0.01025,-0.09443,0.051,-0.00525,-0.09443,0.051,-0.01025,-0.09443,0.051,-0.00925,-0.09443,0.051,-0.01025,-0.09443,0.056,-0.00925,-0.09443,0.056,-0.00425,-0.09343,0.056,-0.00525,-0.09443,0.056,-0.00425,-0.09343,0.051,-0.00925,-0.09443,0.051,-0.00625,-0.09543,0.051,-0.00525,-0.09443,0.051,-0.00525,-0.09443,0.051,-0.00625,-0.09543,0.056,-0.00625,-0.09543,0.051,-0.00825,-0.09543,0.051,-0.00825,-0.09543,0.056,-0.00925,-0.09443,0.056,-0.00525,-0.09443,0.056,-0.00825,-0.09543,0.051,-0.00925,-0.09443,0.051,-0.00825,-0.09543,0.056,-0.00625,-0.09543,0.051,-0.00625,-0.09543,0.056,-0.00825,-0.09543,0.051,-0.00125,-0.06343,0.056,0.00075,-0.06543,0.051,-0.00125,-0.06343,0.051,-0.00525,-0.06043,0.051,-0.00325,-0.06143,0.056,-0.00325,-0.06143,0.051,0.00075,-0.06543,0.056,-0.00525,-0.06043,0.056,-0.00325,-0.06143,0.051,-0.00325,-0.06143,0.056,-0.00125,-0.06343,0.056,-0.00125,-0.06343,0.051,0.00175,-0.06743,0.051,0.00175,-0.06743,0.056,0.00175,-0.06943,0.051,0.00175,-0.06743,0.051,0.00075,-0.06543,0.051,0.00075,-0.06543,0.056,0.00175,-0.06943,0.056,0.00175,-0.06743,0.056,0.00175,-0.06943,0.051,0.00175,-0.06943,0.056,0.00075,-0.07243,0.051,0.00075,-0.07243,0.056,0.00075,-0.07243,0.056,0.00075,-0.07443,0.056,0.00075,-0.07443,0.051,0.00075,-0.07443,0.056,-0.00125,-0.07643,0.051,0.00075,-0.07443,0.051,0.00075,-0.07243,0.051,-0.00125,-0.07643,0.056,-0.00325,-0.07743,0.056,-0.00125,-0.07643,0.051,-0.00125,-0.07643,0.056,-0.00325,-0.07743,0.051,-0.00325,-0.07743,0.051,-0.00325,-0.07743,0.056,-0.00325,-0.09043,0.051,-0.00425,-0.09343,0.056,-0.00325,-0.09043,0.056,-0.00325,-0.09043,0.056,-0.00325,-0.09143,0.051,-0.00325,-0.09043,0.051,-0.00325,-0.09143,0.056,-0.00325,-0.09243,0.051,-0.00325,-0.09143,0.051,-0.00325,-0.09143,0.056,-0.00325,-0.09243,0.056,-0.00325,-0.09143,0.056,-0.00325,-0.09243,0.051,-0.00325,-0.09243,0.056,-0.00325,-0.09143,0.051,-0.00325,-0.09143,0.056,-0.00325,-0.09043,0.056,-0.00325,-0.09143,0.051,-0.00325,-0.09043,0.051,-0.00325,-0.09043,0.051,-0.00325,-0.09043,0.056,-0.00325,-0.07743,0.056,-0.00425,-0.09343,0.056,-0.00325,-0.09243,0.056,-0.00425,-0.09343,0.051,-0.00325,-0.07743,0.051,-0.00325,-0.07743,0.056,-0.00125,-0.07643,0.051,-0.00325,-0.07743,0.051,-0.00125,-0.07643,0.056,-0.00125,-0.07643,0.051,-0.00125,-0.07643,0.056,0.00075,-0.07443,0.056,0.00075,-0.07243,0.056,0.00075,-0.07243,0.051,0.00075,-0.07443,0.051,0.00075,-0.07443,0.051,0.00075,-0.07443,0.056,0.00075,-0.07243,0.051,0.00075,-0.07243,0.056,0.00175,-0.06943,0.056,0.00175,-0.06943,0.051,0.00175,-0.06743,0.056,0.00075,-0.06543,0.056,0.00175,-0.06743,0.051,0.00175,-0.06943,0.051,0.00175,-0.06943,0.056,0.00175,-0.06743,0.056,0.00075,-0.06543,0.051,0.00175,-0.06743,0.051,-0.00125,-0.06343,0.051,-0.00125,-0.06343,0.056,-0.00325,-0.06143,0.051,-0.00325,-0.06143,0.056,-0.00325,-0.06143,0.056,-0.00525,-0.06043,0.056,-0.00525,-0.06043,0.051,0.00075,-0.06543,0.051,0.00075,-0.06543,0.056,-0.00125,-0.06343,0.056,-0.00325,-0.06143,0.051,-0.00125,-0.06343,0.051,-0.00825,-0.09543,0.051,-0.00825,-0.09543,0.056,-0.00625,-0.09543,0.051,-0.00625,-0.09543,0.056,-0.00825,-0.09543,0.051,-0.00925,-0.09443,0.051,-0.00925,-0.09443,0.056,-0.00825,-0.09543,0.051,-0.00625,-0.09543,0.051,-0.00925,-0.09443,0.051,-0.00625,-0.09543,0.056,-0.00525,-0.09443,0.056,-0.00525,-0.09443,0.051,-0.00825,-0.09543,0.056,-0.00625,-0.09543,0.051,-0.00525,-0.09443,0.056,-0.00425,-0.09343,0.051,-0.00525,-0.09443,0.051,-0.00525,-0.09443,0.051,-0.01025,-0.09443,0.051,-0.00425,-0.09343,0.056,-0.01025,-0.09443,0.056,-0.00925,-0.09443,0.056,-0.00925,-0.09443,0.051,-0.01025,-0.09443,0.051,-0.00425,-0.09343,0.051,-0.01125,-0.09343,0.051,-0.00325,-0.09243,0.051,-0.01025,-0.09443,0.051,-0.01125,-0.09343,0.051,-0.01125,-0.09343,0.056,-0.01025,-0.09443,0.056,-0.00325,-0.09243,0.051,-0.00725,-0.06043,0.056,-0.01025,-0.06043,0.056,-0.01025,-0.06043,0.051,-0.01125,-0.09343,0.056,-0.01225,-0.09243,0.051,-0.01225,-0.09243,0.056,-0.00725,-0.06043,0.051,-0.01025,-0.06043,0.051,-0.00525,-0.06043,0.051,-0.00525,-0.06043,0.051,-0.00525,-0.06043,0.056,-0.00725,-0.06043,0.051,-0.00725,-0.06043,0.051,-0.00725,-0.06043,0.056,-0.01225,-0.09243,0.051,-0.00325,-0.09143,0.051,-0.00325,-0.09143,0.051,-0.01225,-0.09143,0.051,-0.01225,-0.09243,0.051,-0.00325,-0.09043,0.051,-0.01225,-0.09143,0.051,-0.00325,-0.09143,0.051,-0.00325,-0.07743,0.051,-0.01225,-0.07743,0.051,-0.01225,-0.09043,0.051,-0.00325,-0.07743,0.051,-0.01225,-0.09043,0.051,-0.00325,-0.09043,0.051,-0.00325,-0.09043,0.051,-0.01225,-0.09043,0.051,-0.01225,-0.09143,0.051,-0.00125,-0.07643,0.051,-0.01225,-0.07743,0.051,-0.00325,-0.07743,0.051,0.00075,-0.07443,0.051,-0.01425,-0.07643,0.051,0.00075,-0.07443,0.051,-0.01525,-0.07443,0.051,-0.01425,-0.07643,0.051,0.00075,-0.07243,0.051,-0.01525,-0.07443,0.051,0.00075,-0.07443,0.051,0.00075,-0.07243,0.051,-0.01625,-0.07243,0.051,-0.01525,-0.07443,0.051,0.00075,-0.06543,0.051,-0.01525,-0.06543,0.051,-0.01625,-0.06743,0.051,0.00175,-0.06743,0.051,0.00075,-0.06543,0.051,-0.01625,-0.06743,0.051,0.00175,-0.06943,0.051,0.00175,-0.06743,0.051,-0.01725,-0.06943,0.051,-0.01225,-0.06143,0.051,-0.00325,-0.06143,0.051,-0.01425,-0.06343,0.051,-0.00125,-0.06343,0.051,-0.01125,-0.09343,0.051,-0.01225,-0.09243,0.056,-0.01225,-0.09143,0.051,-0.01225,-0.09143,0.056,-0.01225,-0.09243,0.051,-0.01225,-0.09043,0.051,-0.01225,-0.09043,0.056,-0.01225,-0.09143,0.056,-0.01225,-0.09143,0.051,-0.01225,-0.07743,0.056,-0.01225,-0.09043,0.056,-0.01225,-0.07743,0.051,-0.01225,-0.09043,0.051,-0.01425,-0.07643,0.056,-0.01225,-0.07743,0.051,-0.01425,-0.07643,0.051,-0.01225,-0.07743,0.056,-0.01525,-0.07443,0.056,-0.01425,-0.07643,0.056,-0.01525,-0.07443,0.051,-0.01425,-0.07643,0.051,-0.01625,-0.07243,0.056,-0.01525,-0.07443,0.056,-0.01625,-0.07243,0.051,-0.01525,-0.07443,0.051,-0.01625,-0.06743,0.056,-0.01525,-0.06543,0.051,-0.01525,-0.06543,0.056,-0.01625,-0.06743,0.051,-0.01725,-0.06943,0.051,-0.01725,-0.06943,0.056,-0.01625,-0.07243,0.056,-0.01625,-0.07243,0.051,-0.01625,-0.06743,0.051,-0.01625,-0.06743,0.056,-0.01725,-0.06943,0.056,-0.01725,-0.06943,0.051,-0.01225,-0.06143,0.051,-0.01225,-0.06143,0.056,-0.01425,-0.06343,0.051,-0.01425,-0.06343,0.056,-0.01425,-0.06343,0.051,-0.01425,-0.06343,0.056,-0.01525,-0.06543,0.056,-0.01025,-0.06043,0.056,-0.01225,-0.06143,0.056,-0.01225,-0.06143,0.051,-0.01525,-0.06543,0.051,-0.01025,-0.06043,0.051,-0.01225,0.00857,0.001,-0.01325,0.00857,0.001,0.00375,0.00857,0.056,-0.01125,0.00857,0.0,-0.01025,0.00857,0.0,-0.00825,0.00857,0.0,0.00375,0.00857,0.022,-0.01725,0.00857,0.005,-0.01825,0.00857,0.006,0.00375,0.00857,0.056,-0.01625,0.00857,0.004,-0.01725,0.00857,0.005,0.00375,0.00857,0.056,-0.01525,0.00857,0.003,-0.01625,0.00857,0.004,-0.01425,0.00857,0.002,-0.01825,0.00857,0.009,-0.01825,0.00857,0.056,-0.01825,-0.00643,0.056,-0.01825,0.00857,0.01,-0.01825,-0.00643,0.01,-0.01825,0.00857,0.01,-0.01825,0.00857,0.007,-0.01825,0.00857,0.006,-0.01825,0.00857,0.056,-0.01425,-0.00643,0.002,-0.01425,0.00857,0.002,-0.01325,-0.00643,0.001,-0.01325,0.00857,0.001,-0.01025,-0.00643,0.0,-0.01125,-0.00643,0.0,-0.01125,0.00857,0.0,-0.01025,0.00857,0.0,-0.01825,-0.00643,0.009,-0.01825,-0.00643,0.056,-0.01825,-0.00643,0.01,-0.01825,-0.00643,0.01,-0.01825,0.00857,0.01,-0.01825,0.00857,0.009,-0.01825,-0.00643,0.009,-0.01825,-0.00643,0.007,-0.01825,0.00857,0.006,-0.01825,-0.00643,0.006,-0.01825,-0.00643,0.006,-0.01725,0.00857,0.005,-0.01725,-0.00643,0.005,-0.01825,0.00857,0.006,-0.01725,-0.00643,0.005,-0.01625,0.00857,0.004,-0.01625,-0.00643,0.004,-0.01725,0.00857,0.005,-0.01225,-0.00643,0.001,-0.01225,0.00857,0.001,-0.01125,-0.00643,0.0,-0.01125,0.00857,0.0,-0.01825,-0.00643,0.009,-0.01825,0.00857,0.007,-0.01825,-0.00643,0.007,-0.01825,0.00857,0.009,-0.01825,0.00857,0.007,-0.01625,-0.00643,0.004,-0.01525,0.00857,0.003,-0.01525,-0.00643,0.003,-0.01625,0.00857,0.004,-0.01525,-0.00643,0.003,-0.01425,0.00857,0.002,-0.01425,-0.00643,0.002,-0.01525,0.00857,0.003,-0.01325,-0.00643,0.001,-0.01325,0.00857,0.001,-0.01225,-0.00643,0.001,-0.01225,0.00857,0.001,-0.01025,-0.00643,0.0,-0.01025,0.00857,0.0,-0.00825,-0.00643,0.0,-0.00825,0.00857,0.0,0.10875,0.00857,0.0,0.01375,0.00157,0.0,-0.00825,0.00857,0.0,0.01475,0.00157,0.0,0.01475,0.00157,0.0,-0.00825,0.00857,0.0,0.01575,0.00157,0.0,0.01175,0.00057,0.0,-0.00825,0.00857,0.0,0.01275,0.00057,0.0,0.01275,0.00057,0.0,-0.00825,0.00857,0.0,0.01375,0.00157,0.0,0.10875,0.00157,0.0,0.10875,0.00857,0.0,0.01575,0.00157,0.0,0.00875,-0.00043,0.0,-0.00825,0.00857,0.0,0.00975,-0.00043,0.0,0.00775,-0.00143,0.0,-0.00825,0.00857,0.0,0.00875,-0.00043,0.0,0.00975,-0.00043,0.0,-0.00825,0.00857,0.0,0.01075,0.00057,0.0,0.00675,-0.00443,0.0,-0.00825,0.00857,0.0,0.00675,-0.00443,0.0,0.00675,-0.00343,0.0,0.00675,-0.00443,0.0,0.00675,-0.00443,0.0,-0.00825,0.00857,0.0,0.00675,-0.00443,0.0,0.00575,-0.00543,0.0,-0.00825,0.00857,0.0,0.00675,-0.00443,0.0,0.00675,-0.00243,0.0,-0.00825,0.00857,0.0,0.00775,-0.00243,0.0,0.00775,-0.00243,0.0,-0.00825,0.00857,0.0,0.00775,-0.00143,0.0,0.00575,-0.00543,0.0,-0.00825,0.00857,0.0,0.00575,-0.00543,0.0,0.00675,-0.00343,0.0,-0.00825,0.00857,0.0,0.00675,-0.00243,0.0,0.00575,-0.00543,0.0,-0.00825,0.00857,0.0,0.00575,-0.00543,0.0,0.00475,-0.00543,0.0,-0.00825,0.00857,0.0,0.00575,-0.00543,0.0,0.00575,-0.00543,0.0,-0.00825,0.00857,0.0,0.00575,-0.00543,0.0,-0.01325,-0.00643,0.001,-0.01225,-0.00643,0.001,0.00375,-0.00643,0.056,-0.01225,-0.00643,0.001,-0.01125,-0.00643,0.0,0.00375,-0.00643,0.056,-0.01125,-0.00643,0.0,-0.01025,-0.00643,0.0,0.00375,-0.00643,0.056,-0.00825,-0.00643,0.0,0.00375,-0.00643,0.022,0.00375,-0.00643,0.0,-0.01525,-0.00643,0.003,-0.01425,-0.00643,0.002,-0.01325,-0.00643,0.001,0.01075,0.00057,0.0,-0.00825,0.00857,0.0,0.01175,0.00057,0.0,0.00375,-0.00643,0.0,-0.00825,0.00857,0.0,0.00375,-0.00643,0.0,0.00375,-0.00643,0.0,-0.00825,0.00857,0.0,0.00475,-0.00643,0.0,-0.01825,-0.00643,0.056,-0.01825,-0.00643,0.009,0.00375,-0.00643,0.056,-0.01825,-0.00643,0.007,-0.01825,-0.00643,0.006,-0.01725,-0.00643,0.005,-0.01625,-0.00643,0.004,-0.01825,-0.00643,0.056,0.00375,-0.00643,0.056,0.00375,0.00857,0.056,-0.01825,0.00857,0.056,-0.00825,-0.00643,0.0,0.00375,-0.00643,0.0,0.00375,-0.00643,0.0,-0.00825,0.00857,0.0,0.00375,-0.00643,0.0,0.00375,0.00857,0.022,0.00675,-0.00443,0.022,0.00675,-0.00343,0.022,0.00675,-0.00443,0.022,0.00675,-0.00443,0.022,0.00375,0.00857,0.022,0.00675,-0.00443,0.022,0.00375,0.00857,0.022,0.00675,-0.00443,0.022,0.00575,-0.00543,0.022,0.00575,-0.00543,0.022,0.00575,-0.00543,0.022,0.00375,0.00857,0.022,0.00575,-0.00543,0.022,0.00575,-0.00543,0.022,0.00575,-0.00543,0.022,0.00675,-0.00443,0.022,0.00675,-0.00443,0.0,0.00675,-0.00443,0.022,0.00675,-0.00443,0.0,0.00675,-0.00443,0.022,0.00675,-0.00443,0.0,0.00675,-0.00443,0.0,0.00675,-0.00443,0.022,0.00475,-0.00543,0.022,0.00475,-0.00543,0.022,0.00375,-0.00643,0.022,0.00375,0.00857,0.022,0.00375,-0.00643,0.022,0.00375,-0.00643,0.022,0.00375,0.00857,0.056,0.00375,-0.00643,0.056,0.00375,0.00857,0.022,0.00375,-0.00643,0.022,0.00475,-0.00643,0.022,0.00375,-0.00643,0.022,0.00475,-0.00543,0.0,-0.00825,0.00857,0.0,0.00475,-0.00543,0.0,0.00475,-0.00643,0.0,-0.00825,0.00857,0.0,0.00475,-0.00543,0.0,0.00375,0.00857,0.022,0.00475,-0.00643,0.022,0.00475,-0.00543,0.022,0.00475,-0.00543,0.022,0.00575,-0.00543,0.0,0.00575,-0.00543,0.022,0.00575,-0.00543,0.022,0.00575,-0.00543,0.0,0.00575,-0.00543,0.0,0.00575,-0.00543,0.022,0.00575,-0.00543,0.022,0.00575,-0.00543,0.022,0.00575,-0.00543,0.0,0.00575,-0.00543,0.0,0.00575,-0.00543,0.0,0.00575,-0.00543,0.022,0.00575,-0.00543,0.0,0.00575,-0.00543,0.022,0.00675,-0.00443,0.0,0.00575,-0.00543,0.022,0.00575,-0.00543,0.0,0.00675,-0.00443,0.022,0.00675,-0.00443,0.022,0.00375,-0.00643,0.022,0.00375,-0.00643,0.022,0.00375,-0.00643,0.0,0.00375,-0.00643,0.0,0.00375,-0.00643,0.022,0.00375,-0.00643,0.0,0.00375,-0.00643,0.0,0.00375,-0.00643,0.022,0.00475,-0.00643,0.0,0.00375,-0.00643,0.022,0.00375,-0.00643,0.0,0.00475,-0.00643,0.022,0.00475,-0.00543,0.022,0.00475,-0.00643,0.022,0.00475,-0.00543,0.0,0.00475,-0.00643,0.0,0.00475,-0.00543,0.0,0.00475,-0.00543,0.022,0.00475,-0.00543,0.022,0.00475,-0.00543,0.0,0.00475,-0.00543,0.0,0.01575,0.00157,0.022,0.00375,0.00857,0.022,0.01475,0.00157,0.022,0.10875,0.00857,0.022,0.10875,0.00157,0.022,0.10875,0.00857,0.022,0.10875,0.00157,0.0,0.01575,0.00157,0.022,0.01575,0.00157,0.0,0.10875,0.00157,0.022,0.01575,0.00157,0.022,0.10875,0.00157,0.0,0.10875,0.00857,0.0,0.10875,0.00857,0.022,0.01475,0.00157,0.022,0.01475,0.00157,0.0,0.01575,0.00157,0.0,0.01575,0.00157,0.022,0.10875,0.00157,0.022,0.00675,-0.00343,0.022,0.00675,-0.00243,0.022,0.00775,-0.00243,0.022,0.00775,-0.00143,0.022,0.00875,-0.00043,0.022,0.01375,0.00157,0.022,0.01475,0.00157,0.022,0.01275,0.00057,0.022,0.00975,-0.00043,0.022,0.01075,0.00057,0.022,0.01175,0.00057,0.022,0.01475,0.00157,0.0,0.01475,0.00157,0.022,0.01375,0.00157,0.022,0.01275,0.00057,0.022,0.01375,0.00157,0.0,0.01375,0.00157,0.022,0.01375,0.00157,0.0,0.01275,0.00057,0.022,0.01175,0.00057,0.022,0.01275,0.00057,0.0,0.01175,0.00057,0.0,0.01275,0.00057,0.0,0.01175,0.00057,0.022,0.01075,0.00057,0.022,0.01175,0.00057,0.0,0.01075,0.00057,0.0,0.00875,-0.00043,0.022,0.00975,-0.00043,0.0,0.00975,-0.00043,0.022,0.00975,-0.00043,0.0,0.01075,0.00057,0.0,0.00975,-0.00043,0.022,0.01075,0.00057,0.022,0.00775,-0.00143,0.022,0.00775,-0.00143,0.0,0.00875,-0.00043,0.022,0.00875,-0.00043,0.0,0.00775,-0.00243,0.022,0.00775,-0.00243,0.0,0.00775,-0.00143,0.0,0.00775,-0.00143,0.022,0.00875,-0.00043,0.0,0.00675,-0.00343,0.022,0.00675,-0.00343,0.0,0.00675,-0.00243,0.0,0.00775,-0.00243,0.0,0.00775,-0.00243,0.022,0.00675,-0.00243,0.0,0.00675,-0.00243,0.022,0.00675,-0.00343,0.0,0.00675,-0.00343,0.022,0.00675,-0.00443,0.0,0.00675,-0.00443,0.022,0.00675,-0.00243,0.022,0.01775,0.02657,0.064,-0.03225,-0.02343,0.064,0.01775,-0.02343,0.064,-0.03225,0.02657,0.064,-0.03225,-0.02343,0.056,-0.03225,0.02657,0.056,0.01775,-0.02343,0.056,0.01775,0.02657,0.056,-0.03225,0.02657,0.056,0.01775,0.02657,0.064,0.01775,0.02657,0.056,-0.03225,0.02657,0.064,-0.03225,-0.02343,0.064,-0.03225,0.02657,0.056,-0.03225,-0.02343,0.056,-0.03225,-0.02343,0.064,-0.03225,-0.02343,0.056,0.01775,-0.02343,0.056,-0.03225,0.02657,0.064,0.01775,-0.02343,0.056,0.01775,0.02657,0.064,0.01775,-0.02343,0.064,0.01775,-0.02343,0.064,0.01775,0.02657,0.056],"nrm":[-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,1.0,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-1.0,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-1.0,-0.0,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,-1.0,0.0,0.0,-1.0,0.0,0.0,-1.0,0.0,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-1.0,0.0,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,1.0,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,-1.0,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.38,0.925,-0.0,-0.38,0.925,-0.0,-0.38,0.925,-0.0,-0.79,0.613,-0.0,-0.79,0.613,-0.0,-0.79,0.613,-0.0,-0.38,0.925,-0.0,-0.79,0.613,-0.0,-0.605,0.796,-0.0,-0.605,0.796,-0.0,-0.605,0.796,-0.0,-0.605,0.796,-0.0,-0.991,0.136,-0.0,-0.991,0.136,-0.0,-0.991,0.136,-0.0,-0.991,0.136,-0.0,-0.992,-0.129,-0.0,-0.992,-0.129,-0.0,-0.992,-0.129,-0.0,-0.992,-0.129,-0.0,-0.922,0.386,-0.0,-0.922,0.386,-0.0,-0.922,0.386,-0.0,-0.922,0.386,-0.0,-0.926,-0.376,-0.0,-0.926,-0.376,-0.0,-0.926,-0.376,-0.0,-0.926,-0.376,-0.0,-0.796,-0.605,-0.0,-0.796,-0.605,-0.0,-0.796,-0.605,-0.0,-0.796,-0.605,-0.0,-0.612,-0.79,-0.0,-0.612,-0.79,-0.0,-0.612,-0.79,-0.0,-0.612,-0.79,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-0.993,-0.122,-0.0,-0.993,-0.122,-0.0,-0.993,-0.122,-0.0,-0.993,-0.122,-0.0,-0.924,-0.382,-0.0,-0.924,-0.382,-0.0,-0.924,-0.382,-0.0,-0.924,-0.382,-0.0,-0.796,-0.605,-0.0,-0.796,-0.605,-0.0,-0.796,-0.605,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.133,0.991,-0.0,0.133,0.991,-0.0,0.133,0.991,-0.0,-0.125,0.992,-0.0,-0.125,0.992,-0.0,-0.125,0.992,-0.0,0.133,0.991,-0.0,0.0,-0.0,-1.0,-0.796,-0.605,-0.0,-0.125,0.992,-0.0,0.793,-0.61,-0.0,0.793,-0.61,-0.0,0.793,-0.61,-0.0,-0.613,-0.79,-0.0,-0.613,-0.79,-0.0,-0.613,-0.79,-0.0,-0.613,-0.79,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.382,-0.924,-0.0,-0.382,-0.924,-0.0,-0.382,-0.924,-0.0,-0.382,-0.924,-0.0,0.605,-0.796,-0.0,0.605,-0.796,-0.0,0.605,-0.796,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.605,-0.796,-0.0,0.375,-0.927,-0.0,0.375,-0.927,-0.0,0.375,-0.927,-0.0,-0.138,-0.99,-0.0,-0.138,-0.99,-0.0,-0.138,-0.99,-0.0,0.375,-0.927,-0.0,0.0,-0.0,-1.0,-0.138,-0.99,-0.0,0.131,-0.991,-0.0,0.131,-0.991,-0.0,0.131,-0.991,-0.0,0.131,-0.991,-0.0,0.798,0.603,-0.0,0.798,0.603,-0.0,0.798,0.603,-0.0,0.388,0.921,-0.0,0.388,0.921,-0.0,0.388,0.921,-0.0,0.798,0.603,-0.0,0.388,0.921,-0.0,0.61,0.792,-0.0,0.61,0.792,-0.0,0.61,0.792,-0.0,0.61,0.792,-0.0,0.992,0.124,-0.0,0.992,0.124,-0.0,0.992,0.124,-0.0,0.924,0.381,-0.0,0.924,0.381,-0.0,0.924,0.381,-0.0,0.992,0.124,-0.0,0.924,0.381,-0.0,0.991,-0.133,-0.0,0.991,-0.133,-0.0,0.991,-0.133,-0.0,0.991,-0.133,-0.0,0.921,-0.388,-0.0,0.921,-0.388,-0.0,0.921,-0.388,-0.0,0.789,-0.615,-0.0,0.789,-0.615,-0.0,0.789,-0.615,-0.0,0.921,-0.388,-0.0,0.789,-0.615,-0.0,0.607,-0.795,-0.0,0.607,-0.795,-0.0,0.607,-0.795,-0.0,0.607,-0.795,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,0.793,-0.61,-0.0,1.0,-0.0,-0.0,0.99,-0.138,-0.0,0.99,-0.138,-0.0,0.99,-0.138,-0.0,0.99,-0.138,-0.0,0.923,-0.385,-0.0,0.923,-0.385,-0.0,0.923,-0.385,-0.0,0.923,-0.385,-0.0,-0.923,0.385,0.0,-0.923,0.385,0.0,-0.923,0.385,0.0,-0.923,0.385,0.0,-0.99,0.138,0.0,-0.99,0.138,0.0,-0.99,0.138,0.0,-0.99,0.138,0.0,-1.0,0.0,0.0,-1.0,0.0,0.0,-1.0,0.0,0.0,-0.793,0.61,0.0,-0.793,0.61,0.0,-0.793,0.61,0.0,-1.0,0.0,0.0,-0.607,0.795,0.0,-0.607,0.795,0.0,-0.607,0.795,0.0,-0.607,0.795,0.0,-0.789,0.615,0.0,-0.789,0.615,0.0,-0.789,0.615,0.0,-0.921,0.388,0.0,-0.921,0.388,0.0,-0.921,0.388,0.0,-0.789,0.615,0.0,-0.921,0.388,0.0,-0.991,0.133,0.0,-0.991,0.133,0.0,-0.991,0.133,0.0,-0.991,0.133,0.0,-0.924,-0.381,0.0,-0.924,-0.381,0.0,-0.924,-0.381,0.0,-0.992,-0.124,0.0,-0.992,-0.124,0.0,-0.992,-0.124,0.0,-0.924,-0.381,0.0,-0.992,-0.124,0.0,-0.61,-0.792,0.0,-0.61,-0.792,0.0,-0.61,-0.792,0.0,-0.61,-0.792,0.0,-0.388,-0.921,0.0,-0.388,-0.921,0.0,-0.388,-0.921,0.0,-0.798,-0.603,0.0,-0.798,-0.603,0.0,-0.798,-0.603,0.0,-0.388,-0.921,0.0,-0.798,-0.603,0.0,-0.131,0.991,0.0,-0.131,0.991,0.0,-0.131,0.991,0.0,-0.131,0.991,0.0,0.138,0.99,0.0,0.138,0.99,0.0,0.138,0.99,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.375,0.927,0.0,-0.375,0.927,0.0,-0.375,0.927,0.0,0.138,0.99,0.0,-0.375,0.927,0.0,-0.605,0.796,0.0,-0.605,0.796,0.0,-0.605,0.796,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.605,0.796,0.0,0.382,0.924,0.0,0.382,0.924,0.0,0.382,0.924,0.0,0.382,0.924,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.613,0.79,0.0,0.613,0.79,0.0,0.613,0.79,0.0,0.613,0.79,0.0,-0.793,0.61,0.0,0.125,-0.992,0.0,0.125,-0.992,0.0,0.125,-0.992,0.0,0.796,0.605,0.0,0.796,0.605,0.0,0.796,0.605,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.133,-0.991,0.0,-0.133,-0.991,0.0,-0.133,-0.991,0.0,0.125,-0.992,0.0,-0.133,-0.991,0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.796,0.605,0.0,0.924,0.382,0.0,0.924,0.382,0.0,0.924,0.382,0.0,0.924,0.382,0.0,0.993,0.122,0.0,0.993,0.122,0.0,0.993,0.122,0.0,0.993,0.122,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,0.612,0.79,0.0,0.612,0.79,0.0,0.612,0.79,0.0,0.612,0.79,0.0,0.796,0.605,0.0,0.796,0.605,0.0,0.796,0.605,0.0,0.796,0.605,0.0,0.926,0.376,0.0,0.926,0.376,0.0,0.926,0.376,0.0,0.926,0.376,0.0,0.922,-0.386,0.0,0.922,-0.386,0.0,0.922,-0.386,0.0,0.922,-0.386,0.0,0.992,0.129,0.0,0.992,0.129,0.0,0.992,0.129,0.0,0.992,0.129,0.0,0.991,-0.136,0.0,0.991,-0.136,0.0,0.991,-0.136,0.0,0.991,-0.136,0.0,0.605,-0.796,0.0,0.605,-0.796,0.0,0.605,-0.796,0.0,0.605,-0.796,0.0,0.79,-0.613,0.0,0.79,-0.613,0.0,0.79,-0.613,0.0,0.38,-0.925,0.0,0.38,-0.925,0.0,0.38,-0.925,0.0,0.79,-0.613,0.0,0.38,-0.925,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,-1.0,-0.0,-0.0,-0.555,-0.0,-0.832,-0.555,-0.0,-0.832,-0.555,-0.0,-0.832,-0.555,-0.0,-0.832,-0.194,-0.0,-0.981,-0.194,-0.0,-0.981,-0.194,-0.0,-0.981,-0.194,-0.0,-0.981,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,-0.998,-0.0,-0.069,-0.998,-0.0,-0.069,-0.998,-0.0,-0.069,-0.998,-0.0,-0.069,-0.947,-0.0,-0.321,-0.947,-0.0,-0.321,-0.947,-0.0,-0.321,-0.896,-0.0,-0.443,-0.896,-0.0,-0.443,-0.896,-0.0,-0.443,-0.896,-0.0,-0.443,-0.83,-0.0,-0.557,-0.83,-0.0,-0.557,-0.83,-0.0,-0.557,-0.83,-0.0,-0.557,-0.321,-0.0,-0.947,-0.321,-0.0,-0.947,-0.321,-0.0,-0.947,-0.321,-0.0,-0.947,-0.982,-0.0,-0.191,-0.982,-0.0,-0.191,-0.982,-0.0,-0.191,-0.982,-0.0,-0.191,-0.947,-0.0,-0.321,-0.753,-0.0,-0.658,-0.753,-0.0,-0.658,-0.753,-0.0,-0.658,-0.753,-0.0,-0.658,-0.661,-0.0,-0.751,-0.661,-0.0,-0.751,-0.661,-0.0,-0.751,-0.661,-0.0,-0.751,-0.443,-0.0,-0.896,-0.443,-0.0,-0.896,-0.443,-0.0,-0.896,-0.443,-0.0,-0.896,-0.066,-0.0,-0.998,-0.066,-0.0,-0.998,-0.066,-0.0,-0.998,-0.066,-0.0,-0.998,0.0,1.0,-0.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-1.0,0.0,0.0,-1.0,0.0,0.0,-1.0,0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.957,-0.291,-0.0,0.957,-0.291,-0.0,0.957,-0.291,-0.0,0.992,-0.129,-0.0,0.992,-0.129,-0.0,0.992,-0.129,-0.0,0.992,-0.129,-0.0,0.0,-0.0,1.0,0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.459,-0.888,-0.0,0.459,-0.888,-0.0,0.459,-0.888,-0.0,0.569,-0.822,-0.0,0.569,-0.822,-0.0,0.569,-0.822,-0.0,0.569,-0.822,-0.0,0.654,-0.757,-0.0,0.654,-0.757,-0.0,0.654,-0.757,-0.0,0.654,-0.757,-0.0,0.791,-0.611,-0.0,0.791,-0.611,-0.0,0.791,-0.611,-0.0,0.791,-0.611,-0.0,0.861,-0.509,-0.0,0.861,-0.509,-0.0,0.861,-0.509,-0.0,0.861,-0.509,-0.0,0.957,-0.291,-0.0,0.127,-0.992,-0.0,0.127,-0.992,-0.0,0.127,-0.992,-0.0,0.127,-0.992,-0.0,0.051,-0.999,-0.0,0.051,-0.999,-0.0,0.051,-0.999,-0.0,0.051,-0.999,-0.0,0.186,-0.983,-0.0,0.186,-0.983,-0.0,0.186,-0.983,-0.0,0.186,-0.983,-0.0,0.3,-0.954,-0.0,0.3,-0.954,-0.0,0.3,-0.954,-0.0,0.3,-0.954,-0.0,0.367,-0.93,-0.0,0.367,-0.93,-0.0,0.367,-0.93,-0.0,0.367,-0.93,-0.0,0.459,-0.888,-0.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-0.0,1.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,0.056,-0.998,-0.0,0.056,-0.998,-0.0,0.056,-0.998,-0.0,0.056,-0.998,-0.0,1.0,-0.0,-0.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.13,-0.992,-0.0,0.13,-0.992,-0.0,0.13,-0.992,-0.0,0.209,-0.978,-0.0,0.209,-0.978,-0.0,0.209,-0.978,-0.0,0.13,-0.992,-0.0,0.283,-0.959,-0.0,0.283,-0.959,-0.0,0.283,-0.959,-0.0,0.283,-0.959,-0.0,0.209,-0.978,-0.0,0.367,-0.93,-0.0,0.367,-0.93,-0.0,0.367,-0.93,-0.0,0.367,-0.93,-0.0,0.548,-0.837,-0.0,0.548,-0.837,-0.0,0.548,-0.837,-0.0,0.458,-0.889,-0.0,0.458,-0.889,-0.0,0.458,-0.889,-0.0,0.458,-0.889,-0.0,0.646,-0.763,-0.0,0.646,-0.763,-0.0,0.646,-0.763,-0.0,0.548,-0.837,-0.0,0.746,-0.666,-0.0,0.746,-0.666,-0.0,0.746,-0.666,-0.0,0.746,-0.666,-0.0,0.646,-0.763,-0.0,0.918,-0.395,-0.0,0.918,-0.395,-0.0,0.918,-0.395,-0.0,0.841,-0.541,-0.0,0.841,-0.541,-0.0,0.841,-0.541,-0.0,0.841,-0.541,-0.0,0.978,-0.209,-0.0,0.978,-0.209,-0.0,0.978,-0.209,-0.0,0.978,-0.209,-0.0,0.918,-0.395,-0.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,-0.0,-1.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,0.0,1.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,-1.0,-0.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,0.0,-1.0,-0.0,-1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,1.0,-0.0,-0.0,0.0,-1.0,-0.0,1.0,-0.0,-0.0],"tri":[[0,1,2,0],[3,4,5,0],[6,7,8,0],[9,10,11,0],[12,13,14,0],[15,16,17,0],[18,19,20,0],[21,22,23,0],[24,25,26,0],[27,28,29,0],[30,31,32,0],[15,33,34,0],[35,36,37,0],[15,38,39,0],[40,41,42,0],[43,44,45,0],[46,44,43,0],[15,47,48,0],[35,49,36,0],[50,51,52,0],[53,54,55,0],[56,57,58,0],[59,60,50,0],[57,61,58,0],[16,62,63,0],[64,39,38,0],[65,64,38,0],[66,67,68,0],[69,70,38,0],[71,67,66,0],[52,51,72,0],[72,73,52,0],[74,75,76,0],[73,77,52,0],[77,78,52,0],[78,69,52,0],[79,65,38,0],[80,81,38,0],[82,79,38,0],[83,84,85,0],[70,86,38,0],[87,88,89,0],[90,82,38,0],[91,92,38,0],[92,90,38,0],[93,94,95,0],[81,91,38,0],[94,96,95,0],[97,98,99,0],[100,101,102,0],[97,99,103,0],[100,104,105,0],[100,105,101,0],[100,106,104,0],[107,108,109,0],[100,110,111,0],[112,113,114,0],[100,115,106,0],[100,102,116,0],[100,117,115,0],[118,119,120,0],[118,120,121,0],[118,121,122,0],[123,124,125,0],[118,122,126,0],[126,127,118,0],[128,129,130,0],[100,111,119,0],[131,129,128,0],[100,132,117,0],[100,133,132,0],[134,135,136,0],[137,138,139,0],[140,141,142,0],[137,139,143,0],[144,145,146,0],[118,127,140,0],[147,148,149,0],[150,151,152,0],[153,154,155,0],[156,154,153,0],[157,158,159,0],[133,100,152,0],[160,147,149,0],[161,162,152,0],[163,164,165,0],[166,167,168,0],[169,170,171,0],[172,173,174,0],[175,176,177,0],[178,136,152,0],[179,180,181,0],[182,183,184,0],[185,186,187,0],[188,189,190,0],[191,192,193,0],[194,195,196,0],[197,198,199,0],[195,200,196,0],[198,201,199,0],[202,203,204,0],[202,204,205,0],[206,207,208,0],[207,209,208,0],[210,211,212,0],[210,213,211,0],[214,215,216,0],[217,216,215,0],[218,219,220,0],[219,218,221,0],[222,223,224,0],[223,222,225,0],[226,227,228,0],[229,228,227,0],[230,231,232,0],[232,231,233,0],[234,235,236,0],[234,237,235,0],[238,239,240,0],[241,238,240,0],[242,243,244,0],[245,246,247,0],[246,248,247,0],[247,248,249,0],[248,250,249,0],[249,250,251,0],[250,252,251,0],[253,254,255,0],[255,254,256,0],[254,257,256,0],[258,253,255,0],[259,260,261,0],[257,246,245,0],[262,253,258,0],[263,264,265,0],[266,267,268,0],[269,270,271,0],[271,270,272,0],[273,269,271,0],[274,275,276,0],[277,278,279,0],[280,281,282,0],[283,284,285,0],[286,287,288,0],[289,290,291,0],[290,289,292,0],[293,294,295,0],[296,297,298,0],[293,295,299,0],[251,252,300,0],[301,243,242,0],[296,302,297,0],[303,304,305,0],[306,307,308,0],[307,309,308,0],[310,292,289,0],[311,292,310,0],[312,311,310,0],[313,314,315,0],[314,316,315,0],[317,318,319,0],[320,311,312,0],[321,320,312,0],[322,319,318,0],[323,324,325,0],[326,327,328,0],[323,329,324,0],[320,321,330,0],[328,331,326,0],[332,333,334,0],[333,332,335,0],[336,337,338,0],[339,340,341,0],[336,342,337,0],[339,343,340,0],[344,345,346,0],[344,346,347,0],[348,349,350,0],[351,352,353,0],[349,354,350,0],[351,353,355,0],[356,357,358,0],[357,359,358,0],[360,361,362,0],[363,364,365,0],[362,366,360,0],[363,367,364,0],[368,369,370,0],[371,369,368,0],[372,373,374,0],[304,303,375,0],[373,376,374,0],[377,378,379,0],[378,377,380,0],[381,382,383,0],[384,381,383,0],[385,386,387,0],[385,388,386,0],[389,390,391,0],[392,391,390,0],[393,394,395,0],[396,397,398,0],[393,395,399,0],[400,401,402,0],[403,401,400,0],[404,405,406,0],[407,408,409,0],[410,404,406,0],[409,411,407,0],[412,413,414,0],[412,414,415,0],[416,417,418,0],[419,420,421,0],[417,422,418,0],[419,421,423,0],[424,425,426,0],[425,427,426,0],[428,429,430,0],[431,432,433,0],[434,428,430,0],[435,431,433,0],[436,437,438,0],[439,438,437,0],[440,441,442,0],[443,444,445,0],[446,447,448,0],[442,449,440,0],[450,446,448,0],[451,452,453,0],[454,445,444,0],[454,455,445,0],[452,451,456,0],[457,458,459,0],[457,459,460,0],[461,455,454,0],[461,462,455,0],[463,462,461,0],[464,465,466,0],[464,466,467,0],[468,398,397,0],[469,470,471,0],[472,473,474,0],[475,476,477,0],[478,479,480,0],[481,469,471,0],[479,482,480,0],[462,463,483,0],[484,483,463,0],[485,486,487,0],[488,489,490,0],[491,492,493,0],[494,495,496,0],[497,498,499,0],[500,501,502,0],[503,504,500,0],[500,504,501,0],[505,506,507,0],[508,509,510,0],[511,512,513,0],[514,515,516,0],[517,518,519,0],[520,512,511,0],[521,516,522,0],[521,522,520,0],[520,522,512,0],[477,476,523,0],[477,523,524,0],[524,523,525,0],[524,525,526,0],[526,525,515,0],[526,515,514,0],[527,473,472,0],[528,529,530,0],[528,531,529,0],[532,533,534,0],[535,532,534,0],[536,537,538,0],[538,537,539,0],[540,541,542,0],[541,540,543,0],[544,545,546,0],[547,546,545,0],[548,549,550,0],[551,550,549,0],[552,553,554,0],[553,552,555,0],[556,557,558,0],[559,556,558,0],[560,561,562,0],[560,562,563,0],[564,565,566,0],[565,567,566,0],[568,569,570,0],[571,572,573,0],[568,570,574,0],[571,573,575,0],[576,577,578,0],[579,576,578,0],[580,579,578,0],[581,578,582,0],[581,580,578,0],[583,584,585,0],[586,587,588,0],[589,590,578,0],[577,591,578,0],[591,589,578,0],[592,593,578,0],[594,595,596,0],[597,593,592,0],[598,592,578,0],[599,598,578,0],[594,600,595,0],[601,602,603,0],[603,602,604,0],[605,606,607,0],[607,608,605,0],[609,610,611,0],[612,613,614,0],[612,614,615,0],[616,617,618,0],[619,620,621,0],[622,620,619,0],[623,624,625,0],[626,624,623,0],[627,628,629,0],[628,630,629,0],[631,632,633,0],[631,634,632,0],[635,617,616,0],[636,637,638,0],[639,637,636,0],[640,641,642,0],[643,641,640,0],[644,645,646,0],[646,645,647,0],[648,649,650,0],[649,651,650,0],[581,582,652,0],[653,654,655,0],[656,657,658,0],[659,660,661,0],[662,663,664,0],[665,663,666,0],[667,663,665,0],[668,669,670,0],[671,672,673,0],[674,675,676,0],[677,678,679,0],[663,680,681,0],[682,683,684,0],[685,686,687,0],[688,689,690,0],[691,692,693,0],[694,695,696,0],[697,698,699,0],[700,701,702,0],[703,704,705,0],[706,707,708,0],[709,710,711,0],[712,713,714,0],[715,716,717,0],[716,718,717,0],[719,717,718,0],[719,718,720,0],[717,721,722,0],[722,723,717,0],[724,725,726,0],[727,728,729,0],[730,731,732,0],[733,734,735,0],[717,609,736,0],[717,737,738,0],[739,721,717,0],[717,738,739,0],[740,741,742,0],[717,736,737,0],[743,740,742,0],[744,663,745,0],[746,747,748,0],[749,750,751,0],[752,753,754,0],[755,756,757,0],[754,758,759,0],[754,759,760,0],[761,762,763,0],[764,765,754,0],[766,767,768,0],[769,770,771,0],[769,772,770,0],[754,773,758,0],[754,774,773,0],[775,776,777,0],[778,779,780,0],[779,778,781,0],[754,782,783,0],[754,784,782,0],[785,786,787,0],[788,789,790,0],[791,792,793,0],[794,795,796,0],[797,798,799,0],[798,797,800,0],[801,802,803,0],[801,803,804,0],[805,806,807,0],[807,806,808,0],[809,810,811,0],[812,810,809,0],[768,767,813,0],[814,815,816,0],[815,817,816,0],[818,819,820,0],[821,818,820,0],[822,823,824,0],[823,822,825,0],[826,827,828,0],[828,827,829,0],[830,831,832,0],[830,832,833,0],[834,795,794,0],[835,836,837,0],[838,754,839,0],[652,582,840,0],[841,842,843,0],[842,841,844,0],[845,839,754,0],[846,847,848,0],[849,850,851,0],[849,851,852,0],[853,846,848,0],[754,854,855,0],[754,856,857,0],[754,855,856,0],[754,857,858,0],[859,860,754,0],[754,861,859,0],[754,858,862,0],[754,862,863,0],[754,863,864,0],[754,864,861,0],[865,866,867,0],[868,869,870,0],[867,871,865,0],[872,873,874,0],[873,875,874,0],[869,868,876,0],[877,878,879,0],[878,880,879,0],[881,882,883,0],[884,885,886,0],[885,887,886,0],[888,889,890,0],[891,882,881,0],[892,893,894,0],[892,894,895,0],[896,890,889,0],[897,898,899,0],[900,901,902,0],[901,903,902,0],[904,905,906,0],[907,906,905,0],[908,897,899,0],[909,910,911,0],[912,910,909,0],[913,914,915,0],[916,915,914,0],[917,918,919,0],[917,920,918,0],[921,922,923,0],[924,925,926,0],[927,922,921,0],[928,929,930,0],[924,926,931,0],[929,928,932,0]],"cols":[[205,207,211],[120,120,122]]};
+function meshHandle(T, x, y, faceZ, faceDir, colH, mir){
+  var M=HANDLE_MESH, P=M.pos, NR=M.nrm, TRI=M.tri, c0=colH||M.cols[0], c1=M.cols[1];
+  mir = (mir<0)? -1 : 1;
+  var s=(PPORTE.hScale||1), rx=(PPORTE.hRotX||0)*Math.PI/180, ry=(PPORTE.hRotY||0)*Math.PI/180, rz=(PPORTE.hRotZ||0)*Math.PI/180;
+  var z=faceZ+faceDir*((PPORTE.hOff||0)/100);
+  var cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry),cz=Math.cos(rz),sz=Math.sin(rz);
+  function rot(vx,vy,vz){ var b=vy*cx-vz*sx, c=vy*sx+vz*cx; vy=b; vz=c; var d=vx*cy+vz*sy, e=-vx*sy+vz*cy; vx=d; vz=e; var f=vx*cz-vy*sz, g=vx*sz+vy*cz; return [f,g,vz]; }
+  /* Le maillage contient l'ensemble traversant (levier devant + derriere) ;
+     l'axe Z du modele = axe du fouillot = normale de la porte. On place une seule
+     fois au centre (faceZ=zc) : chaque levier tombe sur sa face. mir reflechit
+     horizontalement selon le bord (gauche/droite) de la poignee. */
+  function tf(i){ var r=rot(P[i*3]*s*mir,P[i*3+1]*s,P[i*3+2]*s); return T([x+r[0], y+r[1], z+faceDir*r[2]]); }
+  /* Normale geometrique par triangle (ombrage a facettes) : le maillage 3D Warehouse
+     a des normales lissees bruitees ; on les ignore. Le shader gere le recto-verso. */
+  for(var t=0;t<TRI.length;t++){ var a=TRI[t];
+    var i0=a[0], i1=(mir<0)?a[2]:a[1], i2=(mir<0)?a[1]:a[2];
+    var v0=tf(i0),v1=tf(i1),v2=tf(i2);
+    var ux=v1[0]-v0[0],uy=v1[1]-v0[1],uz=v1[2]-v0[2], wx=v2[0]-v0[0],wy=v2[1]-v0[1],wz=v2[2]-v0[2];
+    var nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx, ln=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
+    var fn=[nx/ln,ny/ln,nz/ln];
+    face([v0,v1,v2], fn, a[3]===0?c0:c1, 1); }
+}
 function buildHandle(T, x0,x1, handleEdge, handleY, zc, lt, colH, type){
-  var roseX=handleEdge>0? x1-0.05 : x0+0.05, dir=handleEdge>0?-1:1;
+  var roseX=handleEdge>0? x1-0.08 : x0+0.08, dir=handleEdge>0?-1:1;
   _CURTEX=FINISH_TEX.poignee;                              /* matiere "Poignée" */
   if(type==='bouton'){
     leafBox(T, roseX,handleY,zc+lt/2+0.005, 0.06,0.06,0.012, colH,1);
@@ -2946,10 +3222,10 @@ function buildHandle(T, x0,x1, handleEdge, handleY, zc, lt, colH, type){
     leafBox(T, roseX,handleY,zc+lt/2-0.004, 0.04,0.14,0.012, colH,1);
     leafBox(T, roseX,handleY,zc-lt/2+0.004, 0.04,0.14,0.012, colH,1);
   } else {
-    leafBox(T, roseX, handleY, zc+lt/2+0.006, 0.045,0.11,0.012, colH,1);
-    leafBox(T, roseX, handleY, zc-lt/2-0.006, 0.045,0.11,0.012, colH,1);
-    leafBox(T, roseX+dir*0.055, handleY, zc+lt/2+0.022, 0.11,0.02,0.02, colH,1);
-    leafBox(T, roseX+dir*0.055, handleY, zc-lt/2-0.022, 0.11,0.02,0.02, colH,1);
+    _CURTEX=null;                                  /* bequille importee : metal de base, sans texture */
+    var hm=(handleEdge>0?1:-1);                    /* sens du levier */
+    meshHandle(T, roseX, handleY, zc+lt/2+0.002, +1, colH, hm);   /* face avant (2mm proud anti z-fight) */
+    meshHandle(T, roseX, handleY, zc-lt/2-0.002, -1, colH, hm);   /* face arriere */
   }
   _CURTEX=null;
 }
@@ -3895,7 +4171,7 @@ function buildHangarUI(){
 }
 
 function build(){
-  FC=[]; PRIMS=[]; CUR_POLY=null;
+  FC=[]; PRIMS=[]; CUR_POLY=null; _IFCTAG=null;
   /* texture courante par défaut = celle de l'élément "forme" (objets simples).
      buildMeuble la repositionne par élément (corps/étagère). */
   _CURTEX = FINISH_TEX.forme;
@@ -3920,6 +4196,9 @@ function build(){
   else { r=buildMeuble(); }
   _CURTEX = null;   /* reset après construction */
   applyObjectFinish();   /* matiere personnalisee globale (objets non-meuble) */
+  if(typeof SITE!=='undefined' && SITE.on) addSiteGround();
+  if(typeof CTX!=='undefined' && CTX.on) addContext();
+  if(typeof SUN!=='undefined' && SUN.on) addShadows();
   CAM.ty = (r && r.cy!==undefined) ? r.cy : r.h/2;   /* recentre la visée (cy si l'objet déborde sous Y=0) */
   buildEdges();     /* prépare les arêtes (pour le mode lignes cachées) */
   if(MODE!=='quadripod') genericPostBuild();   /* aiguillage moteur (tous objets) */
@@ -3942,6 +4221,7 @@ function fitCamera(dims){
   /* bornes raisonnables (cohérentes avec le zoom molette/pinch) */
   CAM.r = Math.max(0.6, Math.min(200, dist));
   CAM.ty = h/2;     /* vise le centre en hauteur */
+  CAM.tx=0; CAM.tz=0;
 }
 
 /* buildEdges() : construit EDGES[], la liste des arêtes uniques du modèle.
@@ -4442,7 +4722,7 @@ function frame(){
         for(var v=0; v<f.vn.length; v++) vcol.push(shadeReal(f.vn[v], f.col, cam));
       }
     }
-    draw.push({pts:pts, z:az, zmin:zmin, dist:dist, col:f.col, al:f.al, br:br, n:f.n, vbr:vbr, front:front, fcol:fcol, vcol:vcol, vnRef:f.vn, tex:f.tex, verts3d:f.verts});
+    draw.push({pts:pts, z:az, zmin:zmin, dist:dist, col:f.col, al:f.al, br:br, n:f.n, vbr:vbr, front:front, fcol:fcol, vcol:vcol, vnRef:f.vn, tex:f.tex, uv:f.uv, verts3d:f.verts});
   }
 
   /* Tri peintre amélioré, en DEUX groupes pour gérer la transparence :
@@ -4481,6 +4761,7 @@ function frame(){
        de la face (selon sa normale), à l'échelle TEX_SCALE. Évite de stocker des
        UV explicites et marche pour toutes les géométries. */
     function planarUV(it, v){
+      if(it.uv) return it.uv[v];
       var p=it.verts3d[v], n=it.n;
       var ax=Math.abs(n[0]), ay=Math.abs(n[1]), az2=Math.abs(n[2]);
       var u,vv;
@@ -4771,6 +5052,20 @@ function fillColorTri(p0,p1,p2, c0,c1,c2){
    Extrait dans sa propre fonction car appelé depuis 2 endroits (sphère + reste). */
 /* drawImmLevels() : cotation de l'immeuble — hauteur par niveau + totale,
    largeur et profondeur, calées sur l'emprise (IMM_INFO). */
+function drawSiteGizmo(cam,W,H){
+  SG=null;
+  if(!(typeof SITE!=='undefined' && SITE.on)) return;
+  var c=proj(cam,[0,0.1,0],W,H); if(!c) return;
+  var aL=Math.max(5,(DIMS.w||10)*0.8), xt=proj(cam,[aL,0.1,0],W,H), zt=proj(cam,[0,0.1,aL],W,H), RR=74;
+  function arr(a,b,col){ if(!b) return; ctx.strokeStyle=col; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    var an=Math.atan2(b.y-a.y,b.x-a.x); ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-11*Math.cos(an-0.4),b.y-11*Math.sin(an-0.4)); ctx.lineTo(b.x-11*Math.cos(an+0.4),b.y-11*Math.sin(an+0.4)); ctx.closePath(); ctx.fill(); }
+  ctx.save(); ctx.globalAlpha=0.9;
+  ctx.strokeStyle='#6ee7a0'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(c.x,c.y,RR,0,6.283); ctx.stroke();
+  arr(c,xt,'#ff6b6b'); arr(c,zt,'#5a8aff');
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(c.x,c.y,6,0,6.283); ctx.fill(); ctx.strokeStyle='#222'; ctx.lineWidth=2; ctx.stroke();
+  ctx.restore();
+  SG={cx:c.x,cy:c.y,RR:RR,xt:xt,zt:zt};
+}
 function drawImmLevels(cam,W,H){
   if(!IMM_INFO) return;
   IMM_COTE_HITS=[];
@@ -4837,7 +5132,7 @@ function drawHiddenEdges(cam, W, H, col, lw){
 function drawCotes(cam,W,H){
   var d=DIMS, zf=d.d/2+0.05;
   COTE_HITS=[];   /* zones cliquables des cotes (remplies ci-dessous) */
-  if(MODE==='immeuble'){ drawImmLevels(cam,W,H); if(CUR_POLY && !WGL.gActive && !WGL.txActive) drawPolyCotes(cam,W,H); return; }
+  if(MODE==='immeuble'){ drawImmLevels(cam,W,H); drawSiteGizmo(cam,W,H); if(CUR_POLY && !WGL.gActive && !WGL.txActive) drawPolyCotes(cam,W,H); return; }
   if(CUR_POLY && !WGL.gActive && !WGL.txActive){ drawPolyCotes(cam,W,H); return; }
   /* COTE LARGEUR (orange) : le long du bord avant au sol */
   var la=proj(cam,[-d.w/2,0,zf],W,H), lb=proj(cam,[d.w/2,0,zf],W,H);
@@ -4903,17 +5198,28 @@ function drawPolyCotes(cam,W,H){
 /* ============================================================================
    6. CONTRÔLES — orbite et zoom, à la souris et au tactile
    ============================================================================ */
-var drag=false, lastX=0, lastY=0, lastPinch=0;
+var drag=false, PAN=false, lastX=0, lastY=0, lastPinch=0;
 
 /* Zones cliquables des cotes (remplies par drawCotes à chaque frame).
    Chaque entrée : {key:'w'|'h'|'d', x, y, color}. Sert à l'édition au double-clic. */
 var COTE_HITS=[];
 
 /* --- Souris --- */
-cv.addEventListener('mousedown', function(e){ if(CUR_POLY && !WGL.gActive && !WGL.txActive){ var h=gizHit(e); if(h>=0){ GIZ_DRAG=h; GIZ_START=(CUR_POLY[h]?CUR_POLY[h].slice():null); DIRTY=true; return; } } drag=true; lastX=e.clientX; lastY=e.clientY; });
-window.addEventListener('mouseup', function(){ drag=false; if(GIZ_DRAG>=0){ GIZ_DRAG=-1; DIRTY=true; } });
+cv.addEventListener('mousedown', function(e){ if(CUR_POLY && !WGL.gActive && !WGL.txActive){ var h=gizHit(e); if(h>=0){ GIZ_DRAG=h; GIZ_START=(CUR_POLY[h]?CUR_POLY[h].slice():null); DIRTY=true; return; } } if(typeof SITE!=='undefined' && SITE.on && SG){ var rb=cv.getBoundingClientRect(), mx=e.clientX-rb.left, my=e.clientY-rb.top, dC=Math.hypot(mx-SG.cx,my-SG.cy);
+    if(Math.abs(dC-SG.RR)<12){ GZ='rot'; RLAST=Math.atan2(my-SG.cy,mx-SG.cx); return; }
+    if(dC<15){ GZ='free'; GZ_G0=unprojGround(mx,my,cv.width,cv.height,getCam()); return; }
+    if(SG.xt && _distSeg(mx,my,SG.cx,SG.cy,SG.xt.x,SG.xt.y)<12){ GZ='x'; GZ_G0=unprojGround(mx,my,cv.width,cv.height,getCam()); return; }
+    if(SG.zt && _distSeg(mx,my,SG.cx,SG.cy,SG.zt.x,SG.zt.y)<12){ GZ='z'; GZ_G0=unprojGround(mx,my,cv.width,cv.height,getCam()); return; }
+  } if(ERASE_MODE && typeof CTX!=='undefined' && CTX.on){ var re=cv.getBoundingClientRect(); var idx=pickContext(e.clientX-re.left, e.clientY-re.top); if(idx>=0){ CTX.buildings.splice(idx,1); build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; } if(ROT_MODE && SITE.on){ var rr=cv.getBoundingClientRect(), cc=proj(getCam(),[0,0,0],cv.width,cv.height); RLAST=Math.atan2((e.clientY-rr.top)-(cc?cc.y:cv.height/2),(e.clientX-rr.left)-(cc?cc.x:cv.width/2)); RDRAG=true; return; } if(MOVE_SITE && SITE.on){ var rr=cv.getBoundingClientRect(); SITE_G0=unprojGround(e.clientX-rr.left,e.clientY-rr.top,cv.width,cv.height,getCam()); SDRAG=true; return; } if(e.shiftKey){PAN=true;}else{drag=true;} lastX=e.clientX; lastY=e.clientY; });
+window.addEventListener('mouseup', function(){ drag=false; PAN=false; SDRAG=false; RDRAG=false; GZ=null; if(GIZ_DRAG>=0){ GIZ_DRAG=-1; DIRTY=true; } });
 window.addEventListener('mousemove', function(e){
   if(GIZ_DRAG>=0){ gizDrag(e); return; }
+  if(GZ){ var rb=cv.getBoundingClientRect(), mx=e.clientX-rb.left, my=e.clientY-rb.top;
+    if(GZ==='rot'){ var a=Math.atan2(my-SG.cy,mx-SG.cx), dA=a-RLAST; RLAST=a; SITE.north+=dA*180/Math.PI; build(); DIRTY=true; if(WGL.gActive) WGL.render(); return; }
+    var g=unprojGround(mx,my,cv.width,cv.height,getCam()); if(g&&GZ_G0){ var dx=g[0]-GZ_G0[0], dz=g[1]-GZ_G0[1]; if(GZ==='x') SITE.posX+=dx; else if(GZ==='z') SITE.posZ+=dz; else { SITE.posX+=dx; SITE.posZ+=dz; } GZ_G0=g; build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; }
+  if(RDRAG){ var rr=cv.getBoundingClientRect(), cc=proj(getCam(),[0,0,0],cv.width,cv.height), a=Math.atan2((e.clientY-rr.top)-(cc?cc.y:cv.height/2),(e.clientX-rr.left)-(cc?cc.x:cv.width/2)); var dA=a-RLAST; RLAST=a; SITE.north+=dA*180/Math.PI; build(); DIRTY=true; if(WGL.gActive) WGL.render(); return; }
+  if(SDRAG){ var rr=cv.getBoundingClientRect(), g=unprojGround(e.clientX-rr.left,e.clientY-rr.top,cv.width,cv.height,getCam()); if(g&&SITE_G0){ SITE.posX+=(g[0]-SITE_G0[0]); SITE.posZ+=(g[1]-SITE_G0[1]); SITE_G0=g; build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; }
+  if(PAN){ panView(e.clientX-lastX, e.clientY-lastY); lastX=e.clientX; lastY=e.clientY; DIRTY=true; if(WGL.gActive) WGL.render(); return; }
   if(!drag) return;
   CAM.th -= (e.clientX-lastX)*0.007;              /* rotation horizontale */
   CAM.ph -= (e.clientY-lastY)*0.007;              /* rotation verticale   */
@@ -5542,6 +5848,45 @@ function buildImmeubleUI(){
   toggle('Cage (ascenseur/escalier)','coreOn');
   if(PIM.coreOn){ slider('Largeur noyau (X)','cm','coreW',150,2000,10); slider('Profondeur noyau (Z)','cm','coreD',150,2000,10); }
 
+  group('Site / Géolocalisation');
+  (function(){
+    var d=document.createElement('div'); d.className='fld';
+    d.innerHTML='<div class="fh"><label>Adresse</label></div>';
+    var ia=document.createElement('input'); ia.type='text'; ia.value=SITE.addr||''; ia.placeholder='ex. Tour Eiffel, Paris';
+    ia.style.cssText='width:100%;font-size:11px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:5px;box-sizing:border-box;outline:none;';
+    d.appendChild(ia); host.appendChild(d);
+    var bg=document.createElement('button'); bg.textContent='Géocoder l’adresse'; bg.className='tex-none';
+    bg.onclick=function(){ SITE.addr=ia.value; bg.textContent='Recherche…'; geocodeAddr(ia.value,function(r){ if(r){ SITE.lat=r.lat; SITE.lon=r.lon; loadSiteMap(); buildImmeubleUI(); } else { bg.textContent='Adresse introuvable'; } }); };
+    host.appendChild(bg);
+  })();
+  (function(){ function numIn(label,key,step){ var f=document.createElement('div'); f.className='fld';
+      f.innerHTML='<div class="fh"><label>'+label+'</label><input type="number" step="'+step+'" value="'+SITE[key]+'"></div>';
+      var inp=f.querySelector('input'); inp.oninput=function(){ var v=parseFloat(inp.value); if(!isNaN(v)) SITE[key]=v; }; host.appendChild(f); }
+    numIn('Latitude','lat',0.0001); numIn('Longitude','lon',0.0001);
+    numIn('Altitude (m)','alt',0.5); numIn('Zoom carte','zoom',1);
+    function posIn(label,key){ var f=document.createElement('div'); f.className='fld';
+      f.innerHTML='<div class="fh"><label>'+label+'</label><input type="number" step="0.5" value="'+(SITE[key]||0)+'"></div>';
+      var inp=f.querySelector('input'); inp.oninput=function(){ var v=parseFloat(inp.value); if(!isNaN(v)){ SITE[key]=v; build(); DIRTY=true; if(WGL&&WGL.gActive) WGL.render(); } }; host.appendChild(f); }
+    posIn('Position X — est (m)','posX'); posIn('Position Z — nord (m)','posZ'); posIn('Position Y — haut (m)','posY'); posIn('Rotation nord (°)','north');
+    var b=document.createElement('button'); b.textContent=(SITE.on?'Recharger la carte':'Charger la carte (OSM)'); b.className='tex-none';
+    b.onclick=function(){ loadSiteMap(); }; host.appendChild(b);
+    var b2=document.createElement('button'); b2.textContent='Voir sur OpenStreetMap'; b2.className='tex-none';
+    b2.onclick=function(){ window.open('https://www.openstreetmap.org/#map='+SITE.zoom+'/'+SITE.lat+'/'+SITE.lon,'_blank'); }; host.appendChild(b2);
+    var sg=document.createElement('div'); sg.className='mat-grid'; [['plan','Plan OSM'],['satellite','Satellite']].forEach(function(o){ var bb=document.createElement('button'); bb.textContent=o[1]; if((SITE.mapStyle||'plan')===o[0]) bb.className='on'; bb.onclick=function(){ SITE.mapStyle=o[0]; loadSiteMap(); buildImmeubleUI(); }; sg.appendChild(bb); }); host.appendChild(sg);
+    var bc=document.createElement('button'); bc.textContent=(CTX.on?('Contexte: '+CTX.buildings.length+' bât. — recharger'):'Charger bâtiments 3D (OSM)'); bc.className='tex-none'; bc.onclick=function(){ bc.textContent='Chargement…'; loadContext(function(m){ bc.textContent=m+' — recharger'; }); }; host.appendChild(bc);
+    var bm=document.createElement('div'); bm.className='wall-toggle'; bm.innerHTML='<span>Déplacer sur la carte (glisser)</span><button class="'+(MOVE_SITE?'on':'')+'">'+(MOVE_SITE?'Activé':'Désactivé')+'</button>'; bm.querySelector('button').onclick=function(){ MOVE_SITE=!MOVE_SITE; if(MOVE_SITE){ ERASE_MODE=false; ROT_MODE=false; } buildImmeubleUI(); }; host.appendChild(bm);
+    var be=document.createElement('div'); be.className='wall-toggle'; be.innerHTML='<span>Supprimer un volume (clic)</span><button class="'+(ERASE_MODE?'on':'')+'">'+(ERASE_MODE?'Activé':'Désactivé')+'</button>'; be.querySelector('button').onclick=function(){ ERASE_MODE=!ERASE_MODE; if(ERASE_MODE){ MOVE_SITE=false; ROT_MODE=false; } buildImmeubleUI(); }; host.appendChild(be);
+    var br=document.createElement('div'); br.className='wall-toggle'; br.innerHTML='<span>Pivoter sur la carte (glisser)</span><button class="'+(ROT_MODE?'on':'')+'">'+(ROT_MODE?'Activé':'Désactivé')+'</button>'; br.querySelector('button').onclick=function(){ ROT_MODE=!ROT_MODE; if(ROT_MODE){ MOVE_SITE=false; ERASE_MODE=false; } buildImmeubleUI(); }; host.appendChild(br);
+    var sh=document.createElement('div'); sh.className='wall-toggle'; sh.innerHTML='<span>Ombres (soleil)</span><button class="'+(SUN.on?'on':'')+'">'+(SUN.on?'Activé':'Désactivé')+'</button>'; sh.querySelector('button').onclick=function(){ SUN.on=SUN.on?0:1; build(); DIRTY=true; if(WGL&&WGL.gActive) WGL.render(); buildImmeubleUI(); }; host.appendChild(sh);
+    if(SUN.on){
+      var sd=document.createElement('div'); sd.className='fld'; sd.innerHTML='<div class="fh"><label>Date</label><input type="date" value="'+SUN.date+'" style="background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:3px;"></div>'; sd.querySelector('input').onchange=function(){ SUN.date=this.value; build(); DIRTY=true; if(WGL&&WGL.gActive) WGL.render(); buildImmeubleUI(); }; host.appendChild(sd);
+      computeSun();
+      var hh=document.createElement('div'); hh.className='fld'; hh.innerHTML='<div class="fh"><label>Heure <span class="u">'+SUN.hour+'h · az '+Math.round(SUN.az)+'° / élév '+Math.round(SUN.elev)+'°</span></label></div><input type="range" min="4" max="22" step="0.5" value="'+SUN.hour+'">';
+      hh.querySelector('input').oninput=function(){ SUN.hour=parseFloat(this.value); computeSun(); hh.querySelector('.u').textContent=SUN.hour+'h · az '+Math.round(SUN.az)+'° / élév '+Math.round(SUN.elev)+'°'; build(); DIRTY=true; if(WGL&&WGL.gActive) WGL.render(); }; host.appendChild(hh);
+    }
+    if(SITE.on){ var t=document.createElement('div'); t.className='exp-note'; t.textContent='Fond © OpenStreetMap — visible en moteur Logiciel.'; host.appendChild(t); }
+  })();
+
   var info=document.createElement('div'); info.className='wall-total';
   info.innerHTML='Hauteur totale <b>'+(Math.round(DIMS.h*100)/100)+' m</b> · '+PIM.nFloors+' niveaux';
   host.appendChild(info);
@@ -5785,8 +6130,9 @@ function buildPorteUI(){
   groups.push({title:'Poignée', fields:[
     {type:'choice',key:'handle',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}].concat(P.handle?[
     {type:'choice',label:'Type',key:'handleType',options:[
-      {id:'bequille',l:'Béquille'},{id:'bouton',l:'Bouton'},{id:'barre',l:'Barre'},{id:'cuvette',l:'Cuvette'}]},
-    {type:'slider',label:'Hauteur poignée',unit:'cm',key:'handleH',min:90,max:120,step:1}]:[])});
+      {id:'bequille',l:'Béquille (importée)'},{id:'bouton',l:'Bouton'},{id:'barre',l:'Barre'},{id:'cuvette',l:'Cuvette'}]},
+    {type:'slider',label:'Hauteur poignée',unit:'cm',key:'handleH',min:90,max:120,step:1}].concat(P.handleType==='bequille'?[
+    {type:'slider',label:'Avancée rosace',unit:'cm',key:'hOff',min:0,max:15,step:0.5}]:[]):[])});
   groups.push({title:'Ouverture', fields:[
     {type:'slider',label:openLabel,unit:openUnit,key:'open',min:0,max:openMax,step:1}]});
   buildObjUI(P, groups, buildPorteUI);
@@ -5888,7 +6234,7 @@ function setView(v){
   if(v!=='dessus') CAM.ty=(DIMS.h||1)/2;
   buildRenderRow(); DIRTY=true;
   if(MODE!=='quadripod' && typeof genericPostBuild==='function') genericPostBuild();
-  if(WGL && WGL.gActive){ WGL.cam.th=CAM.th; WGL.cam.ph=CAM.ph; WGL.cam.r=CAM.r; WGL.cam.ty=CAM.ty; WGL.render(); }
+  if(WGL && WGL.gActive){ WGL.cam.th=CAM.th; WGL.cam.ph=CAM.ph; WGL.cam.r=CAM.r; WGL.cam.ty=CAM.ty; WGL.cam.tx=0; WGL.cam.tz=0; WGL.render(); }
 }
 
 function buildRenderRow(){
@@ -6750,9 +7096,14 @@ function exportIFC(){
   /* --- hiérarchie spatiale : Project > Site > Building > Storey --- */
   var proj=E("IFCPROJECT('"+guid()+"',"+owner+",'"+stepEsc(nm)+"',$,$,$,$,("+ctx+"),"+units+")");
   var sitePl=E("IFCLOCALPLACEMENT($,"+wcs+")");
-  var site=E("IFCSITE('"+guid()+"',"+owner+",'Site',$,$,"+sitePl+",$,$,.ELEMENT.,$,$,$,$,$)");
-  var bldPl=E("IFCLOCALPLACEMENT("+sitePl+","+wcs+")");
+  function ifcDMS(deg){ var sg=deg<0?-1:1, a=Math.abs(deg), d=Math.floor(a), mf=(a-d)*60, m=Math.floor(mf), sf=(mf-m)*60, sec=Math.floor(sf), us=Math.round((sf-sec)*1e6); return '('+(sg*d)+','+(sg*m)+','+(sg*sec)+','+(sg*us)+')'; }
+  var _geo=(typeof SITE!=='undefined' && SITE.on);
+  var site=E("IFCSITE('"+guid()+"',"+owner+",'Site',$,$,"+sitePl+",$,$,.ELEMENT.,"+(_geo?ifcDMS(SITE.lat):'$')+","+(_geo?ifcDMS(SITE.lon):'$')+","+(_geo?num(SITE.alt):'$')+",$,$)");
+  if(_geo){ var _crs=E("IFCPROJECTEDCRS('EPSG:3857','WGS 84 / Pseudo-Mercator',$,$,$,$,$)"); var _mx=SITE.lon*20037508.34/180, _my=Math.log(Math.tan((90+SITE.lat)*Math.PI/360))*20037508.34/Math.PI, _rot=SITE.north*Math.PI/180; E("IFCMAPCONVERSION("+ctx+","+_crs+","+num(_mx)+","+num(_my)+","+num(SITE.alt)+","+num(Math.cos(_rot))+","+num(Math.sin(_rot))+",1.)"); }
+  var _boff=(typeof SITE!=="undefined"&&SITE.on)?E("IFCAXIS2PLACEMENT3D("+E("IFCCARTESIANPOINT(("+num(SITE.posX)+","+num(SITE.posZ)+","+num(SITE.posY)+"))")+",$,$)"):wcs;
+  var bldPl=E("IFCLOCALPLACEMENT("+sitePl+","+_boff+")");
   var bld=E("IFCBUILDING('"+guid()+"',"+owner+",'Building',$,$,"+bldPl+",$,$,.ELEMENT.,$,$,$)");
+  if(MODE!=='immeuble' || !IMM_INFO){
   var stPl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")");
   var storey=E("IFCBUILDINGSTOREY('"+guid()+"',"+owner+",'Niveau 0',$,$,"+stPl+",$,$,.ELEMENT.,0.)");
 
@@ -6822,6 +7173,73 @@ function exportIFC(){
 
   /* rattache l'objet à l'étage */
   E("IFCRELCONTAINEDINSPATIALSTRUCTURE('"+guid()+"',"+owner+",$,$,("+furn+"),"+storey+")");
+  } else {
+    /* === IMMEUBLE STRUCTURÉ : solides extrudés natifs, un étage par niveau === */
+    E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+proj+",("+site+"))");
+    E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+site+",("+bld+"))");
+    var IS=IMM_STRUCT, lev=IS.levelY, nSt=lev.length, storeys=[];
+    for(var si=0; si<nSt; si++){
+      var spl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")");
+      var snm=(si<nSt-1)?('Niveau '+si):'Toiture';
+      storeys.push(E("IFCBUILDINGSTOREY('"+guid()+"',"+owner+",'"+snm+"',$,$,"+spl+",$,$,.ELEMENT.,"+num(lev[si])+")"));
+    }
+    E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+bld+",("+storeys.join(',')+"))");
+    var byStorey={};
+    function P2(x,y){ return E("IFCCARTESIANPOINT(("+num(x)+","+num(y)+"))"); }
+    function P3(x,y,z){ return E("IFCCARTESIANPOINT(("+num(x)+","+num(y)+","+num(z)+"))"); }
+    function D3(x,y,z){ return E("IFCDIRECTION(("+num(x)+","+num(y)+","+num(z)+"))"); }
+    function panelSolid(ax,az,bx,bz,y0,y1,thk){ var dx=bx-ax,dz=bz-az,Lp=Math.hypot(dx,dz); if(Lp<1e-6) return null; var nx=-dz/Lp*(thk/2), nz=dx/Lp*(thk/2);
+      var pts=[P2(ax-nx,az-nz),P2(bx-nx,bz-nz),P2(bx+nx,bz+nz),P2(ax+nx,az+nz)]; var line=E("IFCPOLYLINE(("+pts.join(',')+","+pts[0]+"))"); var prof=E("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,"+line+")");
+      var pos=E("IFCAXIS2PLACEMENT3D("+P3(0,0,y0)+",$,$)"); return E("IFCEXTRUDEDAREASOLID("+prof+","+pos+","+D3(0,0,1)+","+num(y1-y0)+")"); }
+    function styleSolid(solid,rgb,al){ var col=E("IFCCOLOURRGB($,"+num(rgb[0]/255)+","+num(rgb[1]/255)+","+num(rgb[2]/255)+")"); var tr=(al<1)?(1-al).toFixed(2):'0.'; var rd=E("IFCSURFACESTYLERENDERING("+col+","+tr+",$,$,$,$,$,$,.FLAT.)"); var ss=E("IFCSURFACESTYLE($,.BOTH.,("+rd+"))"); E("IFCSTYLEDITEM("+solid+",("+ss+"),$)"); }
+    function emit(ent,tail,name,st,solid,repType,rgb,al){ styleSolid(solid,rgb,al); var sr=E("IFCSHAPEREPRESENTATION("+ctx+",'Body','"+repType+"',("+solid+"))"); var pds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+sr+"))"); var opl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")"); var el=E(ent+"('"+guid()+"',"+owner+",'"+name+"','Immeuble BPO - (c) 2026 Antoine Lacronique, architecte',$,"+opl+","+pds+tail+")"); st=Math.min(Math.max(0,st),nSt-1); (byStorey[st]=byStorey[st]||[]).push(el); }
+    /* DALLES : extrusion verticale du contour (natif IfcSlab) */
+    IS.slabs.forEach(function(sl){
+      var pts=sl.poly.map(function(p){return P2(p[0],p[1]);});
+      var line=E("IFCPOLYLINE(("+pts.join(',')+","+pts[0]+"))");
+      var prof=E("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,"+line+")");
+      var pos=E("IFCAXIS2PLACEMENT3D("+P3(0,0,sl.yTop-sl.t)+",$,$)");
+      var solid=E("IFCEXTRUDEDAREASOLID("+prof+","+pos+","+D3(0,0,1)+","+num(sl.t)+")");
+      var top=(sl.st===nSt-1);
+      emit('IFCSLAB', top?',$,.ROOF.':',$,.FLOOR.', (top?'Toiture':'Dalle N'+sl.st), sl.st, solid, 'SweptSolid', [176,176,172], 1);
+    });
+    /* POTEAUX : extrusion verticale par étage (natif IfcColumn) */
+    IS.cols.forEach(function(c){
+      var prof=E("IFCRECTANGLEPROFILEDEF(.AREA.,$,"+E("IFCAXIS2PLACEMENT2D("+P2(c.cx,c.cz)+",$)")+","+num(c.w)+","+num(c.w)+")");
+      var pos=E("IFCAXIS2PLACEMENT3D("+P3(0,0,c.y0)+",$,$)");
+      var solid=E("IFCEXTRUDEDAREASOLID("+prof+","+pos+","+D3(0,0,1)+","+num(c.y1-c.y0)+")");
+      emit('IFCCOLUMN',',$,.COLUMN.','Poteau N'+c.st, c.st, solid, 'SweptSolid', [164,164,162], 1);
+    });
+    /* POUTRES : extrusion le long de l'axe (natif IfcBeam) */
+    IS.beams.forEach(function(b){
+      var dx=b.bx-b.ax, dz=b.bz-b.az, L=Math.hypot(dx,dz); if(L<1e-6) return;
+      var ux=dx/L, uz=dz/L;
+      var prof=E("IFCRECTANGLEPROFILEDEF(.AREA.,$,"+E("IFCAXIS2PLACEMENT2D("+P2(0,0)+",$)")+","+num(b.w)+","+num(b.h)+")");
+      var pos=E("IFCAXIS2PLACEMENT3D("+P3(b.ax,b.az,b.yTop-b.h/2)+","+D3(ux,uz,0)+","+D3(-uz,ux,0)+")");
+      var solid=E("IFCEXTRUDEDAREASOLID("+prof+","+pos+","+D3(0,0,1)+","+num(L)+")");
+      emit('IFCBEAM',',$,.BEAM.','Poutre N'+b.st, b.st, solid, 'SweptSolid', [150,150,148], 1);
+    });
+    /* NOYAU / FAÇADES / ACROTÈRE : éléments natifs (extrusions) */
+    IS.cores.forEach(function(w){ var sol=panelSolid(w.ax,w.az,w.bx,w.bz,w.y0,w.y1,w.t); if(sol) emit('IFCWALL',',$,.NOTDEFINED.','Voile noyau',0,sol,'SweptSolid',[150,150,148],1); });
+    IS.facades.forEach(function(f){ var sol=panelSolid(f.ax,f.az,f.bx,f.bz,f.y0,f.y1,f.thk); if(sol) emit(f.ent,f.tail,f.nm+' N'+f.st,f.st,sol,'SweptSolid',f.col,f.al); });
+    IS.acro.forEach(function(w){ var sol=panelSolid(w.ax,w.az,w.bx,w.bz,w.y0,w.y1,w.t); if(sol) emit('IFCWALL',',$,.NOTDEFINED.','Acrotere',nSt-1,sol,'SweptSolid',[176,176,172],1); });
+    /* TOITURE EN PENTE : BREP typé IfcRoof (forme complexe) */
+    function brepOf(faces){
+      var ptMap={};
+      function ptRef(p){ var q=cv(p), k=num(q[0])+'|'+num(q[1])+'|'+num(q[2]); if(ptMap[k]) return ptMap[k]; var r=E("IFCCARTESIANPOINT(("+num(q[0])+","+num(q[1])+","+num(q[2])+"))"); ptMap[k]=r; return r; }
+      var fr=[]; faces.forEach(function(fi){ var f=FC[fi], lo=[]; for(var v=0;v<f.verts.length;v++) lo.push(ptRef(f.verts[v])); var pl=E("IFCPOLYLOOP(("+lo.join(',')+"))"); fr.push(E("IFCFACE(("+E("IFCFACEOUTERBOUND("+pl+",.T.)")+"))")); });
+      return E("IFCFACETEDBREP("+E("IFCCLOSEDSHELL(("+fr.join(',')+"))")+")");
+    }
+    var gmap={};
+    for(var gi=0; gi<FC.length; gi++){ var tg=FC[gi].ifc; if(!tg) continue; if(tg.ty!=='roof') continue; var key=tg.st+'|'+tg.ty; (gmap[key]=gmap[key]||[]).push(gi); }
+    var TYB={facade:['IFCCURTAINWALL',',$,.NOTDEFINED.','Facade'],wall:['IFCWALL',',$,.NOTDEFINED.','Voile'],roof:['IFCROOF',',$,.NOTDEFINED.','Toiture']};
+    Object.keys(gmap).forEach(function(key){
+      var pa=key.split('|'), st=parseInt(pa[0],10), ty=pa[1], faces=gmap[key], mp=TYB[ty], f0=FC[faces[0]];
+      emit(mp[0], mp[1], mp[2]+' N'+st, st, brepOf(faces), 'Brep', f0.col, f0.al);
+    });
+    Object.keys(byStorey).forEach(function(st){ E("IFCRELCONTAINEDINSPATIALSTRUCTURE('"+guid()+"',"+owner+",$,$,("+byStorey[st].join(',')+"),"+storeys[st]+")"); });
+
+  }
 
   /* --- assemblage du fichier STEP --- */
   var ts=new Date().toISOString();
@@ -6850,7 +7268,7 @@ setupTabs();          /* onglets principaux Génériques/Fabricants */
 buildCatList();       /* liste des catégories */
 buildShapeGrid();
 buildRenderRow();
-selectCat('objets');  /* démarre sur Objets (bibliothèque mobilier) */
+selectCat('immeuble');  /* démarre sur Objets (bibliothèque mobilier) */
 refreshView();        /* affiche l'objet courant */
 requestAnimationFrame(frame);
 
