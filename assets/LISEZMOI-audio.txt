@@ -1,0 +1,10 @@
+Placez ici le morceau d'intro exporté depuis Logic Pro, nommé :
+
+    intro.m4a      (AAC — recommandé, lu par tous les navigateurs)
+  ou intro.mp3
+
+Export depuis Logic : Fichier > Bounce > "AAC" (.m4a) ou "MP3".
+NE PAS utiliser de fichier .m4p (achat iTunes protégé par DRM) : illisible en navigateur.
+
+Le son est joué en boucle (avec fondu) pendant les animations d'intro,
+et s'arrête quand l'intro se ferme.

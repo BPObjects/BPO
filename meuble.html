@@ -41,8 +41,11 @@ html,body{height:100%;background:var(--bg);color:var(--tx);
 /* ordre portrait : header(1) / viewport(2) / arbo(3) / mes configs(4) / paramètres(5) */
 header{grid-row:1;}
 #savecol{grid-row:4;}
-#langflag{position:absolute;right:150px;top:13px;}
-#langsel{position:absolute;right:14px;top:11px;padding-left:6px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:4px 6px;cursor:pointer;outline:none;}
+#langbar{position:absolute;right:14px;top:9px;display:flex;align-items:center;gap:6px;}
+#langflag{flex:none;}
+#langsel{padding-left:6px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:4px 6px;cursor:pointer;outline:none;}
+#aboutBtn{background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:4px 9px;cursor:pointer;outline:none;white-space:nowrap;}
+#aboutBtn:hover{border-color:var(--am,#ff8a3d);color:var(--am,#ff8a3d);}
 header{position:relative;}
 #vp{grid-row:2;}
 #sidebar{grid-row:3;}
@@ -232,8 +235,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 #app{--savew:40px;}
 #app.save-open{--savew:238px;}
 #savecol{background:var(--pn);border-left:1px solid var(--ln);overflow-y:auto;overflow-x:hidden;}
-#saveToggle{width:100%;background:var(--p2);color:var(--am);border:0;border-bottom:1px solid var(--ln);
-  padding:10px 0;cursor:pointer;font-size:15px;line-height:1;}
+#saveToggle{width:100%;background:var(--p2);color:var(--tx);border:0;border-bottom:1px solid var(--ln);
+  padding:10px 0;cursor:pointer;font-size:15px;line-height:1;filter:grayscale(1);}
 #saveToggle:hover{background:var(--ln);}
 #saveBody{padding:10px;}
 #app:not(.save-open) #saveBody{display:none;}
@@ -315,7 +318,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 #ps-sheet .cart .c-own{width:34%;font-weight:700;font-size:3.1mm;}#ps-sheet .cart .c-prj{flex:1;font-weight:700;font-size:3.6mm;}#ps-sheet .cart .c-agn{width:25%;border-right:0;justify-content:flex-end;font-style:italic;font-weight:700;font-size:3.8mm;}
 #ps-sheet .cart .cbot{display:flex;flex:1;}
 #ps-sheet .cart .cl{border-right:0.3mm solid #111;padding:1mm 1.6mm;font-size:2.5mm;line-height:1.25;overflow:hidden;}#ps-sheet .cart .cl:last-child{border-right:0;}
-#ps-sheet .cart .w22{width:20%;}#ps-sheet .cart .w8{width:8%;}#ps-sheet .cart .w15{width:15%;}#ps-sheet .cart .w10{width:9%;}#ps-sheet .cart .w25{width:25%;}#ps-sheet .cart .gr{flex:1;}#ps-sheet .cart .ce{text-align:center;}
+#ps-sheet .cart .w22{width:17%;}#ps-sheet .cart .w8{width:8%;}#ps-sheet .cart .w15{width:10%;}#ps-sheet .cart .w10{width:8%;}#ps-sheet .cart .w25{width:22%;}#ps-sheet .cart .gr{flex:1;}#ps-sheet .cart .ce{text-align:center;}
 #ps-sheet .cart .ag{color:#333;font-size:2mm;}#ps-sheet .cart .ag i{color:#c0281e;}
 #ps-sheet .cart .lb{color:#666;font-size:2mm;font-style:italic;display:block;margin-bottom:0.5mm;}#ps-sheet .cart .mt{margin-top:1.2mm;}
 #ps-sheet .cart .rd{color:#c0281e;font-weight:700;}#ps-sheet .cart .b34{font-size:3.4mm;}#ps-sheet .cart .b4{font-size:4mm;}#ps-sheet .cart .b5{font-size:5mm;}#ps-sheet .cart b{color:#111;}
@@ -329,12 +332,16 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
       <span class="copyr">© 2026 Antoine Lacronique, architecte</span>
       <a href="compte.html" style="color:var(--cy);font-size:11px;text-decoration:none;margin-left:10px;">Mon compte</a>
     </div>
-    <span id="langflag" style="display:inline-block;width:22px;height:15px;vertical-align:middle;border:1px solid var(--ln);border-radius:2px;overflow:hidden;margin-right:4px;"></span><select id="langsel" title="Language / Langue">
+    <div id="langbar">
+      <button id="aboutBtn" title="À propos de BPO" onclick="try{playAbout();}catch(e){}">À propos</button>
+      <span id="langflag" style="display:inline-block;width:22px;height:15px;border:1px solid var(--ln);border-radius:2px;overflow:hidden;"></span>
+      <select id="langsel" title="Language / Langue">
       <option value="fr">🇫🇷 Français</option><option value="en">🇬🇧 English</option><option value="es">🇪🇸 Español</option>
       <option value="it">🇮🇹 Italiano</option><option value="de">🇩🇪 Deutsch</option><option value="pt">🇵🇹 Português</option>
       <option value="hu">🇭🇺 Magyar</option><option value="zh">🇨🇳 中文</option><option value="ja">🇯🇵 日本語</option><option value="hi">🇮🇳 हिन्दी</option>
       <option value="ar">🇸🇦 العربية</option>
     </select>
+    </div>
   </header>
 
   <!-- COLONNE GAUCHE : navigation catalogue (onglets + arborescence) -->
@@ -363,7 +370,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     <button class="vp-btn" id="layoutBtn" title="4 vues (Perspective / Dessus / Face / Droite) — double-clic sur une vue pour l'agrandir" style="left:87px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:15px;line-height:1;">⊞</button>
     <button class="vp-btn" id="themeBtn" title="Thème clair / sombre" style="left:126px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:14px;line-height:1;">◐</button>
     <button class="vp-btn" id="paperBtn" title="Espace papier / Modèle" style="left:165px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:14px;line-height:1;">▭</button>
-    <button class="vp-btn" id="recenter" title="Recentrer la vue">⊕ Recentrer</button>
+    <button class="vp-btn" id="recenter" title="Recentrer la vue" style="top:auto;right:auto;bottom:14px;left:50%;transform:translateX(-50%);">⊕ Recentrer</button>
+    <button class="vp-btn" id="sceneBtn" title="Scène — assemblage de configurations" style="top:8px;right:10px;background:#1b1b1b;color:#f2f2f2;border-color:#888;filter:grayscale(1);">◱ Scène</button>
     <div class="vp-bar" id="render-banner"></div>
     <!-- ESPACE PAPIER : éditeur de mise en page plein cadre -->
     <div id="paperspace">
@@ -438,6 +446,13 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
           <input id="cfAgAddr" placeholder="Adresse de l'agence">
           <input id="cfAgContact" placeholder="Tél · e-mail · site">
           <input id="cfAgOrdre" placeholder="Ordre des architectes n°">
+          <div style="font-size:9.5px;color:var(--am);font-weight:700;margin:4px 0 1px;">LOGO</div>
+          <div class="cf2" style="align-items:center;">
+            <input type="file" id="cfLogo" accept="image/*" style="flex:1;font-size:9.5px;padding:3px;">
+            <button id="cfLogoClear" title="Retirer le logo" style="background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:5px;font-size:11px;padding:4px 8px;cursor:pointer;">✕</button>
+          </div>
+          <label style="font-size:10px;color:var(--dm);display:flex;align-items:center;gap:6px;margin-top:2px;">Taille<input type="range" id="cfLogoH" min="6" max="80" step="1" value="16" style="flex:1;"></label>
+          <div style="font-size:9px;color:var(--dm);margin-top:2px;">Glissez le logo dans la planche pour le positionner.</div>
         </div>
         <div class="slbl">Template de planche (cartouche dessiné)</div>
         <select id="tplSelect" style="width:100%;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:5px;margin-bottom:6px;"></select>
@@ -1955,10 +1970,30 @@ var PFERME = { type:'ferme1', span:900, height:220, panels:8, teeth:3, prof:'rec
   chordH:0, matChord:'bois', matWeb:'bois',
   autoDim:0, entraxe:300, chargeG:60, chargeQ:45 };   /* pré-dimensionnement : entraxe cm, G/Q en daN/m² */
 /* Configurateur Charpente / toiture (2 pans sur base rectangulaire). cm. */
-var PTOIT = { length:1000, width:800, pente:35, fermeType:'ferme1', panels:6, fermeEntraxe:350,
+var PTOIT = { forme:'rect', length2:700, length:1000, width:800, pente:35, fermeType:'ferme1', panels:6, fermeEntraxe:350,
   fermeH:20, fermeW:10, panneH:20, panneW:10, nInter:1, chevronH:8, chevronW:6, chevronEntraxe:50,
-  debord:40, debordPanne:30, contrefiche:1, chantignole:1, lattis:0, mat:'bois',
-  showFermes:1, showPannes:1, showChevrons:1 };
+  debord:40, debordPanne:30, support:'chevrons', panneauEp:16, sablierePose:'devers', finInt:'aucune', isolant:0, isolantEp:20,
+  contrefiche:1, chantignole:1, lattis:0, liteauEntraxe:33, mat:'bois',
+  couverture:'tuileMeca', faitage:'tuile', pose:'entier', gouttiere:'demironde', goutMat:'zinc',
+  showFermes:1, showPannes:1, showChevrons:1, showCouv:1 };
+var GOUT_TYPES = [
+  {id:'aucune',    l:'Aucune'},
+  {id:'demironde', l:'Demi-ronde (pendante)'},
+  {id:'havraise',  l:'Havraise'},
+  {id:'nantaise',  l:'Nantaise'},
+  {id:'carree',    l:'Carrée'},
+  {id:'moulure',   l:'Moulurée (corniche)'}
+];
+var COUV_TYPES = [
+  {id:'aucune',      l:'Aucune'},
+  {id:'ardoise',     l:'Ardoise'},
+  {id:'tuilePlate',  l:'Tuiles plates'},
+  {id:'tuileMeca',   l:'Tuiles mécaniques'},
+  {id:'tuileCanal',  l:'Tuiles canal'},
+  {id:'bacacier',    l:'Bac acier'},
+  {id:'ondule',      l:'Tôle ondulée'},
+  {id:'jointdebout', l:'Joint debout (zinc)'}
+];
 var CHEM_TYPES = [ {id:'foyer',l:'Foyer ouvert'},{id:'insert',l:'Insert'},{id:'poele',l:'Poêle'},{id:'suspendue',l:'Suspendue'},{id:'double',l:'Double face'},{id:'ethanol',l:'Éthanol'} ];
 var CHEM_MATS = [ {id:'pierre',l:'Pierre',c:[205,198,182]},{id:'metal',l:'Métal',c:[70,72,78]},{id:'beton',l:'Béton',c:[170,170,165]},{id:'brique',l:'Brique',c:[160,90,70]} ];
 var PCHEM = { type:'foyer', width:120, height:110, depth:45, condH:200, mat:'pierre' };
@@ -1986,6 +2021,7 @@ var PD = {
    sections auto-proportionnées à la portée et au nombre d'étages.
    ============================================================================ */
 var IMM_INFO=null, IMM_COTE_HITS=[], IMM_STRUCT=null;
+var IMM_UI={debSel:-1, facSel:-1};   /* étage sélectionné dans les éditeurs par côté (-1 = Tous) */
 var PIM = {
   shape:'rect', len:2000, wid:1500,
   lx:600, lz:600, ux:600, uz:600, lcorner:'tr', tb:600, tw:800,
@@ -1997,6 +2033,8 @@ var PIM = {
   structAuto:1, colSide:45, beamH:50, beamW:25,
   poutres:1, mat:'beton',
   debord:0, debordNiv:0, debords:[0,0,0,0,0], debordSide:0, debordSides:[], facSide:0, facSides:[],
+  debDetail:0, debordFloors:{}, facDetail:0, facFloors:{},   /* débord dalle / retrait façade : par côté (base) + surcharges par étage */
+  facInc:0, incDetail:0, incSides:[], incFloors:{}, incMono:0,   /* inclinaison façade (°) par côté/étage ; incMono = mur rideau incliné d'un seul tenant (sol→sommet) */
   toit:'terrasse', acro:50, pente:30, debToit:40,
   facN:'rideau', facS:'rideau', facE:'rideau', facO:'rideau',
   vitrTint:'clair', allege:100, winH:150, montEntr:150, travEntr:120,
@@ -2164,6 +2202,7 @@ var CATALOG = {
     label: 'Génériques',
     cats: [
       /* --- BÂTIMENT (grands ensembles) --- */
+      {id:'scene',      label:'Scène (assemblage)',status:'ready', grp:'batiment', icon:'🏘️'},
       {id:'immeuble',   label:'Immeuble',         status:'ready', grp:'batiment', icon:'🏢'},
       {id:'hangar',     label:'Hangar métallique', status:'ready', grp:'batiment', icon:'🏭'},
       {id:'piscine',    label:'Piscine',          status:'ready', grp:'batiment', icon:'🏊'},
@@ -2239,6 +2278,7 @@ function selectCat(catId){
   else if(cat.id==='escalier'){ MODE='escalier'; }
   else if(cat.id==='ferme'){ MODE='ferme'; }
   else if(cat.id==='toiture'){ MODE='toiture'; }
+  else if(cat.id==='scene'){ MODE='scene'; }
   else if(cat.id==='porte'){ MODE='porte'; }
   else if(cat.id==='fenetre'){ MODE='fenetre'; }
   else if(cat.id==='murrideau'){ MODE='murrideau'; }
@@ -2487,7 +2527,7 @@ function _fillMenu(m, items){
 }
 /* ---------- Annuler / Refaire (historique multi-niveaux) ---------- */
 var UNDO_HIST=[], REDO_HIST=[], _undoBase=null, _undoMode=null, _undoApplying=false, _undoTimer=null, UNDO_MAX=80;
-function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF}[mode]||null; }
+function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,escalier:PE,ferme:PFERME,toiture:PTOIT}[mode]||null; }
 function undoParams(){ return paramObjFor(MODE); }
 function _undoSnap(){ var o=undoParams(); return o?JSON.stringify(o):null; }
 function _undoBtns(){ var u=document.getElementById('undoBtn'), r=document.getElementById('redoBtn'); if(u) u.style.opacity=UNDO_HIST.length?'1':'0.5'; if(r) r.style.opacity=REDO_HIST.length?'1':'0.5'; }
@@ -2509,7 +2549,7 @@ function cfgEsc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'
 function cfgLoad(){ try{ return JSON.parse(localStorage.getItem(CFG_KEY))||[]; }catch(e){ return []; } }
 function cfgStore(list){ try{ localStorage.setItem(CFG_KEY, JSON.stringify(list)); }catch(e){ alert('Sauvegarde impossible (stockage indisponible).'); } }
 /* Cartouche mémorisé (identité de l'agence + libellés par défaut) par navigateur */
-var CART_KEY='BPO_CART_v1';
+var CART_KEY='BPO_CART_v2';   /* v2 : nouveaux libellés par défaut (l'ancien cartouche en cache localStorage est ignoré) */
 function cartStore(){ try{ localStorage.setItem(CART_KEY, JSON.stringify(PLOT.cart)); }catch(e){} }
 function cartLoad(){ try{ var s=JSON.parse(localStorage.getItem(CART_KEY)); if(s) for(var k in s) PLOT.cart[k]=s[k]; }catch(e){} }
 function cfgAdd(){
@@ -2538,6 +2578,10 @@ function cfgUpdate(id){
   if(it.mode!==MODE && !confirm("La config « "+it.label+" » est d'un autre type que l'objet courant. Remplacer quand même ?")) return;
   it.mode=MODE; it.label=(curCat().label||MODE); it.params=JSON.parse(JSON.stringify(o)); it.date=new Date().toLocaleDateString('fr-FR');
   cfgStore(list); cfgRender();
+  /* MAJ automatique des instances qui référencent cette config (scène en cours + scènes enregistrées) */
+  function _syncInst(inst){ if(inst.cfgId===id || (!inst.cfgId && inst.mode===it.mode && inst.name===it.name)){ inst.cfgId=id; inst.mode=it.mode; inst.label=it.label; inst.params=JSON.parse(JSON.stringify(it.params)); return true; } return false; }
+  if(typeof SCENE!=='undefined' && SCENE.instances){ var ch=false; SCENE.instances.forEach(function(inst){ if(_syncInst(inst)) ch=true; }); if(ch && MODE==='scene') refreshView(); }
+  try{ var scl=scnLoad(), chS=false; scl.forEach(function(sc){ (sc.instances||[]).forEach(function(inst){ if(_syncInst(inst)) chS=true; }); }); if(chS) scnStore(scl); }catch(e){}
 }
 function cfgRename(id){ var list=cfgLoad(), it=list.filter(function(c){return c.id===id;})[0]; if(!it) return;
   var nn=prompt('Renommer :', it.name); if(nn===null) return; it.name=(nn.trim()||it.name); cfgStore(list); cfgRender(); }
@@ -2566,13 +2610,14 @@ function cfgRender(){
    ============================================================================ */
 var PLOT_FORMATS={A4:[210,297],A3:[297,420],A2:[420,594],A1:[594,841],A0:[841,1189]};
 var PLOT={ format:'A3', orient:'paysage', title:'', sheets:[{views:[]}], active:0, showCotes:true, coteSize:11, coteDist:1,
-  cart:{ owner:"M Eric Natalini SARL Terra-Invest Immo", ownerAddr:"3, rue des salles, 92300 Courbevoie",
-    project:"TRANSFORMATION D'UN GARAGE AUTO EN HABITATION", projAddr:"68 rue Anatole France, 78350 Jouy-en-Josas",
-    phase:"ESQ", draw:"ENVIRONNEMENT LOINTAIN", ref:"PC8", planche:"57",
+  cart:{ owner:"M. Eric Depairch, SARL Tugais", ownerAddr:"Adresse du maître d'ouvrage",
+    project:"TITRE DU PROJET", projAddr:"68, avenue d'Esse 28000 Chartres",
+    phase:"ESQ", draw:"TITRE DU PLAN", ref:"—", planche:"01",
     agName:"Architecture_al", agPerson:"Antoine Lacronique, architecte",
     agAddr:"33 Avenue du Général Sarrail, 75016 Paris",
     agContact:"Tél: 06 48 38 38 27 — e-mail: al@architecture-al.com — site: www.architecture-al.com",
-    agOrdre:"ORDRE DES ARCHITECTES IDF N°042101" } };
+    agOrdre:"ORDRE DES ARCHITECTES IDF N°042101",
+    logo:"", logoX:null, logoY:null, logoH:16, logoAR:1 } };   /* logo (data-URL), position libre en mm (null=auto bas-droite), hauteur mm, ratio l/h */
 function plotPageMM(){ var f=PLOT_FORMATS[PLOT.format]||PLOT_FORMATS.A3, a=Math.min(f[0],f[1]), b=Math.max(f[0],f[1]); return PLOT.orient==='paysage'?[b,a]:[a,b]; }
 /* captureView() : rend une vue (plan/face/droite/3d) proprement (sans grille/cotes),
    en supersampling ×2, et renvoie l'image + l'échelle réelle (m/pixel via ortho). */
@@ -2755,7 +2800,7 @@ function tplLibStore(l){ try{ localStorage.setItem(TPL_KEY, JSON.stringify(l)); 
 function tplEnsure(){ if(!Array.isArray(PLOT.template)) PLOT.template=[]; }
 function tplSVG(edit){
   var pg=plotPageMM(), els=(PLOT.template||[]).concat(_tplTemp?[_tplTemp]:[]), s='';
-  s+='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+pg[0]+' '+pg[1]+'" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;'+(edit?'':'pointer-events:none')+'">';
+  s+='<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 '+pg[0]+' '+pg[1]+'" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;'+(edit?'':'pointer-events:none')+'">';
   els.forEach(function(e,i){ var sel=(edit&&i===TPL_SEL), col=sel?'#ff8a3d':(e.col||'#111'), pe=edit?' pointer-events="none"':'';
     if(e.t==='line'){ s+='<line x1="'+e.x1+'" y1="'+e.y1+'" x2="'+e.x2+'" y2="'+e.y2+'" stroke="'+col+'" stroke-width="'+(e.sw||0.4)+'"'+pe+'/>';
       if(edit) s+='<line x1="'+e.x1+'" y1="'+e.y1+'" x2="'+e.x2+'" y2="'+e.y2+'" stroke="transparent" stroke-width="3" data-i="'+i+'"/>'; }
@@ -2883,6 +2928,12 @@ function plotFillSheet(host, s, big){
     b.oncontextmenu=function(e){ e.preventDefault(); e.stopPropagation(); showViewMenu(v, e.clientX, e.clientY); };
     host.appendChild(b);
   });
+  /* LOGO du cartouche : élément libre, déplaçable à la souris (au-dessus de tout) */
+  if(PLOT.cart.logo){ var lb=logoBoxMM();
+    var li=document.createElement('img'); li.src=PLOT.cart.logo; li.alt='logo';
+    li.style.cssText='position:absolute;left:'+(lb.x*s)+'px;top:'+(lb.y*s)+'px;width:'+(lb.w*s)+'px;height:'+(lb.h*s)+'px;object-fit:contain;z-index:30;'+(big?'cursor:move;':'pointer-events:none;');
+    if(big){ li.title='Glissez pour déplacer le logo'; li.onmousedown=function(e){ logoDragStart(e,s,li); }; }
+    host.appendChild(li); }
   if(usingTpl){ if(tplEditNow) host.appendChild(tplLayer(s, true)); return; }   /* template actif : pas de cartouche par défaut */
   if(big){                                   /* espace papier : vrai cartouche mis à l'échelle */
     var band=document.createElement('div'); band.style.position='absolute';
@@ -2939,6 +2990,20 @@ function plotDragMove(e){ var d=_pvDrag; if(!d) return; var dx=(e.clientX-d.x0)/
     if(d.v.ortho){ d.v.scaleN=Math.max(1,Math.round(d.v.worldW*1000/d.v.wmm)); } d.cap.textContent=plotViewCap(d.v,d.v.wmm); }
   var fm=d.v.frameM||0; d.el.style.left=(d.v.xmm*d.s)+'px'; d.el.style.top=(d.v.ymm*d.s)+'px'; d.el.style.width=((d.v.wmm+2*fm)*d.s)+'px'; d.el.style.height=((d.v.hmm+2*fm)*d.s)+'px'; }
 function plotDragEnd(){ if(!_pvDrag) return; _pvDrag=null; document.removeEventListener('mousemove',plotDragMove); document.removeEventListener('mouseup',plotDragEnd); plotRefresh(); }
+/* logoBoxMM() : boîte du logo en mm (position libre logoX/logoY, défaut = bas-droite) */
+function logoBoxMM(){ var c=PLOT.cart, pg=plotPageMM(), h=Math.max(3,c.logoH||16), w=h*(c.logoAR||1);
+  var x=(c.logoX==null)?(pg[0]-w-8):c.logoX, y=(c.logoY==null)?(pg[1]-h-8):c.logoY;
+  x=Math.max(0,Math.min(pg[0]-w,x)); y=Math.max(0,Math.min(pg[1]-h,y));
+  return {x:x,y:y,w:w,h:h}; }
+var _logoDrag=null;
+function logoDragStart(e,s,el){ e.preventDefault(); e.stopPropagation(); var lb=logoBoxMM();
+  _logoDrag={s:s,el:el,x0:e.clientX,y0:e.clientY,xm:lb.x,ym:lb.y,w:lb.w,h:lb.h};
+  document.addEventListener('mousemove',logoDragMove); document.addEventListener('mouseup',logoDragEnd); }
+function logoDragMove(e){ var d=_logoDrag; if(!d) return; var pg=plotPageMM();
+  var nx=d.xm+(e.clientX-d.x0)/d.s, ny=d.ym+(e.clientY-d.y0)/d.s;
+  nx=Math.max(0,Math.min(pg[0]-d.w,nx)); ny=Math.max(0,Math.min(pg[1]-d.h,ny));
+  PLOT.cart.logoX=nx; PLOT.cart.logoY=ny; d.el.style.left=(nx*d.s)+'px'; d.el.style.top=(ny*d.s)+'px'; }
+function logoDragEnd(){ if(!_logoDrag) return; _logoDrag=null; document.removeEventListener('mousemove',logoDragMove); document.removeEventListener('mouseup',logoDragEnd); cartStore(); }
 function plotPrint(){
   var any=PLOT.sheets.some(function(s){return s.views.length;});
   if(!any){ alert('Ajoutez au moins une vue à une planche.'); return; }
@@ -2954,7 +3019,7 @@ function plotPrint(){
     '.cart .c-own{width:34%;font-weight:700;font-size:3.1mm;}.cart .c-prj{flex:1;font-weight:700;font-size:3.6mm;}.cart .c-agn{width:25%;border-right:0;justify-content:flex-end;font-style:italic;font-weight:700;font-size:3.8mm;}'+
     '.cart .cbot{display:flex;flex:1;}'+
     '.cart .cl{border-right:0.3mm solid #111;padding:1mm 1.6mm;font-size:2.5mm;line-height:1.25;overflow:hidden;}.cart .cl:last-child{border-right:0;}'+
-    '.cart .w22{width:20%;}.cart .w8{width:8%;}.cart .w15{width:15%;}.cart .w10{width:9%;}.cart .w25{width:25%;}.cart .gr{flex:1;}.cart .ce{text-align:center;}'+
+    '.cart .w22{width:17%;}.cart .w8{width:8%;}.cart .w15{width:10%;}.cart .w10{width:8%;}.cart .w25{width:22%;}.cart .gr{flex:1;}.cart .ce{text-align:center;}'+
     '.cart .ag{color:#333;font-size:2mm;}.cart .ag i{color:#c0281e;}'+
     '.cart .lb{color:#666;font-size:2mm;font-style:italic;display:block;margin-bottom:0.5mm;}.cart .mt{margin-top:1.2mm;}'+
     '.cart .rd{color:#c0281e;font-weight:700;}.cart .b34{font-size:3.4mm;}.cart .b4{font-size:4mm;}.cart .b5{font-size:5mm;}.cart b{color:#111;}';
@@ -2966,7 +3031,8 @@ function plotPrint(){
         '<div class="clip"><img src="'+v.url+'" style="left:'+fm.toFixed(1)+'mm;top:'+fm.toFixed(1)+'mm;width:'+v.wmm.toFixed(1)+'mm;height:'+v.hmm.toFixed(1)+'mm;"></div>'+
         '<div class="c">'+cfgEsc(plotViewCap(v,v.wmm))+'</div></div>';
     });
-    html+=(PLOT.template!=null ? tplSVG(false) : plotCartHTML(si,total))+'</div>';
+    var lg=''; if(PLOT.cart.logo){ var lb=logoBoxMM(); lg='<img src="'+PLOT.cart.logo+'" style="position:absolute;left:'+lb.x.toFixed(1)+'mm;top:'+lb.y.toFixed(1)+'mm;width:'+lb.w.toFixed(1)+'mm;height:'+lb.h.toFixed(1)+'mm;object-fit:contain;">'; }
+    html+=(PLOT.template!=null ? tplSVG(false) : plotCartHTML(si,total))+lg+'</div>';
   });
   html+='</body></html>';
   var w=window.open('','_blank'); if(!w){ alert('Autorisez les fenêtres popup pour imprimer.'); return; }
@@ -3708,6 +3774,13 @@ function beamSeg(ax,az,bx,bz,yBot,yTop,w,col,al){
   boxV([[ax-nx,yBot,az-nz],[bx-nx,yBot,bz-nz],[bx-nx,yTop,bz-nz],[ax-nx,yTop,az-nz],
         [ax+nx,yBot,az+nz],[bx+nx,yBot,bz+nz],[bx+nx,yTop,bz+nz],[ax+nx,yTop,az+nz]], col, al||1);
 }
+/* beamSegInc() : comme beamSeg mais l'anneau HAUT est décalé de (ox,oz) → segment incliné (fruit de façade). */
+function beamSegInc(ax,az,bx,bz,yBot,yTop,w,col,al,ox,oz){
+  var dx=bx-ax,dz=bz-az,L=Math.hypot(dx,dz); if(L<1e-6) return;
+  var nx=-dz/L*(w/2), nz=dx/L*(w/2);
+  boxV([[ax-nx,yBot,az-nz],[bx-nx,yBot,bz-nz],[bx-nx+ox,yTop,bz-nz+oz],[ax-nx+ox,yTop,az-nz+oz],
+        [ax+nx,yBot,az+nz],[bx+nx,yBot,bz+nz],[bx+nx+ox,yTop,bz+nz+oz],[ax+nx+ox,yTop,az+nz+oz]], col, al||1);
+}
 /* _inPoly() : point dans polygone [[x,z],...] (ray casting). */
 function _inPoly(x,z,poly){ var inside=false,n=poly.length;
   for(var a=0,b=n-1;a<n;b=a++){ var xi=poly[a][0],zi=poly[a][1],xj=poly[b][0],zj=poly[b][1];
@@ -3957,18 +4030,22 @@ function buildImmeuble(){
   function insetOf(i){ if(sbN<=0||sbD<=0) return 0; var st=N-sbN; return i>st?(i-st)*sbD:0; }
   var POLYC={};
   function polyAt(i){ if(POLYC[i]!==undefined) return POLYC[i]; var ins=insetOf(i); var pl=(ins>0)?_shrinkIn(poly,ins):poly; if(!pl||pl.length<3) pl=poly; return (POLYC[i]=pl); }
-  function debOf(i){ if(PIM.debordNiv && PIM.debords){ var k=Math.min(Math.max(i,0),PIM.debords.length-1); return Math.max(0,PIM.debords[k]||0)/100; } return Math.max(0,PIM.debord||0)/100; }
   function insideP(x,z,pl){ var px=0,pz=0,m=pl.length; for(var q=0;q<m;q++){px+=pl[q][0];pz+=pl[q][1];} px/=m;pz/=m; return _inPoly(x+(px-x)*0.002, z+(pz-z)*0.002, pl); }
+  /* débord de dalle par côté (base) + surcharge par étage (fi) — en mètres, par arête */
+  var detailDeb=(PIM.debDetail && !libre);
+  function debEdgesM(fi, pl){ return pl.map(function(_,e){
+    var v=(PIM.debordFloors && PIM.debordFloors[fi] && PIM.debordFloors[fi][e]!=null) ? PIM.debordFloors[fi][e]
+        : (PIM.debordSides && PIM.debordSides[e]!=null ? PIM.debordSides[e] : 0);
+    return Math.max(0, v)/100; }); }
   /* DALLES */
   _CURTEX=FINISH_TEX.imdalle;
-  var sideDeb=(PIM.debordSide && !libre && PIM.debordSides);   /* débord par côté (formes orthogonales) */
-  for(var i=0;i<=N;i++){ var yT=levelY[i], dd=debOf(Math.min(i,N-1)), pl=polyAt(i);
+  for(var i=0;i<=N;i++){ var yT=levelY[i], fi=i, pl=polyAt(i), dd=Math.max(0,(PIM.debord||0))/100;   /* fi=i : la dalle toiture (i=N) a son propre réglage, désolidarisé du dernier étage */
     _IFCTAG={st:Math.min(i,N-1),ty:'slab'};
     var sp;
-    if(sideDeb){ var sm=pl.map(function(_,ei){ return Math.max(0,(PIM.debordSides[ei]||0))/100; }); sp=expandPerEdge(pl, sm); }
+    if(detailDeb){ sp=expandPerEdge(pl, debEdgesM(fi,pl)); }
     else sp = dd>0 ? _expandOut(pl,dd) : pl;
     IMM_STRUCT.slabs.push({st:i, poly:sp, yTop:yT, t:e});
-    if(sideDeb || dd>0 || insetOf(i)>0 || libre){ dallePrism(sp, yT-e, e, slCol); }
+    if(detailDeb || dd>0 || insetOf(i)>0 || libre){ dallePrism(sp, yT-e, e, slCol); }
     else { rects.forEach(function(r){ box(r.cx, yT-e/2, r.cz, r.w, e, r.d, slCol,1); }); }
   }
   /* POTEAUX continus : du sol au soffite du dernier niveau porté (touchent toutes les dalles) */
@@ -4004,11 +4081,31 @@ function buildImmeuble(){
   /* POUTRES sous chaque dalle */
   _CURTEX=FINISH_TEX.impoutre;
   if(PIM.poutres){
-    for(var i=1;i<=N;i++){ var yTop=levelY[i]-e+0.02, plb=polyAt(i);
+    var cHalf=colw/2;                                    /* demi-poteau : les poutres butent à cette distance de l'axe */
+    var gnodes=[]; for(var gj=0;gj<=nbX;gj++) for(var gk=0;gk<=nbY;gk++) gnodes.push([gx[gj],gz[gk]]);
+    /* prisme de poutre à section rectangulaire, dessus/dessous horizontaux, 4 coins libres (mitrage) */
+    function beamPrism(O0,O1,I1,I0, yb,yt){ boxV([ [O0[0],yb,O0[1]],[O1[0],yb,O1[1]],[I1[0],yb,I1[1]],[I0[0],yb,I0[1]],
+      [O0[0],yt,O0[1]],[O1[0],yt,O1[1]],[I1[0],yt,I1[1]],[I0[0],yt,I0[1]] ], bCol,1); }
+    function lerp(P,Q,t){ return [P[0]+(Q[0]-P[0])*t, P[1]+(Q[1]-P[1])*t]; }
+    for(var i=1;i<=N;i++){ var yTop=levelY[i]-e+0.02, plb=polyAt(i), yb=yTop-bh;
       _IFCTAG={st:Math.max(0,Math.min(i-1,N-1)),ty:'beam'};
-      for(var ei=0;ei<plb.length;ei++){ var a=plb[ei], b=plb[(ei+1)%plb.length]; beamSeg(a[0],a[1],b[0],b[1], yTop-bh, yTop, bw, bCol); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:a[0],az:a[1],bx:b[0],bz:b[1],w:bw,h:bh,yTop:levelY[i]-e}); }
-      for(var k=0;k<=nbY;k++) for(var j=0;j<nbX;j++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j+1],gz[k],plb) && !_onEdge((gx[j]+gx[j+1])/2, gz[k], plb)){ beamSeg(gx[j],gz[k],gx[j+1],gz[k], yTop-bh, yTop, bw, bCol); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:gx[j],az:gz[k],bx:gx[j+1],bz:gz[k],w:bw,h:bh,yTop:levelY[i]-e}); } }
-      for(var j=0;j<=nbX;j++) for(var k=0;k<nbY;k++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j],gz[k+1],plb) && !_onEdge(gx[j], (gz[k]+gz[k+1])/2, plb)){ beamSeg(gx[j],gz[k],gx[j],gz[k+1], yTop-bh, yTop, bw, bCol); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:gx[j],az:gz[k],bx:gx[j],bz:gz[k+1],w:bw,h:bh,yTop:levelY[i]-e}); } }
+      /* --- POUTRES PÉRIMÉTRIQUES : mitrées aux angles (contours décalés ±bw/2), découpées aux poteaux intermédiaires --- */
+      var oP=expandPerEdge(plb, plb.map(function(){return bw/2;})), iP=expandPerEdge(plb, plb.map(function(){return -bw/2;}));
+      for(var ei=0;ei<plb.length;ei++){ var a=plb[ei], b=plb[(ei+1)%plb.length], dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1;
+        var oi=oP[ei], oj=oP[(ei+1)%plb.length], ii=iP[ei], ij=iP[(ei+1)%plb.length];
+        var cols=[]; gnodes.forEach(function(g){ var t=((g[0]-a[0])*dx+(g[1]-a[1])*dz)/(L*L); if(t>1e-3&&t<1-1e-3){ var px=a[0]+dx*t,pz=a[1]+dz*t; if(Math.hypot(g[0]-px,g[1]-pz)<0.03) cols.push(t); } });
+        cols.sort(function(p,q){return p-q;}); var dlt=cHalf/L, segs=[], st=0;
+        for(var c=0;c<cols.length;c++){ segs.push([st, Math.max(st,cols[c]-dlt)]); st=Math.min(1,cols[c]+dlt); }
+        segs.push([st,1]);
+        segs.forEach(function(sg){ var t0=sg[0],t1=sg[1]; if(t1-t0<1e-3) return;
+          beamPrism(lerp(oi,oj,t0),lerp(oi,oj,t1),lerp(ij,ii,1-t1),lerp(ij,ii,1-t0), yb, yTop);
+          var ca=lerp(a,b,t0), cb=lerp(a,b,t1); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:ca[0],az:ca[1],bx:cb[0],bz:cb[1],w:bw,h:bh,yTop:levelY[i]-e}); });
+      }
+      /* --- POUTRES INTÉRIEURES : butent sur les faces des poteaux (raccourcies de colw/2 à chaque extrémité) --- */
+      function innerBeam(ax,az,bx,bz){ var dx=bx-ax,dz=bz-az,L=Math.hypot(dx,dz)||1,u=cHalf/L; if(2*cHalf>=L) return;
+        beamSeg(ax+dx*u,az+dz*u, bx-dx*u,bz-dz*u, yb, yTop, bw, bCol); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:ax+dx*u,az:az+dz*u,bx:bx-dx*u,bz:bz-dz*u,w:bw,h:bh,yTop:levelY[i]-e}); }
+      for(var k=0;k<=nbY;k++) for(var j=0;j<nbX;j++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j+1],gz[k],plb) && !_onEdge((gx[j]+gx[j+1])/2, gz[k], plb)) innerBeam(gx[j],gz[k],gx[j+1],gz[k]); }
+      for(var j=0;j<=nbX;j++) for(var k=0;k<nbY;k++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j],gz[k+1],plb) && !_onEdge(gx[j], (gz[k]+gz[k+1])/2, plb)) innerBeam(gx[j],gz[k],gx[j],gz[k+1]); }
     }
   }
   /* NOYAU central (cage ascenseur/escalier) */
@@ -4022,11 +4119,28 @@ function buildImmeuble(){
   var anyFac=(PIM.facN&&PIM.facN!=='none')||(PIM.facS&&PIM.facS!=='none')||(PIM.facE&&PIM.facE!=='none')||(PIM.facO&&PIM.facO!=='none');
   if(anyFac){ for(var s=1;s<=N;s++){ var plf=polyAt(s), fy1=(s===N)?levelY[N]-e:levelY[s];
     _IFCTAG={st:Math.min(s-1,N-1),ty:'facade'};
-    var pf;
-    if(PIM.facSide && !libre && PIM.facSides){ var fsm=plf.map(function(_,ei){ return ((PIM.facSides[ei]||0))/100; }); pf=expandPerEdge(plf, fsm); }
+    var pf, detailFac=(PIM.facDetail && !libre);
+    if(detailFac){ var fsm=plf.map(function(_,ei){
+        var v=(PIM.facFloors && PIM.facFloors[s-1] && PIM.facFloors[s-1][ei]!=null) ? PIM.facFloors[s-1][ei]
+            : (PIM.facSides && PIM.facSides[ei]!=null ? PIM.facSides[ei] : 0);
+        return v/100; });
+      pf=expandPerEdge(plf, fsm);   /* + = avancée, − = retrait (par côté/étage) */
+    }
     else { var fo=Math.max(0,(PIM.facOffset||0)/100); pf=fo>0?_expandOut(plf,fo):plf; }
-    for(var ei=0;ei<pf.length;ei++){ var a=pf[ei], b=pf[(ei+1)%pf.length];
-      var o=_orient(a[0],a[1],b[0],b[1],cx,cz), ft=PIM['fac'+o]; facadeEdge(a[0],a[1],b[0],b[1], levelY[s-1], fy1, ft);
+    var detailInc=(PIM.incDetail && !libre), nEf=pf.length, offBot=[], offTop=[];
+    for(var ei=0;ei<nEf;ei++){ var a=pf[ei], b=pf[(ei+1)%nEf];
+      var incBaseA=detailInc ? (PIM.incSides && PIM.incSides[ei]!=null ? PIM.incSides[ei] : (PIM.facInc||0)) : (PIM.facInc||0);
+      var incA = PIM.incMono ? incBaseA   /* d'un seul tenant → une seule pente par côté (ignore les surcharges d'étage) */
+               : (detailInc ? ((PIM.incFloors && PIM.incFloors[s-1] && PIM.incFloors[s-1][ei]!=null) ? PIM.incFloors[s-1][ei] : incBaseA) : (PIM.facInc||0));
+      var tanA=Math.tan(Math.max(-45,Math.min(45,incA))*Math.PI/180);
+      var baseInc=PIM.incMono?tanA*(levelY[s-1]-levelY[0]):0;
+      offBot[ei]=baseInc; offTop[ei]=baseInc+tanA*(fy1-levelY[s-1]); }
+    var botPoly=expandPerEdge(pf, offBot), topPoly=expandPerEdge(pf, offTop);   /* contours mitrés → angles jointifs */
+    for(var ei=0;ei<nEf;ei++){ var a=pf[ei], b=pf[(ei+1)%nEf];
+      var o=_orient(a[0],a[1],b[0],b[1],cx,cz), ft=PIM['fac'+o];
+      var dxN=b[0]-a[0], dzN=b[1]-a[1], LN=Math.hypot(dxN,dzN)||1, nX=dzN/LN, nZ=-dxN/LN;
+      if(((a[0]+b[0])/2-cx)*nX + ((a[1]+b[1])/2-cz)*nZ < 0){ nX=-nX; nZ=-nZ; }   /* normale extérieure */
+      facadeEdge(botPoly[ei],botPoly[(ei+1)%nEf], topPoly[ei],topPoly[(ei+1)%nEf], levelY[s-1], fy1, ft, nX,nZ);
       if(ft&&ft!=='none'){ var rcf={ax:a[0],az:a[1],bx:b[0],bz:b[1],y0:levelY[s-1],y1:fy1,st:Math.min(s-1,N-1)};
         if(ft==='rideau'){ rcf.ent='IFCCURTAINWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.06; rcf.col=_glassCol(); rcf.al=0.4; rcf.nm='Mur-rideau'; }
         else if(ft==='mur'){ rcf.ent='IFCWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.16; rcf.col=[202,200,195]; rcf.al=1; rcf.nm='Mur'; }
@@ -4051,23 +4165,44 @@ function _orient(ax,az,bx,bz,cx,cz){
   if(Math.abs(nx)>=Math.abs(nz)) return nx>0?'E':'O';
   return nz>0?'S':'N';
 }
-/* facadeEdge() : enveloppe d'une arête sur un étage (y0->y1) selon le type. */
-function facadeEdge(ax,az,bx,bz,y0,y1,type){
+/* facadeEdge() : enveloppe d'une arête sur un étage. Extrémités PIED (A0,B0) et TÊTE (At,Bt)
+   fournies explicitement (déjà mitrées aux angles) → les cadres de façades perpendiculaires
+   se rejoignent proprement, même inclinées. nX,nZ = normale extérieure (épaisseur/profondeur). */
+function facadeEdge(A0,B0, At,Bt, y0,y1, type, nX,nZ){
   if(!type||type==='none') return;
+  nX=nX||0; nZ=nZ||0; var H=(y1-y0)||1;
   var glass=_glassCol(), wallC=[202,200,195], pan=[172,170,166], frame=[120,124,130];
+  var dx=B0[0]-A0[0], dz=B0[1]-A0[1], L=Math.hypot(dx,dz)||1, exU=dx/L, ezU=dz/L;
+  function aP(fr){ return [A0[0]+(At[0]-A0[0])*fr, A0[1]+(At[1]-A0[1])*fr]; }   /* extrémité A à la fraction fr (0=pied,1=tête) */
+  function bP(fr){ return [B0[0]+(Bt[0]-B0[0])*fr, B0[1]+(Bt[1]-B0[1])*fr]; }
+  /* panneau gauchi entre pied (a0,b0 à ya) et tête (a1,b1 à yb), épaisseur w selon la normale */
+  function slabQ(a0,b0,a1,b1, ya,yb, w, col, al){
+    var ddx=b0[0]-a0[0], ddz=b0[1]-a0[1], LL=Math.hypot(ddx,ddz); if(LL<1e-6) return;
+    var nx=-ddz/LL*(w/2), nz=ddx/LL*(w/2);
+    boxV([[a0[0]-nx,ya,a0[1]-nz],[b0[0]-nx,ya,b0[1]-nz],[b1[0]-nx,yb,b1[1]-nz],[a1[0]-nx,yb,a1[1]-nz],
+          [a0[0]+nx,ya,a0[1]+nz],[b0[0]+nx,ya,b0[1]+nz],[b1[0]+nx,yb,b1[1]+nz],[a1[0]+nx,yb,a1[1]+nz]], col, al||1);
+  }
+  function band(yy, th, w, col, al){ var fr=(yy-y0)/H, a=aP(fr), b=bP(fr); beamSeg(a[0],a[1],b[0],b[1], yy-th, yy+th, w, col, al); }
+  /* montant incliné à la fraction t le long de l'arête */
+  function post(t, hw, hd, col){
+    var pb=[A0[0]+(B0[0]-A0[0])*t, A0[1]+(B0[1]-A0[1])*t], pt=[At[0]+(Bt[0]-At[0])*t, At[1]+(Bt[1]-At[1])*t];
+    var wx=exU*hw, wz=ezU*hw, dnx=nX*hd, dnz=nZ*hd;
+    boxV([[pb[0]-wx-dnx,y0,pb[1]-wz-dnz],[pb[0]+wx-dnx,y0,pb[1]+wz-dnz],[pt[0]+wx-dnx,y1,pt[1]+wz-dnz],[pt[0]-wx-dnx,y1,pt[1]-wz-dnz],
+          [pb[0]-wx+dnx,y0,pb[1]-wz+dnz],[pb[0]+wx+dnx,y0,pb[1]+wz+dnz],[pt[0]+wx+dnx,y1,pt[1]+wz+dnz],[pt[0]-wx+dnx,y1,pt[1]-wz+dnz]], col,1);
+  }
   if(type==='rideau'){
-    beamSeg(ax,az,bx,bz, y0, y1, 0.06, glass, 0.30);
-    var trStep=Math.max(0.3,(PIM.travEntr||120)/100), nT=Math.max(1,Math.round((y1-y0)/trStep));
-    for(var tt=0;tt<=nT;tt++){ var yy=y0+(y1-y0)*tt/nT; beamSeg(ax,az,bx,bz, yy-0.035, yy+0.035, 0.10, frame, 1); }
-    var L=Math.hypot(bx-ax,bz-az), step=Math.max(0.4,(PIM.montEntr||150)/100), nM=Math.max(1,Math.round(L/step));
-    for(var m=0;m<=nM;m++){ var t=m/nM, px=ax+(bx-ax)*t, pz=az+(bz-az)*t; box(px,(y0+y1)/2,pz,0.08,(y1-y0),0.12,frame,1); }
+    slabQ(A0,B0,At,Bt, y0,y1, 0.06, glass, 0.30);
+    var trStep=Math.max(0.3,(PIM.travEntr||120)/100), nT=Math.max(1,Math.round(H/trStep));
+    for(var tt=0;tt<=nT;tt++){ band(y0+H*tt/nT, 0.035, 0.10, frame, 1); }
+    var step=Math.max(0.4,(PIM.montEntr||150)/100), nM=Math.max(1,Math.round(L/step));
+    for(var m=0;m<=nM;m++){ post(m/nM, 0.04, 0.06, frame); }
   } else if(type==='mur'){
-    beamSeg(ax,az,bx,bz, y0, y1, 0.16, wallC, 1);
-    var al=Math.max(0,(PIM.allege||100)/100), sill=y0+al, wh=Math.min((PIM.winH||150)/100, (y1-y0)-al-0.2);
-    if(wh>0.3) beamSeg(ax,az,bx,bz, sill, sill+wh, 0.20, glass, 0.40);
+    slabQ(A0,B0,At,Bt, y0,y1, 0.16, wallC, 1);
+    var al=Math.max(0,(PIM.allege||100)/100), sill=y0+al, wh=Math.min((PIM.winH||150)/100, H-al-0.2);
+    if(wh>0.3){ var f0=(sill-y0)/H, f1=(sill+wh-y0)/H; slabQ(aP(f0),bP(f0),aP(f1),bP(f1), sill,sill+wh, 0.20, glass, 0.40); }
   } else if(type==='bardage'){
-    beamSeg(ax,az,bx,bz, y0, y1, 0.12, pan, 1);
-    var ym=(y0+y1)/2; beamSeg(ax,az,bx,bz, ym-0.012, ym+0.012, 0.13, [140,138,134], 1);
+    slabQ(A0,B0,At,Bt, y0,y1, 0.12, pan, 1);
+    band((y0+y1)/2, 0.012, 0.13, [140,138,134], 1);
   }
 }
 
@@ -4707,6 +4842,26 @@ function beamXdev(cy,cz, Lx, secH,secW, uz,uy, wz,wy, col){
   boxV([ [x0,a[0],a[1]],[x0,b[0],b[1]],[x0,c[0],c[1]],[x0,d[0],d[1]],
          [x1,a[0],a[1]],[x1,b[0],b[1]],[x1,c[0],c[1]],[x1,d[0],d[1]] ], col);
 }
+/* chevron : à l'abscisse X, de l'about bas (bz,by) jusqu'à l'AXE FAÎTIER (z=0) avec coupe
+   VERTICALE en tête. (uz,uy) = direction descendante du versant. Section cH (perp) × cW (en X). */
+function chevron(X, bz,by, cH,cW, uz,uy, col){
+  var pz=-uy, py=uz, hw=cH/2, hx=cW/2;
+  var t0=bz/uz, tcY=by - t0*uy;                       /* centre en tête, sur l'axe z=0 */
+  var sBp=-pz*hw/uz, sBm=pz*hw/uz;                       /* about bas : coupe VERTICALE (d'aplomb) au droit de z=bz, comme la couverture à l'égout */
+  var Bp=[by+py*hw+sBp*uy, bz], Bm=[by-py*hw+sBm*uy, bz];
+  var sp=-pz*hw/uz, Tp=[tcY+py*hw+sp*uy, pz*hw+sp*uz];    /* about haut projeté sur z=0 (coupe verticale) */
+  var sm= pz*hw/uz, Tm=[tcY-py*hw+sm*uy, -pz*hw+sm*uz];
+  boxV([ [X-hx,Bm[0],Bm[1]],[X-hx,Bp[0],Bp[1]],[X+hx,Bp[0],Bp[1]],[X+hx,Bm[0],Bm[1]],
+         [X-hx,Tm[0],Tm[1]],[X-hx,Tp[0],Tp[1]],[X+hx,Tp[0],Tp[1]],[X+hx,Tm[0],Tm[1]] ], col);
+}
+/* wedgeX : coin (échantignole) à l'abscisse X, prisme triangulaire (3 sommets [y,z]) épaissi de tX en X. */
+function wedgeX(X, pts, tX, col){
+  var h=tX/2, A=pts[0],B=pts[1],C=pts[2];
+  var a0=[X-h,A[0],A[1]],b0=[X-h,B[0],B[1]],c0=[X-h,C[0],C[1]];
+  var a1=[X+h,A[0],A[1]],b1=[X+h,B[0],B[1]],c1=[X+h,C[0],C[1]];
+  faceN([a0,b0,c0],col); faceN([c1,b1,a1],col);
+  faceN([a0,a1,b1,b0],col); faceN([b0,b1,c1,c0],col); faceN([c0,c1,a1,a0],col);
+}
 /* genTruss : renvoie {members:[[x0,y0,x1,y1,kind],...], maxY}. kind = 'chord' | 'web'. */
 function genTruss(type,S,H,n){
   n=Math.max(2,Math.round(n));
@@ -4820,10 +4975,13 @@ function buildFerme(){
     }
     if(!chords.length) return null;
     /* coupe PARALLÈLE à la membrure la plus ALIGNÉE avec le treillis (il se glisse dessous),
-       passant par l'AXE (nœud) → recouvrement dans la demi-membrure, sans ressortir ni pointe */
+       reportée sur la FACE de la membrure porteuse (côté treillis) → l'about BUTE contre la face,
+       pénètre juste un peu (pas jusqu'à l'axe) → aucun dépassement de l'autre côté */
     var c=chords[0].dir, bd=-2;
     chords.forEach(function(e){ var dp=Math.abs(dot2(e.dir,myDir)); if(dp>bd){bd=dp;c=e.dir;} });
-    return {c:c, pt:nodePt};
+    var perp=[-c[1],c[0]]; if(dot2(perp,myDir)<0) perp=[c[1],-c[0]];   /* normale de la porteuse, orientée vers le treillis */
+    var d=chordHalf*0.85;   /* about sur la face porteuse, ~15% de pénétration pour éviter tout jour */
+    return {c:c, pt:[nodePt[0]+perp[0]*d, nodePt[1]+perp[1]*d]};
   }
   /* barre mitrée : iA/iB = {c,pt} de coupe à chaque about (ou null → coupe droite) */
   function barMit(A,B, iA,iB, dH,dW,col,clampY0){
@@ -4871,8 +5029,10 @@ function buildFerme(){
   DIMS={w:S, h:maxY, d:secW, cy:maxY/2};
   return DIMS;
 }
-/* ───────────────────── CHARPENTE / TOITURE (2 pans, base rectangulaire) ───────────────────── */
-function buildToiture(){
+/* ───────────────────── CHARPENTE / TOITURE ─────────────────────
+   buildRoofRect() : toit 2 pans rectangulaire centré à l'origine (faîtage le long de X),
+   selon PTOIT.length × PTOIT.width. Réutilisé comme « aile » pour les formes L / T. */
+function buildRoofRect(){
   var mat=(RAIL_MATS.filter(function(m){return m.id===PTOIT.mat;})[0]||RAIL_MATS.filter(function(m){return m.id==='bois';})[0]||RAIL_MATS[0]).c;
   var chevCol=[mat[0]*0.92|0, mat[1]*0.92|0, mat[2]*0.92|0];
   var L=Math.max(1,PTOIT.length/100), W=Math.max(1,PTOIT.width/100);
@@ -4883,49 +5043,280 @@ function buildToiture(){
   var deb=Math.max(0,PTOIT.debord/100), ent=Math.max(0.5,PTOIT.fermeEntraxe/100);
   var nF=Math.max(2, Math.round(L/ent)+1);
   var sl=Math.hypot(W/2,H), nZ=H/sl, nY=(W/2)/sl;          /* normale sortante du versant +Z (z,y) */
-  var offP=fH/2+pH/2, offC=fH/2+pH+cH/2;                    /* décalages : panne sur arbalétrier, chevron sur panne */
+  var chTop=fH*1.4/2;                                      /* face SUP réelle de l'arbalétrier : buildFerme dessine la membrure en chH=secH*1.4 (chordH=0) */
+  var offP=chTop+pH/2, offC=chTop+pH+cH/2;                  /* décalages : panne POSÉE sur l'arbalétrier, chevron sur panne */
+  var supTh=(PTOIT.support==='sarking')?Math.max(0.06,(PTOIT.panneauEp||16)/100):cH;   /* épaisseur du support de couverture */
+  var offTopSup=chTop+pH+supTh;                            /* DESSUS du support (chevrons ou panneau) → base liteaux/couverture */
 
   var nInt=Math.max(0,Math.round(PTOIT.nInter||0));
-  /* 1) FERMES réparties (moteur Ferme réutilisé), dans le plan Z-Y à chaque X */
+  /* 1) FERMES réparties — générées par le configurateur Ferme (membrures d'un seul tenant, mitrées),
+     puis tournées de 90° (portée le long de Z) et posées à chaque X. */
   if(PTOIT.showFermes!==0){
-    var prof=genTruss(PTOIT.fermeType||'ferme1', W, H, Math.max(2,PTOIT.panels));
+    var svF={type:PFERME.type,span:PFERME.span,height:PFERME.height,panels:PFERME.panels,prof:PFERME.prof,secH:PFERME.secH,secW:PFERME.secW,chordH:PFERME.chordH,matChord:PFERME.matChord,matWeb:PFERME.matWeb,autoDim:PFERME.autoDim};
+    PFERME.type=PTOIT.fermeType||'ferme1'; PFERME.span=W*100; PFERME.height=H*100; PFERME.panels=Math.max(2,PTOIT.panels);
+    PFERME.prof='rect'; PFERME.secH=PTOIT.fermeH; PFERME.secW=PTOIT.fermeW; PFERME.chordH=0; PFERME.matChord=PTOIT.mat; PFERME.matWeb=PTOIT.mat; PFERME.autoDim=0;
+    var sFC2=FC, sD2=DIMS, sCP=CUR_POLY, sPT=POLY_TARGET; FC=[]; buildFerme(); var fFaces=FC;
+    FC=sFC2; DIMS=sD2; CUR_POLY=sCP; POLY_TARGET=sPT; for(var kf in svF) PFERME[kf]=svF[kf];
     for(var k=0;k<nF;k++){ var X=-L/2 + k*(L/(nF-1));
-      prof.members.forEach(function(m){ var isC=(m[4]==='chord');
-        memberZY(X, m[0]-W/2, m[1], m[2]-W/2, m[3], isC?fH:fH*0.8, fW, mat); }); }
+      fFaces.forEach(function(f){ FC.push({ verts:f.verts.map(function(p){return [X+p[2], p[1], -p[0]];}),
+        n:f.n?[f.n[2],f.n[1],-f.n[0]]:f.n, col:f.col, al:f.al, tex:f.tex, ifc:f.ifc, vn:f.vn?f.vn.map(function(m){return [m[2],m[1],-m[0]];}):null }); });
+      memberZY(X, 0, H, 0, H+offP+pH/2, fH, fW, mat);   /* prolongement du poinçon jusqu'au haut de la faîtière */
+    }
   }
-  /* 2) PANNES (le long de X) : faîtière, sablières, intermédiaires (+ symétrie). pL = longueur + débord de rive */
+  var ddz0=(W/2)/sl, ddy0=-H/sl;                                         /* direction descendante du versant */
+  /* 2) PANNES en dévers, TOUTES dans le plan du toit : sablière (f=0), intermédiaires, + faîtière. */
   var pL=L+2*Math.max(0,PTOIT.debordPanne/100);
   if(PTOIT.showPannes!==0){
-    box(0, H+offP, 0, pL, pH, pW, mat,1);                                    /* panne faîtière */
-    box(0, -pH/2, -W/2, pL, pH, pW, mat,1); box(0, -pH/2, W/2, pL, pH, pW, mat,1);   /* sablières (murs) */
-    var ddz0=(W/2)/sl, ddy0=-H/sl;                                          /* direction du versant (pour dévers) */
-    for(var s=-1;s<=1;s+=2){ for(var i=1;i<=nInt;i++){ var f=i/(nInt+1);
-      var pz=(W/2)*(1-f), pyv=H*f;                                          /* point sur le versant (depuis sablière) */
-      /* dévers : hauteur = normale au versant (s*nZ,nY), largeur = pente (s*ddz0,ddy0) */
-      beamXdev(pyv+nY*offP, s*(pz+nZ*offP), pL, pH,pW, s*nZ,nY, s*ddz0,ddy0, mat); } }
+    box(0, H+offP, 0, pL, pH, pW, mat,1);                                  /* panne faîtière (au faîte) */
+    var platS=(PTOIT.sablierePose==='plat');
+    for(var s=-1;s<=1;s+=2){ for(var i=0;i<=nInt;i++){ var f=i/(nInt+1);   /* i=0 → sablière, i≥1 → intermédiaires */
+      var pz=(W/2)*(1-f), pyv=H*f;
+      if(i===0 && platS){                                                 /* sablière posée À PLAT : dessous horizontal, DESSUS incliné logé dans le plan du chevronnage (affleure sur toute la largeur) */
+        var bw=pH, bh=pW;                                                 /* largeur couchée = pH, épaisseur (à l'égout) = pW */
+        var zi=W/2-bw/2, zo=W/2+bw/2;                                     /* bord intérieur (haut) / extérieur (bas) */
+        var und=function(z){ return (chTop+pH)/nY - (z-W/2)*(nZ/nY); };   /* dessous du chevronnage à l'aplomb (plan du versant) */
+        var yTi=und(zi), yTo=und(zo), yB=yTo-bh, xa=-pL/2, xb=pL/2;
+        boxV([ [xa,yB,s*zo],[xa,yTo,s*zo],[xa,yTi,s*zi],[xa,yB,s*zi],
+               [xb,yB,s*zo],[xb,yTo,s*zo],[xb,yTi,s*zi],[xb,yB,s*zi] ], mat);
+      }
+      else beamXdev(pyv+nY*offP, s*(pz+nZ*offP), pL, pH,pW, s*nZ,nY, s*ddz0,ddy0, mat); } }   /* dévers (dans le plan du toit) */
   }
-  /* 3) CHEVRONS le long des versants, répartis sur X, avec débord */
-  var ddz=(W/2)/sl, ddy=-H/sl;                                           /* direction descente le long du versant */
-  if(PTOIT.showChevrons!==0){
+  /* 3) SUPPORT DE COUVERTURE : chevrons OU panneaux isolants (sarking type Trilatte) */
+  if(PTOIT.showChevrons!==0 && PTOIT.support==='sarking'){
+    /* panneaux sarking : dalle continue par versant (égout+débord → faîte), épaisse, remplace les chevrons */
+    var tS=supTh, offTop=offTopSup, ezp=W/2+ddz0*deb, eyp=ddy0*deb, x0p=-L/2, x1p=L/2;
+    var fTopP=1+(nZ*offTop)/ezp;                    /* prolonge le panneau jusqu'à l'axe faîtier (z=0) */
+    var pcol=[224,218,201], ucol=[236,232,222];   /* âme isolante / sous-face claire (finition intérieure) */
+    for(var sp=-1;sp<=1;sp+=2){ function PP(f,o){ var z=ezp*(1-f), y=eyp+(H-eyp)*f; return [y+nY*o, sp*(z+nZ*o)]; }
+      var Et=PP(0,offTop),Eb=PP(0,offTop-tS),Rt=PP(fTopP,offTop),Rb=PP(fTopP,offTop-tS);
+      boxV([ [x0p,Eb[0],Eb[1]],[x0p,Et[0],Et[1]],[x1p,Et[0],Et[1]],[x1p,Eb[0],Eb[1]],
+             [x0p,Rb[0],Rb[1]],[x0p,Rt[0],Rt[1]],[x1p,Rt[0],Rt[1]],[x1p,Rb[0],Rb[1]] ], pcol);
+      /* sous-face (finition claire vue de l'intérieur) */
+      boxV([ [x0p,Eb[0]-0.001,Eb[1]],[x1p,Eb[0]-0.001,Eb[1]],[x1p,Rb[0]-0.001,Rb[1]],[x0p,Rb[0]-0.001,Rb[1]],
+             [x0p,Eb[0]-0.02,Eb[1]],[x1p,Eb[0]-0.02,Eb[1]],[x1p,Rb[0]-0.02,Rb[1]],[x0p,Rb[0]-0.02,Rb[1]] ], ucol); }
+  } else if(PTOIT.showChevrons!==0){
     var cEnt=Math.max(0.15,PTOIT.chevronEntraxe/100), nC=Math.max(2,Math.round(L/cEnt)+1);
-    var ez=W/2, ey=0;
     for(var s2=-1;s2<=1;s2+=2){ for(var c=0;c<nC;c++){ var X2=-L/2 + c*(L/(nC-1));
-      var z0=0+nZ*offC, y0=H+nY*offC;                                      /* haut (faîte) décalé */
-      var z1=ez+ddz*deb+nZ*offC, y1=ey+ddy*deb+nY*offC;                    /* bas (sablière + débord) décalé */
-      memberZY(X2, s2*z0, y0, s2*z1, y1, cH, cW, chevCol); } }
+      var bz=s2*(W/2 + ddz0*deb + nZ*offC), by=ddy0*deb + nY*offC;         /* about bas décalé (sur les pannes) */
+      chevron(X2, bz, by, cH, cW, s2*ddz0, ddy0, chevCol); } }
+  }
+  /* 3b) ISOLATION + FINITION INTÉRIEURE (sous les chevrons uniquement ; le sarking a déjà sa sous-face) */
+  if(PTOIT.showChevrons!==0 && PTOIT.support==='chevrons' && ((PTOIT.finInt&&PTOIT.finInt!=='aucune') || PTOIT.isolant)){
+    var ezf=W/2+ddz0*deb, eyf=ddy0*deb, x0f=-L/2, x1f=L/2, cTop=offC+cH/2, cBot=offC-cH/2;
+    function vslab(offMid,thk,col){ var fT=1+(nZ*offMid)/ezf;
+      for(var sf=-1;sf<=1;sf+=2){ function P(f,o){ var z=ezf*(1-f), y=eyf+(H-eyf)*f; return [y+nY*o, sf*(z+nZ*o)]; }
+        var Et=P(0,offMid+thk/2),Eb=P(0,offMid-thk/2),Rt=P(fT,offMid+thk/2),Rb=P(fT,offMid-thk/2);
+        boxV([ [x0f,Eb[0],Eb[1]],[x0f,Et[0],Et[1]],[x1f,Et[0],Et[1]],[x1f,Eb[0],Eb[1]],
+               [x0f,Rb[0],Rb[1]],[x0f,Rt[0],Rt[1]],[x1f,Rt[0],Rt[1]],[x1f,Rb[0],Rb[1]] ], col); } }
+    var finTop=cBot;
+    if(PTOIT.isolant){ var isoT=Math.max(0.06,(PTOIT.isolantEp||20)/100); vslab(cTop-isoT/2, isoT, [230,224,203]); finTop=cTop-isoT; }   /* isolant entre/sous chevrons */
+    if(PTOIT.finInt && PTOIT.finInt!=='aucune'){ var fT2=(PTOIT.finInt==='volige')?0.022:0.013, fc=(PTOIT.finInt==='volige')?[196,166,118]:[236,236,233];
+      vslab(finTop - fT2/2, fT2, fc); }                                    /* BA13 ou volige, en sous-face */
+  }
+  /* 4) ÉCHANTIGNOLES : coin sur l'arbalétrier, contre chaque panne intermédiaire, au droit de chaque ferme. */
+  if(PTOIT.chantignole && nInt>0){ for(var k2=0;k2<nF;k2++){ var Xc=-L/2+k2*(L/(nF-1));
+    for(var s3=-1;s3<=1;s3+=2){ for(var i2=1;i2<=nInt;i2++){ var f2=i2/(nInt+1), zc=(W/2)*(1-f2), yc=H*f2;
+      var P1y=yc+nY*(fH/2), P1z=s3*(zc+nZ*(fH/2)), wl=Math.max(pW*4,0.28), wh=Math.max(pH,0.14);
+      var P2y=P1y+ddy0*wl, P2z=P1z+s3*ddz0*wl, P3y=P1y+nY*wh, P3z=P1z+s3*nZ*wh;
+      wedgeX(Xc, [[P1y,P1z],[P2y,P2z],[P3y,P3z]], fW*1.15, mat); } } } }
+
+  /* 5) LITEAUX : le long de X, en dévers, sur les chevrons, espacés du liteaunage. */
+  if(PTOIT.lattis){
+    var liH=0.03, liW=0.05, offL=offTopSup+liH/2;                          /* liteaux posés sur le dessus du support */
+    var le=Math.max(0.12,(PTOIT.liteauEntraxe||33)/100), nL=Math.max(2,Math.round(sl/le));
+    for(var s4=-1;s4<=1;s4+=2){ for(var i3=0;i3<=nL;i3++){ var f3=i3/nL;    /* f3=0 égout … 1 faîte */
+      var lz=(W/2)*(1-f3), ly=H*f3;
+      beamXdev(ly+nY*offL, s4*(lz+nZ*offL), pL, liH,liW, s4*nZ,nY, s4*ddz0,ddy0, chevCol); } } }
+
+  /* 6) COUVERTURE : de l'égout (débord) au faîte + faîtage (tôle galva ou faîtière ronde). */
+  if(PTOIT.showCouv!==0 && PTOIT.couverture && PTOIT.couverture!=='aucune'){
+    var CVt={ ardoise:{c:[68,72,80],rib:'course',sp:0.115,rh:0.006,tw:0.22},   /* ardoise 32×22, pureau ~11,5 cm */
+              tuilePlate:{c:[138,70,58],rib:'course',sp:0.11,rh:0.012,tw:0.165}, /* tuile plate ~16×27, pureau ~11 cm */
+              tuileMeca:{c:[176,94,62],rib:'course',sp:0.24,rh:0.022,tw:0.25},
+              tuileCanal:{c:[190,120,82],rib:'roll',tw:0.16},
+              ondule:{c:[168,172,178],rib:'roll',tw:0.076,half:1},          /* tôle ondulée (petite onde) galva */
+              bacacier:{c:[118,122,130],rib:'seam',sp:0.50,rh:0.03,rw:0.02},
+              jointdebout:{c:[152,156,162],rib:'seam',sp:0.45,rh:0.05,rw:0.016} }[PTOIT.couverture]
+              ||{c:[176,94,62],rib:'course',sp:0.24,rh:0.02,tw:0.24};
+    var covT=0.02, offCov=offTopSup+0.03+covT/2, offR=offCov+covT/2;
+    var x0=-pL/2, x1=pL/2, ez=W/2+ddz0*deb, ey=ddy0*deb;                   /* bas de versant = égout + débord */
+    var slBot=Math.hypot(ez, H-ey);                                       /* longueur de rampant (débord→faîte) */
+    var fTop=1+(nZ*offCov)/ez, rz0=ez*(1-fTop), ryB=ey+(H-ey)*fTop;       /* prolonge la couverture jusqu'à l'axe faîtier (z=0) */
+    function pane(s){
+      function P(z,y,o){ return [z+s*nZ*o, y+nY*o]; }
+      var Ea=P(s*ez,ey,offCov), Ra=P(s*rz0,ryB,offCov), Eb=P(s*ez,ey,offCov-covT), Rb=P(s*rz0,ryB,offCov-covT);
+      boxV([ [x0,Eb[1],Eb[0]],[x0,Ea[1],Ea[0]],[x1,Ea[1],Ea[0]],[x1,Eb[1],Eb[0]],
+             [x0,Rb[1],Rb[0]],[x0,Ra[1],Ra[0]],[x1,Ra[1],Ra[0]],[x1,Rb[1],Rb[0]] ], CVt.c); }
+    function tile(sc,f0,f1,offB,rise,th,col,xa,xb){                        /* tuile [xa,xb], talon relevé (escalier) */
+      function P(f,o){ var z=ez*(1-f), y=ey+(H-ey)*f; return [y+nY*o, sc*(z+nZ*o)]; }
+      var Bt=P(f0, offB+rise), Bb=P(f0, offB+rise-th), Ht=P(f1, offB), Hb=P(f1, offB-th);
+      boxV([ [xa,Bb[0],Bb[1]],[xa,Bt[0],Bt[1]],[xb,Bt[0],Bt[1]],[xb,Bb[0],Bb[1]],
+             [xa,Hb[0],Hb[1]],[xa,Ht[0],Ht[1]],[xb,Ht[0],Ht[1]],[xb,Hb[0],Hb[1]] ], col); }
+    function canalRoll(sc,xc,r,offB,col,fa,fb){                            /* demi-rond le long de la pente, de fa à fb (z mirroité par sc) */
+      var seg=6; function P(f,a){ var zb=ez*(1-f), yb=ey+(H-ey)*f, cz=sc*(zb+nZ*offB), cy=yb+nY*offB;
+        return [xc+Math.cos(a)*r, cy+Math.sin(a)*nY*r, cz+Math.sin(a)*sc*nZ*r]; }
+      for(var k=0;k<seg;k++){ var a0=Math.PI*k/seg, a1=Math.PI*(k+1)/seg; faceN([P(fa,a0),P(fb,a0),P(fb,a1),P(fa,a1)], col); } }
+    function shade(c,k){ return [Math.min(255,c[0]*k)|0, Math.min(255,c[1]*k)|0, Math.min(255,c[2]*k)|0]; }
+    for(var sc=-1;sc<=1;sc+=2){
+      pane(sc);
+      if(CVt.rib==='seam'){                                               /* nervures verticales (bac/joint debout) */
+        var nS=Math.max(2,Math.round(pL/CVt.sp));
+        for(var j=0;j<=nS;j++){ var Xr=x0 + j*(pL/nS);
+          memberZY(Xr, sc*(ez+nZ*offR), ey+nY*offR, 0, ryB+nY*offR, CVt.rh, CVt.rw, CVt.c); }
+      } else if(CVt.rib==='roll' && PTOIT.couverture==='ondule'){         /* tôle ondulée : petites ondes continues jointives */
+        var r=CVt.tw/2, nRo=Math.max(2,Math.round(pL/(2*r)));
+        for(var j2=0;j2<=nRo;j2++){ var Xr2=x0 + j2*(pL/nRo); canalRoll(sc, Xr2, r, offCov, CVt.c, 0, fTop); }
+      } else if(CVt.rib==='roll'){                                        /* tuiles CANAL : couvertures rondes espacées, en rangs (canal visible entre) */
+        var m=Math.max(0.16,CVt.tw), r=m*0.46, exF=Math.max(0.28, m*2.0)/slBot;
+        var nC=Math.max(1,Math.ceil(fTop/exF)), nCols=Math.ceil(pL/m)+1;
+        if(nC*nCols>700){ var kk=Math.sqrt(nC*nCols/700); m*=kk; r=m*0.46; exF=Math.max(0.28,m*2.0)/slBot; nC=Math.max(1,Math.ceil(fTop/exF)); nCols=Math.ceil(pL/m)+1; }
+        for(var cc=0;cc<nCols;cc++){ var xc=x0 + cc*m + m*0.5; if(xc>x1+0.02) break;
+          for(var rr2=0;rr2<nC;rr2++){ var f0=rr2*exF, f1=Math.min(fTop, f0+exF*0.92); if(f0>=fTop) break;   /* léger jour = joint de rang */
+            canalRoll(sc, xc, r, offCov+r*0.15, CVt.c, f0, f1); } }
+      } else {                                                            /* tuiles plates/méca/ardoise : pose au choix */
+        var pose=PTOIT.pose||'entier';
+        var expoF=Math.max(0.02, CVt.sp/slBot)*(pose==='developpe'?1.5:1);
+        var nR=Math.max(2,Math.ceil(fTop/expoF)), th=CVt.rh, rise=th*0.9;
+        var tw=CVt.tw||0.24; if(nR*(pL/tw) > 800) tw*=(nR*(pL/tw))/800;    /* garde-fou perf */
+        var jg=(pose==='clairevoie')? tw*0.35 : 0.012;                     /* claire-voie : joints ouverts */
+        for(var i4=0;i4<nR;i4++){ var f0=i4*expoF, f1=Math.min(fTop, f0+expoF*1.95); if(f0>=fTop) break;
+          var seed=((i4+1)*2654435761)>>>0;
+          var stag=(pose==='brouillee')? (((seed>>>8)%1000)/1000)*tw : (i4%2)*tw*0.5;   /* brouillée : décalage aléatoire */
+          var tx=x0-stag;
+          while(tx<x1-0.02){ seed=(seed*1103515245+12345)>>>0; var rnd=(seed>>>16)/65536;
+            var twv=(pose==='brouillee')? tw*(0.7+rnd*0.6) : tw;           /* brouillée : largeurs variées */
+            var xa=Math.max(x0,tx), xb=Math.min(x1,tx+twv-jg);
+            if(xb-xa>0.03) tile(sc, f0,f1, offCov, rise, th, CVt.c, xa,xb);
+            tx+=twv; } }
+      }
+    }
+    /* Faîtage au faîte, le long de X */
+    if(PTOIT.faitage && PTOIT.faitage!=='aucune'){
+      var cyR=ryB+nY*offCov, slopeR=H/(W/2);   /* faîte de la couverture + pente (dy/dz) */
+      if(PTOIT.faitage==='galva'){                                        /* capot plié : pans PARALLÈLES à la pente, épaisseur fermée */
+        var fcol=[182,185,190], cw=0.22, lift=0.04, tk=0.03, yA=cyR+lift, yE=yA-cw*slopeR;   /* pente pan = pente toit */
+        faceN([[x0,yA,0],[x1,yA,0],[x1,yE,cw],[x0,yE,cw]], fcol);                         /* dessus +Z */
+        faceN([[x0,yA,0],[x0,yE,-cw],[x1,yE,-cw],[x1,yA,0]], fcol);                       /* dessus -Z */
+        faceN([[x0,yA-tk,0],[x0,yE-tk,cw],[x1,yE-tk,cw],[x1,yA-tk,0]], fcol);             /* dessous +Z */
+        faceN([[x0,yA-tk,0],[x1,yA-tk,0],[x1,yE-tk,-cw],[x0,yE-tk,-cw]], fcol);           /* dessous -Z */
+        faceN([[x0,yE,cw],[x1,yE,cw],[x1,yE-tk,cw],[x0,yE-tk,cw]], fcol);                 /* rive basse +Z */
+        faceN([[x0,yE,-cw],[x0,yE-tk,-cw],[x1,yE-tk,-cw],[x1,yE,-cw]], fcol);             /* rive basse -Z */
+        faceN([[x0,yA,0],[x0,yE,cw],[x0,yE-tk,cw],[x0,yA-tk,0]], fcol);                   /* about pignon x0 +Z */
+        faceN([[x0,yA,0],[x0,yA-tk,0],[x0,yE-tk,-cw],[x0,yE,-cw]], fcol);                 /* about pignon x0 -Z */
+        faceN([[x1,yA,0],[x1,yA-tk,0],[x1,yE-tk,cw],[x1,yE,cw]], fcol);                   /* about pignon x1 +Z */
+        faceN([[x1,yA,0],[x1,yE,-cw],[x1,yE-tk,-cw],[x1,yA-tk,0]], fcol);                 /* about pignon x1 -Z */
+      } else if(PTOIT.couverture==='tuileCanal'){                          /* faîtière DEMI-RONDE — tuile canal uniquement */
+        var fcol2=shade(CVt.c,1.04), rr=0.13, tt=0.022, seg2=8, cyC=cyR+0.03;
+        var ftw=0.34, nft=Math.max(1,Math.round((x1-x0)/ftw)), stp=(x1-x0)/nft, ovl=stp*0.30;
+        function S(x,r,a){ return [x, cyC+Math.sin(a)*r, Math.cos(a)*r]; }
+        for(var t2=0;t2<nft;t2++){ var xa=x0+t2*stp, xb=xa+stp+ovl, rAo=rr*1.16, rBo=rr, rAi=rAo-tt, rBi=rBo-tt;
+          for(var k2=0;k2<seg2;k2++){ var b0=Math.PI*k2/seg2, b1=Math.PI*(k2+1)/seg2;
+            faceN([S(xa,rAo,b0),S(xb,rBo,b0),S(xb,rBo,b1),S(xa,rAo,b1)], fcol2);   /* paroi extérieure */
+            faceN([S(xa,rAi,b1),S(xb,rBi,b1),S(xb,rBi,b0),S(xa,rAi,b0)], fcol2);   /* paroi intérieure */
+            faceN([S(xa,rAo,b0),S(xa,rAi,b0),S(xa,rAi,b1),S(xa,rAo,b1)], fcol2); } /* couronne d'embase (épaisseur en tête) */
+          faceN([S(xa,rAo,0),S(xa,rAi,0),S(xb,rBi,0),S(xb,rBo,0)], fcol2);         /* rive basse +Z */
+          faceN([S(xa,rAo,Math.PI),S(xb,rBo,Math.PI),S(xb,rBi,Math.PI),S(xa,rAi,Math.PI)], fcol2);  /* rive basse -Z */
+        }
+      } else {                                                            /* faîtière ANGULAIRE (à emboîtement) — tuiles méca/plates, ardoise */
+        var fc3=shade(CVt.c,1.06), cw3=0.16, lift3=0.03, tk3=0.025, yA3=cyR+lift3, yE3=yA3-cw3*slopeR;
+        faceN([[x0,yA3,0],[x1,yA3,0],[x1,yE3,cw3],[x0,yE3,cw3]], fc3);
+        faceN([[x0,yA3,0],[x0,yE3,-cw3],[x1,yE3,-cw3],[x1,yA3,0]], fc3);
+        faceN([[x0,yA3-tk3,0],[x0,yE3-tk3,cw3],[x1,yE3-tk3,cw3],[x1,yA3-tk3,0]], fc3);
+        faceN([[x0,yA3-tk3,0],[x1,yA3-tk3,0],[x1,yE3-tk3,-cw3],[x0,yE3-tk3,-cw3]], fc3);
+        faceN([[x0,yE3,cw3],[x1,yE3,cw3],[x1,yE3-tk3,cw3],[x0,yE3-tk3,cw3]], fc3);
+        faceN([[x0,yE3,-cw3],[x0,yE3-tk3,-cw3],[x1,yE3-tk3,-cw3],[x1,yE3,-cw3]], fc3);
+      }
+    }
   }
 
-  /* 4) CHANTIGNOLES : cale sous chaque panne intermédiaire au droit de chaque ferme */
-  if(PTOIT.chantignole && nInt>0){ for(var k2=0;k2<nF;k2++){ var Xc=-L/2+k2*(L/(nF-1));
-    for(var s3=-1;s3<=1;s3+=2){ for(var i2=1;i2<=nInt;i2++){ var f2=i2/(nInt+1), cz=(W/2)*(1-f2), cy=H*f2;
-      box(Xc, cy+nY*(fH/2), s3*(cz+nZ*(fH/2)), fW*1.1, pH*0.7, pW*1.2, mat,1); } } } }
+  /* 7) GOUTTIÈRES à l'égout de chaque versant. Rampantes (havraise/nantaise) intégrées dans le plan du toit ;
+     pendantes (demi-ronde/carrée/moulurée) suspendues au bord de l'égout. Remontées au niveau de la couverture. */
+  if(PTOIT.gouttiere && PTOIT.gouttiere!=='aucune'){
+    var goC=(offC+cH/2+0.03+0.01);                                        /* niveau de la couverture (≈ offCov) */
+    var gx0=-pL/2, gx1=pL/2, gt=PTOIT.gouttiere, ramp=(gt==='havraise'||gt==='nantaise');
+    var gcol={zinc:[168,172,178],cuivre:[172,108,66],alu:[188,190,194],pvc:[212,212,206]}[PTOIT.goutMat]||[168,172,178];
+    var gp;
+    if(gt==='demironde'){ gp=[]; var r=0.07,N=6; for(var gk=0;gk<=N;gk++){ var ga=Math.PI+Math.PI*gk/N; gp.push([Math.cos(ga)*r, Math.sin(ga)*r]); } }
+    else if(gt==='carree') gp=[[-0.06,0.01],[-0.06,-0.085],[0.06,-0.085],[0.06,0.01]];
+    else if(gt==='moulure') gp=[[-0.075,0],[-0.075,-0.045],[-0.05,-0.055],[-0.05,-0.095],[0.05,-0.095],[0.05,-0.055],[0.075,-0.03],[0.075,0]];
+    else if(gt==='nantaise') gp=[[-0.03,0.05],[-0.03,0],[0.13,0],[0.13,0.07],[0.11,0.085]];              /* fond sur le toit, joue avant relevée + ourlet */
+    else gp=[[-0.03,0.05],[-0.03,0],[-0.01,-0.035],[0.05,-0.055],[0.11,-0.035],[0.13,0],[0.13,0.07]];   /* havraise : demi-rond rampant */
+    for(var sg=-1;sg<=1;sg+=2){
+      var ez2=W/2+ddz0*deb, ey2=ddy0*deb;
+      var baseZ=sg*(ez2+nZ*goC), baseY=ey2+nY*goC;                          /* point d'égout sur la couverture */
+      var ddz=sg*ddz0, ddy=ddy0, nnz=sg*nZ, nny=nY;                         /* repère du versant : descente + normale */
+      function GP(q){ if(ramp) return [baseY+q[0]*ddy+q[1]*nny, baseZ+q[0]*ddz+q[1]*nnz];   /* dans le plan du toit */
+                      return [baseY-0.05+q[1], baseZ+sg*(q[0]+0.04)]; }     /* pendante : suspendue sous le bord */
+      for(var pk=0;pk<gp.length-1;pk++){ var A=GP(gp[pk]), B=GP(gp[pk+1]);
+        faceN([[gx0,A[0],A[1]],[gx1,A[0],A[1]],[gx1,B[0],B[1]],[gx0,B[0],B[1]]], gcol); }
+      var capA=gp.map(function(q){var P=GP(q);return [gx0,P[0],P[1]];});    /* talon (fond) à chaque extrémité */
+      var capB=gp.map(function(q){var P=GP(q);return [gx1,P[0],P[1]];});
+      faceN(capA, gcol); faceN(capB.slice().reverse(), gcol);
+    }
+  }
 
-  /* 5) LATTIS (optionnel) : liteaux le long de X sur les chevrons */
-  if(PTOIT.lattis){ var nL=Math.max(2,nInt+4);
-    for(var s4=-1;s4<=1;s4+=2){ for(var i3=0;i3<=nL;i3++){ var f3=i3/nL, lz=(W/2)*(1-f3)+ddz*deb*(1-f3), ly=H*f3;
-      box(0, ly+nY*(offC+cH/2), s4*(lz+nZ*(offC+cH/2)), L, 0.03, 0.04, chevCol,1); } } }
-
-  DIMS={w:Math.max(L,pL), h:H+offP, d:W+2*deb*(W/2)/sl, cy:(H+offP)/2};
+  var Htot=H+offTopSup+0.12;
+  DIMS={w:Math.max(L,pL), h:Htot, d:W+2*deb*(W/2)/sl, cy:Htot/2};
+  return DIMS;
+}
+/* captureRoofPart() : construit une aile rectangulaire (longueur×largeur cm) — part='cover' (couverture+faîtage+gouttières)
+   ou 'struct' (charpente : fermes, pannes, chevrons, échantignoles, liteaux) — et renvoie ses faces (état restauré). */
+function captureRoofPart(lenCm,widCm,part){
+  var sv={length:PTOIT.length,width:PTOIT.width,showCouv:PTOIT.showCouv,showFermes:PTOIT.showFermes,showPannes:PTOIT.showPannes,showChevrons:PTOIT.showChevrons,chantignole:PTOIT.chantignole,lattis:PTOIT.lattis,gouttiere:PTOIT.gouttiere};
+  PTOIT.length=lenCm; PTOIT.width=widCm;
+  if(part==='cover'){ PTOIT.showFermes=0; PTOIT.showPannes=0; PTOIT.showChevrons=0; PTOIT.chantignole=0; PTOIT.lattis=0; PTOIT.showCouv=sv.showCouv; }   /* respecte l'affichage couverture (masquable en L/T) */
+  else if(part==='clip'){ PTOIT.showFermes=0; PTOIT.chantignole=0; PTOIT.showCouv=0; PTOIT.gouttiere='aucune'; }                        /* pannes + chevrons/support + liteaux + finition → À DÉCOUPER à la noue */
+  else { PTOIT.showChevrons=0; PTOIT.showPannes=0; PTOIT.lattis=0; PTOIT.showCouv=0; PTOIT.gouttiere='aucune'; }                        /* struct : fermes + échantignoles, entiers */
+  var sFC=FC,sD=DIMS,sP=PRIMS; FC=[]; PRIMS=[]; buildRoofRect(); var f=FC;
+  FC=sFC; PRIMS=sP; DIMS=sD; for(var k in sv) PTOIT[k]=sv[k]; return f; }
+/* _xfRoof() : rotation autour de Y (rad) + translation (tx,tz) appliquées à des faces. */
+function _xfRoof(faces,ang,tx,tz){ var c=Math.cos(ang), s=Math.sin(ang);
+  function R(p){ return [p[0]*c-p[2]*s+tx, p[1], p[0]*s+p[2]*c+tz]; }
+  function Rn(n){ return n?[n[0]*c-n[2]*s, n[1], n[0]*s+n[2]*c]:n; }
+  return faces.map(function(f){ return {verts:f.verts.map(R), n:Rn(f.n), col:f.col, al:f.al, tex:f.tex, ifc:f.ifc, vn:f.vn?f.vn.map(Rn):null}; }); }
+/* beam3D() : poutre section carrée entre 2 points 3D (chevron de noue). */
+function beam3D(p0,p1,sec,col){ var ax=p1[0]-p0[0],ay=p1[1]-p0[1],az=p1[2]-p0[2],L=Math.hypot(ax,ay,az)||1; ax/=L;ay/=L;az/=L;
+  var ux=0,uy=1,uz=0; if(Math.abs(ay)>0.98){ux=1;uy=0;}
+  var e1=[ay*uz-az*uy, az*ux-ax*uz, ax*uy-ay*ux], e1n=Math.hypot(e1[0],e1[1],e1[2])||1; e1=[e1[0]/e1n,e1[1]/e1n,e1[2]/e1n];
+  var e2=[ay*e1[2]-az*e1[1], az*e1[0]-ax*e1[2], ax*e1[1]-ay*e1[0]], h=sec/2;
+  function C(p,a,b){ return [p[0]+e1[0]*a*h+e2[0]*b*h, p[1]+e1[1]*a*h+e2[1]*b*h, p[2]+e1[2]*a*h+e2[2]*b*h]; }
+  boxV([C(p0,-1,-1),C(p0,1,-1),C(p0,1,1),C(p0,-1,1), C(p1,-1,-1),C(p1,1,-1),C(p1,1,1),C(p1,-1,1)], col); }
+function buildToiture(){
+  var forme=PTOIT.forme||'rect';
+  if(forme==='rect') return buildRoofRect();
+  var W=Math.max(1,PTOIT.width/100), La=Math.max(1,PTOIT.length/100), Lb=Math.max(1,(PTOIT.length2||PTOIT.length)/100);
+  var pit=Math.max(5,Math.min(70,PTOIT.pente))*Math.PI/180, H=(W/2)*Math.tan(pit);
+  var col=(RAIL_MATS.filter(function(m){return m.id===PTOIT.mat;})[0]||RAIL_MATS.filter(function(m){return m.id==='bois';})[0]||RAIL_MATS[0]).c;
+  var tx=(forme==='L')?(La/2 - W/2):0, tz=Lb/2;                            /* aile secondaire : faîtage Z à X=tx, va vers +Z */
+  var mCov=captureRoofPart(PTOIT.length, PTOIT.width,'cover'),   mStr=captureRoofPart(PTOIT.length, PTOIT.width,'struct');
+  var mClip=captureRoofPart(PTOIT.length, PTOIT.width,'clip');
+  var sCov=_xfRoof(captureRoofPart(PTOIT.length2,PTOIT.width,'cover'), Math.PI/2, tx, tz);
+  var sStr=_xfRoof(captureRoofPart(PTOIT.length2,PTOIT.width,'struct'), Math.PI/2, tx, tz);
+  var sClip=_xfRoof(captureRoofPart(PTOIT.length2,PTOIT.width,'clip'), Math.PI/2, tx, tz);
+  /* Seule la COUVERTURE est découpée au plan de noue |x−tx| = z (pas de pénétration).
+     La CHARPENTE reste entière (les bois ne doivent pas être tranchés). */
+  var TL=0.05;
+  function clipHS(vs,g){ var o=[],n=vs.length; for(var i=0;i<n;i++){ var A=vs[i],B=vs[(i+1)%n],ga=g(A),gb=g(B);
+    if(ga>=0)o.push(A); if((ga>=0)!==(gb>=0)){ var t=ga/(ga-gb); o.push([A[0]+(B[0]-A[0])*t,A[1]+(B[1]-A[1])*t,A[2]+(B[2]-A[2])*t]); } } return o.length>=3?o:null; }
+  function clipF(f,gs){ var v=f.verts; for(var i=0;i<gs.length;i++){ v=clipHS(v,gs[i]); if(!v) return null; } return {verts:v,n:f.n,col:f.col,al:f.al,tex:f.tex,ifc:f.ifc,vn:null}; }
+  var gZp=function(p){return p[2]+TL;}, gZn=function(p){return -p[2]+TL;},
+      gR=function(p){return (p[0]-tx)-p[2]+TL;}, gL=function(p){return -(p[0]-tx)-p[2]+TL;},
+      gS1=function(p){return p[2]-(p[0]-tx)+TL;}, gS2=function(p){return p[2]+(p[0]-tx)+TL;};
+  var all=[];
+  mCov.forEach(function(f){ var a=clipF(f,[gZp,gR]); if(a)all.push(a); var b=clipF(f,[gZp,gL]); if(b)all.push(b); var c=clipF(f,[gZn]); if(c)all.push(c); });
+  sCov.forEach(function(f){ var s=clipF(f,[gS1,gS2]); if(s)all.push(s); });
+  mClip.forEach(function(f){ var a=clipF(f,[gZp,gR]); if(a)all.push(a); var b=clipF(f,[gZp,gL]); if(b)all.push(b); var c=clipF(f,[gZn]); if(c)all.push(c); });   /* chevrons/liteaux principaux coupés à la noue */
+  sClip.forEach(function(f){ var s=clipF(f,[gS1,gS2]); if(s)all.push(s); });                                                                                    /* chevrons/liteaux secondaires coupés à la noue */
+  mStr.forEach(function(f){ all.push(f); });                              /* fermes+pannes+échantignoles principaux entiers */
+  sStr.forEach(function(f){ all.push(f); });                              /* fermes+pannes+échantignoles secondaires entiers */
+  FC=all; PRIMS=[]; CUR_POLY=null; POLY_TARGET=null;
+  /* chevrons de NOUE : de l'angle rentrant (égout, y≈0) jusqu'à la jonction des faîtages (tx,0,H) */
+  var sec=Math.max(0.06,PTOIT.fermeH/100)*1.1;
+  if(forme==='T'){ beam3D([ W/2, 0.02, W/2],[tx,H,0], sec, col); beam3D([-W/2, 0.02, W/2],[tx,H,0], sec, col); }
+  else { beam3D([tx-W/2, 0.02, W/2],[tx,H,0], sec, col); }
+  var mnx=1e9,mny=1e9,mnz=1e9,mxx=-1e9,mxy=-1e9,mxz=-1e9;
+  FC.forEach(function(f){ for(var i=0;i<f.verts.length;i++){ var p=f.verts[i]; if(p[0]<mnx)mnx=p[0];if(p[1]<mny)mny=p[1];if(p[2]<mnz)mnz=p[2]; if(p[0]>mxx)mxx=p[0];if(p[1]>mxy)mxy=p[1];if(p[2]>mxz)mxz=p[2]; } });
+  DIMS={ w:Math.max(1,mxx-mnx), h:Math.max(1,mxy-mny), d:Math.max(1,mxz-mnz), cy:(mny+mxy)/2 };
   return DIMS;
 }
 function buildEscalier(){
@@ -6780,6 +7171,68 @@ function buildHangarUI(){
   buildObjUI(P, groups, buildHangarUI);
 }
 
+/* ============================================================================
+   SCÈNE — assemblage de configurations enregistrées (glisser-déposer).
+   Chaque instance = {mode, params, name, x,z (sol cm), y (hauteur cm), rotY (°)}.
+   instanceFaces() reconstruit l'objet via son builder puis translate/tourne ses faces. */
+var SCENE={ instances:[], sel:-1, decor:{sol:0,eau:0,arbres:0} };
+var SCN_KEY='BPO_SCENES_v1';
+function scnTree(x,z,gy,h){ var tc=[94,68,46], fc=[66,104,58];
+  box(x, gy+h*0.28, z, 0.14,h*0.56,0.14, tc,1);
+  for(var i=0;i<3;i++){ var s=(1-i*0.28)*h*0.6; box(x, gy+h*0.52+i*h*0.2, z, s, h*0.26, s, fc,1); } }
+function scnDecor(mnx,mny,mnz,mxx,mxy,mxz){
+  var D=SCENE.decor||{}, gy=Math.min(0,mny)-0.03;
+  var cx=(mnx+mxx)/2, cz=(mnz+mxz)/2, spx=Math.max(6,mxx-mnx), spz=Math.max(6,mxz-mnz), M=Math.max(spx,spz)*1.3+7;
+  if(D.sol!==0) faceN([[cx-M,gy,cz-M],[cx+M,gy,cz-M],[cx+M,gy,cz+M],[cx-M,gy,cz+M]],[120,150,94]);          /* prairie */
+  if(D.eau!==0){ var wz0=cz+spz/2+2.5, wy=gy+0.02; faceN([[cx-M,wy,wz0],[cx+M,wy,wz0],[cx+M,wy,wz0+M*0.85],[cx-M,wy,wz0+M*0.85]],[92,122,150]); }  /* plan d'eau */
+  if(D.arbres!==0){ var P=[[cx-spx/2-2.5,cz-spz/2-2.5],[cx+spx/2+2.5,cz-spz/2-3],[cx-spx/2-3,cz+spz/2+2],[cx+spx/2+3,cz+spz/2+2.5],[cx-M*0.55,cz-1],[cx+M*0.55,cz-3],[cx,cz-spz/2-4.5]];
+    P.forEach(function(p,i){ scnTree(p[0],p[1],gy, 3+(i%3)*0.9); }); }
+}
+function scnLoad(){ try{ return JSON.parse(localStorage.getItem(SCN_KEY))||[]; }catch(e){ return []; } }
+function scnStore(list){ try{ localStorage.setItem(SCN_KEY, JSON.stringify(list)); }catch(e){ alert('Sauvegarde impossible.'); } }
+function instanceFaces(inst){
+  var mode=inst.mode, pobj=paramObjFor(mode); if(!pobj) return [];
+  var bk={}; for(var kb in pobj) bk[kb]=pobj[kb];                                  /* sauvegarde des params du mode */
+  for(var kp in inst.params){ var v=inst.params[kp]; pobj[kp]=(v&&typeof v==='object')?JSON.parse(JSON.stringify(v)):v; }
+  var sMODE=MODE, sFC=FC, sPR=PRIMS, sPOLY=CUR_POLY, sPT=POLY_TARGET, sDIMS=DIMS;
+  MODE=mode; try{ build(); }catch(e){}
+  var faces=FC;
+  MODE=sMODE; FC=sFC; PRIMS=sPR; CUR_POLY=sPOLY; POLY_TARGET=sPT; DIMS=sDIMS;   /* restaure l'état courant */
+  for(var kr in bk) pobj[kr]=bk[kr];
+  var rot=((inst.rotY||0))*Math.PI/180, c=Math.cos(rot), s=Math.sin(rot);
+  var tx=(inst.x||0)/100, ty=(inst.y||0)/100, tz=(inst.z||0)/100;
+  function R(p){ return [p[0]*c - p[2]*s + tx, p[1]+ty, p[0]*s + p[2]*c + tz]; }
+  function Rn(n){ return n?[n[0]*c-n[2]*s, n[1], n[0]*s+n[2]*c]:n; }
+  return faces.map(function(f){ return { verts:f.verts.map(R), n:Rn(f.n), col:f.col, al:f.al, tex:f.tex, ifc:f.ifc,
+    vn:f.vn?f.vn.map(Rn):null }; });
+}
+function buildScene(){
+  var all=[]; (SCENE.instances||[]).forEach(function(inst){ var fs=instanceFaces(inst); for(var i=0;i<fs.length;i++) all.push(fs[i]); });
+  FC=all; PRIMS=[]; CUR_POLY=null; POLY_TARGET=null;
+  var mnx=1e9,mny=1e9,mnz=1e9,mxx=-1e9,mxy=-1e9,mxz=-1e9;
+  all.forEach(function(f){ for(var i=0;i<f.verts.length;i++){ var p=f.verts[i];
+    if(p[0]<mnx)mnx=p[0]; if(p[1]<mny)mny=p[1]; if(p[2]<mnz)mnz=p[2];
+    if(p[0]>mxx)mxx=p[0]; if(p[1]>mxy)mxy=p[1]; if(p[2]>mxz)mxz=p[2]; } });
+  if(!all.length){ mnx=mnz=mny=-1; mxx=mxz=mxy=1; }
+  DIMS={ w:Math.max(0.5,mxx-mnx), h:Math.max(0.5,mxy-mny), d:Math.max(0.5,mxz-mnz), cy:(mny+mxy)/2 };
+  if(all.length && SCENE.decor && (SCENE.decor.sol||SCENE.decor.eau||SCENE.decor.arbres)) scnDecor(mnx,mny,mnz,mxx,mxy,mxz);
+  return DIMS;
+}
+function scnAddInstance(cfg, x, z){
+  SCENE.instances.push({ cfgId:cfg.id, mode:cfg.mode, name:cfg.name, label:cfg.label||cfg.mode,
+    params:JSON.parse(JSON.stringify(cfg.params)), x:Math.round((x||0)*100), z:Math.round((z||0)*100), y:0, rotY:0 });
+  SCENE.sel=SCENE.instances.length-1;
+}
+function scnYbounds(inst){ var fs=instanceFaces(inst), mn=1e9, mx=-1e9; fs.forEach(function(f){ for(var i=0;i<f.verts.length;i++){ var y=f.verts[i][1]; if(y<mn)mn=y; if(y>mx)mx=y; } }); if(mn>mx){mn=0;mx=0;} return {mn:mn,mx:mx}; }
+function scnSnapY(idx){ var inst=SCENE.instances[idx]; if(!inst) return; var base=scnYbounds(inst).mn;   /* accrochage : pose la base sur le niveau le plus haut des autres (ou le sol) */
+  var target=0; SCENE.instances.forEach(function(o,j){ if(j!==idx){ var t=scnYbounds(o).mx; if(t>target) target=t; } });
+  inst.y += Math.round((target-base)*100); }
+function scnDup(idx){ var s=SCENE.instances[idx]; if(!s) return; var c=JSON.parse(JSON.stringify(s)); c.x+=60; SCENE.instances.splice(idx+1,0,c); SCENE.sel=idx+1; }
+/* Resynchronise chaque instance sur la dernière version de sa config (par id, sinon par type+nom) et rattache l'id. */
+function scnResync(){ var cfgs=cfgLoad(); (SCENE.instances||[]).forEach(function(inst){
+  var c=cfgs.filter(function(x){return x.id===inst.cfgId;})[0] || cfgs.filter(function(x){return x.mode===inst.mode && x.name===inst.name;})[0];
+  if(c){ inst.cfgId=c.id; inst.mode=c.mode; inst.label=c.label||c.mode; inst.params=JSON.parse(JSON.stringify(c.params)); } }); }
+
 function build(){
   FC=[]; PRIMS=[]; CUR_POLY=null; _IFCTAG=null;
   /* texture courante par défaut = celle de l'élément "forme" (objets simples).
@@ -6799,6 +7252,7 @@ function build(){
   else if(MODE==='escalier'){ r=buildEscalier(); }
   else if(MODE==='ferme'){ r=buildFerme(); }
   else if(MODE==='toiture'){ r=buildToiture(); }
+  else if(MODE==='scene'){ r=buildScene(); }
   else if(MODE==='porte'){ r=buildPorte(); }
   else if(MODE==='fenetre'){ r=buildFenetre(); }
   else if(MODE==='technal'){ r=buildTechnal(); }
@@ -6838,7 +7292,7 @@ function fitCamera(dims){
   var f=2.14;
   var dist=R*f/0.78;
   /* bornes raisonnables (cohérentes avec le zoom molette/pinch) */
-  CAM.r = Math.max(0.6, Math.min(200, dist));
+  CAM.r = Math.max(0.6, Math.min(3000, dist));
   CAM.ty = h/2;     /* vise le centre en hauteur */
   CAM.tx=0; CAM.tz=0;
 }
@@ -7905,8 +8359,12 @@ cv.addEventListener('mousedown', function(e){ if(EDGE_DRAG||BEND_DRAG){ EDGE_DRA
     if(dC<15){ GZ='free'; GZ_G0=unprojGround(mx,my,cv.width,cv.height,getCam()); return; }
     if(SG.xt && _distSeg(mx,my,SG.cx,SG.cy,SG.xt.x,SG.xt.y)<12){ GZ='x'; GZ_G0=unprojGround(mx,my,cv.width,cv.height,getCam()); return; }
     if(SG.zt && _distSeg(mx,my,SG.cx,SG.cy,SG.zt.x,SG.zt.y)<12){ GZ='z'; GZ_G0=unprojGround(mx,my,cv.width,cv.height,getCam()); return; }
-  } if(ERASE_MODE && typeof CTX!=='undefined' && CTX.on){ var re=cv.getBoundingClientRect(); var idx=pickContext(e.clientX-re.left, e.clientY-re.top); if(idx>=0){ CTX.buildings.splice(idx,1); build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; } if(ROT_MODE && SITE.on){ var rr=cv.getBoundingClientRect(), cc=proj(getCam(),[0,0,0],cv.width,cv.height); RLAST=Math.atan2((e.clientY-rr.top)-(cc?cc.y:cv.height/2),(e.clientX-rr.left)-(cc?cc.x:cv.width/2)); RDRAG=true; return; } if(MOVE_SITE && SITE.on){ var rr=cv.getBoundingClientRect(); SITE_G0=unprojGround(e.clientX-rr.left,e.clientY-rr.top,cv.width,cv.height,getCam()); SDRAG=true; return; } if(e.shiftKey){PAN=true;}else{drag=true;} lastX=e.clientX; lastY=e.clientY; });
-window.addEventListener('mouseup', function(){ drag=false; PAN=false; SDRAG=false; RDRAG=false; GZ=null; if(GIZ_DRAG>=0){ GIZ_DRAG=-1; DIRTY=true; } });
+  } if(ERASE_MODE && typeof CTX!=='undefined' && CTX.on){ var re=cv.getBoundingClientRect(); var idx=pickContext(e.clientX-re.left, e.clientY-re.top); if(idx>=0){ CTX.buildings.splice(idx,1); build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; } if(ROT_MODE && SITE.on){ var rr=cv.getBoundingClientRect(), cc=proj(getCam(),[0,0,0],cv.width,cv.height); RLAST=Math.atan2((e.clientY-rr.top)-(cc?cc.y:cv.height/2),(e.clientX-rr.left)-(cc?cc.x:cv.width/2)); RDRAG=true; return; } if(MOVE_SITE && SITE.on){ var rr=cv.getBoundingClientRect(); SITE_G0=unprojGround(e.clientX-rr.left,e.clientY-rr.top,cv.width,cv.height,getCam()); SDRAG=true; return; }
+  if(MODE==='scene' && SCENE.instances.length && !e.shiftKey){ var rc2=cv.getBoundingClientRect(), mx2=e.clientX-rc2.left, my2=e.clientY-rc2.top, cam2=getCam(), bst=-1, bdd=32*32;
+    for(var si=0;si<SCENE.instances.length;si++){ var it2=SCENE.instances[si], sp=proj(cam2,[it2.x/100,(it2.y/100)||0,it2.z/100],cv.width,cv.height); if(sp){ var dd2=(sp.x-mx2)*(sp.x-mx2)+(sp.y-my2)*(sp.y-my2); if(dd2<bdd){bdd=dd2;bst=si;} } }
+    if(bst>=0){ SCENE.sel=bst; SCN_DRAG={g0:unprojGround(mx2,my2,cv.width,cv.height,cam2)}; if(typeof buildSceneUI==='function') buildSceneUI(); DIRTY=true; return; } }
+  if(e.shiftKey){PAN=true;}else{drag=true;} lastX=e.clientX; lastY=e.clientY; });
+window.addEventListener('mouseup', function(){ drag=false; PAN=false; SDRAG=false; RDRAG=false; GZ=null; if(GIZ_DRAG>=0){ GIZ_DRAG=-1; DIRTY=true; } if(SCN_DRAG){ SCN_DRAG=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } });
 window.addEventListener('mousemove', function(e){
   if(BEND_DRAG && CUR_POLY){ var rB=cv.getBoundingClientRect(), gB=unprojGround(e.clientX-rB.left,e.clientY-rB.top,cv.width,cv.height,getCam());
     if(gB){ var off=(gB[0]-BEND_DRAG.mx)*BEND_DRAG.nx+(gB[1]-BEND_DRAG.mz)*BEND_DRAG.nz;
@@ -7923,6 +8381,8 @@ window.addEventListener('mousemove', function(e){
     var g=unprojGround(mx,my,cv.width,cv.height,getCam()); if(g&&GZ_G0){ var dx=g[0]-GZ_G0[0], dz=g[1]-GZ_G0[1]; if(GZ==='x') SITE.posX+=dx; else if(GZ==='z') SITE.posZ+=dz; else { SITE.posX+=dx; SITE.posZ+=dz; } GZ_G0=g; build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; }
   if(RDRAG){ var rr=cv.getBoundingClientRect(), cc=proj(getCam(),[0,0,0],cv.width,cv.height), a=Math.atan2((e.clientY-rr.top)-(cc?cc.y:cv.height/2),(e.clientX-rr.left)-(cc?cc.x:cv.width/2)); var dA=a-RLAST; RLAST=a; SITE.north+=dA*180/Math.PI; build(); DIRTY=true; if(WGL.gActive) WGL.render(); return; }
   if(SDRAG){ var rr=cv.getBoundingClientRect(), g=unprojGround(e.clientX-rr.left,e.clientY-rr.top,cv.width,cv.height,getCam()); if(g&&SITE_G0){ SITE.posX+=(g[0]-SITE_G0[0]); SITE.posZ+=(g[1]-SITE_G0[1]); SITE_G0=g; build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; }
+  if(SCN_DRAG){ var rs2=cv.getBoundingClientRect(), g2=unprojGround(e.clientX-rs2.left,e.clientY-rs2.top,cv.width,cv.height,getCam());
+    if(g2&&SCN_DRAG.g0){ var it4=SCENE.instances[SCENE.sel]; if(it4){ it4.x+=Math.round((g2[0]-SCN_DRAG.g0[0])*100); it4.z+=Math.round((g2[1]-SCN_DRAG.g0[1])*100); } SCN_DRAG.g0=g2; build(); DIRTY=true; } return; }
   if(PAN){ panView(e.clientX-lastX, e.clientY-lastY); lastX=e.clientX; lastY=e.clientY; DIRTY=true; if(WGL.gActive) WGL.render(); return; }
   if(!drag) return;
   CAM.th -= (e.clientX-lastX)*0.007;              /* rotation horizontale */
@@ -7932,8 +8392,20 @@ window.addEventListener('mousemove', function(e){
   DIRTY=true;
 });
 cv.addEventListener('wheel', function(e){
-  CAM.r = Math.max(0.4, Math.min(200, CAM.r*(1+e.deltaY*0.0012))); DIRTY=true; /* zoom proportionnel */
-  e.preventDefault();
+  var oldR=CAM.r, newR=Math.max(0.4, Math.min(3000, oldR*(1+e.deltaY*0.0012)));   /* zoom proportionnel */
+  if(newR!==oldR){
+    /* zoom vers le curseur : on garde fixe le point du monde sous la souris (plan focal).
+       pivot = cible + r·(sx·droite + sy·haut) → cible += (rAncien−rNouveau)·(sx·droite+sy·haut). */
+    var rect=cv.getBoundingClientRect(), W=cv.width, H=cv.height;
+    var px=(e.clientX-rect.left)*W/(rect.width||W), py=(e.clientY-rect.top)*H/(rect.height||H);
+    var cam=getCam(), sx=(px-W/2)*(W/H)/(2.14*(W/2)), sy=(H/2-py)/(2.14*(H/2)), d=oldR-newR;
+    CAM.tx=(CAM.tx||0)+d*(cam.right[0]*sx+cam.up[0]*sy);
+    CAM.ty=(CAM.ty||0)+d*(cam.right[1]*sx+cam.up[1]*sy);
+    CAM.tz=(CAM.tz||0)+d*(cam.right[2]*sx+cam.up[2]*sy);
+    CAM.r=newR;
+    if(WGL&&WGL.cam){ WGL.cam.tx=CAM.tx; WGL.cam.ty=CAM.ty; WGL.cam.tz=CAM.tz; WGL.cam.r=CAM.r; }
+  }
+  DIRTY=true; e.preventDefault();
 }, {passive:false});
 /* bouton Recentrer : recadre la caméra du moteur actif sur l'objet courant */
 var _rc=document.getElementById('recenter');
@@ -7942,6 +8414,13 @@ if(_rc) _rc.onclick=function(){
   else if(WGL.gActive){ WGL.cam.r=Math.hypot(DIMS.w,DIMS.h,DIMS.d)*1.15; WGL.cam.ty=DIMS.h/2; WGL.render(); }
   else { fitCamera(DIMS); DIRTY=true; }
 };
+/* Bouton Scène (indépendant du catalogue) : entre dans le mode assemblage */
+var _sb=document.getElementById('sceneBtn');
+if(_sb) _sb.onclick=function(){ BRANCH='generiques';
+  var tabs=document.querySelectorAll('.tab'); for(var i=0;i<tabs.length;i++) tabs[i].classList.toggle('on', tabs[i].getAttribute('data-branch')==='generiques');
+  if(typeof scnResync==='function') scnResync();          /* les instances reprennent la dernière version des configs */
+  selectCat('scene'); buildCatList(); refreshView();
+  _sb.style.borderColor='var(--am)'; };
 
 /* --- Édition d'une cote au DOUBLE-CLIC ---
    On cherche la cote la plus proche du curseur ; si elle est assez proche, on
@@ -8039,7 +8518,7 @@ cv.addEventListener('touchmove', function(e){
   if(e.touches.length===2){
     var dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
     var p=Math.sqrt(dx*dx+dy*dy);
-    CAM.r = Math.max(0.4, Math.min(200, CAM.r*(1-(p-lastPinch)*0.006)));
+    CAM.r = Math.max(0.4, Math.min(3000, CAM.r*(1-(p-lastPinch)*0.006)));
     lastPinch=p;
   }
 }, {passive:false});
@@ -8440,6 +8919,51 @@ function buildImmeubleUI(){
     d.appendChild(hint); target.appendChild(d);
   }
 
+  /* éditeur générique par CÔTÉ (base = tous étages) + surcharge par ÉTAGE (sélecteur Tous/RDC/Ét.N) */
+  function sideFloorEditor(o){
+    var unit=o.unit||'cm', step=o.step||5, maxIdx=o.roof?PIM.nFloors:(PIM.nFloors-1);
+    function flab(idx){ return idx===PIM.nFloors?'Toit':(idx===0?'RDC':('Étage '+idx)); }
+    toggle(o.title, o.detailKey);
+    if(!PIM[o.detailKey] || PIM.shape==='libre'){ if(PIM.shape==='libre'){ var w=document.createElement('div'); w.className='exp-note'; w.textContent='Détail par côté indisponible en polygone libre.'; target.appendChild(w); } slider(o.uniLabel,unit,o.uniKey,o.uniMin,o.uniMax,step); return; }
+    var pp=outlinePoly(PIM.shape, PIM.len/100, PIM.wid/100, PIM.lx/100, PIM.lz/100, PIM.lcorner||'tr',(PIM.tb||600)/100,(PIM.tw||800)/100, PIM.ux/100, PIM.uz/100);
+    if(!pp||pp.length<3) pp=outlinePoly('rect',PIM.len/100,PIM.wid/100);
+    if(o.note){ var nn=document.createElement('div'); nn.className='exp-note'; nn.style.margin='4px 0 2px'; nn.textContent=o.note; target.appendChild(nn); }
+    if(IMM_UI[o.selKey]==null) IMM_UI[o.selKey]=-1;
+    if(IMM_UI[o.selKey]>maxIdx) IMM_UI[o.selKey]=-1;
+    var sel=IMM_UI[o.selKey];
+    var lbl=document.createElement('div'); lbl.className='exp-note'; lbl.style.margin='4px 0 2px'; lbl.textContent='Niveau à régler :'; target.appendChild(lbl);
+    var grid=document.createElement('div'); grid.className='mat-grid';
+    function fbtn(lab,idx){ var b=document.createElement('button'); b.textContent=lab; if(sel===idx) b.className='on';
+      b.onclick=function(){ IMM_UI[o.selKey]=idx; buildImmeubleUI(); }; grid.appendChild(b); }
+    fbtn('Tous',-1); for(var f=0; f<PIM.nFloors; f++) fbtn(f===0?'RDC':('Ét.'+f), f);
+    if(o.roof) fbtn('Toit', PIM.nFloors);
+    target.appendChild(grid);
+    if(!PIM[o.base]) PIM[o.base]=[];
+    if(sel>=0){
+      var hasOvr=PIM[o.floors] && PIM[o.floors][sel];
+      var rb=document.createElement('div'); rb.className='wall-toggle';
+      rb.innerHTML='<span>'+flab(sel)+(hasOvr?' — valeurs propres':' — hérite de « Tous »')+'</span><button>Réinit.</button>';
+      rb.querySelector('button').onclick=function(){ if(PIM[o.floors]) delete PIM[o.floors][sel]; build(); updateDims(); buildImmeubleUI(); };
+      target.appendChild(rb);
+    }
+    function _dir(a,b){ var nx=b[1]-a[1], nz=-(b[0]-a[0]); if(Math.abs(nx)>=Math.abs(nz)) return nx>0?'(→ E)':'(← O)'; return nz>0?'(↓ S)':'(↑ N)'; }
+    for(var si=0; si<pp.length; si++){ (function(e){
+      var baseV=(PIM[o.base][e]!=null)?PIM[o.base][e]:0;
+      var ovr=(sel>=0 && PIM[o.floors] && PIM[o.floors][sel] && PIM[o.floors][sel][e]!=null)?PIM[o.floors][sel][e]:null;
+      var val=(sel<0)?baseV:(ovr!=null?ovr:baseV);
+      var lab='Côté '+(e+1)+' '+_dir(pp[e],pp[(e+1)%pp.length]);
+      var fld=document.createElement('div'); fld.className='fld';
+      fld.innerHTML='<div class="fh"><label>'+lab+' <span class="u">'+unit+'</span></label><input type="number" min="'+o.sideMin+'" max="'+o.sideMax+'" step="'+step+'" value="'+val+'"></div><input type="range" min="'+o.sideMin+'" max="'+o.sideMax+'" step="'+step+'" value="'+val+'">';
+      var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
+      function ap(v){ v=Math.max(o.sideMin,Math.min(o.sideMax,v));
+        if(sel<0){ PIM[o.base][e]=v; }
+        else { if(!PIM[o.floors]) PIM[o.floors]={}; if(!PIM[o.floors][sel]) PIM[o.floors][sel]=[]; PIM[o.floors][sel][e]=v; }
+        num.value=v; rng.value=v; build(); updateDims(); }
+      rng.oninput=function(){ ap(+rng.value); }; num.oninput=function(){ if(!isNaN(parseFloat(num.value))) ap(parseFloat(num.value)); };
+      target.appendChild(fld);
+    })(si); }
+  }
+
   group('Emprise');
   slider('Longueur (X)','cm','len',300,10000,10);
   slider('Largeur (Z)','cm','wid',300,10000,10);
@@ -8452,7 +8976,7 @@ function buildImmeubleUI(){
 
   group('Niveaux');
   (function(){
-    var min=1,max=40,val=PIM.nFloors;
+    var min=1,max=200,val=PIM.nFloors;
     var fld=document.createElement('div'); fld.className='fld';
     fld.innerHTML='<div class="fh"><label>Nombre de niveaux</label><input type="number" min="'+min+'" max="'+max+'" step="1" value="'+val+'"></div><input type="range" min="'+min+'" max="'+max+'" step="1" value="'+val+'">';
     var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
@@ -8485,36 +9009,10 @@ function buildImmeubleUI(){
   group('Dalles');
   toggle('Épaisseur automatique','dalleAuto');
   if(!PIM.dalleAuto) slider('Épaisseur dalle','cm','dalleEp',12,60,1);
-  if(PIM.shape!=='libre') toggle('Débord par côté','debordSide');
-  if(PIM.debordSide && PIM.shape!=='libre'){
-    var dp=outlinePoly(PIM.shape, PIM.len/100, PIM.wid/100, PIM.lx/100, PIM.lz/100, PIM.lcorner||'tr', (PIM.tb||600)/100,(PIM.tw||800)/100, PIM.ux/100, PIM.uz/100);
-    if(!dp||dp.length<3) dp=outlinePoly('rect',PIM.len/100,PIM.wid/100);
-    if(!PIM.debordSides) PIM.debordSides=[];
-    function _dir(a,b){ var nx=b[1]-a[1], nz=-(b[0]-a[0]); if(Math.abs(nx)>=Math.abs(nz)) return nx>0?'(→ droite)':'(← gauche)'; return nz>0?'(↓ bas)':'(↑ haut)'; }
-    for(var si=0; si<dp.length; si++){ (function(idx){
-      if(PIM.debordSides[idx]==null) PIM.debordSides[idx]=0;
-      var val=PIM.debordSides[idx], lab='Côté '+(idx+1)+' '+_dir(dp[idx],dp[(idx+1)%dp.length]);
-      var fld=document.createElement('div'); fld.className='fld';
-      fld.innerHTML='<div class="fh"><label>'+lab+' <span class="u">cm</span></label><input type="number" min="0" max="500" step="5" value="'+val+'"></div><input type="range" min="0" max="500" step="5" value="'+val+'">';
-      var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
-      function ap(v){ v=Math.max(0,Math.min(500,v)); PIM.debordSides[idx]=v; num.value=v; rng.value=v; build(); updateDims(); }
-      rng.oninput=function(){ ap(+rng.value); }; num.oninput=function(){ if(!isNaN(parseFloat(num.value))) ap(parseFloat(num.value)); };
-      target.appendChild(fld);
-    })(si); }
-  } else {
-  toggle('Débord par niveau','debordNiv');
-  if(!PIM.debordNiv){ slider('Débord (toutes dalles)','cm','debord',0,500,5); }
-  else { for(var di=0;di<PIM.nFloors;di++){ (function(idx){
-      if(!PIM.debords) PIM.debords=[]; if(PIM.debords[idx]==null) PIM.debords[idx]=0;
-      var val=PIM.debords[idx], lab=(idx===0)?'RDC':('Étage '+idx);
-      var fld=document.createElement('div'); fld.className='fld';
-      fld.innerHTML='<div class="fh"><label>'+lab+' <span class="u">cm</span></label><input type="number" min="0" max="500" step="5" value="'+val+'"></div><input type="range" min="0" max="500" step="5" value="'+val+'">';
-      var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
-      function ap(v){ v=Math.max(0,Math.min(500,v)); PIM.debords[idx]=v; num.value=v; rng.value=v; build(); updateDims(); }
-      rng.oninput=function(){ ap(+rng.value); }; num.oninput=function(){ if(!isNaN(parseFloat(num.value))) ap(parseFloat(num.value)); };
-      target.appendChild(fld);
-    })(di); } }
-  }
+  sideFloorEditor({ title:'Débord détaillé (par côté & étage)', detailKey:'debDetail',
+    uniLabel:'Débord (toutes dalles)', uniKey:'debord', uniMin:0, uniMax:2000,
+    base:'debordSides', floors:'debordFloors', selKey:'debSel', sideMin:0, sideMax:2000, roof:true,
+    note:'Débord de dalle par côté (cm). « Tous » = base ; choisir un niveau (dont « Toit ») pour le surcharger.' });
 
   group('Trame de poteaux');
   toggle('Trame automatique','gridAuto');
@@ -8553,25 +9051,18 @@ function buildImmeubleUI(){
     }
     facSel('Nord','facN'); facSel('Sud','facS'); facSel('Est','facE'); facSel('Ouest','facO');
   })();
-  if(PIM.shape!=='libre') toggle('Décalage façade par côté','facSide');
-  if(PIM.facSide && PIM.shape!=='libre'){
-    var fp=outlinePoly(PIM.shape, PIM.len/100, PIM.wid/100, PIM.lx/100, PIM.lz/100, PIM.lcorner||'tr', (PIM.tb||600)/100,(PIM.tw||800)/100, PIM.ux/100, PIM.uz/100);
-    if(!fp||fp.length<3) fp=outlinePoly('rect',PIM.len/100,PIM.wid/100);
-    if(!PIM.facSides) PIM.facSides=[];
-    (function(){ var note=document.createElement('div'); note.className='exp-note'; note.style.margin='4px 0 2px'; note.textContent='+ = avancée · − = retrait (dalle en surplomb)'; target.appendChild(note); })();
-    var fRetMin=-Math.max(50, Math.round(Math.min(PIM.len,PIM.wid)*0.9));   /* retrait max ≈ 90 % du plus petit côté */
-    function _fdir(a,b){ var nx=b[1]-a[1], nz=-(b[0]-a[0]); if(Math.abs(nx)>=Math.abs(nz)) return nx>0?'(→ droite)':'(← gauche)'; return nz>0?'(↓ bas)':'(↑ haut)'; }
-    for(var fi=0; fi<fp.length; fi++){ (function(idx){
-      if(PIM.facSides[idx]==null) PIM.facSides[idx]=0;
-      var val=PIM.facSides[idx], lab='Côté '+(idx+1)+' '+_fdir(fp[idx],fp[(idx+1)%fp.length]);
-      var fld=document.createElement('div'); fld.className='fld';
-      fld.innerHTML='<div class="fh"><label>'+lab+' <span class="u">cm</span></label><input type="number" min="'+fRetMin+'" max="500" step="5" value="'+val+'"></div><input type="range" min="'+fRetMin+'" max="500" step="5" value="'+val+'">';
-      var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
-      function ap(v){ v=Math.max(fRetMin,Math.min(500,v)); PIM.facSides[idx]=v; num.value=v; rng.value=v; build(); updateDims(); }
-      rng.oninput=function(){ ap(+rng.value); }; num.oninput=function(){ if(!isNaN(parseFloat(num.value))) ap(parseFloat(num.value)); };
-      target.appendChild(fld);
-    })(fi); }
-  }
+  (function(){ var fRetMin=-Math.max(50, Math.round(Math.min(PIM.len,PIM.wid)*0.9));   /* retrait max ≈ 90 % du plus petit côté */
+    sideFloorEditor({ title:'Retrait / avancée façade (par côté & étage)', detailKey:'facDetail',
+      uniLabel:'Avancée façade (devant dalles)', uniKey:'facOffset', uniMin:0, uniMax:5000,
+      base:'facSides', floors:'facFloors', selKey:'facSel', sideMin:fRetMin, sideMax:5000,
+      note:'+ = avancée · − = retrait (cm). Jusqu’à 50 m pour l’IGH. « Tous » = base ; surcharge par étage.' });
+  })();
+  sideFloorEditor({ title:'Inclinaison façade (par côté & étage)', detailKey:'incDetail',
+    uniLabel:'Inclinaison (toutes façades)', uniKey:'facInc', uniMin:-30, uniMax:30, unit:'°', step:1,
+    base:'incSides', floors:'incFloors', selKey:'incSel', sideMin:-30, sideMax:30,
+    note:'Fruit de façade : + = tête vers l’extérieur, − = vers l’intérieur. « Tous » = base ; surcharge par étage.' });
+  toggle('Mur rideau d’un seul tenant (sol → sommet)','incMono');
+  (function(){ var n=document.createElement('div'); n.className='exp-note'; n.textContent=PIM.incMono?'Plan incliné continu : une seule pente par côté (surcharges d’étage ignorées).':'Chaque étage s’incline depuis sa propre base (décrochement par plancher).'; target.appendChild(n); })();
 
   (function(){
     var l=document.createElement('div'); l.className='exp-note'; l.style.margin='6px 0 2px'; l.textContent='Teinte du vitrage'; target.appendChild(l);
@@ -8586,7 +9077,6 @@ function buildImmeubleUI(){
   slider('Entraxe traverses (rideau)','cm','travEntr',40,400,5);
   slider('Allège (murs)','cm','allege',0,200,5);
   slider('Hauteur fenêtre (murs)','cm','winH',40,300,5);
-  if(!PIM.facSide) slider('Avancée façade (devant dalles)','cm','facOffset',0,500,5);
 
 
   group('Retraits (attique)');
@@ -9015,10 +9505,11 @@ function fermeNote(){
 function buildToitureUI(){
   buildObjUI(PTOIT, [
     {title:'Plan & pente', fields:[
+      {type:'choice',key:'forme',options:[{id:'rect',l:'Rectangle'},{id:'L',l:'En L'},{id:'T',l:'En T'}]},
       {type:'slider',label:'Longueur (faîtage)',unit:'cm',key:'length',min:200,max:3000,step:10},
       {type:'slider',label:'Largeur (portée)',unit:'cm',key:'width',min:200,max:2000,step:10},
       {type:'slider',label:'Pente',unit:'°',key:'pente',min:5,max:70,step:1}
-    ]},
+    ].concat(PTOIT.forme!=='rect'?[{type:'slider',label:'Longueur aile secondaire',unit:'cm',key:'length2',min:200,max:3000,step:10}]:[])},
     {title:'Fermes', fields:[
       {type:'choice',key:'fermeType',options:[{id:'ferme1',l:'Ferme classique'},{id:'ferme1inv',l:'Diagonales inv'},{id:'fermeTriangulee',l:'Triangulée'},{id:'fermePolonceau',l:'Polonceau'}]},
       {type:'slider',label:'Entraxe des fermes',unit:'cm',key:'fermeEntraxe',min:100,max:800,step:10},
@@ -9027,28 +9518,120 @@ function buildToitureUI(){
       {type:'slider',label:'Membrure — largeur',unit:'cm',key:'fermeW',min:5,max:24,step:1}
     ]},
     {title:'Pannes', fields:[
+      {type:'choice',key:'sablierePose',options:[{id:'devers',l:'Sablière en dévers'},{id:'plat',l:'Sablière à plat'}]},
       {type:'slider',label:'Pannes intermédiaires / versant',unit:'',key:'nInter',min:0,max:4,step:1},
       {type:'slider',label:'Panne — hauteur',unit:'cm',key:'panneH',min:8,max:36,step:1},
       {type:'slider',label:'Panne — largeur',unit:'cm',key:'panneW',min:5,max:20,step:1},
       {type:'slider',label:'Débord de pannes (rive)',unit:'cm',key:'debordPanne',min:0,max:150,step:5}
     ]},
-    {title:'Chevrons', fields:[
+    {title:'Support de couverture', fields:[
+      {type:'choice',key:'support',options:[{id:'chevrons',l:'Chevrons'},{id:'sarking',l:'Panneaux isolants (sarking)'}]}
+    ].concat(PTOIT.support==='sarking'?[
+      {type:'slider',label:'Épaisseur panneau',unit:'cm',key:'panneauEp',min:8,max:26,step:1}
+    ]:[
       {type:'slider',label:'Entraxe chevrons',unit:'cm',key:'chevronEntraxe',min:30,max:90,step:2},
       {type:'slider',label:'Chevron — hauteur',unit:'cm',key:'chevronH',min:4,max:16,step:1},
-      {type:'slider',label:'Chevron — largeur',unit:'cm',key:'chevronW',min:3,max:12,step:1},
-      {type:'slider',label:'Débord de toit',unit:'cm',key:'debord',min:0,max:120,step:5}
-    ]},
+      {type:'slider',label:'Chevron — largeur',unit:'cm',key:'chevronW',min:3,max:12,step:1}
+    ]).concat([{type:'slider',label:'Débord de toit',unit:'cm',key:'debord',min:0,max:120,step:5}])},
     {title:'Détails', fields:[
-      {type:'choice',key:'chantignole',options:[{id:1,l:'Chantignoles : oui'},{id:0,l:'Non'}]},
-      {type:'choice',key:'lattis',options:[{id:0,l:'Sans lattis'},{id:1,l:'Avec lattis'}]}
-    ]},
+      {type:'choice',key:'chantignole',options:[{id:1,l:'Échantignoles : oui'},{id:0,l:'Non'}]},
+      {type:'choice',key:'lattis',options:[{id:0,l:'Sans liteaux'},{id:1,l:'Avec liteaux'}]}
+    ].concat(PTOIT.lattis?[{type:'slider',label:'Liteaunage (entraxe)',unit:'cm',key:'liteauEntraxe',min:15,max:50,step:1}]:[])},
+    {title:'Isolation & finition intérieure', fields:[
+      {type:'choice',key:'finInt',options:[{id:'aucune',l:'Charpente apparente'},{id:'ba13',l:'BA13 (plâtre)'},{id:'volige',l:'Volige (bois)'}]},
+      {type:'choice',key:'isolant',options:[{id:0,l:'Sans isolant'},{id:1,l:'Avec isolant'}]}
+    ].concat(PTOIT.isolant?[{type:'slider',label:'Épaisseur isolant',unit:'cm',key:'isolantEp',min:8,max:40,step:2}]:[])},
+    {title:'Couverture', fields:[
+      {type:'choice',key:'couverture',options:COUV_TYPES},
+      {type:'choice',key:'faitage',options:[{id:'tuile',l:'Faîtière ronde'},{id:'galva',l:'Tôle faîtière galva'},{id:'aucune',l:'Sans faîtage'}]}
+    ].concat((PTOIT.couverture==='ardoise'||PTOIT.couverture==='tuilePlate'||PTOIT.couverture==='tuileMeca')?[
+      {type:'choice',key:'pose',options:[{id:'entier',l:'Pureau entier'},{id:'clairevoie',l:'Claire-voie'},{id:'developpe',l:'Pureau développé'},{id:'brouillee',l:'Brouillée'}]}
+    ]:[])},
+    {title:'Gouttières', fields:[
+      {type:'choice',key:'gouttiere',options:GOUT_TYPES}
+    ].concat(PTOIT.gouttiere!=='aucune'?[
+      {type:'choice',key:'goutMat',options:[{id:'zinc',l:'Zinc'},{id:'cuivre',l:'Cuivre'},{id:'alu',l:'Alu'},{id:'pvc',l:'PVC'}]}
+    ]:[])},
     {title:'Affichage (calques)', fields:[
       {type:'choice',key:'showFermes',options:[{id:1,l:'Fermes ✓'},{id:0,l:'Fermes masquées'}]},
       {type:'choice',key:'showPannes',options:[{id:1,l:'Pannes ✓'},{id:0,l:'Pannes masquées'}]},
-      {type:'choice',key:'showChevrons',options:[{id:1,l:'Chevrons ✓'},{id:0,l:'Chevrons masqués'}]}
+      {type:'choice',key:'showChevrons',options:[{id:1,l:'Chevrons ✓'},{id:0,l:'Chevrons masqués'}]},
+      {type:'choice',key:'showCouv',options:[{id:1,l:'Couverture ✓'},{id:0,l:'Couverture masquée'}]}
     ]},
-    {title:'Matériau', fields:[{type:'mat',key:'mat',mats:RAIL_MATS}]}
+    {title:'Matériau (bois)', fields:[{type:'mat',key:'mat',mats:RAIL_MATS}]}
   ], buildToitureUI);
+}
+/* ── SCÈNE : glisser-déposer de configs + gizmo curseurs + sauvegarde ── */
+var SCN_DROP_BOUND=false, SCN_DRAG_CFG=null, SCN_DRAG=null;
+function scnBindDrop(){ if(SCN_DROP_BOUND) return; var vp=document.getElementById('vp'); if(!vp) return; SCN_DROP_BOUND=true;
+  vp.addEventListener('dragover', function(e){ if(MODE==='scene'){ e.preventDefault(); } });
+  vp.addEventListener('drop', function(e){ if(MODE!=='scene') return; e.preventDefault();
+    var id=(e.dataTransfer&&e.dataTransfer.getData('text/plain'))||''; var cfg=SCN_DRAG_CFG||cfgLoad().filter(function(c){return c.id===id;})[0]; SCN_DRAG_CFG=null; if(!cfg) return;
+    var r=cv.getBoundingClientRect(), g=unprojGround(e.clientX-r.left, e.clientY-r.top, cv.width, cv.height, getCam());
+    scnAddInstance(cfg, g?g[0]:0, g?g[1]:0); refreshView(); });
+}
+function scnLive(){ build(); DIRTY=true; if(WGL.gActive) WGL.render(); }
+function buildSceneUI(){
+  var host=document.getElementById('params'); if(!host) return; host.innerHTML=''; scnBindDrop();
+  var configs=cfgLoad().filter(function(c){ return paramObjFor(c.mode); });
+  var wrap=document.createElement('div'); wrap.className='fld';
+  wrap.innerHTML='<div class="fh"><span>Scène — assemblage</span></div>'+
+    '<div style="font-size:10.5px;color:var(--dm);line-height:1.5;margin:2px 0 8px;">Glissez une configuration dans la vue pour l\'ajouter (elle se pose au sol au point visé), ou cliquez « + ». Sélectionnez un élément puis réglez Position / Hauteur / Rotation.</div>'+
+    '<div class="slbl" style="font-size:10px;margin:4px 0 3px;">Configurations disponibles</div>'+
+    (configs.length?'<div id="scnCfgs" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;"></div>'
+      :'<div style="font-size:10px;color:var(--dm);margin-bottom:8px;">Aucune config. Enregistrez d\'abord un objet (murs, toiture, escalier…) via 💾.</div>')+
+    '<div class="slbl" style="font-size:10px;margin:6px 0 3px;">Éléments de la scène ('+SCENE.instances.length+')</div><div id="scnList"></div>'+
+    '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Décor (mode Réaliste)</div>'+
+    '<div id="scnDecorRow" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;"></div>'+
+    '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Scènes enregistrées</div><div id="scnSaved"></div>'+
+    '<button id="scnSave" style="width:100%;margin-top:6px;font-size:11px;padding:6px;">💾 Enregistrer cette scène</button>';
+  host.appendChild(wrap);
+  var cc=document.getElementById('scnCfgs');
+  if(cc) configs.forEach(function(cfg){ var b=document.createElement('button'); b.textContent='+ '+cfg.name; b.title='Glisser dans la vue — '+(cfg.label||cfg.mode);
+    b.draggable=true; b.style.cssText='font-size:10px;padding:3px 7px;cursor:grab;background:var(--p2);border:1px solid var(--ln);border-radius:5px;color:var(--tx);';
+    b.addEventListener('dragstart',function(e){ SCN_DRAG_CFG=cfg; if(e.dataTransfer) e.dataTransfer.setData('text/plain', cfg.id); });
+    b.onclick=function(){ scnAddInstance(cfg,0,0); refreshView(); };
+    cc.appendChild(b); });
+  var ls=document.getElementById('scnList');
+  if(ls){ if(!SCENE.instances.length) ls.innerHTML='<div style="font-size:10px;color:var(--dm);">Vide — glissez une config ci-dessus dans la vue.</div>';
+    SCENE.instances.forEach(function(inst,idx){
+      var d=document.createElement('div'); d.style.cssText='border:1px solid '+(idx===SCENE.sel?'var(--am)':'var(--ln)')+';border-radius:6px;padding:6px 7px;margin-bottom:6px;';
+      var hd=document.createElement('div'); hd.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;';
+      hd.innerHTML='<b style="font-size:11px;cursor:pointer;">'+cfgEsc(inst.name)+'<span style="font-weight:400;color:var(--dm);"> · '+cfgEsc(inst.label||inst.mode)+'</span></b>';
+      var grp=document.createElement('span');
+      function mkb(t,ti,fn){ var b=document.createElement('button'); b.textContent=t; b.title=ti; b.style.cssText='font-size:11px;padding:1px 6px;margin-left:3px;'; b.onclick=fn; return b; }
+      grp.appendChild(mkb('⤓','Poser sur le niveau dessous (accrochage)',function(){ scnSnapY(idx); refreshView(); }));
+      grp.appendChild(mkb('⧉','Dupliquer',function(){ scnDup(idx); refreshView(); }));
+      grp.appendChild(mkb('✕','Supprimer',function(){ SCENE.instances.splice(idx,1); if(SCENE.sel>=SCENE.instances.length)SCENE.sel=SCENE.instances.length-1; refreshView(); }));
+      hd.appendChild(grp); hd.firstChild.onclick=function(){ SCENE.sel=idx; refreshView(); };
+      d.appendChild(hd);
+      function sl(lbl,key,mn,mx,st){ var row=document.createElement('div'); row.style.cssText='display:flex;align-items:center;gap:6px;margin:2px 0;';
+        var l=document.createElement('span'); l.textContent=lbl; l.style.cssText='font-size:9.5px;color:var(--dm);width:64px;';
+        var r=document.createElement('input'); r.type='range'; r.min=mn; r.max=mx; r.step=st; r.value=inst[key]||0; r.style.flex='1';
+        var v=document.createElement('span'); v.textContent=Math.round(inst[key]||0); v.style.cssText='font-size:9.5px;width:34px;text-align:right;';
+        r.oninput=function(){ inst[key]=+r.value; v.textContent=Math.round(inst[key]); SCENE.sel=idx; scnLive(); };
+        row.appendChild(l); row.appendChild(r); row.appendChild(v); return row; }
+      d.appendChild(sl('Position X','x',-3000,3000,10));
+      d.appendChild(sl('Position Z','z',-3000,3000,10));
+      d.appendChild(sl('Hauteur Y','y',-500,2000,5));
+      d.appendChild(sl('Rotation°','rotY',0,360,5));
+      ls.appendChild(d);
+    });
+  }
+  var sv=document.getElementById('scnSaved'), scenes=scnLoad();
+  if(sv){ if(!scenes.length) sv.innerHTML='<div style="font-size:10px;color:var(--dm);">Aucune scène enregistrée.</div>';
+    scenes.forEach(function(sc){ var row=document.createElement('div'); row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:4px;margin:2px 0;';
+      var nm=document.createElement('span'); nm.textContent=sc.name+' ('+(sc.instances?sc.instances.length:0)+')'; nm.style.cssText='font-size:10px;cursor:pointer;flex:1;';
+      nm.onclick=function(){ SCENE.instances=JSON.parse(JSON.stringify(sc.instances||[])); SCENE.sel=SCENE.instances.length-1; scnResync(); refreshView(); };
+      var xb=document.createElement('button'); xb.textContent='✕'; xb.style.cssText='font-size:10px;'; xb.onclick=function(){ scnStore(scnLoad().filter(function(x){return x.id!==sc.id;})); buildSceneUI(); };
+      row.appendChild(nm); row.appendChild(xb); sv.appendChild(row); }); }
+  var dr=document.getElementById('scnDecorRow');
+  if(dr){ [['sol','Sol'],['eau','Eau'],['arbres','Arbres']].forEach(function(o){ var on=SCENE.decor[o[0]]!==0;
+    var b=document.createElement('button'); b.textContent=(on?'✓ ':'')+o[1]; b.style.cssText='font-size:10px;padding:3px 9px;border-radius:5px;border:1px solid '+(on?'var(--am)':'var(--ln)')+';background:'+(on?'rgba(255,138,61,.12)':'var(--p2)')+';color:var(--tx);cursor:pointer;';
+      b.onclick=function(){ SCENE.decor[o[0]]=on?0:1; buildSceneUI(); scnLive(); }; dr.appendChild(b); }); }
+  var sb=document.getElementById('scnSave');
+  if(sb) sb.onclick=function(){ if(!SCENE.instances.length){ alert('Scène vide.'); return; } var n=prompt('Nom de la scène :','Ma scène'); if(n===null)return;
+    var list=scnLoad(); list.unshift({ id:'s'+Date.now().toString(36), name:(n.trim()||'Ma scène'), instances:JSON.parse(JSON.stringify(SCENE.instances)), date:new Date().toLocaleDateString('fr-FR') }); scnStore(list); buildSceneUI(); };
 }
 /* UI de la Porte */
 function buildPorteUI(){
@@ -9227,11 +9810,9 @@ function buildRenderRow(){
   var host=document.getElementById('render-row');
   host.innerHTML='';
   (function(){ var rhd=document.getElementById('render-hd'), rsec=document.getElementById('render-sec');
-    if(rhd&&rsec&&!rhd._bound){ rhd._bound=true;
-      if(UI_COLLAPSE['Moteur rendu']===undefined) UI_COLLAPSE['Moteur rendu']=true;
-      var pr=function(){ var c=UI_COLLAPSE['Moteur rendu']; rsec.style.display=c?'none':''; rhd.classList.toggle('open',!c); };
-      pr(); rhd.onclick=function(){ UI_COLLAPSE['Moteur rendu']=!UI_COLLAPSE['Moteur rendu']; pr(); };
-    } })();
+    /* Moteur/mode de rendu déplacé dans la barre du viewer → on masque ce groupe du panneau */
+    if(rhd) rhd.style.display='none'; if(rsec) rsec.style.display='none';
+  })();
   /* --- bascule moteur GLOBAL (Logiciel / WebGL), au-dessus des modes --- */
   var er=document.getElementById('engine-row');
   if(!er){
@@ -9654,7 +10235,7 @@ function buildCatList(){
   if(SQ){
     var res=[];
     if(BRANCH==='generiques'){
-      CATALOG.generiques.cats.forEach(function(c){ if(c.id!=='objets' && _norm(c.label).indexOf(SQ)>=0) res.push({ic:ICONS[c.id]||'•',lab:c.label,fn:function(){ selectCat(c.id); _clearSearch(); buildCatList(); refreshView(); }}); });
+      CATALOG.generiques.cats.forEach(function(c){ if(c.id!=='objets' && c.id!=='scene' && _norm(c.label).indexOf(SQ)>=0) res.push({ic:ICONS[c.id]||'•',lab:c.label,fn:function(){ selectCat(c.id); _clearSearch(); buildCatList(); refreshView(); }}); });
       FURNLIB.forEach(function(fam){
         if(_norm(fam.label).indexOf(SQ)>=0) res.push({ic:ICONS[fam.id]||'•',lab:fam.label,fn:function(){ CAT='objets'; FURN.fam=fam.id; _clearSearch(); buildCatList(); }});
         var its=(fam.items||[]).slice(); if(fam.groups) fam.groups.forEach(function(g){ its=its.concat(g.items||[]); });
@@ -9698,6 +10279,7 @@ function buildCatList(){
   }
   _cats.forEach(function(cat){ renderCat(cat, host); });
   function renderCat(cat, target){
+    if(cat.id==='scene') return;   /* la Scène a son propre bouton (sous Recentrer), pas dans la liste */
     target = target || host;
     var b=document.createElement('button');
     b.innerHTML = '<span class="cat-lbl"><span class="cat-ic">'+(ICONS[cat.id]||cat.icon||'•')+'</span>'+cat.label+'</span>' + (cat.status==='todo' ? '<span class="badge">·</span>' : '');
@@ -9822,7 +10404,7 @@ function refreshView(){
   var finLbl=finElems ? finElems.previousElementSibling : null;
   /* Le bloc Finition (RAL + matieres) est desormais disponible pour TOUS les objets
      parametriques. Seuls les produits fabricants (rendu WebGL) n'en ont pas. */
-  var showFinish = ready;   /* Finition disponible pour TOUS les objets prets, fabricants inclus */
+  var showFinish = ready && cat.id!=='scene';   /* Finition pour tous les objets prets, sauf la Scène (assemblage) */
   [finElems, finPanel, finLbl].forEach(function(el){ if(el) el.style.display = showFinish ? '' : 'none'; });
 
   /* message placeholder pour les catégories à venir */
@@ -9855,6 +10437,7 @@ function refreshView(){
       else if(cat.id==='escalier'){ buildEscalierUI(); }
       else if(cat.id==='ferme'){ buildFermeUI(); }
       else if(cat.id==='toiture'){ buildToitureUI(); }
+      else if(cat.id==='scene'){ buildSceneUI(); }
       else if(cat.id==='porte'){ buildPorteUI(); }
       else if(cat.id==='fenetre'){ buildFenetreUI(); }
       else if(cat.id==='technal'){ buildTechnalUI(); }
@@ -10470,6 +11053,19 @@ refreshView();        /* affiche l'objet courant */
     var el=document.getElementById(p[0]); if(!el) return; el.value=PLOT.cart[p[1]]||'';
     el.oninput=function(){ PLOT.cart[p[1]]=el.value; cartStore(); plotRefresh(); };
   });
+  /* LOGO du cartouche : import (redimensionné pour le localStorage), position, taille */
+  var lgIn=document.getElementById('cfLogo'), lgClr=document.getElementById('cfLogoClear'), lgH=document.getElementById('cfLogoH');
+  if(lgH) lgH.value=PLOT.cart.logoH||16;
+  if(lgIn) lgIn.onchange=function(){ var f=lgIn.files&&lgIn.files[0]; if(!f) return;
+    var rd=new FileReader(); rd.onload=function(){ var im=new Image(); im.onload=function(){
+      var mx=340, sc=Math.min(1, mx/Math.max(im.width,im.height)), w=Math.round(im.width*sc), h=Math.round(im.height*sc);
+      var cv2=document.createElement('canvas'); cv2.width=w; cv2.height=h; cv2.getContext('2d').drawImage(im,0,0,w,h);
+      try{ PLOT.cart.logo=cv2.toDataURL('image/png'); }catch(e){ PLOT.cart.logo=rd.result; }
+      PLOT.cart.logoAR=(h>0?w/h:1)||1;
+      cartStore(); plotRefresh();
+    }; im.src=rd.result; }; rd.readAsDataURL(f); };
+  if(lgClr) lgClr.onclick=function(){ PLOT.cart.logo=''; if(lgIn) lgIn.value=''; cartStore(); plotRefresh(); };
+  if(lgH) lgH.oninput=function(){ PLOT.cart.logoH=parseInt(lgH.value,10)||16; cartStore(); plotRefresh(); };
   /* cotes noires + taille : recapture automatique des vues concernées */
   var cc=document.getElementById('plotCotes'), csz=document.getElementById('plotCoteSize'), cds=document.getElementById('plotCoteDist'), _coteT=null;
   if(cc) cc.onchange=function(){ PLOT.showCotes=cc.checked; plotRecaptureAll(); };
@@ -10804,6 +11400,37 @@ function translateDOM(){
 }
 /* Easter egg : hommage à Graphisoft / ArchiCAD quand on passe en hongrois.
    Recouvre le viewer d'une petite animation, puis revient au viewer (clic pour passer). */
+/* ── Audio d'intro (morceau AJL, exporté depuis Logic) ──────────────────────
+   Fichier EXTERNE à placer à côté de meuble.html : assets/intro.m4a (ou .mp3).
+   Lecture en BOUCLE avec fondu à l'ouverture d'une intro, fondu-sortie à la fermeture.
+   NB : un .m4p (achat iTunes, DRM) ne peut pas être lu — exporter un AAC/MP3/WAV libre. */
+var _introAudio=null, _introFade=null;
+function _introAudioStart(){
+  try{
+    if(!_introAudio){
+      _introAudio=new Audio(); _introAudio.loop=true; _introAudio.preload='auto';
+      _introAudio._srcs=['assets/intro.m4a','assets/intro.mp3','intro.m4a','intro.mp3']; _introAudio._si=0;
+      _introAudio.onerror=function(){ if(_introAudio._si<_introAudio._srcs.length-1){ _introAudio._si++; _introAudio.src=_introAudio._srcs[_introAudio._si]; _introAudio.play().catch(function(){}); } };
+      _introAudio.src=_introAudio._srcs[0];
+    }
+    clearInterval(_introFade);
+    try{ _introAudio.currentTime=0; }catch(e){}
+    _introAudio.volume=0;
+    var pr=_introAudio.play();
+    if(pr&&pr.then) pr.then(function(){ var v=0; clearInterval(_introFade); _introFade=setInterval(function(){ v=Math.min(0.6,v+0.05); _introAudio.volume=v; if(v>=0.6) clearInterval(_introFade); },60); }).catch(function(){});
+  }catch(e){}
+}
+function _introAudioStop(){
+  try{ if(!_introAudio) return; clearInterval(_introFade);
+    var v=_introAudio.volume;
+    _introFade=setInterval(function(){ v=Math.max(0,v-0.06); _introAudio.volume=v; if(v<=0){ clearInterval(_introFade); try{_introAudio.pause();}catch(e){} } },50);
+  }catch(e){}
+}
+/* _introToViewer() : au bout du délai, bascule le viewer sur l'immeuble et LAISSE FILER le morceau (pas de coupe) */
+function _introToViewer(){
+  try{ if(_introAudio) _introAudio.loop=false; }catch(e){}
+  try{ if(typeof selectCat==='function'){ selectCat('immeuble'); if(typeof buildCatList==='function') buildCatList(); if(typeof refreshView==='function') refreshView(); } }catch(e){}
+}
 function playGraphisoftTribute(){
   var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsTribute')) return;
   if(getComputedStyle(vp).position==='static') vp.style.position='relative';
@@ -10870,8 +11497,10 @@ function playGraphisoftTribute(){
 '</div><div class="skip">◾ kattints a kihagyáshoz · click to skip</div>';
   vp.appendChild(ov);
   requestAnimationFrame(function(){ ov.style.opacity='1'; });
-  var timer=setTimeout(close, 15600);
-  function close(){ clearTimeout(timer); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
+  _introAudioStart();
+  function _rm(){ if(ov.parentNode){ ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); } }
+  function close(){ clearTimeout(timer); _introAudioStop(); _rm(); }               /* clic utilisateur : ferme + coupe le son */
+  var timer=setTimeout(function(){ _introToViewer(); _rm(); }, 120000);            /* 2 min sans clic : bascule sur le viewer (immeuble), le morceau continue */
   ov.addEventListener('click', close);
 }
 /* Message d'introduction à l'outil (corps en paragraphes ; ligne finale = INTRO_HOP). */
@@ -10946,10 +11575,72 @@ function playIntro(l){
 '</div><div class="skip">◾ click to continue</div>';
   vp.appendChild(ov);
   requestAnimationFrame(function(){ ov.style.opacity='1'; });
-  var timer=setTimeout(close, 15600);
-  function close(){ clearTimeout(timer); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
+  _introAudioStart();
+  function _rm(){ if(ov.parentNode){ ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); } }
+  function close(){ clearTimeout(timer); _introAudioStop(); _rm(); }               /* clic utilisateur : ferme + coupe le son */
+  var timer=setTimeout(function(){ _introToViewer(); _rm(); }, 120000);            /* 2 min sans clic : bascule sur le viewer (immeuble), le morceau continue */
   ov.addEventListener('click', close);
 }
+/* Page « À propos » : parcours d'Antoine Lacronique, affichée dans le viewer (clic pour passer). */
+function playAbout(){
+  var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsAbout') || document.getElementById('gsIntro') || document.getElementById('gsTribute')) return;
+  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
+  var ov=document.createElement('div'); ov.id='gsAbout';
+  ov.style.cssText='position:absolute;inset:0;z-index:9999;overflow:hidden;cursor:pointer;'+
+    'background:radial-gradient(ellipse at 50% 30%,#241a12 0%,#15100f 56%,#0a0708 100%);'+
+    'display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;opacity:0;transition:opacity .5s;';
+  ov.innerHTML=''+
+'<style>'+
+'#gsAbout .flag{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--am,#ff8a3d),#ffc79a,var(--am,#ff8a3d));opacity:.92;}'+
+'#gsAbout .grid{position:absolute;inset:-25%;background-image:linear-gradient(rgba(255,138,61,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,61,.09) 1px,transparent 1px);background-size:34px 34px;animation:gaPan 19s linear infinite;}'+
+'@keyframes gaPan{to{transform:translate(34px,34px);}}'+
+'#gsAbout .massing{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-1deg);width:210px;display:flex;flex-direction:column-reverse;align-items:center;gap:4px;opacity:.14;filter:drop-shadow(0 0 22px rgba(255,138,61,.4));pointer-events:none;}'+
+'#gsAbout .massing i{display:block;height:32px;background:linear-gradient(180deg,rgba(255,150,80,.95),rgba(255,106,18,.62));border:1px solid rgba(255,196,150,.7);border-radius:2px;transform-origin:center;animation:gaFloor 7.8s ease-in-out infinite;}'+
+'@keyframes gaFloor{0%,100%{transform:scaleX(1);}50%{transform:scaleX(.4);}}'+
+'#gsAbout .card{position:relative;max-width:660px;width:88%;max-height:86%;overflow:auto;text-align:center;padding:26px;color:#f3e8dd;text-shadow:0 2px 16px rgba(0,0,0,.55);}'+
+'#gsAbout .l{opacity:0;transform:translateY(14px);animation:gaIn 1.05s cubic-bezier(.2,.7,.2,1) forwards;}'+
+'@keyframes gaIn{to{opacity:1;transform:none;}}'+
+'#gsAbout .brand{font-size:12px;letter-spacing:.42em;color:var(--am,#ff8a3d);font-weight:700;}'+
+'#gsAbout .name{font-size:30px;font-weight:800;margin:6px 0 1px;background:linear-gradient(90deg,#ffd3ac,var(--am,#ff8a3d),#ff6a12);-webkit-background-clip:text;background-clip:text;color:transparent;}'+
+'#gsAbout .role{font-size:11px;color:#c9a889;letter-spacing:.16em;margin-bottom:18px;text-transform:uppercase;}'+
+'#gsAbout .msg{font-size:14.5px;line-height:1.72;color:#efe3d8;margin:0 0 14px;text-align:left;}'+
+'#gsAbout .path{display:flex;justify-content:center;flex-wrap:wrap;gap:9px;margin:16px 0 6px;}'+
+'#gsAbout .path span{border:1px solid rgba(255,138,61,.5);color:#ffd3ac;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;letter-spacing:.04em;background:rgba(255,138,61,.07);}'+
+'#gsAbout .path b{color:var(--am,#ff8a3d);margin:0 2px;font-weight:800;}'+
+'#gsAbout .clients{font-size:10.5px;color:#b79877;letter-spacing:.02em;margin:12px 0 2px;line-height:1.65;}'+
+'#gsAbout .clients b{color:#e7d3bd;font-weight:600;}'+
+'#gsAbout .bpo{font-size:14px;line-height:1.6;color:#f3e8dd;margin-top:16px;}'+
+'#gsAbout .bpo b{color:var(--am,#ff8a3d);}'+
+'#gsAbout .hop{font-size:16px;font-weight:700;color:var(--am,#ff8a3d);letter-spacing:.02em;margin-top:16px;}'+
+'#gsAbout .en{font-size:10.5px;color:#a58a72;letter-spacing:.06em;margin-top:3px;font-style:italic;}'+
+'#gsAbout .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#7a6551;letter-spacing:.12em;}'+
+'</style>'+
+'<div class="flag"></div><div class="grid"></div>'+
+'<div class="massing">'+
+'<i style="width:152px;animation-delay:0s"></i><i style="width:152px;animation-delay:.28s"></i>'+
+'<i style="width:144px;animation-delay:.56s"></i><i style="width:132px;animation-delay:.84s"></i>'+
+'<i style="width:120px;animation-delay:1.12s"></i><i style="width:106px;animation-delay:1.4s"></i>'+
+'<i style="width:92px;animation-delay:1.68s"></i></div>'+
+'<div class="card">'+
+'<div class="l brand" style="animation-delay:.15s">À PROPOS · BPO</div>'+
+'<div class="l name" style="animation-delay:.4s">Antoine Lacronique</div>'+
+'<div class="l role" style="animation-delay:.7s">architecte DPLG · DESA · expert BIM &amp; GDL</div>'+
+'<p class="l msg" style="animation-delay:1.0s">Architecte diplômé de l’École Spéciale d’Architecture de Paris (1996), référence internationale du <b>GDL</b> (Graphisoft) et du <b>BIM</b>. Fondateur d’<b>impactArchitecture</b>, d’<b>Abvent Industrie</b> et de <b>Cat-e</b> (catalogues 3D intelligents), il dirige aujourd’hui l’agence <b>Architecture_AL</b>.</p>'+
+'<div class="l path" style="animation-delay:1.6s"><span>Graphisoft · GDL</span><span>Abvent Industrie</span><span>Cat-e</span><span>Architecture_AL</span></div>'+
+'<div class="l clients" style="animation-delay:2.1s">Configurateurs &amp; catalogues 3D pour <b>Google</b> · <b>Trimble</b> · <b>Saint-Gobain</b> · <b>Isover</b> · <b>Technal</b> · <b>Velux</b> · <b>Grohe</b> · <b>Terreal</b></div>'+
+'<p class="l bpo" style="animation-delay:2.7s"><b>BPO Architectural Parametrics</b> — créé en <b>2026</b>, par des architectes pour les architectes (et les autres), pour <b>démocratiser</b> les outils paramétriques de conception.</p>'+
+'<div class="l hop" style="animation-delay:3.4s">Concevoir vite, concevoir juste — pour tous.</div>'+
+'<div class="l en" style="animation-delay:3.6s">Built in 2026 by architects, for architects — to democratize parametric design.</div>'+
+'</div><div class="skip">◾ cliquez pour fermer · click to close</div>';
+  vp.appendChild(ov);
+  requestAnimationFrame(function(){ ov.style.opacity='1'; });
+  _introAudioStart();
+  function _rm(){ if(ov.parentNode){ ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); } }
+  function close(){ clearTimeout(timer); _introAudioStop(); _rm(); }               /* clic utilisateur : ferme + coupe le son */
+  var timer=setTimeout(function(){ _introToViewer(); _rm(); }, 120000);            /* 2 min sans clic : bascule sur le viewer (immeuble), le morceau continue */
+  ov.addEventListener('click', close);
+}
+try{ window.playAbout=playAbout; }catch(e){}   /* exposé au global : le bouton « À propos » (onclick inline) est hors de cet IIFE */
 function setLang(l){ LANG=I18N[l]||l==='fr'?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
   var sel=document.getElementById('langsel'); if(sel) sel.value=LANG; translateDOM();
   if(l==='hu') playGraphisoftTribute(); else playIntro(l); }
