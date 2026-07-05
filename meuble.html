@@ -750,6 +750,34 @@ WGL.makeTex=function(key,dataURI){
   };
   img.src=dataURI;
 };
+/* crée/met en cache une texture GL depuis les pixels d'une texture de finition.
+   getTexImage(id) renvoie {data:RGBA, w, h} (256² = puissance de 2 -> REPEAT +
+   mipmaps). Repli CLAMP si la source n'est pas une puissance de 2. */
+WGL.txt2=WGL.txt2||{};
+WGL.makeTexCanvas=function(key,img){
+  var gl=WGL.gl; if(!gl||!img||!img.data) return null;
+  if(WGL.txt2[key]&&WGL.txt2[key].ready) return WGL.txt2[key];
+  var w=img.w||img.width, h=img.h||img.height;
+  var src=img.data, pix=(src instanceof Uint8Array)?src:new Uint8Array(src.buffer?src.buffer:src, src.byteOffset||0, src.byteLength||(w*h*4));
+  var t=(WGL.txt2[key]&&WGL.txt2[key].tex)||gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,pix);
+  var pot=((w&(w-1))===0)&&((h&(h-1))===0);
+  if(pot){
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.generateMipmap(gl.TEXTURE_2D);
+  } else {
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  }
+  WGL.txt2[key]={tex:t,ready:true};
+  return WGL.txt2[key];
+};
 WGL.loadTextured=function(D,id){
   id=id||'bureau';
   if(typeof DecompressionStream==='undefined'){ WGL._unsupported(); return false; }
@@ -871,6 +899,27 @@ WGL.initGGL=function(){
   function sh(t,src){var o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
   var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(pr));
+  /* shader objets TEXTURÉS (mêmes lumières que progG, albédo échantillonné) */
+  var tvs='attribute vec3 p;attribute vec3 n;attribute vec2 uv;uniform mat4 pv;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
+    'void main(){gl_Position=pv*vec4(p,1.0);vn=n;vw=p;vuv=uv;}';
+  var tfs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform sampler2D uTex;'+
+    'const float PI=3.14159265;'+
+    'float D_GGX(float NoH,float a){float a2=a*a;float d=NoH*NoH*(a2-1.0)+1.0;return a2/(PI*d*d);}'+
+    'float G_Smith(float NoV,float NoL,float a){float k=a*0.5;float gv=NoV/(NoV*(1.0-k)+k);float gl2=NoL/(NoL*(1.0-k)+k);return gv*gl2;}'+
+    'vec3 fres(float c2,vec3 F0){return F0+(1.0-F0)*pow(1.0-c2,5.0);}'+
+    'void main(){vec3 N=normalize(vn);vec3 Vd=normalize(camPos-vw);if(dot(N,Vd)<0.0)N=-N;'+
+    'vec3 alb=texture2D(uTex,vuv).rgb;float rough=0.6;vec3 F0=vec3(0.04);float a=rough*rough;'+
+    'float NoV=max(dot(N,Vd),0.001);vec3 col=vec3(0.0);'+
+    'for(int i=0;i<3;i++){vec3 Ld=normalize(lightDirs[i]);vec3 H=normalize(Vd+Ld);'+
+    'float NoL=max(dot(N,Ld),0.0);float NoH=max(dot(N,H),0.0);float VoH=max(dot(Vd,H),0.0);'+
+    'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
+    'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);col+=(alb/PI+spec)*lightCols[i]*NoL;}'+
+    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*0.9;'+
+    'col=col/(col+vec3(1.0));col=pow(col,vec3(1.0/2.2));gl_FragColor=vec4(col,1.0);}';
+  var prt=gl.createProgram();gl.attachShader(prt,sh(gl.VERTEX_SHADER,tvs));gl.attachShader(prt,sh(gl.FRAGMENT_SHADER,tfs));gl.linkProgram(prt);
+  if(!gl.getProgramParameter(prt,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(prt));
+  WGL.progGT=prt;
   /* shader sol texturé (carte) */
   var gvs='attribute vec3 p;attribute vec2 uv;uniform mat4 pv;varying vec2 vuv;void main(){gl_Position=pv*vec4(p,1.0);vuv=uv;}';
   var gfs='precision highp float;varying vec2 vuv;uniform sampler2D map;void main(){gl_FragColor=texture2D(map,vuv);}';
@@ -908,10 +957,28 @@ WGL.uploadFC=function(faces){
   var gl=WGL.gl;
   if(WGL._gbufs){ WGL._gbufs.forEach(function(b){gl.deleteBuffer(b);}); }
   WGL._gbufs=[];
-  var PO=[],NO=[],CO=[], PT=[],NT=[],CT=[], PG=[],UG=[];
+  var TS=(typeof TEX_SCALE!=='undefined')?TEX_SCALE:1.0;
+  /* UV par projection planaire sur le plan dominant de la normale (comme le
+     rasteriseur logiciel), à l'échelle TEX_SCALE. */
+  function planarUVv(p,n){ var ax=Math.abs(n[0]),ay=Math.abs(n[1]),az=Math.abs(n[2]),u,vv;
+    if(ax>=ay&&ax>=az){u=p[2];vv=p[1];} else if(ay>=ax&&ay>=az){u=p[0];vv=p[2];} else {u=p[0];vv=p[1];}
+    return [u*TS, vv*TS]; }
+  var PO=[],NO=[],CO=[], PT=[],NT=[],CT=[], PG=[],UG=[], PALL=[];
+  var texB={};                                   /* id texture -> {P,N,U} (opaques) */
   for(var i=0;i<faces.length;i++){
     var f=faces[i], v=f.verts, al=(f.al==null?1:f.al), c=f.col||[200,200,200], isT=(al<1);
     if(f.tex==='sitemap' && f.uv){ for(var kk=1;kk<v.length-1;kk++){ var og=[0,kk,kk+1]; for(var jj=0;jj<3;jj++){ var pp=v[og[jj]], uu=f.uv[og[jj]]; PG.push(pp[0],pp[1],pp[2]); UG.push(uu[0],uu[1]); } } continue; }
+    /* face opaque avec texture de finition disponible -> batch texturé */
+    var timg=(!isT && f.tex && typeof getTexImage==='function') ? getTexImage(f.tex) : null;
+    if(timg){
+      var B=texB[f.tex]||(texB[f.tex]={P:[],N:[],U:[],img:timg});
+      for(var k2=1;k2<v.length-1;k2++){ var oi2=[0,k2,k2+1];
+        for(var j2=0;j2<3;j2++){ var p2=v[oi2[j2]], nn2=f.vn?f.vn[oi2[j2]]:f.n, uv2=(f.uv?f.uv[oi2[j2]]:planarUVv(p2,f.n));
+          B.P.push(p2[0],p2[1],p2[2]); B.N.push(nn2[0],nn2[1],nn2[2]); B.U.push(uv2[0],uv2[1]);
+          PALL.push(p2[0],p2[1],p2[2]);
+        } }
+      continue;
+    }
     var P=isT?PT:PO, N=isT?NT:NO, C=isT?CT:CO;
     for(var k=1;k<v.length-1;k++){
       var oi=[0,k,k+1];
@@ -919,13 +986,21 @@ WGL.uploadFC=function(faces){
         var p=v[oi[j]]; P.push(p[0],p[1],p[2]);
         var nn=f.vn?f.vn[oi[j]]:f.n; N.push(nn[0],nn[1],nn[2]);
         C.push(c[0]/255,c[1]/255,c[2]/255,al);
+        if(!isT){ PALL.push(p[0],p[1],p[2]); }
       }
     }
   }
   function mk(arr){var b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(arr),gl.STATIC_DRAW);WGL._gbufs.push(b);return b;}
+  var texBatches=[];
+  for(var id in texB){ var Bb=texB[id];
+    var glt=WGL.makeTexCanvas(id, Bb.img);
+    texBatches.push({ tex:(glt?glt.tex:null), p:mk(Bb.P), n:mk(Bb.N), u:mk(Bb.U), count:Bb.P.length/3 });
+  }
   WGL.gbuf={ pO:mk(PO),nO:mk(NO),cO:mk(CO),countO:PO.length/3,
              pT:mk(PT),nT:mk(NT),cT:mk(CT),countT:PT.length/3,
-             pMap:mk(PG),uvMap:mk(UG),countMap:PG.length/3 };
+             pMap:mk(PG),uvMap:mk(UG),countMap:PG.length/3,
+             pAll:mk(PALL),countAll:PALL.length/3,
+             texBatches:texBatches };
 };
 WGL.renderG=function(){
   var gl=WGL.gl,cv=gl.canvas,cam=WGL.cam,P=WGL.progG,G=WGL.gbuf;
@@ -983,12 +1058,34 @@ WGL.renderG=function(){
     gl.stencilFunc(gl.EQUAL,0,0xFF); gl.stencilOp(gl.KEEP,gl.KEEP,gl.INCR);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
     gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
-    var shp=gl.getAttribLocation(WGL.progShadow,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,G.pO); gl.enableVertexAttribArray(shp); gl.vertexAttribPointer(shp,3,gl.FLOAT,false,0,0);
-    gl.drawArrays(gl.TRIANGLES,0,G.countO);
+    var _shpb=G.pAll||G.pO, _shpc=(G.countAll!=null?G.countAll:G.countO);
+    var shp=gl.getAttribLocation(WGL.progShadow,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,_shpb); gl.enableVertexAttribArray(shp); gl.vertexAttribPointer(shp,3,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,_shpc);
     gl.disable(gl.STENCIL_TEST); gl.disable(gl.BLEND);
     gl.useProgram(P); gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
   }
   draw(G.pO,G.nO,G.cO,G.countO);
+  /* --- passe TEXTURÉE : objets paramétriques avec texture de finition --- */
+  if(G.texBatches && G.texBatches.length && WGL.progGT){
+    var PT2=WGL.progGT; gl.useProgram(PT2);
+    gl.uniformMatrix4fv(gl.getUniformLocation(PT2,'pv'),false,pv);
+    gl.uniform3f(gl.getUniformLocation(PT2,'camPos'),ex,ey,ez);
+    gl.uniform3fv(gl.getUniformLocation(PT2,'lightDirs'),new Float32Array([].concat.apply([],e.L)));
+    gl.uniform3fv(gl.getUniformLocation(PT2,'lightCols'),new Float32Array([].concat.apply([],e.C)));
+    gl.uniform3fv(gl.getUniformLocation(PT2,'ambTop'),new Float32Array(e.aT));
+    gl.uniform3fv(gl.getUniformLocation(PT2,'ambBot'),new Float32Array(e.aB));
+    gl.uniform1i(gl.getUniformLocation(PT2,'uTex'),0);
+    var tlp=gl.getAttribLocation(PT2,'p'), tln=gl.getAttribLocation(PT2,'n'), tlu=gl.getAttribLocation(PT2,'uv');
+    for(var tb=0;tb<G.texBatches.length;tb++){ var Bt=G.texBatches[tb]; if(!Bt.count||!Bt.tex) continue;
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,Bt.tex);
+      gl.bindBuffer(gl.ARRAY_BUFFER,Bt.p); gl.enableVertexAttribArray(tlp); gl.vertexAttribPointer(tlp,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,Bt.n); gl.enableVertexAttribArray(tln); gl.vertexAttribPointer(tln,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,Bt.u); gl.enableVertexAttribArray(tlu); gl.vertexAttribPointer(tlu,2,gl.FLOAT,false,0,0);
+      gl.drawArrays(gl.TRIANGLES,0,Bt.count);
+    }
+    gl.disableVertexAttribArray(tlu);
+    gl.useProgram(P);
+  }
   if(G.countMap && typeof SITE!=='undefined' && SITE.on){ if(!WGL.mapTexReady) WGL.makeMapTex();
     if(WGL.mapTexReady){ gl.useProgram(WGL.progGround); gl.uniformMatrix4fv(gl.getUniformLocation(WGL.progGround,'pv'),false,pv);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,WGL.mapTex); gl.uniform1i(gl.getUniformLocation(WGL.progGround,'map'),0);
@@ -1703,7 +1800,7 @@ function getTexImage(id){
    - forme    : couleur des formes géométriques */
 var FINISH = {
   pmargelle:[210,206,196], pplage:[200,196,186],
-  vstruct:[80,84,90], vsoub:[180,178,172], vsoubExt:[180,178,172], vsoubInt:[198,194,187], chab:[205,198,182],
+  vstruct:[80,84,90], vsoub:[180,178,172], vsoubExt:[180,178,172], vsoubInt:[198,194,187], chab:[205,198,182], chtub:[120,124,130],
   corps:   [176, 140, 98],
   etagere: [176, 140, 98],
   porte:   [150, 200, 235],
@@ -1728,16 +1825,18 @@ var FINISH = {
   sol:      [235, 232, 224],  /* dalle : sol fini (dallage blanc cassé) */
   fauxplaf: [238, 238, 236],   /* dalle : faux plafond BA13 */
   imdalle:[176,176,172], impoteau:[164,164,162], impoutre:[150,150,148], imvoile:[158,158,156],
-  tcadre:[64,67,71], touvrant:[64,67,71], tpoignee:[120,124,130], vcadre:[210,200,180], vouvrant:[210,200,180]
+  tcadre:[64,67,71], touvrant:[64,67,71], tpoignee:[120,124,130], vcadre:[210,200,180], vouvrant:[210,200,180],
+  kcaisson:[232,231,227], kfacade:[244,244,240], kplan:[58,60,64], kmetal:[176,180,186]
 };
 
 /* FINISH_TEX : texture appliquée à chaque élément (id de texture, ou null = couleur unie).
    Quand une texture est active, les faces de l'élément sont rendues texturées. */
 var FINISH_TEX = {
   pmargelle:null, pplage:null, vstruct:null, vsoub:null, vsoubExt:null, vsoubInt:null, chab:null,
-  imdalle:null, impoteau:null, impoutre:null, imvoile:null,
+  imdalle:null, impoteau:null, impoutre:null, imvoile:null, chtub:null,
   tcadre:null, touvrant:null, tpoignee:null, vcadre:null, vouvrant:null,
-  corps:null, etagere:null, porte:null, forme:null, objet:null, bati:null, panneau:null, poignee:null, fcadre:null, fouvrant:null, fpoignee:null, cwframe:null, cwspandrel:null, cwvent:null, fstruct:null, fgarn:null, hossature:null, hbardage:null, hcorner:null, hbeton:null, sol:'dallage_blanc', fauxplaf:null
+  corps:null, etagere:null, porte:null, forme:null, objet:null, bati:null, panneau:null, poignee:null, fcadre:null, fouvrant:null, fpoignee:null, cwframe:null, cwspandrel:null, cwvent:null, fstruct:null, fgarn:null, hossature:null, hbardage:null, hcorner:null, hbeton:null, sol:'dallage_blanc', fauxplaf:null,
+  kcaisson:null, kfacade:null, kplan:null, kmetal:null
 };
 /* Objets a corps unique ou multicouche pouvant recevoir une matiere globale,
    en plus de leurs presets/couches. 'objet' = cle de finition partagee. */
@@ -1781,6 +1880,12 @@ var FINISH_ELEMS_FURN = [
   {id:'fstruct', l:'Structure'},
   {id:'fgarn',   l:'Garnissage'}
 ];
+var FINISH_ELEMS_CUISINE = [
+  {id:'kcaisson', l:'Caisson'},
+  {id:'kfacade',  l:'Façade'},
+  {id:'kplan',    l:'Plan de travail'},
+  {id:'kmetal',   l:'Électroménager'}
+];
 var FINISH_ELEMS_DALLE = [
   {id:'sol',      l:'Sol fini'},
   {id:'fauxplaf', l:'Faux plafond'}
@@ -1794,7 +1899,7 @@ var FINISH_ELEMS_VERANDA = [
   {id:'vsoubExt', l:'Soubassement ext.'},
   {id:'vsoubInt', l:'Soubassement int.'}
 ];
-var FINISH_ELEMS_CHEMINEE = [ {id:'chab', l:'Habillage'} ];
+var FINISH_ELEMS_CHEMINEE = [ {id:'chab', l:'Habillage'}, {id:'chtub', l:'Conduit / tubage'} ];
 var FINISH_ELEMS_HANGAR = [
   {id:'hossature', l:'Ossature'},
   {id:'hbardage',  l:'Bardage'},
@@ -1996,7 +2101,13 @@ var COUV_TYPES = [
 ];
 var CHEM_TYPES = [ {id:'foyer',l:'Foyer ouvert'},{id:'insert',l:'Insert'},{id:'poele',l:'Poêle'},{id:'suspendue',l:'Suspendue'},{id:'double',l:'Double face'},{id:'ethanol',l:'Éthanol'} ];
 var CHEM_MATS = [ {id:'pierre',l:'Pierre',c:[205,198,182]},{id:'metal',l:'Métal',c:[70,72,78]},{id:'beton',l:'Béton',c:[170,170,165]},{id:'brique',l:'Brique',c:[160,90,70]} ];
-var PCHEM = { type:'foyer', width:120, height:110, depth:45, condH:200, mat:'pierre' };
+var PCHEM = { type:'foyer', width:120, height:110, depth:45, condH:200, mat:'pierre',
+  /* foyer paramétrique */
+  hearthH:16, jambageW:22, linteauH:22, backThick:6, openInset:6,
+  /* conduit : boisseau (maçonnerie) + tubage (métal) */
+  condMode:'boisseau', boisRound:0, boisD:50, tubD:20,
+  /* traversée de toit / dépassement / chapeau */
+  roofH:280, roofPitch:35, showRoof:1, depassement:50, bride:1, brideSize:64, chapeau:'chinois' };
 var PPISCINE = {
   shape:'rect', len:800, wid:400, prof:150,
   constr:'beton', liner:'bleu',
@@ -2035,7 +2146,7 @@ var PIM = {
   debord:0, debordNiv:0, debords:[0,0,0,0,0], debordSide:0, debordSides:[], facSide:0, facSides:[],
   debDetail:0, debordFloors:{}, facDetail:0, facFloors:{},   /* débord dalle / retrait façade : par côté (base) + surcharges par étage */
   facInc:0, incDetail:0, incSides:[], incFloors:{}, incMono:0,   /* inclinaison façade (°) par côté/étage ; incMono = mur rideau incliné d'un seul tenant (sol→sommet) */
-  toit:'terrasse', acro:50, pente:30, debToit:40,
+  toit:'terrasse', acro:50, acroT:20, pente:30, debToit:40,
   facN:'rideau', facS:'rideau', facE:'rideau', facO:'rideau',
   vitrTint:'clair', allege:100, winH:150, montEntr:150, travEntr:120,
   setbackN:0, setbackD:200, coreOn:0, coreW:400, coreD:400, facOffset:0,
@@ -2220,11 +2331,10 @@ var CATALOG = {
       {id:'toiture',    label:'Charpente / toiture',status:'ready', grp:'construction', icon:'🔺'},
       {id:'escalier',   label:'Escalier',         status:'ready', grp:'construction', icon:'🪜'},
       {id:'ferme',      label:'Ferme',            status:'ready', grp:'construction', icon:'📐'},
-      {id:'coque',      label:'Coque',            status:'todo',  grp:'construction', icon:'🛁'},
       {id:'forme',      label:'Forme',            status:'ready', grp:'construction', icon:'🔷'},
       /* --- MOBILIER / AGENCEMENT --- */
       {id:'objets',     label:'Objets',           status:'ready', grp:'mobilier', icon:'🪑'},
-      {id:'lampe',      label:'Lampe',            status:'todo',  grp:'mobilier', icon:'💡'}
+      {id:'cuisine',    label:'Cuisine',          status:'ready', grp:'mobilier', icon:'🍳'}
     ]
   },
   fabricants: {
@@ -2283,6 +2393,7 @@ function selectCat(catId){
   else if(cat.id==='fenetre'){ MODE='fenetre'; }
   else if(cat.id==='murrideau'){ MODE='murrideau'; }
   else if(cat.id==='objets'){ MODE='furn'; }
+  else if(cat.id==='cuisine'){ MODE='cuisine'; }
   else if(cat.id==='hangar'){ MODE='hangar'; }
   else if(cat.id==='technal'){ MODE='technal'; }
   else if(cat.id==='velux'){ MODE='velux'; }
@@ -2527,7 +2638,7 @@ function _fillMenu(m, items){
 }
 /* ---------- Annuler / Refaire (historique multi-niveaux) ---------- */
 var UNDO_HIST=[], REDO_HIST=[], _undoBase=null, _undoMode=null, _undoApplying=false, _undoTimer=null, UNDO_MAX=80;
-function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,escalier:PE,ferme:PFERME,toiture:PTOIT}[mode]||null; }
+function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,escalier:PE,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
 function undoParams(){ return paramObjFor(MODE); }
 function _undoSnap(){ var o=undoParams(); return o?JSON.stringify(o):null; }
 function _undoBtns(){ var u=document.getElementById('undoBtn'), r=document.getElementById('redoBtn'); if(u) u.style.opacity=UNDO_HIST.length?'1':'0.5'; if(r) r.style.opacity=REDO_HIST.length?'1':'0.5'; }
@@ -3205,30 +3316,44 @@ function boxPorte(cx,cy,cz, w,h,d, hingeX,hingeZ, ang, sens, col, al){
    Repère : origine au sol, centré en X et Z, le meuble monte selon +Y.
    Tout est en mètres (les paramètres sont en cm -> /100).
    Renvoie les dimensions hors-tout. */
+/* normalise l'épaisseur d'un meuble : homogène (P.th) ou par pan. */
+function normMeuble(P){
+  if(!('thMode' in P)) P.thMode='homog';        /* homog | pan */
+  if(P.th==null) P.th=2;                         /* épaisseur homogène (cm) */
+  if(P.thBas==null)  P.thBas=P.th;
+  if(P.thHaut==null) P.thHaut=P.th;
+  if(P.thG==null)    P.thG=P.th;
+  if(P.thD==null)    P.thD=P.th;
+  if(P.thFond==null) P.thFond=Math.max(1,Math.round(P.th*0.6));
+  return P;
+}
+function meublePan(P,pan){ return ((P.thMode==='pan') ? P['th'+pan] : P.th)/100; }
 function buildMeuble(){
+  normMeuble(P);
   var w=P.w/100, h=P.h/100, d=P.d/100;  /* cm -> m */
-  var t = 0.02;                          /* épaisseur des panneaux (2 cm) */
+  var tB=meublePan(P,'Bas'), tH=meublePan(P,'Haut'), tG=meublePan(P,'G'), tD=meublePan(P,'D'), tF=meublePan(P,'Fond');
+  var tRep=(tB+tH+tG+tD)/4;              /* épaisseur représentative (portes/étagères) */
   var cCorps = colCorps();               /* finition du caisson  */
   var cEtag  = colEtagere();             /* finition des étagères */
   var cPorte = colPorte();               /* teinte du verre porte */
 
-  /* --- Caisson : 2 panneaux horizontaux (bas/haut) + 2 montants + fond --- */
+  /* --- Caisson : 2 panneaux horizontaux (bas/haut) + 2 montants + fond, épaisseur par pan --- */
   _CURTEX = FINISH_TEX.corps;
-  box(0,    t/2,     0, w, t, d, cCorps);          /* panneau bas    */
-  box(0,    h-t/2,   0, w, t, d, cCorps);          /* panneau haut   */
-  box(-w/2+t/2, h/2, 0, t, h, d, cCorps);          /* montant gauche */
-  box( w/2-t/2, h/2, 0, t, h, d, cCorps);          /* montant droit  */
-  box(0, h/2, -d/2+t/2, w-t*2, h-t*2, t, cCorps);  /* fond           */
+  box(0,    tB/2,   0, w, tB, d, cCorps);              /* panneau bas    */
+  box(0,    h-tH/2, 0, w, tH, d, cCorps);              /* panneau haut   */
+  box(-w/2+tG/2, h/2, 0, tG, h, d, cCorps);            /* montant gauche */
+  box( w/2-tD/2, h/2, 0, tD, h, d, cCorps);            /* montant droit  */
+  box(0, h/2, -d/2+tF/2, w-tG-tD, h-tB-tH, tF, cCorps);/* fond           */
 
   /* --- Étagères : léger retrait de façade (réaliste) ; le verre est géré
      correctement par le z-buffer donc un petit retrait suffit. --- */
   _CURTEX = FINISH_TEX.etagere;
   if(P.sh > 0){
-    var gap = (h - t*2) / (P.sh + 1);            /* espacement vertical */
-    var shDepth = d - t - 0.03;                  /* profondeur étagère (retrait 3cm) */
+    var gap = (h - tB - tH) / (P.sh + 1);        /* espacement vertical */
+    var shDepth = d - tF - 0.03;                 /* profondeur étagère (retrait 3cm) */
     var shZ = -0.015;                            /* léger décalage vers le fond     */
     for(var i=1; i<=P.sh; i++){
-      box(0, t + gap*i, shZ, w-t*2, t*0.8, shDepth, cEtag);
+      box(0, tB + gap*i, shZ, w-tG-tD, tRep*0.8, shDepth, cEtag);
     }
   }
 
@@ -3237,17 +3362,17 @@ function buildMeuble(){
      s'écartant vers l'extérieur). L'angle est piloté par DOOR_OPEN (degrés). --- */
   if(P.dr > 0){
     var ang = DOOR_OPEN * Math.PI/180;           /* angle en radians */
-    var dw = (w - t*2)/P.dr - 0.005;             /* largeur d'une porte */
-    var zFace = d/2 + t*0.5;                      /* plan de façade des portes */
+    var dw = (w - tRep*2)/P.dr - 0.005;          /* largeur d'une porte */
+    var zFace = d/2 + tRep*0.5;                   /* plan de façade des portes */
     for(var i=0; i<P.dr; i++){
-      var xp = -w/2 + t + (dw+0.005)*i + dw/2;   /* centre X de la porte fermée */
+      var xp = -w/2 + tRep + (dw+0.005)*i + dw/2;/* centre X de la porte fermée */
       /* charnière au bord extérieur : porte de gauche pivote sur son bord gauche
          (et s'ouvre vers la gauche), porte de droite sur son bord droit. La
          charnière la plus proche du bord du meuble. */
       var leftHalf = (xp < 0);
       var hingeX = leftHalf ? (xp - dw/2) : (xp + dw/2);
       var sens   = leftHalf ? 1 : -1;            /* sens d'ouverture vers l'avant */
-      boxPorte(xp, h/2, zFace, dw, h-t*2-0.01, t*0.8, hingeX, zFace, ang, sens, cPorte, 0.30);
+      boxPorte(xp, h/2, zFace, dw, h-tRep*2-0.01, tRep*0.8, hingeX, zFace, ang, sens, cPorte, 0.30);
     }
   }
 
@@ -3717,54 +3842,126 @@ function buildVerandaUI(){
   buildObjUI(PVERANDA, groups, buildVerandaUI);
 }
 /* ============================ CHEMINÉE ============================ */
+/* cône vertical (chapeau chinois, collerette d'étanchéité) : anneau r0@y0 -> r1@y1 */
+function coneY(cx,cz,r0,r1,y0,y1,col,seg){ seg=seg||20;
+  var nl=Math.hypot(y1-y0, r0-r1)||1, ny=(r0-r1)/nl, nr=(y1-y0)/nl;
+  for(var i=0;i<seg;i++){ var a0=2*Math.PI*i/seg, a1=2*Math.PI*(i+1)/seg, am=(a0+a1)/2;
+    var p0=[cx+r0*Math.cos(a0),y0,cz+r0*Math.sin(a0)], p1=[cx+r0*Math.cos(a1),y0,cz+r0*Math.sin(a1)],
+        q1=[cx+r1*Math.cos(a1),y1,cz+r1*Math.sin(a1)], q0=[cx+r1*Math.cos(a0),y1,cz+r1*Math.sin(a0)];
+    face([p0,p1,q1,q0],[Math.cos(am)*nr,ny,Math.sin(am)*nr],col,1); }
+  if(r0>0.003){ var b=[]; for(var i=0;i<seg;i++){var a=2*Math.PI*i/seg; b.unshift([cx+r0*Math.cos(a),y0,cz+r0*Math.sin(a)]);} face(b,[0,-1,0],col,1); }
+  if(r1>0.003){ var t=[]; for(var i=0;i<seg;i++){var a=2*Math.PI*i/seg; t.push([cx+r1*Math.cos(a),y1,cz+r1*Math.sin(a)]);} face(t,[0,1,0],col,1); }
+}
+/* panneau de toiture incliné (pente selon +z), pavé fin */
+function roofPanel(cx,cy,cz, sx,sz, th, pitch, col){
+  var t=Math.tan(pitch);
+  function P(ax,az){ return [cx+ax, cy+az*t, cz+az]; }
+  var A=P(-sx/2,-sz/2),B=P(sx/2,-sz/2),Cc=P(sx/2,sz/2),D=P(-sx/2,sz/2);
+  var n=norm(cross(sub(B,A),sub(D,A)));
+  var Ab=[A[0],A[1]-th,A[2]],Bb=[B[0],B[1]-th,B[2]],Cb=[Cc[0],Cc[1]-th,Cc[2]],Db=[D[0],D[1]-th,D[2]];
+  face([A,B,Cc,D],n,col,1); face([Db,Cb,Bb,Ab],[-n[0],-n[1],-n[2]],col,1);
+  face([A,B,Bb,Ab],norm(cross(sub(B,A),sub(Ab,A))),col,1);
+  face([Cc,D,Db,Cb],norm(cross(sub(D,Cc),sub(Cb,Cc))),col,1);
+  face([B,Cc,Cb,Bb],norm(cross(sub(Cc,B),sub(Bb,B))),col,1);
+  face([D,A,Ab,Db],norm(cross(sub(A,D),sub(Db,D))),col,1);
+}
 function buildCheminee(){
   var W=PCHEM.width/100, H=PCHEM.height/100, D=PCHEM.depth/100, ty=PCHEM.type;
   var mat=CHEM_MATS.filter(function(m){return m.id===PCHEM.mat;})[0]||CHEM_MATS[0];
-  var col=mat.c, dark=[38,36,34], fire=[235,120,40], metal=[70,72,78];
-  var condW=Math.min(W*0.5,0.55), condH=Math.max(0.3,PCHEM.condH/100), totH;
+  var col=mat.c, dark=[38,36,34], fire=[235,120,40], cMet=FINISH.chtub||[120,124,130], glass=[120,140,150];
+  var yTop;
   _CURTEX=FINISH_TEX.chab;
   if(ty==='poele'){
-    box(0,H*0.45,0, W*0.6,H*0.85,D*0.85, col,1);
-    _CURTEX=null;
-    box(0,H*0.45,D*0.42, W*0.42,H*0.42,0.02, dark,1);
-    box(0,H*0.85+condH/2,0, condW*0.5,condH,condW*0.5, metal,1);
-    totH=H*0.85+condH;
+    var bh=H*0.82; box(0,bh/2,0, W*0.6,bh,D*0.85, col,1); _CURTEX=null;
+    box(0,bh*0.58,D*0.42, W*0.44,bh*0.48,0.02, glass,0.4);
+    box(0,bh*0.32,D*0.40, W*0.34,bh*0.28,0.04, fire,0.95);
+    yTop=bh;
   } else if(ty==='suspendue'){
-    box(0,H*0.55,0, W*0.55,H*0.6,D*0.7, col,1);
-    _CURTEX=null;
-    box(0,H*0.85+condH/2,0, condW*0.4,condH,condW*0.4, metal,1);
-    box(0,H*0.30,0, W*0.42,0.05,D*0.5, fire,1);
-    totH=H*0.85+condH;
+    var sy=H*0.55, sbh=H*0.6; box(0,sy,0, W*0.55,sbh,D*0.7, col,1); _CURTEX=null;
+    box(0,sy-sbh*0.42,0, W*0.42,0.05,D*0.5, fire,1);
+    yTop=sy+sbh/2;
   } else {
-    var ph=0.14, pw=Math.max(0.14,W*0.16), fH=H-ph-ph*1.4;
-    box(0,ph/2,0, W,ph,D, col,1);                         // âtre
-    box(-W/2+pw/2,H/2,0, pw,H,D, col,1);                  // jambage G
-    box(W/2-pw/2,H/2,0, pw,H,D, col,1);                   // jambage D
-    box(0,H-ph*0.7,0, W,ph*1.4,D, col,1);                 // linteau
+    var hh=Math.max(0.03,PCHEM.hearthH/100), jw=Math.max(0.06,PCHEM.jambageW/100),
+        lh=Math.max(0.06,PCHEM.linteauH/100), bt=Math.max(0.02,PCHEM.backThick/100), fH=Math.max(0.1,H-hh-lh);
+    box(0,hh/2,0, W,hh,D, col,1);                          // âtre
+    box(-W/2+jw/2,H/2,0, jw,H,D, col,1);                   // jambage gauche
+    box(W/2-jw/2,H/2,0, jw,H,D, col,1);                    // jambage droit
+    box(0,H-lh/2,0, W,lh,D, col,1);                        // linteau
     _CURTEX=null;
-    box(0,ph+fH/2,-D/2+0.05, W-2*pw,fH,0.05, dark,1);      // fond foyer
-    if(ty==='insert') box(0,ph+fH/2,D/2-0.05, W-2*pw-0.06,fH-0.06,0.02, [120,140,150],0.45); // vitre insert
-    if(ty==='ethanol') box(0,ph+0.04,0, W-2*pw-0.2,0.03,D*0.3, fire,1);
-    else box(0,ph+0.08,0, W-2*pw-0.1,0.14,D*0.45, fire,1); // flammes
-    _CURTEX=FINISH_TEX.chab;
-    box(0,H+condH/2,0, condW, condH, Math.min(D,condW), col,1);  // hotte/conduit
-    _CURTEX=null;
-    totH=H+condH;
+    var oW=Math.max(0.1,W-2*jw);
+    box(0,hh+fH/2,-D/2+bt/2, oW,fH,bt, dark,1);            // fond de foyer
+    if(ty==='ethanol') box(0,hh+0.04,0, oW-0.2,0.03,D*0.3, fire,1);
+    else box(0,hh+0.10,0, oW-0.1,0.16,D*0.5, fire,0.95);   // flammes
+    if(ty==='insert'||ty==='double') box(0,hh+fH/2,D/2-0.04, oW-0.06,fH-0.06,0.02, glass,0.4);   // vitre avant
+    if(ty==='double') box(0,hh+fH/2,-D/2+0.04, oW-0.06,fH-0.06,0.02, glass,0.4);                 // vitre arrière
+    yTop=H;
   }
-  DIMS={ w:W, h:totH, d:D, cy:totH/2 };
+  /* ---- CONDUIT : boisseau (maçonnerie) + tubage (métal) ---- */
+  var bd=Math.max(0.06,PCHEM.boisD/100), td=Math.max(0.04,PCHEM.tubD/100);
+  var roofH=Math.max(yTop+0.2, PCHEM.roofH/100), dep=Math.max(0.05,PCHEM.depassement/100);
+  var tubTop=roofH+dep, seg=Math.max(12,(PCHEM.boisRound?20:12));
+  if(PCHEM.condMode==='boisseau'){ _CURTEX=FINISH_TEX.chab;
+    if(PCHEM.boisRound) cylY(0,0, bd/2, yTop, roofH, col, 20);
+    else box(0,(yTop+roofH)/2,0, bd,(roofH-yTop),bd, col,1);
+    _CURTEX=null;
+  }
+  _CURTEX=FINISH_TEX.chtub;
+  cylY(0,0, td/2, yTop, tubTop, cMet, 18);                 // tubage (liner + souche)
+  _CURTEX=null;
+  /* toiture + bride + collerette */
+  if(PCHEM.showRoof){ var rs=Math.max(2.4, bd*4);
+    roofPanel(0,roofH,0, rs, rs, 0.10, (PCHEM.roofPitch||0)*Math.PI/180, [122,86,68]); }
+  if(PCHEM.bride){ var bs=Math.max(td+0.1,PCHEM.brideSize/100), pr=(PCHEM.roofPitch||0)*Math.PI/180;
+    _CURTEX=FINISH_TEX.chtub;
+    roofPanel(0,roofH+0.02,0, bs,bs, 0.03, pr, cMet);      // embase / solin incliné à la pente
+    coneY(0,0, td/2+0.06, td/2+0.006, roofH+0.03, roofH+0.18, cMet,18);  // collerette (verticale autour du tube)
+    _CURTEX=null;
+  }
+  /* chapeau */
+  var cap=PCHEM.chapeau, r=td/2, i;
+  if(cap!=='aucun'){ _CURTEX=FINISH_TEX.chtub;
+    if(cap==='chinois'){ coneY(0,0, r*1.7, 0, tubTop+0.05, tubTop+0.30, cMet,20);
+      for(i=0;i<3;i++){ var a=2*Math.PI*i/3; box(r*0.95*Math.cos(a),tubTop+0.03,r*0.95*Math.sin(a),0.02,0.06,0.02,cMet,1);} }
+    else if(cap==='plaque'){ for(i=0;i<4;i++){ var a2=2*Math.PI*i/4; box(r*0.9*Math.cos(a2),tubTop+0.05,r*0.9*Math.sin(a2),0.02,0.10,0.02,cMet,1);} cylY(0,0, r*1.6, tubTop+0.15, tubTop+0.18, cMet,20); }
+    else if(cap==='mitre'){ box(0,tubTop+0.11,0, r*2.6,0.22,r*2.6, cMet,1); box(0,tubTop+0.26,0, r*2.6,0.08,r*0.7, cMet,1); }
+    _CURTEX=null;
+  }
+  var rw=(PCHEM.showRoof?Math.max(2.4,bd*4):Math.max(W,bd));
+  DIMS={ w:Math.max(W,rw), h:tubTop+0.35, d:Math.max(D,rw), cy:(tubTop+0.35)/2 };
   return DIMS;
 }
 function buildChemineeUI(){
+  var open=(PCHEM.type==='foyer'||PCHEM.type==='insert'||PCHEM.type==='double'||PCHEM.type==='ethanol');
   var groups=[
     {title:'Type', fields:[{type:'choice',label:'Type de foyer',key:'type',options:CHEM_TYPES}]},
-    {title:'Dimensions', fields:[
-      {type:'slider',label:'Largeur',unit:'cm',key:'width',min:50,max:250,step:5},
-      {type:'slider',label:'Hauteur foyer',unit:'cm',key:'height',min:60,max:220,step:5},
-      {type:'slider',label:'Profondeur',unit:'cm',key:'depth',min:25,max:80,step:5},
-      {type:'slider',label:'Hauteur conduit',unit:'cm',key:'condH',min:50,max:400,step:10}
-    ]},
-    {title:'Habillage', fields:[{type:'mat',label:'Matériau',key:'mat',mats:CHEM_MATS}]}
+    {title:'Foyer', fields:[
+      {type:'slider',label:'Largeur',unit:'cm',key:'width',min:40,max:260,step:5},
+      {type:'slider',label:'Hauteur foyer',unit:'cm',key:'height',min:40,max:220,step:5},
+      {type:'slider',label:'Profondeur',unit:'cm',key:'depth',min:20,max:90,step:5}
+    ]}
   ];
+  if(open) groups.push({title:'Géométrie du foyer', fields:[
+      {type:'slider',label:'Hauteur âtre',unit:'cm',key:'hearthH',min:2,max:40,step:1},
+      {type:'slider',label:'Largeur jambages',unit:'cm',key:'jambageW',min:6,max:50,step:1},
+      {type:'slider',label:'Hauteur linteau',unit:'cm',key:'linteauH',min:6,max:50,step:1},
+      {type:'slider',label:'Épaisseur fond',unit:'cm',key:'backThick',min:2,max:20,step:1}
+    ]});
+  groups.push({title:'Conduit', fields:[
+      {type:'choice',label:'Type de conduit',key:'condMode',options:[{id:'boisseau',l:'Boisseau + tubage'},{id:'tubage',l:'Tubage seul'}]},
+      {type:'choice',label:'Section boisseau',key:'boisRound',options:[{id:0,l:'Carré'},{id:1,l:'Rond'}]},
+      {type:'slider',label:'Boisseau (côté/diam.)',unit:'cm',key:'boisD',min:16,max:100,step:2},
+      {type:'slider',label:'Tubage (diamètre)',unit:'cm',key:'tubD',min:8,max:60,step:1}
+    ]});
+  groups.push({title:'Traversée de toit', fields:[
+      {type:'choice',label:'Afficher le toit',key:'showRoof',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+      {type:'slider',label:'Hauteur de traversée',unit:'cm',key:'roofH',min:120,max:600,step:10},
+      {type:'slider',label:'Pente du toit',unit:'°',key:'roofPitch',min:0,max:60,step:1},
+      {type:'slider',label:'Dépassement',unit:'cm',key:'depassement',min:20,max:200,step:5},
+      {type:'choice',label:'Bride / embase',key:'bride',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+      {type:'slider',label:'Taille embase',unit:'cm',key:'brideSize',min:30,max:120,step:2},
+      {type:'choice',label:'Chapeau',key:'chapeau',options:[{id:'aucun',l:'Aucun'},{id:'chinois',l:'Chapeau chinois'},{id:'plaque',l:'Plaque anti-pluie'},{id:'mitre',l:'Mitre'}]}
+    ]});
+  groups.push({title:'Habillage', fields:[{type:'mat',label:'Matériau maçonnerie',key:'mat',mats:CHEM_MATS}]});
   buildObjUI(PCHEM, groups, buildChemineeUI);
 }
 /* beamSeg() : poutre orientée (pavé) entre 2 points plan a->b, section bw x (yTop-yBot). */
@@ -4231,6 +4428,19 @@ function expandPerEdge(poly, dArr){
     var p=_lineX(l0.px,l0.pz,l0.dx,l0.dz, l1.px,l1.pz,l1.dx,l1.dz); out.push(p||poly[i].slice()); }
   return out;
 }
+/* acroRing() : acrotère en ANNEAU continu autour du contour, coins en COUPE D'ONGLET.
+   Face extérieure = contour ; face intérieure = contour décalé de t vers l'intérieur.
+   Les points intérieurs sont l'intersection des arêtes décalées (offsetPoly) -> onglet propre. */
+function acroRing(poly, y0, y1, t, col){
+  var n=poly.length; if(n<3) return;
+  var ccw=polyArea(poly)>=0?1:-1, inner=offsetPoly(poly, t, ccw);
+  for(var i=0;i<n;i++){ var j=(i+1)%n, o0=poly[i],o1=poly[j], q0=inner[i],q1=inner[j];
+    faceN([[o0[0],y0,o0[1]],[o1[0],y0,o1[1]],[o1[0],y1,o1[1]],[o0[0],y1,o0[1]]], col);   /* parement extérieur */
+    faceN([[q1[0],y0,q1[1]],[q0[0],y0,q0[1]],[q0[0],y1,q0[1]],[q1[0],y1,q1[1]]], col);   /* parement intérieur */
+    faceN([[o0[0],y1,o0[1]],[o1[0],y1,o1[1]],[q1[0],y1,q1[1]],[q0[0],y1,q0[1]]], col);   /* couvertine (dessus, onglet) */
+    faceN([[o1[0],y0,o1[1]],[o0[0],y0,o0[1]],[q0[0],y0,q0[1]],[q1[0],y0,q1[1]]], col);   /* sous-face */
+  }
+}
 /* buildImmRoof() : toiture (terrasse+acrotère, ou 1/2/3/4 pentes sur l'emprise).
    Retourne la hauteur ajoutée au-dessus de yBase. */
 function buildImmRoof(poly,x0,x1,z0,z1,yBase){
@@ -4241,9 +4451,11 @@ function buildImmRoof(poly,x0,x1,z0,z1,yBase){
     if((fc[0]-xc)*n[0]+(fc[1]-yBase)*n[1]+(fc[2]-zc)*n[2]<0) n=[-n[0],-n[1],-n[2]];
     face(v,n,rcol,1); }
   if(t==='terrasse'){
-    var ac=Math.max(0,(PIM.acro||0))/100;
-    if(ac>0){ _IFCTAG=null; for(var i=0;i<poly.length;i++){ var a=poly[i], b=poly[(i+1)%poly.length]; beamSeg(a[0],a[1],b[0],b[1], yBase, yBase+ac, 0.2, rcol);
-      if(typeof IMM_STRUCT!=='undefined'&&IMM_STRUCT) IMM_STRUCT.acro.push({ax:a[0],az:a[1],bx:b[0],bz:b[1],t:0.2,y0:yBase,y1:yBase+ac}); } }
+    var ac=Math.max(0,(PIM.acro||0))/100, at=Math.max(0.05,(PIM.acroT||20)/100);
+    if(ac>0){ _IFCTAG=null;
+      acroRing(poly, yBase, yBase+ac, at, rcol);                 /* anneau continu, coins en coupe d'onglet */
+      for(var i=0;i<poly.length;i++){ var a=poly[i], b=poly[(i+1)%poly.length];
+        if(typeof IMM_STRUCT!=='undefined'&&IMM_STRUCT) IMM_STRUCT.acro.push({ax:a[0],az:a[1],bx:b[0],bz:b[1],t:at,y0:yBase,y1:yBase+ac}); } }
     return ac;
   }
   var ov=Math.max(0,(PIM.debToit||0))/100; x0-=ov; x1+=ov; z0-=ov; z1+=ov; xc=(x0+x1)/2; zc=(z0+z1)/2;
@@ -6471,34 +6683,11 @@ var FURNLIB=[
    {id:'arm5',label:'Buffet bas',type:'armoire',p:{w:160,h:90,d:50,doors:3,feet:true,drawers:false}}
  ]},
  {id:'tables',label:'Tables',items:[
-   {id:'tab1',label:'Table 4 pieds',type:'table',p:{w:160,h:74,d:90,shape:'rect',base:'legs'}},
-   {id:'tab2',label:'Table ronde',type:'table',p:{w:120,h:74,d:120,shape:'round',base:'pedestal'}},
-   {id:'tab3',label:'Table tréteaux',type:'table',p:{w:180,h:74,d:80,shape:'rect',base:'trestle'}},
-   {id:'tab4',label:'Console',type:'table',p:{w:120,h:80,d:35,shape:'rect',base:'legs'}},
-   {id:'tab5',label:'Table basse',type:'table',p:{w:110,h:40,d:60,shape:'rect',base:'legs'}}
- ]},
- {id:'assises',label:'Assises',groups:[
-   {id:'chaises',label:'Chaises',items:[
-     {id:'ch1',label:'Chaise classique',type:'chaise',p:{w:45,h:88,d:48,seatH:46,arms:false}},
-     {id:'ch2',label:'Chaise à accoudoirs',type:'chaise',p:{w:52,h:84,d:52,seatH:45,arms:true}},
-     {id:'ch3',label:'Chaise garnie',type:'chaise',p:{w:48,h:90,d:50,seatH:46,arms:false}},
-     {id:'ch4',label:'Chaise haute (bar)',type:'chaise',p:{w:44,h:106,d:46,seatH:74,arms:false}},
-     {id:'ch5',label:'Chaise lounge',type:'chaise',p:{w:60,h:80,d:62,seatH:40,arms:true}}
-   ]},
-   {id:'tabourets',label:'Tabourets',items:[
-     {id:'to1',label:'Tabouret bas',type:'tabouret',p:{w:36,h:46,d:36,round:false,back:false,footrest:false}},
-     {id:'to2',label:'Tabouret rond',type:'tabouret',p:{w:34,h:46,d:34,round:true,back:false,footrest:false}},
-     {id:'to3',label:'Tabouret de bar',type:'tabouret',p:{w:38,h:74,d:38,round:true,back:false,footrest:true}},
-     {id:'to4',label:'Tabouret bar dossier',type:'tabouret',p:{w:40,h:72,d:40,round:false,back:true,footrest:true}},
-     {id:'to5',label:'Tabouret carré',type:'tabouret',p:{w:40,h:45,d:40,round:false,back:false,footrest:false}}
-   ]},
-   {id:'canapes',label:'Canapés',items:[
-     {id:'ca1',label:'Canapé 2 places',type:'canape',p:{w:160,h:85,d:90,seats:2,arms:true}},
-     {id:'ca2',label:'Canapé 3 places',type:'canape',p:{w:220,h:85,d:95,seats:3,arms:true}},
-     {id:'ca3',label:'Fauteuil',type:'canape',p:{w:90,h:85,d:88,seats:1,arms:true}},
-     {id:'ca4',label:'Banquette',type:'canape',p:{w:140,h:45,d:55,seats:2,arms:false}},
-     {id:'ca5',label:'Méridienne',type:'canape',p:{w:200,h:85,d:100,seats:3,arms:true}}
-   ]}
+   {id:'tab1',label:'Table 4 pieds',type:'table',p:{w:160,h:74,d:90,shape:'rect',base:'legs',legN:4,legSec:'carre'}},
+   {id:'tab2',label:'Table ronde',type:'table',p:{w:120,h:74,d:120,shape:'round',base:'pedestal',legSec:'rond'}},
+   {id:'tab3',label:'Table octogonale',type:'table',p:{w:120,h:74,d:120,shape:'poly',sides:8,base:'legs',legN:4,legSec:'carre'}},
+   {id:'tab4',label:'Console',type:'table',p:{w:120,h:80,d:35,shape:'rect',base:'legs',legN:4,legSec:'carre'}},
+   {id:'tab5',label:'Table basse',type:'table',p:{w:110,h:40,d:60,shape:'rect',base:'legs',legN:4,legSec:'carre'}}
  ]}
 ];
 var FURN={fam:'armoires',sub:'chaises',type:'armoire',label:'Armoire 2 portes',prodId:'arm1',
@@ -6588,15 +6777,118 @@ function buildArmoire(p){
   }
   _CURTEX=null; DIMS={w:w,h:h,d:d}; return DIMS;
 }
+/* normalise les paramètres d'une table : renseigne toutes les clés récentes
+   avec des valeurs par défaut (compatibilité configs anciennes + presets courts). */
+function normTable(p){
+  if(!('shape' in p)) p.shape='rect';
+  if(p.base==='trestle') p.base='legs';                 /* preset supprimé -> pieds */
+  if(!('base' in p)) p.base='legs';
+  if(p.sides==null) p.sides=8;
+  if(p.topT==null) p.topT=4;                            /* épaisseur plateau (cm) */
+  if(!('cornerMode' in p)) p.cornerMode='vif';          /* vif | conge | chanfrein */
+  if(p.cornerR==null) p.cornerR=4;                      /* rayon congé / chanfrein (cm) */
+  if(p.seg==null) p.seg=28;                             /* définition (segments) ronds */
+  if(!('legSec' in p)) p.legSec=(p.shape==='round'?'rond':'carre');
+  if(p.legN==null) p.legN=4;
+  if(p.legW==null) p.legW=6;                            /* côté/diamètre pied (cm) */
+  if(p.legInset==null) p.legInset=8;                    /* retrait des pieds (cm) */
+  if(p.shelf==null) p.shelf=0;                          /* 0/1 : plateau inférieur */
+  if(!('shelfShape' in p)) p.shelfShape='rect';
+  if(p.shelfSides==null) p.shelfSides=8;
+  if(p.shelfW==null) p.shelfW=Math.round(p.w*0.72);
+  if(p.shelfD==null) p.shelfD=Math.round(p.d*0.72);
+  if(p.shelfH==null) p.shelfH=Math.round(Math.max(8,p.h*0.18));  /* hauteur sol (cm) */
+  if(p.shelfT==null) p.shelfT=3;
+  if(!('editTarget' in p)) p.editTarget='plateau';      /* plateau | bas (cible d'édition libre) */
+  if(!p.verts){ var bb=roundRectPoly(p.w/100,p.d/100,'vif',0); p.verts=bb.map(function(q){return Math.round(q[0]*100)+','+Math.round(q[1]*100);}).join(' '); }
+  if(!p.shelfPoly) p.shelfPoly={verts:'',bulges:null,opens:null};
+  if(!p.shelfPoly.verts){ var sb=roundRectPoly(p.shelfW/100,p.shelfD/100,'vif',0); p.shelfPoly.verts=sb.map(function(q){return Math.round(q[0]*100)+','+Math.round(q[1]*100);}).join(' '); }
+  return p;
+}
+/* rectangle centré, angles vifs / arrondis (congé) / coupés (chanfrein), rayon r(m). */
+function roundRectPoly(w,d,mode,r){
+  var hw=w/2, hd=d/2;
+  if(mode==='vif' || !r || r<0.001) return [[hw,-hd],[hw,hd],[-hw,hd],[-hw,-hd]];
+  r=Math.min(r, Math.min(hw,hd)*0.98);
+  /* 4 coins en sens trigo : BR, TR, TL, BL — chaque coin = 2 points tangents (chanfrein) ou arc (congé) */
+  var C=[[1,-1],[1,1],[-1,1],[-1,-1]], out=[];
+  for(var c=0;c<4;c++){
+    var sx=C[c][0], sz=C[c][1], cx=sx*hw, cz=sz*hd, ctr=[cx-sx*r, cz-sz*r];
+    /* point d'entrée (bord précédent) et de sortie (bord suivant) selon le sens trigo */
+    var inPt, outPt, a0, a1;
+    if(c===0){ inPt=[cx-sx*r, cz]; outPt=[cx, cz-sz*r]; a0=-Math.PI/2; a1=0; }
+    else if(c===1){ inPt=[cx, cz-sz*r]; outPt=[cx-sx*r, cz]; a0=0; a1=Math.PI/2; }
+    else if(c===2){ inPt=[cx-sx*r, cz]; outPt=[cx, cz-sz*r]; a0=Math.PI/2; a1=Math.PI; }
+    else { inPt=[cx, cz-sz*r]; outPt=[cx-sx*r, cz]; a0=Math.PI; a1=1.5*Math.PI; }
+    if(mode==='chanfrein'){ out.push(inPt); out.push(outPt); }
+    else { var S=Math.max(3,Math.round(6)); for(var k=0;k<=S;k++){ var a=a0+(a1-a0)*k/S; out.push([ctr[0]+r*Math.cos(a), ctr[1]+r*Math.sin(a)]); } }
+  }
+  return out;
+}
+/* polygone régulier / cercle inscrit dans l'ellipse w×d (n côtés). */
+function ellipsePoly(w,d,n){ n=Math.max(3,n|0); var a=[]; for(var i=0;i<n;i++){ var t=2*Math.PI*i/n - Math.PI/2; a.push([w/2*Math.cos(t), d/2*Math.sin(t)]); } return a; }
+/* contour d'un plateau (rect/round/poly/libre) centré à l'origine, en mètres.
+   editable=true -> le polygone devient la cible d'édition interactive (poignées). */
+function tableTopPoly(p, w, d, shapeKey, sidesN, polyObj, editable){
+  if(shapeKey==='round') return ellipsePoly(w,d, Math.max(8,p.seg));
+  if(shapeKey==='poly')  return ellipsePoly(w,d, Math.max(3,Math.min(24,sidesN)));
+  if(shapeKey==='libre'){
+    var poly=parsePoly(polyObj.verts); if(!poly||poly.length<3) poly=roundRectPoly(w,d,'vif',0);
+    if(editable){ CUR_POLY=poly; POLY_TARGET=polyObj; }
+    return arcCurve(poly, polyObj);
+  }
+  return roundRectPoly(w,d, p.cornerMode, (p.cornerR||0)/100);   /* rect (+ congé/chanfrein) */
+}
+/* positions des pieds selon la forme et le nombre. */
+function tableLegPositions(p, w, d, shapeKey){
+  var n=Math.max(1, p.legN|0), inset=Math.max(0.02,(p.legInset||8)/100), pos=[];
+  if(shapeKey==='rect' && n===4){ var lx=w/2-inset, lz=d/2-inset; return [[-lx,-lz],[lx,-lz],[lx,lz],[-lx,lz]]; }
+  var rx=Math.max(0.05,w/2-inset), rz=Math.max(0.05,d/2-inset);
+  for(var i=0;i<n;i++){ var a=2*Math.PI*i/n - Math.PI/2; pos.push([rx*Math.cos(a), rz*Math.sin(a)]); }
+  return pos;
+}
+/* pose un pied vertical (carré ou rond) de hauteur y0..y1. */
+function tableLeg(x,z,y0,y1,secKey,wm,seg,col){
+  if(secKey==='rond') cylY(x,z, wm/2, y0,y1, col, Math.max(8,Math.min(seg||16,32)));
+  else box(x,(y0+y1)/2,z, wm, y1-y0, wm, col, 1);
+}
 function buildTable(p){
-  var w=p.w/100,h=p.h/100,d=p.d/100, tt=0.04, cT=FINISH.fgarn, cL=FINISH.fstruct;
+  normTable(p);
+  var w=p.w/100, h=p.h/100, d=p.d/100, tt=Math.max(0.005,(p.topT||4)/100);
+  var cT=FINISH.fgarn, cL=FINISH.fstruct, legTop=h-tt;
+
+  /* ---- PLATEAU ---- (prisme du contour, arrondi des angles inclus) */
   _CURTEX=FINISH_TEX.fgarn;
-  if(p.shape==='round'){ cylY(0,0, w/2, h-tt, h, cT,22); } else { box(0,h-tt/2,0, w,tt,d, cT,1); }
+  var topEditable=(p.editTarget!=='bas');
+  var topPoly=tableTopPoly(p, w, d, p.shape, p.sides, p, topEditable && p.shape==='libre');
+  dallePrism(topPoly, legTop, tt, cT);
+  var tbb=polyBBox(topPoly);
+
+  /* ---- PLATEAU INFÉRIEUR (optionnel) ---- */
+  if(p.shelf){
+    var sw=p.shelfW/100, sd=p.shelfD/100, sy=Math.max(0.01,(p.shelfH||8)/100), st=Math.max(0.005,(p.shelfT||3)/100);
+    var shEditable=(p.editTarget==='bas');
+    var shPoly=tableTopPoly(p, sw, sd, p.shelfShape, p.shelfSides, p.shelfPoly, shEditable && p.shelfShape==='libre');
+    _CURTEX=FINISH_TEX.fgarn; dallePrism(shPoly, sy, st, cT);
+  }
+
+  /* ---- PIEDS / PIÈTEMENT ---- */
   _CURTEX=FINISH_TEX.fstruct;
-  if(p.base==='pedestal'){ cylY(0,0,0.06, 0,h-tt, cL,14); cylY(0,0, Math.min(w,d)/3.2, 0,0.04, cL,20); }
-  else if(p.base==='trestle'){ [-w/2+0.12,w/2-0.12].forEach(function(x){ box(x,(h-tt)/2,0,0.06,h-tt,d*0.8,cL,1);}); box(0,(h-tt)*0.45,0,w*0.66,0.06,0.06,cL,1); }
-  else { var lx=w/2-0.08, lz=d/2-0.08; [[-lx,-lz],[lx,-lz],[-lx,lz],[lx,lz]].forEach(function(o){ box(o[0],(h-tt)/2,o[1],0.06,h-tt,0.06,cL,1);}); }
-  _CURTEX=null; DIMS={w:w,h:h,d:(p.shape==='round'?w:d)}; return DIMS;
+  var lw=Math.max(0.01,(p.legW||6)/100);
+  if(p.base==='pedestal'){
+    var col=(p.legSec==='rond'), pr=Math.max(0.03,lw);
+    if(col) cylY(0,0, pr, 0, legTop, cL, Math.max(10,Math.min(p.seg,32)));
+    else box(0,legTop/2,0, pr*2, legTop, pr*2, cL,1);
+    /* socle */
+    cylY(0,0, Math.min(w,d)/3.2, 0, 0.035, cL, Math.max(12,Math.min(p.seg,36)));
+  } else {
+    var legs=tableLegPositions(p, w, d, p.shape);
+    legs.forEach(function(o){ tableLeg(o[0],o[1], 0, legTop, p.legSec, lw, p.seg, cL); });
+    /* entretoise légère quand plateau inférieur absent et pieds >=4 : néant (garde épuré) */
+  }
+
+  _CURTEX=null;
+  DIMS={w:tbb.w||w, h:h, d:tbb.d||d}; return DIMS;
 }
 function buildChaise(p){
   var w=p.w/100,d=p.d/100,bh=p.h/100,sh=p.seatH/100, cL=FINISH.fstruct, cF=FINISH.fgarn, lr=0.022;
@@ -6652,7 +6944,52 @@ function buildFurniture(){
   if(t==='tabouret') return buildTabouret(p);
   return buildCanape(p);
 }
+function buildTableUI(){
+  var p=normTable(FURN.p), groups=[];
+  var plateau=[
+    {type:'slider',label:'Largeur',unit:'cm',key:'w',min:20,max:300,step:1},
+    {type:'slider',label:'Hauteur',unit:'cm',key:'h',min:20,max:120,step:1},
+    {type:'slider',label:'Profondeur',unit:'cm',key:'d',min:20,max:200,step:1},
+    {type:'choice',label:'Forme du plateau',key:'shape',options:[{id:'rect',l:'Rectangle'},{id:'round',l:'Ronde'},{id:'poly',l:'Polygone'},{id:'libre',l:'Forme libre'}]},
+    {type:'slider',label:'Épaisseur plateau',unit:'cm',key:'topT',min:1,max:14,step:0.5}
+  ];
+  if(p.shape==='poly') plateau.push({type:'slider',label:'Nombre de côtés',unit:'',key:'sides',min:3,max:16,step:1});
+  if(p.shape==='round'||p.shape==='poly') plateau.push({type:'slider',label:'Définition (segments)',unit:'',key:'seg',min:8,max:64,step:1});
+  if(p.shape==='rect'){
+    plateau.push({type:'choice',label:'Angles',key:'cornerMode',options:[{id:'vif',l:'Vifs'},{id:'conge',l:'Congé'},{id:'chanfrein',l:'Chanfrein'}]});
+    if(p.cornerMode!=='vif') plateau.push({type:'slider',label:'Rayon angle',unit:'cm',key:'cornerR',min:1,max:30,step:1});
+  }
+  if(p.shape==='libre') plateau.push({type:'verts',label:'Sommets du plateau',key:'verts',obj:p,hint:'Clic droit sur un bord : courber / étirer / ajouter un point / arrondir.'});
+  groups.push({title:'Plateau',fields:plateau});
+
+  var pied=[
+    {type:'choice',label:'Piètement',key:'base',options:[{id:'legs',l:'Pieds'},{id:'pedestal',l:'Central (fût)'}]},
+    {type:'choice',label:'Section pied',key:'legSec',options:[{id:'carre',l:'Carrée'},{id:'rond',l:'Ronde'}]},
+    {type:'slider',label:(p.legSec==='rond'?'Diamètre pied':'Côté pied'),unit:'cm',key:'legW',min:2,max:24,step:0.5}
+  ];
+  if(p.base==='legs'){
+    pied.push({type:'slider',label:'Nombre de pieds',unit:'',key:'legN',min:1,max:8,step:1});
+    pied.push({type:'slider',label:'Retrait des pieds',unit:'cm',key:'legInset',min:2,max:40,step:1});
+  }
+  groups.push({title:'Piètement',fields:pied});
+
+  var bas=[{type:'choice',label:'Plateau inférieur',key:'shelf',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]}];
+  if(p.shelf){
+    bas.push({type:'choice',label:'Forme',key:'shelfShape',options:[{id:'rect',l:'Rectangle'},{id:'round',l:'Ronde'},{id:'poly',l:'Polygone'},{id:'libre',l:'Forme libre'}]});
+    if(p.shelfShape==='poly') bas.push({type:'slider',label:'Côtés',unit:'',key:'shelfSides',min:3,max:16,step:1});
+    bas.push({type:'slider',label:'Largeur',unit:'cm',key:'shelfW',min:15,max:300,step:1});
+    bas.push({type:'slider',label:'Profondeur',unit:'cm',key:'shelfD',min:15,max:200,step:1});
+    bas.push({type:'slider',label:'Hauteur (sol)',unit:'cm',key:'shelfH',min:2,max:120,step:1});
+    bas.push({type:'slider',label:'Épaisseur',unit:'cm',key:'shelfT',min:1,max:10,step:0.5});
+    if(p.shelfShape==='libre') bas.push({type:'verts',label:'Sommets plateau bas',key:'verts',obj:p.shelfPoly,hint:'Clic droit sur un bord pour éditer.'});
+    if(p.shape==='libre' && p.shelfShape==='libre') bas.push({type:'choice',label:'Éditer la forme libre de',key:'editTarget',options:[{id:'plateau',l:'Plateau'},{id:'bas',l:'Plateau bas'}]});
+  }
+  groups.push({title:'Plateau inférieur',fields:bas});
+
+  buildObjUI(p, groups, buildTableUI);
+}
 function buildFurnUI(){
+  if(FURN.type==='table'){ buildTableUI(); return; }
   var p=FURN.p, f=[];
   if('w' in p) f.push({type:'slider',label:'Largeur',unit:'cm',key:'w',min:20,max:300,step:1});
   if('h' in p) f.push({type:'slider',label:'Hauteur',unit:'cm',key:'h',min:20,max:260,step:1});
@@ -7172,6 +7509,349 @@ function buildHangarUI(){
 }
 
 /* ============================================================================
+   CUISINE — configurateur modulaire type IKEA (METOD).
+   Implantations I / L / U / îlot. Caissons bas, meubles hauts, colonnes toute
+   hauteur, plan de travail continu, socle, façades variées (portes/tiroirs/
+   vitré/sans poignée), poignées, et électroménager (four, plaque, frigo,
+   lave-vaisselle, hotte) + évier encastré. Repère : sol y=0.
+   ============================================================================ */
+var PCUISINE = {
+  layout:'L', runA:360, runB:240, runC:180, ilot:0, ilotW:180, ilotD:90, ilotX:0, ilotY:110,
+  counterH:90, baseD:60, counterT:4, overhang:2, plinthH:12, module:60,
+  wallOn:1, wallH:72, wallD:35, wallGap:55, cornerType:'diag',
+  fridge:1, oven:1, hob:1, hood:1, dishwasher:1, sink:1, sinkMount:'dessus', sinkL:60, sinkW:50, sinkDrainer:0, faucetH:28,
+  frontStyle:'shaker', handle:'horiz', drawers:35, hobPos:35, sinkPos:70
+};
+var _KOX=0,_KOZ=0;                                      /* offset de centrage global */
+function kb(cx,cy,cz,w,h,d,col,al){ box(cx+_KOX,cy,cz+_KOZ, w,h,d, col,(al==null?1:al)); }
+function kcyl(cx,cz,r,y0,y1,col,seg){ cylY(cx+_KOX,cz+_KOZ, r, y0,y1, col, seg||14); }
+/* tube rond lissé entre 2 points 3D (déjà en coords monde, offset inclus) */
+function ktube(A,B,r,seg,col){ seg=seg||10;
+  var dx=B[0]-A[0],dy=B[1]-A[1],dz=B[2]-A[2], L=Math.hypot(dx,dy,dz); if(L<1e-6) return;
+  var u=[dx/L,dy/L,dz/L], ref=Math.abs(u[1])<0.9?[0,1,0]:[1,0,0];
+  var p1=norm(cross(u,ref)), p2=norm(cross(u,p1));
+  function ring(P){ var a=[]; for(var i=0;i<seg;i++){ var t=2*Math.PI*i/seg, c=Math.cos(t)*r, s=Math.sin(t)*r;
+    a.push([P[0]+p1[0]*c+p2[0]*s, P[1]+p1[1]*c+p2[1]*s, P[2]+p1[2]*c+p2[2]*s]); } return a; }
+  var rA=ring(A), rB=ring(B);
+  for(var i=0;i<seg;i++){ var j=(i+1)%seg;
+    face([rA[i],rA[j],rB[j],rB[i]], norm(cross(sub(rA[j],rA[i]),sub(rB[i],rA[i]))), col,1); }
+}
+/* boîte alignée sur un run : wlen le long de l'axe, depth en travers */
+function kmod(axis,along,cross,wlen,ylo,h,depth,col,al){ var cy=ylo+h/2;
+  if(axis==='x') kb(along,cy,cross, wlen,h,depth, col,al); else kb(cross,cy,along, depth,h,wlen, col,al); }
+/* façade d'un module (porte/tiroirs/vitré/électro) + poignée. axis=axe largeur,
+   crossFront=plan de façade (travers), face=±1 (sens sortant). */
+function kFront(axis,along,crossFront,face, wlen,ylo,h, kind, colF,colHnd, hlow){
+  var ft=0.02, cy=ylo+h/2, hnd=PCUISINE.handle, frame=(PCUISINE.frontStyle==='shaker');
+  var hLoH = hlow?(-h/2+0.09):(h/2-0.08), hLoV = hlow?(-h/2+0.15):0;   /* poignée en bas pour les meubles hauts */
+  function fbox(fa,fy,out, lw,lh,lo, col,al){
+    if(axis==='x') kb(along+fa, cy+fy, crossFront+face*out, lw,lh,lo, col,al);
+    else            kb(crossFront+face*out, cy+fy, along+fa, lo,lh,lw, col,al); }
+  function doorPanel(fa,pw,ph,fy,glass){
+    fbox(fa,fy,ft/2, pw,ph,ft, colF,1);
+    if(glass) fbox(fa,fy,ft+0.005, pw*0.72,ph*0.72,0.004, [150,180,200],0.4);
+    else if(frame) fbox(fa,fy,ft+0.004, pw*0.72,ph*0.80,0.006, [(colF[0]*0.93)|0,(colF[1]*0.93)|0,(colF[2]*0.93)|0],1); }
+  /* poignée : barre horizontale (montants), barre plate horizontale, barre verticale, bouton, ou sans */
+  function drawHandle(fa,fy,aw,ah){
+    var t=hnd; if(t==='barre') t='horiz';
+    if(t==='aucune') return;
+    if(t==='bouton'){ fbox(fa,fy,ft+0.018, 0.03,0.03,0.03, colHnd,1); return; }
+    var vert=(t==='vert'), L=vert?Math.min((ah||h)*0.55,0.18):Math.min((aw||wlen)*0.55,0.20), out=0.042;
+    var oa=vert?[0,-L*0.42]:[-L*0.42,0], ob=vert?[0,L*0.42]:[L*0.42,0];
+    fbox(fa+oa[0],fy+oa[1], out/2, 0.016,0.016,out, colHnd,1);             /* montant */
+    fbox(fa+ob[0],fy+ob[1], out/2, 0.016,0.016,out, colHnd,1);
+    if(t==='horiz2')  fbox(fa,fy, out, L,0.028,0.012, colHnd,1);           /* barre plate */
+    else if(vert)     fbox(fa,fy, out, 0.017,L,0.017, colHnd,1);           /* barre verticale */
+    else              fbox(fa,fy, out, L,0.017,0.017, colHnd,1);           /* barre horizontale */
+  }
+  function drawerHandle(fy){ drawHandle(0, fy, wlen, 0.16); }               /* tiroir : centrée */
+  function doorHandle(edgeX){ var t=hnd==='barre'?'horiz':hnd;
+    if(t==='horiz'||t==='horiz2') drawHandle(0, hLoH, wlen, h); else drawHandle(edgeX, hLoV, wlen, h); }
+  var glass=(kind==='vitre');
+  if(kind==='tiroirs'||kind==='four'){
+    var nd=3, dh=h/nd;
+    for(var i=0;i<nd;i++){ var fy=-h/2+dh*(i+0.5), oven=(kind==='four'&&i===1);
+      fbox(0,fy,ft/2, wlen-0.01,dh-0.008,ft, oven?[42,44,48]:colF,1);
+      if(oven){ fbox(0,fy,ft+0.006, wlen*0.72,dh*0.55,0.004,[70,80,92],0.55); fbox(0,fy+dh*0.30,ft+0.02,wlen*0.6,0.02,0.02,colHnd,1); }
+      else drawerHandle(fy+dh*0.30); }
+  } else if(kind==='frigo'){
+    fbox(0,0,ft/2, wlen-0.01,h-0.01,ft, [212,214,218],1);
+    fbox(0,h*0.16,ft+0.004, wlen-0.02,0.012,0.008,[150,152,156],1);
+    fbox(wlen/2-0.05,h*0.30,ft+0.022,0.02,h*0.28,0.02,colHnd,1);
+    fbox(wlen/2-0.05,-h*0.24,ft+0.022,0.02,h*0.30,0.02,colHnd,1);
+  } else if(kind==='lv'){
+    fbox(0,0,ft/2, wlen-0.01,h-0.01,ft, colF,1); drawHandle(0,h*0.42, wlen,0.16);
+    fbox(0,h*0.44,ft+0.01,wlen*0.5,0.02,0.01,[90,92,98],1);
+  } else if(kind==='porte2'){
+    var pw=wlen/2-0.006; doorPanel(-pw/2-0.003,pw,h-0.01,0,glass); doorPanel(pw/2+0.003,pw,h-0.01,0,glass);
+    var th=hnd==='barre'?'horiz':hnd;
+    if(th==='horiz'||th==='horiz2'){ drawHandle(-pw/2, hLoH, pw,h); drawHandle(pw/2, hLoH, pw,h); }
+    else { drawHandle(-0.03,hLoV,pw,h); drawHandle(0.03,hLoV,pw,h); }
+  } else { doorPanel(0,wlen-0.01,h-0.01,0,glass); doorHandle(wlen/2-0.05); }
+}
+/* génère la liste des modules d'un run (largeurs, tiroirs répartis) */
+function kModules(len,mod,dr){
+  var mods=[], x=0, i=0;
+  while(len-x>0.12){ var w=Math.min(mod,len-x); if(len-x-w<0.12) w=len-x; mods.push({s:x,w:w}); x+=w; i++; }
+  mods.forEach(function(m,k){ m.kind = (dr>0 && (k%3)===1) ? 'tiroirs' : (m.w>0.55?'porte2':'porte1'); });
+  return mods;
+}
+var FAUCET_MESH={v:[[-18,0,5],[-17,0,7],[-17,49,7],[-18,51,5],[-16,0,9],[-16,48,9],[-15,0,11],[-15,47,11],[-13,0,13],[-13,45,13],[-18,0,3],[-18,52,3],[-18,0,-1],[-18,0,1],[-18,52,1],[-18,52,-1],[-18,0,-3],[-18,52,-3],[-17,0,-7],[-18,0,-5],[-18,51,-5],[-17,49,-7],[-16,0,-9],[-16,48,-9],[-15,0,-11],[-15,47,-11],[-13,0,-13],[-13,45,-13],[-6,41,17],[-8,42,17],[-8,0,17],[-6,0,17],[-4,0,18],[-4,40,18],[-2,0,18],[-2,40,18],[-12,0,-14],[-10,0,-15],[-8,0,-17],[-6,0,-17],[-4,0,-18],[-2,0,-18],[0,0,-19],[2,0,-18],[4,0,-18],[6,0,-17],[8,0,-17],[10,0,-15],[12,0,-14],[13,0,-13],[15,0,-11],[16,0,-9],[17,0,-7],[18,0,-5],[18,0,-3],[18,0,-1],[18,0,1],[18,0,3],[18,0,5],[17,0,7],[16,0,9],[15,0,11],[13,0,13],[12,0,14],[10,0,15],[8,0,17],[6,0,17],[4,0,18],[2,0,18],[0,0,18],[-10,0,15],[-12,0,14],[-10,43,15],[-12,44,-14],[-12,44,14],[-10,43,-15],[-8,42,-17],[-6,41,-17],[-4,40,-18],[-2,40,-18],[6,41,17],[4,40,18],[0,40,18],[2,40,18],[12,44,14],[13,45,13],[8,42,17],[10,43,15],[12,44,-14],[13,45,-13],[8,42,-17],[6,41,-17],[10,43,-15],[4,40,-18],[0,40,-19],[2,40,-18],[15,47,11],[16,48,9],[17,49,7],[18,51,5],[18,52,-3],[18,52,-1],[18,52,1],[18,51,-5],[18,52,3],[16,48,-9],[17,49,-7],[15,47,-11],[-20,59,21],[-20,61,21],[-20,61,-44],[-20,59,-44],[-19,66,21],[-18,68,21],[-18,68,-44],[-19,66,-44],[-15,46,21],[-15,46,-44],[-13,45,-44],[-13,45,21],[-11,43,21],[-11,43,-44],[-16,48,21],[-17,50,21],[-17,50,-44],[-16,48,-44],[-19,54,21],[-20,57,21],[-20,57,-44],[-19,54,-44],[-18,52,21],[-18,52,-44],[-13,75,21],[-11,77,21],[-11,77,-44],[-13,75,-44],[-17,70,21],[-17,70,-44],[-16,72,21],[-15,74,21],[-15,74,-44],[-16,72,-44],[-20,63,21],[-20,63,-44],[-9,42,21],[-7,41,21],[-5,41,21],[-2,40,21],[0,40,21],[2,40,21],[5,41,21],[7,41,21],[9,42,21],[11,43,21],[13,45,21],[15,46,21],[16,48,21],[17,50,21],[18,52,21],[19,54,21],[20,57,21],[20,59,21],[20,61,21],[20,63,21],[19,66,21],[18,68,21],[17,70,21],[16,72,21],[15,74,21],[13,75,21],[11,77,21],[9,78,21],[7,79,21],[5,79,21],[2,80,21],[0,80,21],[-2,80,21],[-5,79,21],[-7,79,21],[-9,78,21],[-9,78,-44],[-7,79,-44],[-5,79,-44],[-2,80,-44],[0,80,-44],[2,80,-44],[5,79,-44],[7,79,-44],[9,78,-44],[11,77,-44],[13,75,-44],[15,74,-44],[16,72,-44],[17,70,-44],[18,68,-44],[19,66,-44],[20,63,-44],[20,61,-44],[20,59,-44],[20,57,-44],[19,54,-44],[18,52,-44],[17,50,-44],[16,48,-44],[15,46,-44],[13,45,-44],[11,43,-44],[9,42,-44],[7,41,-44],[5,41,-44],[2,40,-44],[0,40,-44],[-2,40,-44],[-5,41,-44],[-7,41,-44],[-9,42,-44],[-15,47,57],[-13,45,57],[-10,43,57],[-7,41,57],[-6,41,57],[-6,79,57],[-7,79,57],[-10,77,57],[-13,75,57],[-15,73,57],[-17,70,57],[-19,67,57],[-20,63,57],[-20,60,57],[-20,57,57],[-19,53,57],[-17,50,57],[-6,41,45],[-6,79,45],[-19,67,22],[-20,63,22],[-13,45,22],[-10,43,22],[-19,53,22],[-17,50,22],[-15,47,22],[-13,75,22],[-15,73,22],[-10,77,22],[-7,41,22],[-20,60,22],[-20,57,22],[-17,70,22],[-7,79,22],[-4,41,57],[-3,40,57],[0,40,57],[3,40,57],[5,41,57],[5,79,57],[3,80,57],[0,80,57],[-3,80,57],[-4,79,57],[-4,41,45],[-3,40,22],[-4,79,45],[-3,80,22],[0,80,22],[3,80,22],[7,79,22],[10,77,22],[13,75,22],[15,73,22],[17,70,22],[19,67,22],[20,63,22],[20,60,22],[20,57,22],[19,53,22],[17,50,22],[15,47,22],[13,45,22],[10,43,22],[7,41,22],[3,40,22],[0,40,22],[6,41,57],[6,79,57],[6,79,45],[6,41,45],[5,41,45],[5,79,45],[10,43,57],[7,41,57],[7,79,57],[10,77,57],[13,45,57],[15,47,57],[17,50,57],[19,53,57],[20,57,57],[20,60,57],[20,63,57],[19,67,57],[17,70,57],[15,73,57],[13,75,57],[-9,184,170],[-9,184,168],[-9,154,168],[-9,154,170],[-9,184,167],[-9,154,167],[-9,184,165],[-9,154,165],[-8,154,171],[-8,184,171],[-8,184,164],[-8,154,164],[-8,154,173],[-7,154,174],[-7,184,174],[-8,184,173],[-7,184,162],[-7,154,162],[-6,154,175],[-6,184,175],[-6,184,161],[-6,154,161],[-9,195,168],[-9,195,167],[-9,195,165],[-9,194,164],[-8,196,170],[-8,194,162],[-7,196,172],[-8,196,171],[-7,193,161],[-6,197,173],[-6,193,160],[-9,205,163],[-9,206,164],[-9,204,161],[-9,204,160],[-8,207,165],[-8,203,159],[-7,208,168],[-8,207,166],[-7,202,157],[-6,209,168],[-6,202,156],[-9,215,157],[-9,214,156],[-9,213,155],[-9,212,154],[-8,216,158],[-8,211,153],[-7,218,160],[-8,217,159],[-7,210,152],[-6,219,161],[-6,209,151],[-9,219,146],[-9,218,146],[-8,217,145],[-7,215,144],[-8,220,136],[-7,219,135],[-7,220,126],[-6,219,126],[-6,218,135],[-7,220,12],[-6,219,12],[-6,214,144],[-9,222,148],[-9,221,147],[-9,223,137],[-9,222,136],[-8,223,149],[-9,223,126],[-8,222,126],[-8,224,149],[-8,222,12],[-6,226,151],[-7,226,150],[-9,225,137],[-9,226,126],[-9,225,126],[-9,226,12],[-9,225,12],[-9,228,126],[-9,228,12],[-9,226,137],[-9,223,12],[-8,229,138],[-8,228,138],[-8,229,126],[-8,229,12],[-8,231,126],[-8,231,12],[-7,232,126],[-7,232,12],[-7,230,138],[-6,231,139],[-6,233,126],[-6,233,12],[-9,204,-22],[-8,203,-21],[-8,211,-15],[-9,212,-16],[-7,202,-19],[-7,210,-14],[-7,193,-23],[-8,194,-24],[-8,184,-26],[-6,202,-18],[-6,209,-13],[-6,193,-22],[-8,86,-26],[-7,86,-24],[-7,184,-24],[-6,86,-23],[-6,184,-23],[-9,214,-18],[-9,213,-17],[-9,219,-8],[-9,221,-9],[-9,222,-10],[-9,215,-19],[-9,205,-25],[-9,204,-23],[-9,218,-8],[-8,223,-11],[-8,216,-20],[-8,217,-7],[-7,215,-6],[-6,214,-6],[-6,218,3],[-7,219,3],[-8,220,2],[-9,225,1],[-9,223,1],[-9,222,2],[-8,217,-21],[-8,224,-11],[-7,218,-22],[-7,226,-12],[-9,226,1],[-8,228,0],[-8,229,0],[-7,230,0],[-6,231,-1],[-6,219,-23],[-6,226,-13],[-8,78,-30],[-8,78,-29],[-8,90,-29],[-8,90,-30],[-8,78,-31],[-8,90,-31],[-8,79,-33],[-8,90,-33],[-8,79,-27],[-7,79,-26],[-7,90,-26],[-8,90,-27],[-7,79,-34],[-7,90,-34],[-6,79,-35],[-6,90,-35],[-9,86,-30],[-9,86,-28],[-9,184,-28],[-9,184,-30],[-9,86,-32],[-9,184,-32],[-8,86,-27],[-8,184,-27],[-8,86,-33],[-8,184,-33],[-8,86,-35],[-8,184,-35],[-7,86,-36],[-7,184,-36],[-6,79,-25],[-6,90,-25],[-6,86,-37],[-6,184,-37],[-9,195,-27],[-9,195,-29],[-9,195,-30],[-9,194,-26],[-8,196,-32],[-8,196,-33],[-7,196,-34],[-6,197,-35],[-9,206,-26],[-8,207,-27],[-8,207,-28],[-7,208,-30],[-6,209,-30],[-4,154,176],[-4,185,176],[-5,183,160],[-5,154,160],[-3,154,177],[-3,185,177],[-3,183,160],[-3,154,160],[-1,154,177],[-1,185,177],[-2,183,159],[-2,154,159],[0,154,177],[0,185,177],[0,183,159],[0,154,159],[-2,193,158],[0,193,158],[-5,193,159],[-5,201,156],[-4,197,174],[-3,193,158],[-3,201,155],[-3,197,175],[-2,201,155],[-1,197,175],[0,197,175],[0,200,155],[-4,209,169],[-5,208,150],[-3,209,170],[-3,208,150],[-2,207,149],[-1,209,170],[-3,213,143],[-2,213,143],[0,210,170],[0,207,149],[0,213,142],[-4,219,161],[-5,214,143],[-4,227,151],[-3,220,162],[-3,228,151],[-1,220,162],[0,220,162],[0,228,152],[-1,228,151],[-3,80,51],[-4,80,52],[-4,110,52],[-3,110,51],[-3,110,52],[-3,110,53],[-3,110,54],[-2,110,54],[-2,110,55],[-1,110,55],[0,110,55],[1,110,55],[2,110,55],[2,110,54],[3,110,54],[3,110,53],[3,110,52],[3,110,51],[3,110,50],[3,110,49],[2,110,49],[2,110,48],[1,110,48],[0,110,48],[-1,110,48],[-2,110,48],[-2,110,49],[-3,110,49],[-3,110,50],[-5,217,135],[-3,216,135],[-3,80,52],[-3,80,53],[-2,216,135],[-2,80,54],[-2,80,55],[-3,80,54],[0,216,135],[-1,80,55],[-5,218,125],[-5,218,13],[-4,232,139],[-3,218,125],[-3,218,13],[-2,217,125],[-2,217,13],[0,217,125],[0,217,13],[-4,234,127],[-4,234,11],[-3,233,139],[-3,235,127],[-3,235,11],[-1,233,139],[-1,235,127],[-1,235,11],[0,233,139],[0,235,127],[0,235,11],[-3,80,50],[-3,80,49],[-2,80,49],[-2,80,48],[-1,80,48],[-2,183,-21],[-2,86,-21],[0,86,-21],[0,183,-21],[-5,201,-18],[-3,201,-17],[-3,208,-12],[-5,208,-12],[-5,193,-21],[-2,207,-11],[-2,201,-17],[-3,193,-20],[-2,193,-20],[-3,183,-22],[-3,86,-22],[0,207,-11],[0,200,-17],[0,193,-20],[-5,217,3],[-5,214,-5],[-3,213,-5],[-3,216,3],[-2,216,3],[0,216,3],[-2,213,-5],[0,213,-4],[-4,227,-13],[-4,232,-1],[-3,233,-1],[-3,228,-13],[-1,233,-1],[-1,228,-13],[0,233,-1],[0,228,-14],[-5,79,-24],[-5,90,-24],[-5,90,-36],[-5,79,-36],[-4,80,-23],[-4,90,-23],[-4,80,-37],[-4,90,-37],[-3,80,-38],[-3,90,-38],[-3,80,-22],[-3,90,-22],[-4,86,-22],[-4,183,-22],[-4,185,-38],[-4,86,-38],[-3,86,-38],[-3,185,-38],[-2,86,-39],[-2,185,-39],[-1,80,-22],[-1,90,-22],[-1,80,-38],[-1,90,-38],[0,80,-22],[0,90,-22],[0,80,-38],[0,90,-38],[0,86,-39],[0,185,-39],[-4,197,-36],[-4,209,-31],[1,90,-22],[3,90,-22],[4,90,-23],[5,90,-24],[6,90,-25],[7,90,-26],[8,90,-27],[8,90,-29],[8,90,-30],[8,90,-31],[8,90,-33],[7,90,-34],[6,90,-35],[5,90,-36],[4,90,-37],[3,90,-38],[1,90,-38],[-3,197,-37],[-1,197,-37],[0,197,-37],[-4,219,-23],[-3,220,-24],[-3,209,-32],[-1,220,-24],[-1,209,-32],[0,220,-24],[0,210,-32],[1,183,159],[1,154,159],[1,193,158],[2,154,177],[2,185,177],[3,183,159],[3,154,159],[3,154,176],[3,185,176],[4,154,160],[4,183,160],[5,185,176],[5,154,176],[6,154,175],[6,184,175],[6,184,161],[6,154,161],[2,197,175],[3,193,158],[1,201,155],[3,197,175],[4,193,159],[3,201,155],[5,197,174],[4,201,155],[6,197,173],[6,193,160],[6,201,156],[1,207,149],[1,213,143],[2,209,170],[3,208,150],[3,213,143],[3,209,170],[4,208,150],[5,209,169],[6,208,168],[6,209,151],[2,220,162],[2,228,151],[3,220,162],[3,228,151],[4,213,143],[5,219,161],[5,227,151],[6,219,161],[6,226,150],[6,214,143],[2,80,54],[3,80,54],[3,80,53],[3,80,52],[0,80,55],[1,80,55],[1,216,135],[2,80,55],[3,216,135],[4,217,135],[1,217,125],[1,217,13],[3,217,125],[3,217,13],[4,218,125],[4,218,13],[5,232,139],[3,233,139],[6,219,126],[6,219,12],[6,231,139],[6,218,135],[2,233,139],[2,235,127],[2,235,11],[3,234,127],[3,234,11],[5,234,127],[5,234,11],[6,233,126],[6,233,12],[2,80,48],[1,80,48],[0,80,48],[2,80,49],[3,80,50],[3,80,49],[3,80,51],[1,201,-17],[1,207,-11],[1,193,-20],[2,86,-21],[2,183,-21],[3,201,-17],[3,208,-12],[3,193,-20],[4,201,-17],[4,208,-12],[4,193,-21],[1,216,3],[1,213,-5],[3,216,3],[3,213,-5],[4,213,-5],[4,217,3],[6,201,-18],[6,209,-13],[6,214,-5],[2,233,-1],[3,233,-1],[3,228,-13],[2,228,-13],[5,232,-1],[5,227,-13],[6,218,3],[6,231,-1],[6,226,-12],[3,80,-22],[4,80,-23],[3,80,-38],[1,80,-38],[4,80,-37],[5,79,-24],[5,79,-36],[6,79,-25],[6,79,-35],[1,80,-22],[2,86,-39],[2,185,-39],[3,86,-38],[3,185,-38],[3,86,-22],[3,183,-22],[5,86,-38],[5,185,-38],[5,86,-22],[5,183,-22],[6,86,-23],[6,184,-23],[6,86,-37],[6,184,-37],[2,197,-37],[3,197,-37],[6,193,-22],[5,197,-36],[6,197,-35],[5,209,-31],[6,208,-30],[2,220,-24],[2,209,-32],[3,220,-24],[3,209,-32],[5,219,-23],[6,219,-23],[7,154,174],[7,184,174],[7,184,162],[8,184,163],[8,154,163],[7,154,162],[8,154,172],[8,184,172],[8,154,165],[8,184,165],[9,154,171],[9,184,171],[9,154,169],[9,184,169],[9,184,166],[9,154,166],[9,184,168],[9,154,168],[7,196,172],[7,193,161],[8,194,162],[8,196,171],[8,194,163],[9,196,169],[9,195,168],[9,194,165],[9,195,166],[7,208,167],[7,202,157],[8,203,158],[8,207,166],[8,203,160],[9,206,165],[9,206,164],[9,204,161],[9,205,162],[7,218,160],[7,209,151],[8,210,152],[8,217,159],[8,211,153],[9,216,158],[9,215,157],[9,212,154],[9,214,156],[7,220,126],[7,219,135],[7,220,12],[7,215,144],[8,221,12],[8,221,126],[8,216,145],[8,218,145],[8,220,136],[9,219,146],[9,220,147],[7,225,150],[8,224,149],[8,221,136],[8,223,126],[9,223,148],[9,223,136],[9,222,148],[8,223,12],[9,224,12],[9,224,126],[9,226,137],[9,227,138],[9,226,126],[9,226,12],[9,224,137],[9,227,12],[9,227,126],[7,230,138],[7,232,126],[7,232,12],[8,229,138],[8,230,126],[8,230,12],[9,229,126],[9,229,12],[7,202,-19],[7,209,-13],[7,193,-23],[8,203,-20],[8,210,-14],[7,86,-24],[7,184,-24],[8,194,-24],[9,212,-16],[8,211,-15],[8,203,-22],[9,204,-23],[8,194,-25],[7,215,-6],[7,219,3],[8,216,-7],[8,218,-7],[9,219,-8],[9,215,-19],[9,216,-20],[9,223,-10],[9,222,-10],[9,214,-18],[9,220,-9],[9,205,-24],[8,220,2],[8,217,-21],[7,218,-22],[7,225,-12],[8,224,-11],[8,221,2],[9,223,2],[9,224,1],[7,230,0],[8,229,0],[9,227,0],[9,226,1],[7,79,-26],[8,79,-27],[8,79,-33],[7,79,-34],[8,78,-29],[8,78,-31],[8,78,-30],[7,184,-36],[7,86,-36],[8,86,-26],[8,184,-26],[8,86,-33],[8,86,-35],[8,184,-35],[8,184,-33],[8,86,-27],[8,184,-27],[9,86,-32],[9,184,-32],[9,86,-28],[9,184,-28],[9,86,-30],[9,184,-30],[7,196,-34],[8,196,-33],[9,194,-27],[9,196,-31],[9,195,-30],[9,195,-28],[8,207,-28],[7,208,-29],[9,206,-27],[9,206,-26]],n:[[-909,-316,272],[-53,-998,23],[-918,0,396],[-958,0,287],[-822,-316,474],[-866,0,500],[-667,-555,497],[-802,0,597],[-514,-707,485],[-727,0,686],[-819,-555,145],[-985,0,174],[-831,-555,-48],[-831,-555,48],[-998,0,58],[-998,0,-58],[-819,-555,-145],[-985,0,-174],[-764,-555,-330],[-797,-555,-239],[-958,0,-287],[-918,0,-396],[-721,-555,-416],[-866,0,-500],[-667,-555,-497],[-802,0,-597],[-650,-447,-614],[-727,0,-686],[-342,0,940],[-449,0,894],[-374,-555,744],[-285,-555,782],[-192,-555,810],[-231,0,973],[-97,-555,826],[-116,0,993],[-455,-707,-542],[-492,-447,-747],[-373,-555,-744],[-284,-555,-782],[-163,-707,-688],[-96,-555,-826],[0,-555,-832],[97,-555,-826],[192,-555,-810],[306,-447,-841],[317,-707,-632],[458,-555,-695],[535,-555,-637],[605,-555,-571],[667,-555,-497],[721,-555,-416],[821,-447,-354],[677,-707,-203],[819,-555,-145],[831,-555,-48],[831,-555,48],[819,-555,145],[797,-555,239],[764,-555,330],[721,-555,416],[667,-555,497],[650,-447,614],[455,-707,542],[458,-555,695],[401,-447,799],[242,-707,665],[192,-555,810],[96,-555,826],[0,-555,832],[-458,-555,695],[-575,-447,685],[-550,0,835],[-643,0,-766],[-643,0,766],[-550,0,-835],[-449,0,-894],[-342,0,-940],[-231,0,-973],[-116,0,-993],[342,0,940],[231,0,973],[0,0,1000],[116,0,993],[643,0,766],[727,0,686],[449,0,894],[550,0,835],[643,0,-766],[727,0,-686],[449,0,-894],[342,0,-940],[550,0,-835],[231,0,-973],[0,0,-1000],[116,0,-993],[802,0,597],[866,0,500],[918,0,396],[958,0,287],[985,0,-174],[998,0,-58],[998,0,58],[958,0,-287],[985,0,174],[866,0,-500],[918,0,-396],[802,0,-597],[-947,-55,316],[-831,48,555],[-831,48,-555],[-831,-48,-555],[-797,239,555],[-764,330,555],[-764,330,-555],[-797,239,-555],[-650,-614,447],[-514,-485,-707],[-575,-685,-447],[-455,-542,707],[-458,-695,555],[-458,-695,-555],[-667,-497,555],[-721,-416,555],[-721,-416,-555],[-667,-497,-555],[-909,-272,316],[-57,-10,998],[-934,-165,-316],[-55,-17,-998],[-764,-330,555],[-871,-376,-316],[-575,685,447],[-458,695,555],[-458,695,-555],[-455,542,-707],[-721,416,555],[-721,416,-555],[-667,497,555],[-514,485,707],[-650,614,-447],[-667,497,-555],[-819,145,555],[-819,145,-555],[-374,-744,555],[-285,-782,555],[-192,-810,555],[-97,-826,555],[0,-832,555],[97,-826,555],[192,-810,555],[284,-782,555],[373,-744,555],[458,-695,555],[535,-637,555],[605,-571,555],[667,-497,555],[721,-416,555],[764,-330,555],[797,-239,555],[819,-145,555],[831,-48,555],[831,48,555],[819,145,555],[797,239,555],[764,330,555],[721,416,555],[667,497,555],[605,571,555],[535,637,555],[458,695,555],[373,744,555],[284,782,555],[192,810,555],[97,826,555],[0,832,555],[-97,826,555],[-192,810,555],[-285,782,555],[-374,744,555],[-373,744,-555],[-284,782,-555],[-192,810,-555],[-97,826,-555],[0,832,-555],[97,826,-555],[192,810,-555],[285,782,-555],[374,744,-555],[458,695,-555],[535,637,-555],[605,571,-555],[667,497,-555],[721,416,-555],[764,330,-555],[797,239,-555],[819,145,-555],[831,48,-555],[831,-48,-555],[819,-145,-555],[797,-239,-555],[764,-330,-555],[721,-416,-555],[667,-497,-555],[605,-571,-555],[535,-637,-555],[458,-695,-555],[374,-744,-555],[285,-782,-555],[192,-810,-555],[97,-826,-555],[0,-832,-555],[-97,-826,-555],[-192,-810,-555],[-284,-782,-555],[-373,-744,-555],[-150,-126,981],[-624,-743,242],[-354,-612,707],[-269,-853,447],[617,-342,709],[347,414,841],[-269,853,447],[-416,721,555],[-455,542,707],[-685,575,447],[-721,416,555],[-665,242,707],[-819,145,555],[-832,0,555],[-819,-145,555],[-782,-285,555],[-822,-474,316],[110,-821,560],[288,928,237],[-841,306,-447],[-819,145,-555],[-575,-685,-447],[-447,-775,-447],[-782,-285,-555],[-822,-474,-316],[-67,-57,-996],[-575,685,-447],[-542,455,-707],[-416,721,-555],[-250,-859,-447],[-832,0,-555],[-819,-145,-555],[-721,416,-555],[-215,803,-556],[-270,-115,956],[-165,-934,316],[0,-832,555],[213,-868,448],[493,-378,783],[671,515,533],[168,815,555],[0,707,707],[-156,881,447],[-642,538,546],[-438,-871,224],[-175,-877,-447],[-606,656,450],[-156,881,-447],[0,894,-447],[177,911,-372],[192,809,-556],[416,721,-555],[535,637,-555],[637,535,-555],[721,416,-555],[782,285,-555],[819,145,-555],[832,0,-555],[819,-145,-555],[782,-285,-555],[721,-416,-555],[637,-535,-555],[535,-637,-555],[416,-721,-555],[311,-896,-316],[239,-796,-556],[0,-832,-555],[-98,-127,987],[-470,613,635],[-216,867,449],[-216,-867,449],[572,-728,377],[572,728,377],[416,-721,555],[269,-853,447],[250,858,448],[416,721,555],[535,-637,555],[637,-535,555],[721,-416,555],[782,-285,555],[819,-145,555],[832,0,555],[819,145,555],[782,285,555],[721,416,555],[637,535,555],[535,637,555],[-982,12,190],[-1000,1,17],[-1000,0,17],[-982,0,191],[-988,-10,-156],[-988,0,-156],[-946,-21,-324],[-945,0,-326],[-934,0,358],[-934,23,357],[-875,-32,-483],[-875,0,-485],[-857,0,515],[-755,0,656],[-755,43,654],[-858,34,513],[-778,-41,-627],[-777,0,-629],[-629,0,777],[-630,51,775],[-657,-49,-752],[-656,0,-755],[-982,49,183],[-1000,4,17],[-988,-40,-150],[-946,-84,-312],[-935,92,344],[-876,-125,-465],[-757,169,631],[-859,132,494],[-780,-162,-605],[-633,200,748],[-659,-195,-726],[-1000,9,15],[-982,95,164],[-988,-78,-134],[-946,-162,-280],[-935,178,308],[-876,-241,-417],[-758,326,565],[-859,256,443],[-780,-313,-542],[-633,387,671],[-659,-376,-651],[-982,134,134],[-1000,12,12],[-988,-110,-110],[-947,-228,-228],[-934,252,252],[-876,-341,-341],[-757,462,462],[-859,362,362],[-780,-443,-443],[-633,548,548],[-659,-532,-532],[-988,-134,-78],[-946,-280,-162],[-876,-417,-241],[-780,-542,-313],[-876,-465,-125],[-780,-605,-162],[-778,-627,-41],[-657,-752,-49],[-659,-726,-195],[-778,-627,41],[-657,-752,49],[-659,-651,-376],[-982,164,95],[-1000,15,9],[-988,-150,-40],[-946,-312,-84],[-935,308,178],[-946,-324,-21],[-875,-483,-32],[-859,443,256],[-875,-483,32],[-633,671,387],[-758,565,326],[-1000,17,4],[-1000,17,1],[-988,-156,-10],[-1000,17,-1],[-988,-156,10],[-982,190,12],[-982,190,-12],[-982,183,49],[-946,-324,21],[-859,494,132],[-935,344,92],[-934,357,23],[-934,357,-23],[-858,513,34],[-858,513,-34],[-755,654,43],[-755,654,-43],[-757,631,169],[-633,748,200],[-630,775,51],[-630,775,-51],[-946,-162,280],[-876,-241,417],[-876,-341,341],[-947,-228,228],[-780,-313,542],[-780,-443,443],[-788,-144,598],[-883,-111,456],[-859,-41,510],[-659,-376,651],[-659,-532,532],[-670,-174,722],[-866,0,500],[-766,0,643],[-758,-52,651],[-643,0,766],[-633,-62,772],[-1000,12,-12],[-988,-110,110],[-988,-134,78],[-1000,15,-9],[-982,164,-95],[-982,134,-134],[-1000,9,-15],[-988,-78,134],[-946,-280,162],[-935,308,-178],[-934,252,-252],[-876,-417,241],[-780,-542,313],[-659,-651,376],[-659,-726,195],[-780,-605,162],[-876,-465,125],[-1000,17,-4],[-988,-150,40],[-946,-312,84],[-859,362,-362],[-859,443,-256],[-757,462,-462],[-758,565,-326],[-982,183,-49],[-935,344,-92],[-859,494,-132],[-757,631,-169],[-633,748,-200],[-633,548,-548],[-633,671,-387],[-1000,0,0],[-985,0,174],[-819,555,145],[-949,316,0],[-985,0,-174],[-87,996,-15],[-940,0,-342],[-892,316,-324],[-940,0,342],[-866,0,500],[-775,447,447],[-782,555,284],[-866,0,-500],[-721,555,-416],[-766,0,-643],[-542,707,-455],[-1000,0,0],[-985,0,174],[-982,-16,186],[-1000,-2,14],[-985,0,-174],[-987,12,-159],[-940,0,342],[-935,-29,353],[-940,0,-342],[-945,25,-327],[-866,0,-500],[-873,37,-486],[-766,0,-643],[-776,49,-629],[-766,0,643],[-637,555,535],[-643,0,-766],[-654,59,-754],[-990,-34,137],[-1000,6,-31],[-979,46,-198],[-951,-73,301],[-930,85,-359],[-852,121,-510],[-748,154,-645],[-622,182,-762],[-982,95,-164],[-935,178,-308],[-859,256,-443],[-758,326,-565],[-633,387,-671],[-485,0,875],[-486,57,872],[-516,-56,-855],[-515,0,-857],[-326,0,945],[-326,62,943],[-359,-61,-931],[-358,0,-934],[-156,0,988],[-157,65,985],[-191,-64,-979],[-191,0,-982],[17,0,1000],[17,65,998],[-17,-65,-998],[-17,0,-1000],[-192,-254,-948],[-18,-259,-966],[-518,-221,-826],[-518,-428,-741],[-488,226,843],[-361,-241,-901],[-361,-466,-808],[-328,244,913],[-192,-491,-850],[-158,256,954],[18,259,966],[-18,-500,-866],[-488,436,756],[-518,-605,-605],[-328,472,818],[-361,-659,-659],[-192,-694,-694],[-158,494,855],[-361,-808,-466],[-192,-850,-491],[18,500,866],[-18,-707,-707],[-18,-866,-500],[-488,617,617],[-518,-741,-428],[-488,756,436],[-328,668,668],[-328,818,472],[-158,698,698],[18,707,707],[18,866,500],[-158,855,494],[-985,0,-174],[-1000,0,0],[-119,993,0],[-934,316,-165],[-934,316,165],[-763,556,329],[-637,555,535],[-535,555,637],[-416,555,721],[-239,556,796],[0,555,832],[192,556,809],[416,555,721],[535,555,637],[637,555,535],[743,556,373],[826,556,97],[819,555,-145],[763,556,-329],[637,555,-535],[535,555,-637],[416,555,-721],[239,556,-796],[0,447,-894],[-183,708,-682],[-447,447,-775],[-455,707,-542],[-637,555,-535],[-743,556,-373],[-518,-826,-221],[-361,-901,-241],[-985,0,174],[-894,0,449],[-192,-948,-254],[-643,0,766],[-500,0,866],[-766,0,643],[-18,-966,-259],[-231,0,973],[-516,-855,-56],[-516,-855,56],[-488,843,226],[-359,-931,-61],[-359,-931,61],[-191,-979,-64],[-191,-979,64],[-17,-998,-65],[-17,-998,65],[-486,872,57],[-486,872,-57],[-328,913,244],[-326,943,62],[-326,943,-62],[-158,954,256],[-157,985,65],[-157,985,-65],[18,966,259],[17,998,65],[17,998,-65],[-918,0,-396],[-766,0,-643],[-643,0,-766],[-500,0,-866],[-259,0,-966],[-160,-78,984],[-174,0,985],[0,0,1000],[14,-79,997],[-518,-428,741],[-361,-466,808],[-361,-659,659],[-518,-605,605],[-530,-198,824],[-192,-694,694],[-192,-491,850],[-374,-217,902],[-206,-228,952],[-329,-75,941],[-342,0,940],[-18,-707,707],[-18,-500,866],[-32,-233,972],[-518,-826,221],[-518,-741,428],[-361,-808,466],[-361,-901,241],[-192,-948,254],[-18,-966,259],[-192,-850,491],[-18,-866,500],[-488,756,-436],[-488,843,-226],[-328,913,-244],[-328,818,-472],[-158,954,-256],[-158,855,-494],[18,966,-259],[18,866,-500],[-643,0,766],[-455,707,542],[-575,447,-685],[-643,0,-766],[-500,0,866],[-416,555,721],[-500,0,-866],[-416,555,-721],[-342,0,-940],[-284,555,-782],[-342,0,940],[-285,555,782],[-500,0,866],[-489,-69,870],[-513,67,-856],[-500,0,-866],[-342,0,-940],[-356,73,-932],[-174,0,-985],[-188,77,-979],[-174,0,985],[-145,555,819],[-174,0,-985],[-145,555,-819],[0,0,1000],[0,555,832],[0,0,-1000],[0,555,-832],[0,0,-1000],[-14,78,-997],[-476,205,-855],[-488,436,-756],[145,555,819],[284,555,782],[416,555,721],[575,447,685],[637,555,535],[612,707,354],[782,555,285],[819,555,145],[832,555,0],[819,555,-145],[782,555,-284],[721,555,-416],[685,447,-575],[455,707,-542],[416,555,-721],[285,555,-782],[145,555,-819],[-315,221,-923],[-144,231,-962],[32,233,-972],[-488,617,-617],[-328,668,-668],[-328,472,-818],[-158,698,-698],[-158,494,-855],[18,707,-707],[18,500,-866],[157,-65,-985],[156,0,-988],[158,-256,-954],[191,0,982],[191,64,979],[326,-62,-943],[326,0,-945],[358,0,934],[359,61,931],[485,0,-875],[486,-57,-872],[516,56,855],[515,0,857],[656,0,755],[657,49,752],[630,-51,-775],[629,0,-777],[192,254,948],[328,-244,-913],[158,-494,-855],[361,241,901],[488,-226,-843],[328,-472,-818],[518,221,826],[488,-436,-756],[659,195,726],[633,-200,-748],[633,-387,-671],[158,-698,-698],[158,-855,-494],[192,491,850],[328,-668,-668],[328,-818,-472],[361,466,808],[488,-617,-617],[518,428,741],[659,376,651],[633,-548,-548],[192,694,694],[192,850,491],[361,659,659],[361,808,466],[488,-756,-436],[518,605,605],[518,741,428],[659,532,532],[659,651,376],[633,-671,-387],[643,0,766],[766,0,643],[918,0,396],[998,0,58],[0,0,1000],[287,0,958],[158,-954,-256],[500,0,866],[328,-913,-244],[488,-843,-226],[157,-985,-65],[157,-985,65],[326,-943,-62],[326,-943,62],[486,-872,-57],[486,-872,57],[518,826,221],[361,901,241],[630,-775,-51],[630,-775,51],[659,726,195],[633,-748,-200],[192,948,254],[191,979,64],[191,979,-64],[359,931,61],[359,931,-61],[516,855,56],[516,855,-56],[657,752,49],[657,752,-49],[500,0,-866],[231,0,-973],[0,0,-1000],[643,0,-766],[894,0,-449],[766,0,-643],[985,0,-174],[158,-494,855],[158,-698,698],[144,-230,962],[174,0,985],[188,-77,979],[328,-472,818],[328,-668,668],[315,-221,923],[488,-436,756],[488,-617,617],[476,-204,856],[158,-954,256],[158,-855,494],[328,-913,244],[328,-818,472],[488,-756,436],[488,-843,226],[633,-387,671],[633,-548,548],[633,-671,387],[192,948,-254],[361,901,-241],[361,808,-466],[192,850,-491],[518,826,-221],[518,741,-428],[633,-748,200],[659,726,-195],[659,651,-376],[342,0,940],[500,0,866],[342,0,-940],[174,0,-985],[500,0,-866],[643,0,766],[643,0,-766],[766,0,643],[766,0,-643],[174,0,985],[174,0,-985],[160,77,-984],[342,0,-940],[329,74,-941],[342,0,940],[356,-73,932],[500,0,-866],[489,69,-870],[500,0,866],[513,-67,856],[643,0,766],[654,-59,754],[643,0,-766],[633,61,-772],[206,229,-951],[374,217,-902],[621,-182,762],[530,199,-824],[670,174,-722],[518,428,-741],[659,376,-651],[192,694,-694],[192,491,-850],[361,659,-659],[361,466,-808],[518,605,-605],[659,532,-532],[777,0,629],[778,41,627],[755,-43,-654],[858,-34,-513],[857,0,-515],[755,0,-656],[875,0,485],[875,32,483],[934,0,-358],[934,-23,-357],[945,0,326],[946,21,324],[988,0,156],[988,10,156],[982,-12,-190],[982,0,-191],[1000,-1,-17],[1000,0,-17],[780,162,605],[757,-169,-631],[859,-132,-494],[876,125,465],[935,-92,-344],[946,84,312],[988,40,150],[982,-49,-183],[1000,-4,-17],[780,313,542],[758,-326,-565],[859,-256,-443],[876,241,417],[935,-178,-308],[946,162,280],[988,78,134],[982,-95,-164],[1000,-9,-15],[780,443,443],[757,-462,-462],[859,-362,-362],[876,341,341],[934,-252,-252],[947,228,228],[988,110,110],[982,-134,-134],[1000,-12,-12],[755,-654,-43],[757,-631,-169],[755,-654,43],[758,-565,-326],[858,-513,34],[858,-513,-34],[859,-443,-256],[935,-308,-178],[859,-494,-132],[982,-164,-95],[1000,-15,-9],[780,542,313],[876,417,241],[935,-344,-92],[934,-357,-23],[946,280,162],[982,-183,-49],[988,134,78],[934,-357,23],[982,-190,12],[982,-190,-12],[988,150,40],[946,312,84],[1000,-17,-1],[1000,-17,1],[1000,-17,-4],[988,156,-10],[988,156,10],[780,605,162],[778,627,41],[778,627,-41],[876,465,125],[875,483,32],[875,483,-32],[946,324,21],[946,324,-21],[758,-326,565],[757,-462,462],[748,-153,646],[859,-256,443],[859,-362,362],[766,0,643],[776,-49,629],[852,-121,510],[982,-134,134],[934,-252,252],[935,-178,308],[982,-95,164],[929,-84,359],[758,-565,326],[757,-631,169],[859,-443,256],[935,-308,178],[982,-164,95],[988,110,-110],[947,228,-228],[946,280,-162],[988,134,-78],[1000,-12,12],[1000,-15,9],[1000,-9,15],[859,-494,132],[876,341,-341],[780,443,-443],[780,542,-313],[876,417,-241],[935,-344,92],[982,-183,49],[1000,-17,4],[780,605,-162],[876,465,-125],[946,312,-84],[988,150,-40],[866,0,500],[940,0,342],[940,0,-342],[866,0,-500],[985,0,174],[985,0,-174],[1000,0,0],[758,52,-651],[766,0,-643],[866,0,500],[873,-38,486],[940,0,-342],[866,0,-500],[859,41,-510],[935,28,-353],[940,0,342],[945,-25,327],[985,0,-174],[982,15,-186],[985,0,174],[987,-12,159],[1000,0,0],[1000,2,-14],[788,145,-598],[883,111,-456],[979,-46,198],[951,74,-301],[990,35,-137],[1000,-6,31],[876,241,-417],[780,313,-542],[946,162,-280],[988,78,-134]],f:[0,1,2,0,2,3,1,4,5,1,5,2,4,6,7,4,7,5,6,8,9,6,9,7,10,0,3,10,3,11,12,13,14,12,14,15,16,12,15,16,15,17,18,19,20,18,20,21,13,10,11,13,11,14,19,16,17,19,17,20,22,18,21,22,21,23,24,22,23,24,23,25,26,24,25,26,25,27,28,29,30,28,30,31,31,32,33,31,33,28,32,34,35,32,35,33,1,0,10,1,10,13,1,13,12,1,12,16,1,16,19,1,19,18,1,18,22,1,22,24,1,24,26,1,26,36,1,36,37,1,37,38,1,38,39,1,39,40,1,40,41,1,41,42,1,42,43,1,43,44,1,44,45,1,45,46,1,46,47,1,47,48,1,48,49,1,49,50,1,50,51,1,51,52,1,52,53,1,53,54,1,54,55,1,55,56,1,56,57,1,57,58,1,58,59,1,59,60,1,60,61,1,61,62,1,62,63,1,63,64,1,64,65,1,65,66,1,66,67,1,67,68,1,68,69,1,69,34,1,34,32,1,32,31,1,31,30,1,30,70,1,70,71,1,71,8,1,8,6,1,6,4,70,30,29,70,29,72,26,27,73,26,73,36,9,8,71,9,71,74,71,70,72,71,72,74,37,36,73,37,73,75,37,75,76,37,76,38,38,76,77,38,77,39,39,77,78,39,78,40,41,40,78,41,78,79,67,66,80,67,80,81,34,69,82,34,82,35,69,68,83,69,83,82,68,67,81,68,81,83,84,63,62,84,62,85,80,66,65,80,65,86,65,64,87,65,87,86,64,63,84,64,84,87,49,48,88,49,88,89,90,46,45,90,45,91,47,46,90,47,90,92,48,47,92,48,92,88,45,44,93,45,93,91,42,41,79,42,79,94,94,95,43,94,43,42,44,43,95,44,95,93,62,61,96,62,96,85,61,60,97,61,97,96,60,59,98,60,98,97,59,58,99,59,99,98,55,54,100,55,100,101,101,102,56,101,56,55,54,53,103,54,103,100,58,57,104,58,104,99,57,56,102,57,102,104,52,51,105,52,105,106,103,53,52,103,52,106,50,49,89,50,89,107,51,50,107,51,107,105,108,109,110,108,110,111,112,113,114,112,114,115,116,117,118,116,118,119,120,119,118,120,118,121,122,123,124,122,124,125,126,127,128,126,128,129,130,126,129,130,129,131,132,133,134,132,134,135,113,136,137,113,137,114,138,139,140,138,140,141,123,130,131,123,131,124,116,122,125,116,125,117,109,142,143,109,143,110,127,108,111,127,111,128,142,112,115,142,115,143,136,138,141,136,141,137,140,139,132,140,132,135,127,126,130,127,130,123,127,123,122,127,122,116,127,116,119,127,119,120,127,120,144,127,144,145,127,145,146,127,146,147,127,147,148,127,148,149,127,149,150,127,150,151,127,151,152,127,152,153,127,153,154,127,154,155,127,155,156,127,156,157,127,157,158,127,158,159,127,159,160,127,160,161,127,161,162,127,162,163,127,163,164,127,164,165,127,165,166,127,166,167,127,167,168,127,168,169,127,169,170,127,170,171,127,171,172,127,172,173,127,173,174,127,174,175,127,175,176,127,176,177,127,177,178,127,178,179,127,179,133,127,133,132,127,132,139,127,139,138,127,138,136,127,136,113,127,113,112,127,112,142,127,142,109,127,109,108,133,179,180,133,180,134,179,178,181,179,181,180,129,128,111,129,111,110,129,110,143,129,143,115,129,115,114,129,114,137,129,137,141,129,141,140,129,140,135,129,135,134,129,134,180,129,180,181,129,181,182,129,182,183,129,183,184,129,184,185,129,185,186,129,186,187,129,187,188,129,188,189,129,189,190,129,190,191,129,191,192,129,192,193,129,193,194,129,194,195,129,195,196,129,196,197,129,197,198,129,198,199,129,199,200,129,200,201,129,201,202,129,202,203,129,203,204,129,204,205,129,205,206,129,206,207,129,207,208,129,208,209,129,209,210,129,210,211,129,211,212,129,212,213,129,213,214,129,214,215,129,215,121,129,121,118,129,118,117,129,117,125,129,125,124,129,124,131,144,120,121,144,121,215,147,146,213,147,213,212,150,149,210,150,210,209,146,145,214,146,214,213,151,150,209,151,209,208,152,151,208,152,208,207,177,176,183,177,183,182,174,173,186,174,186,185,173,172,187,173,187,186,148,147,212,148,212,211,211,210,149,211,149,148,145,144,215,145,215,214,172,171,188,172,188,187,178,177,182,178,182,181,176,175,184,176,184,183,175,174,185,175,185,184,156,155,204,156,204,203,162,161,198,162,198,197,165,164,195,165,195,194,170,169,190,170,190,189,154,153,206,154,206,205,155,154,205,155,205,204,159,158,201,159,201,200,160,159,200,160,200,199,171,170,189,171,189,188,168,167,192,168,192,191,157,156,203,157,203,202,167,166,193,167,193,192,153,152,207,153,207,206,158,157,202,158,202,201,161,160,199,161,199,198,163,162,197,163,197,196,164,163,196,164,196,195,191,190,169,191,169,168,166,165,194,166,194,193,216,217,218,216,218,219,216,219,220,216,220,221,216,221,222,216,222,223,216,223,224,216,224,225,216,225,226,216,226,227,216,227,228,216,228,229,216,229,230,216,230,231,216,231,232,220,233,234,220,234,221,228,227,235,228,235,236,217,237,238,217,238,218,232,231,239,232,239,240,216,232,240,216,240,241,225,224,242,225,242,243,242,224,223,242,223,244,219,218,238,219,238,245,230,229,246,230,246,247,229,228,236,229,236,246,217,216,241,217,241,237,231,230,247,231,247,239,235,227,226,235,226,248,248,226,225,248,225,243,244,223,222,244,222,249,250,251,252,250,252,253,250,253,254,250,254,255,250,255,256,250,256,257,250,257,258,250,258,259,233,220,219,233,219,245,260,233,245,251,250,260,251,260,261,261,260,245,250,259,262,250,262,260,262,259,258,262,258,263,234,262,263,222,221,234,222,234,249,249,234,263,233,260,262,233,262,234,241,240,239,241,239,247,241,247,246,241,246,236,241,236,235,241,235,248,241,248,243,241,243,242,241,242,244,241,244,249,241,249,263,241,263,264,241,264,265,241,265,266,241,266,267,241,267,268,241,268,269,241,269,270,241,270,271,241,271,272,241,272,273,241,273,274,241,274,275,241,275,276,241,276,277,241,277,278,241,278,279,241,279,280,241,280,281,241,281,282,241,282,261,241,261,245,241,245,238,241,238,237,283,284,285,283,285,286,255,254,287,255,287,288,282,281,253,282,253,252,252,251,261,252,261,282,289,290,280,289,280,279,256,265,264,256,264,257,291,292,267,291,267,266,258,257,264,258,264,263,287,286,285,287,285,288,280,290,283,280,283,286,280,286,287,281,280,287,281,287,253,253,287,254,265,256,255,265,255,288,265,288,285,266,265,285,266,285,291,291,285,284,283,290,289,283,289,293,283,293,294,283,294,295,283,295,296,283,296,297,283,297,298,283,298,299,283,299,300,283,300,301,283,301,302,283,302,303,283,303,292,283,292,291,283,291,284,295,294,277,295,277,276,296,295,276,296,276,275,300,299,272,300,272,271,292,303,268,292,268,267,293,289,279,293,279,278,298,297,274,298,274,273,299,298,273,299,273,272,294,293,278,294,278,277,297,296,275,297,275,274,302,301,270,302,270,269,301,300,271,301,271,270,303,302,269,303,269,268,304,305,306,304,306,307,305,308,309,305,309,306,309,308,310,309,310,311,307,312,313,307,313,304,310,314,315,310,315,311,316,317,318,316,318,319,312,316,319,312,319,313,315,314,320,315,320,321,318,317,322,318,322,323,320,324,325,320,325,321,305,304,326,305,326,327,308,305,327,308,327,328,310,308,328,310,328,329,326,304,313,326,313,330,314,310,329,314,329,331,319,318,332,319,332,333,313,319,333,313,333,330,320,314,331,320,331,334,332,318,323,332,323,335,324,320,334,324,334,336,337,327,326,337,326,338,328,327,337,328,337,339,328,339,340,328,340,329,326,330,341,326,341,338,331,329,340,331,340,342,333,332,343,333,343,344,341,330,333,341,333,344,334,331,342,334,342,345,343,332,335,343,335,346,334,345,347,334,347,336,337,338,348,337,348,349,339,337,349,339,349,350,340,339,350,340,350,351,338,341,352,338,352,348,342,340,351,342,351,353,344,343,354,344,354,355,341,344,355,341,355,352,345,342,353,345,353,356,354,343,346,354,346,357,347,345,356,347,356,358,351,350,359,351,359,360,353,351,360,353,360,361,356,353,361,356,361,362,361,363,364,361,364,362,365,366,367,365,367,364,368,369,366,368,366,365,358,356,362,358,362,370,370,362,364,370,364,367,349,348,371,349,371,372,350,349,372,350,372,359,360,359,373,360,373,374,348,352,375,348,375,371,361,360,374,361,374,363,363,374,376,363,376,377,352,355,378,352,378,375,364,363,377,364,377,365,379,368,365,379,365,377,354,357,380,354,380,381,355,354,381,355,381,378,382,383,384,382,384,373,384,383,385,384,385,386,385,383,387,385,387,388,372,371,389,372,389,382,383,382,389,383,389,387,359,372,382,359,382,373,374,373,384,374,384,376,386,390,376,386,376,384,375,378,391,375,391,392,389,371,375,389,375,392,390,379,377,390,377,376,389,392,393,389,393,387,388,387,393,388,393,394,393,395,396,393,396,394,392,391,395,392,395,393,395,397,398,395,398,396,378,381,399,378,399,391,395,391,399,395,399,397,381,380,400,381,400,399,399,400,401,399,401,397,397,401,402,397,402,398,403,404,405,403,405,406,404,407,408,404,408,405,409,410,411,410,409,407,410,407,404,407,412,413,407,413,408,409,414,412,409,412,407,411,415,416,411,416,417,414,409,417,417,416,418,417,418,419,419,414,417,420,421,422,420,422,423,420,423,424,420,424,425,421,420,426,421,426,427,421,406,428,421,428,422,421,427,403,421,403,406,425,424,429,425,429,430,431,405,408,431,408,432,405,431,428,405,428,406,433,434,435,433,435,432,435,436,431,435,431,432,408,413,433,408,433,432,386,385,437,386,437,438,423,422,438,423,438,437,379,390,439,379,439,436,439,390,386,439,386,438,439,438,422,439,422,428,436,439,428,436,428,431,440,430,429,440,429,441,369,368,435,369,435,434,435,368,379,435,379,436,442,440,441,442,441,443,437,385,388,437,388,444,424,423,437,424,437,444,444,388,394,444,394,445,429,424,444,429,444,445,429,445,446,429,446,441,394,396,446,394,446,445,443,441,446,443,446,447,396,398,447,396,447,446,398,402,448,398,448,447,449,442,443,449,443,450,447,448,450,447,450,443,451,452,453,451,453,454,455,451,454,455,454,456,457,455,456,457,456,458,459,460,461,459,461,462,452,459,462,452,462,453,463,457,458,463,458,464,465,463,464,465,464,466,467,468,469,467,469,470,471,467,470,471,470,472,468,473,474,468,474,469,475,471,472,475,472,476,477,475,476,477,476,478,411,417,409,415,411,474,415,474,473,479,477,478,479,478,480,481,482,461,481,461,460,483,479,480,483,480,484,485,486,470,485,470,469,472,470,486,486,487,472,403,427,485,403,485,488,488,485,469,469,474,488,476,472,487,410,404,403,410,403,488,410,488,474,411,410,474,476,489,478,487,489,476,478,489,490,480,490,491,480,478,490,484,480,491,491,492,484,426,420,425,426,425,493,427,426,486,427,486,485,487,486,426,487,426,493,425,430,494,425,494,493,489,487,493,489,493,494,430,440,495,430,495,494,440,442,496,440,496,495,490,489,494,490,494,495,442,449,497,442,497,496,495,496,491,495,491,490,496,497,492,496,492,491,323,322,498,323,498,499,325,324,500,325,500,501,498,502,503,498,503,499,501,500,504,501,504,505,502,506,507,502,507,503,504,508,509,504,509,505,506,510,511,506,511,507,509,508,512,509,512,513,512,508,514,512,514,515,324,336,516,324,516,500,336,347,517,336,517,516,323,499,518,323,518,335,504,500,516,504,516,519,516,517,520,516,520,519,518,499,503,518,503,521,508,504,519,508,519,514,514,519,520,514,520,522,523,507,511,523,511,524,503,507,523,503,523,521,514,522,525,514,525,515,346,335,518,346,518,526,347,358,527,347,527,517,518,521,528,518,528,526,520,517,527,520,527,529,522,520,529,522,529,530,521,523,531,521,531,528,530,529,532,530,532,533,523,524,534,523,534,531,522,530,535,522,535,525,535,530,533,535,533,536,346,526,537,346,537,357,358,370,538,358,538,527,539,537,540,539,540,541,357,537,539,357,539,380,529,527,538,529,538,532,528,531,542,528,542,540,526,528,540,526,540,537,531,534,543,531,543,542,542,543,544,542,544,545,545,541,540,545,540,542,546,547,548,546,548,549,548,550,551,548,551,552,548,552,553,548,553,554,548,554,555,548,555,556,548,556,557,548,557,558,548,558,559,548,559,560,548,560,561,548,561,562,548,562,563,548,563,564,548,564,565,548,565,566,548,566,567,548,567,568,548,568,569,548,569,570,548,570,571,548,571,572,548,572,573,548,573,574,548,574,549,370,367,575,370,575,538,538,575,576,538,576,532,547,577,550,547,550,548,577,578,551,577,551,550,533,532,576,533,576,579,580,581,554,580,554,553,582,580,553,582,553,552,578,582,552,578,552,551,536,533,579,536,579,583,581,584,555,581,555,554,367,366,585,367,585,575,366,369,586,366,586,585,380,539,587,380,587,400,585,588,576,585,576,575,588,585,586,588,586,589,579,576,588,579,588,590,590,588,589,590,589,591,579,590,592,579,592,583,590,591,593,590,593,592,401,400,587,401,587,594,402,401,594,402,594,595,539,541,596,539,596,587,587,596,597,587,597,594,594,597,598,594,598,595,541,545,599,541,599,596,597,596,599,597,599,600,597,600,601,597,601,598,545,544,602,545,602,599,599,602,603,599,603,600,600,603,604,600,604,601,605,546,549,605,549,574,606,605,574,606,574,573,607,606,573,607,573,572,607,572,571,607,571,608,609,608,571,609,571,570,610,611,612,610,612,613,614,615,616,614,616,617,412,414,618,412,618,614,619,616,615,619,615,620,615,614,618,615,618,621,621,622,620,621,620,615,611,610,623,611,623,624,610,622,623,622,621,623,625,619,620,625,620,626,622,627,626,622,626,620,613,627,610,622,610,627,628,629,630,628,630,631,434,433,629,434,629,628,413,412,614,413,614,617,433,413,617,433,617,629,631,632,591,631,591,589,617,616,630,617,630,629,591,632,633,591,633,593,632,631,630,632,630,634,616,619,634,616,634,630,632,634,635,632,635,633,619,625,635,619,635,634,369,434,628,369,628,586,636,450,448,636,448,637,589,586,628,589,628,631,448,402,595,448,595,637,595,598,638,595,638,637,637,638,639,637,639,636,639,638,640,639,640,641,638,598,601,638,601,640,601,604,642,601,642,640,641,640,642,641,642,643,482,481,644,482,644,645,465,466,646,465,646,647,644,648,649,644,649,645,650,647,646,650,646,651,652,650,651,652,651,653,648,654,655,648,655,649,419,418,656,419,656,657,483,484,658,483,658,659,656,624,623,656,623,657,660,659,658,660,658,661,662,660,661,662,661,663,654,664,665,654,665,655,666,652,653,666,653,667,664,668,669,664,669,665,670,666,667,670,667,671,672,662,663,672,663,673,414,419,618,618,419,657,658,484,492,674,492,497,674,497,675,621,618,657,456,454,453,456,453,462,456,462,461,456,461,482,456,482,645,456,645,649,456,649,655,456,655,665,456,665,669,456,669,676,456,676,677,456,677,678,456,678,679,456,679,680,456,680,681,456,681,682,456,682,683,456,683,684,456,684,685,456,685,686,456,686,687,456,687,688,456,688,689,456,689,690,456,690,691,456,691,692,456,692,671,456,671,667,456,667,653,456,653,651,456,651,646,456,646,466,456,466,464,456,464,458,492,674,658,657,623,621,674,693,661,658,674,661,661,693,663,663,693,694,673,663,694,694,695,673,450,636,696,450,696,449,449,696,675,449,675,497,636,639,697,636,697,696,675,696,697,675,697,698,693,674,675,693,675,698,639,641,699,639,699,697,700,698,697,700,697,699,694,693,698,694,698,700,641,643,701,641,701,699,699,701,702,699,702,700,694,700,702,694,702,695,512,703,704,512,704,513,703,512,515,703,515,705,510,706,707,510,707,511,704,703,708,704,708,709,707,706,710,707,710,711,712,709,708,712,708,713,714,711,710,714,710,715,714,715,716,714,716,717,712,713,718,712,718,719,511,707,720,511,720,524,708,703,705,708,705,721,705,515,525,705,525,722,707,711,723,707,723,720,713,708,721,713,721,724,705,722,725,705,725,721,711,714,726,711,726,723,724,721,725,724,725,727,714,717,728,714,728,726,718,713,724,718,724,729,724,727,730,724,730,729,722,525,535,722,535,731,731,535,536,731,536,732,524,720,733,524,733,534,722,731,734,722,734,725,734,731,732,734,732,735,720,723,736,720,736,733,727,725,734,727,734,737,723,726,738,723,738,736,726,728,739,726,739,738,727,737,740,727,740,730,534,733,741,534,741,543,543,741,742,543,742,544,742,741,743,742,743,744,733,736,743,733,743,741,737,734,735,737,735,745,736,738,746,736,746,743,743,746,747,743,747,744,738,739,748,738,748,746,746,748,749,746,749,747,740,737,745,740,745,750,751,752,560,751,560,559,752,753,561,752,561,560,753,754,562,753,562,561,584,755,556,584,556,555,755,756,557,755,557,556,732,536,583,732,583,757,756,758,558,756,558,557,758,751,559,758,559,558,745,735,759,745,759,760,735,732,757,735,757,759,757,583,592,757,592,761,761,592,593,761,593,762,759,757,761,759,761,763,761,762,764,761,764,763,765,763,764,765,764,766,744,747,767,744,767,768,760,759,763,760,763,765,769,765,766,769,766,770,747,749,771,747,771,767,750,745,760,750,760,772,772,760,765,772,765,769,544,742,773,544,773,602,602,773,774,602,774,603,603,774,775,603,775,604,742,744,768,742,768,773,774,776,777,774,777,775,773,768,776,773,776,774,776,778,779,776,779,777,778,776,768,778,768,767,767,771,780,767,780,778,779,778,780,779,780,781,782,783,568,782,568,567,783,784,569,783,569,568,785,782,567,785,567,566,786,787,565,786,565,564,787,785,566,787,566,565,754,788,563,754,563,562,788,786,564,788,564,563,609,570,569,609,569,784,625,626,789,625,789,790,627,791,789,627,789,626,791,627,613,613,612,792,613,792,793,790,789,794,790,794,795,791,793,796,791,796,794,791,794,789,794,797,798,794,798,795,797,794,796,797,796,799,762,593,633,762,633,800,800,633,635,800,635,801,762,800,802,762,802,764,625,790,801,625,801,635,800,801,803,800,803,802,803,804,805,803,805,802,801,790,795,801,795,803,803,795,798,803,798,804,798,797,806,798,806,807,798,807,808,798,808,804,604,775,809,604,809,642,809,810,811,809,811,812,642,809,812,642,812,643,766,764,802,766,802,805,810,809,775,810,775,777,777,779,813,777,813,810,814,811,810,814,810,813,766,805,815,766,815,770,779,781,816,779,816,813,805,804,808,805,808,815,814,813,816,814,816,817,818,819,678,818,678,677,820,821,692,820,692,691,822,820,691,822,691,690,819,823,679,819,679,678,824,822,690,824,690,689,679,823,825,679,825,680,824,689,688,824,688,826,668,827,676,668,676,669,821,670,671,821,671,692,827,818,677,827,677,676,828,672,673,828,673,829,830,828,829,830,829,831,793,792,832,793,832,833,834,830,831,834,831,835,833,832,836,833,836,837,836,838,839,836,839,837,840,834,835,840,835,841,791,613,793,793,833,796,695,842,829,829,842,831,695,829,673,799,796,833,799,833,837,831,843,835,842,843,831,806,797,799,806,799,844,799,837,844,835,845,841,843,845,835,837,839,844,845,846,841,846,845,847,846,847,848,643,812,849,643,849,701,842,695,702,842,702,850,812,811,851,812,851,849,701,849,850,701,850,702,843,842,850,843,850,852,811,814,853,811,853,851,845,843,852,845,852,847,849,851,852,849,852,850,814,817,854,814,854,853,853,854,848,853,848,847,847,852,851,847,851,853,716,855,856,716,856,717,857,858,859,857,859,860,719,718,857,719,857,860,855,861,862,855,862,856,863,859,858,863,858,864,861,865,866,861,866,862,865,867,868,865,868,866,864,869,870,864,870,863,871,868,867,871,867,872,870,869,871,870,871,872,717,856,873,717,873,728,858,857,874,858,874,875,718,729,874,718,874,857,856,862,876,856,876,873,864,858,875,864,875,877,862,866,878,862,878,876,878,866,868,878,868,879,869,864,877,869,877,880,868,871,881,868,881,879,871,869,880,871,880,881,728,873,882,728,882,739,875,874,883,875,883,884,729,730,883,729,883,874,873,876,885,873,885,882,875,884,886,875,886,877,876,878,887,876,887,885,878,879,888,878,888,887,886,889,880,886,880,877,879,881,890,879,890,888,880,889,890,880,890,881,739,882,891,739,891,748,884,883,892,884,892,893,730,740,892,730,892,883,891,882,885,891,885,894,886,884,893,886,893,895,885,887,896,885,896,894,887,888,897,887,897,896,889,886,895,889,895,898,888,890,899,888,899,897,890,889,898,890,898,899,772,769,900,772,900,901,769,770,902,769,902,900,740,750,903,740,903,892,750,772,901,750,901,903,900,902,904,900,904,905,893,906,907,893,907,895,893,892,903,893,903,906,906,903,901,906,901,908,899,898,909,899,909,910,898,895,907,898,907,909,748,891,911,748,911,749,908,901,900,908,900,905,891,894,912,891,912,911,906,908,913,906,913,907,913,908,905,913,905,914,894,896,915,894,915,912,909,907,913,909,913,916,896,897,917,896,917,915,897,899,910,897,910,917,914,918,919,914,919,920,914,905,904,914,904,918,915,917,921,915,921,922,916,913,914,916,914,920,923,920,919,923,919,924,917,910,925,917,925,921,924,926,927,924,927,923,910,909,916,910,916,925,921,925,923,921,923,927,920,923,925,920,925,916,749,911,928,749,928,771,771,928,929,771,929,780,780,929,930,780,930,781,911,912,931,911,931,928,929,932,933,929,933,930,912,915,922,912,922,931,928,931,932,928,932,929,932,934,935,932,935,933,934,932,931,934,931,922,922,921,927,922,927,934,935,934,927,935,927,926,807,806,936,807,936,937,844,839,938,806,844,938,806,938,936,936,939,940,936,940,937,839,838,941,839,941,942,938,839,942,939,936,938,939,938,943,943,938,942,944,945,946,944,946,947,939,946,945,939,945,940,939,943,948,939,948,946,815,808,949,815,949,950,808,807,937,808,937,949,949,937,940,949,940,951,951,940,945,951,945,952,945,944,953,945,953,952,954,955,956,954,956,957,958,954,957,958,957,959,953,944,958,953,958,959,944,947,960,944,960,958,770,815,950,770,950,902,902,950,961,902,961,904,961,950,949,961,949,951,962,963,964,962,964,965,918,904,961,918,961,966,961,951,952,961,952,966,918,966,967,918,967,919,955,962,965,955,965,956,966,952,953,966,953,967,924,919,967,924,967,968,953,959,968,953,968,967,817,816,969,817,969,964,854,817,964,854,964,963,930,933,970,930,970,969,816,781,930,816,930,969,964,969,970,964,970,965,933,935,971,933,971,970,956,965,970,956,970,971,926,924,968,926,968,972,971,935,926,971,926,972,957,956,971,957,971,972,959,957,972,959,972,968,973,974,682,973,682,681,975,976,687,975,687,686,974,977,683,974,683,682,978,975,686,978,686,685,977,979,684,977,684,683,979,978,685,979,685,684,680,825,973,680,973,681,976,826,688,976,688,687,840,841,980,840,980,981,942,941,982,942,982,983,984,985,986,984,986,987,985,981,980,985,980,986,983,982,988,983,988,989,990,984,987,990,987,991,988,992,993,988,993,989,992,994,995,992,995,993,994,990,991,994,991,995,943,942,983,996,997,986,846,996,980,986,980,996,841,846,980,943,983,948,947,946,948,947,948,998,983,989,948,987,986,997,997,999,987,948,989,998,998,989,993,991,987,999,999,1000,991,1001,998,993,1001,995,1000,1001,993,995,991,1000,995,963,962,1002,963,1002,1003,848,854,963,848,963,1003,846,848,1003,846,1003,996,999,997,1002,999,1002,1004,996,1003,1002,996,1002,997,962,955,1004,962,1004,1002,955,954,1005,955,1005,1004,1000,999,1004,1000,1004,1005,954,958,960,954,960,1005,960,947,998,960,998,1001,1001,1000,1005,1001,1005,960]};
+/* pose le maillage importé du robinet (mm, Y haut, bec +Z) à l'emplacement voulu. */
+function placeFaucet(axis, alongB, crossB, yB, fs, col){
+  var M=FAUCET_MESH, V=M.v, Nn=M.n, F=M.f, s=((((typeof PCUISINE!=="undefined"&&PCUISINE.faucetH)||28)/100)/0.235);
+  function wp(v){ var mx=v[0]*0.001*s, my=v[1]*0.001*s, mz=v[2]*0.001*s;
+    var al=alongB+mx, cr=crossB+fs*mz, y=yB+my;
+    return (axis==='x') ? [al+_KOX, y, cr+_KOZ] : [cr+_KOX, y, al+_KOZ]; }
+  function wn(n){ var w=(axis==='x') ? [n[0], n[1], fs*n[2]] : [fs*n[2], n[1], n[0]];
+    var l=Math.hypot(w[0],w[1],w[2])||1; return [w[0]/l,w[1]/l,w[2]/l]; }
+  for(var k=0;k<F.length;k+=3){ var i0=F[k],i1=F[k+1],i2=F[k+2];
+    var A=wp(V[i0]),B=wp(V[i1]),C=wp(V[i2]), nA=wn(Nn[i0]),nB=wn(Nn[i1]),nC=wn(Nn[i2]);
+    var fn=norm(cross(sub(B,A),sub(C,A)));
+    if(fs<0){ FC.push({verts:[A,C,B], n:[-fn[0],-fn[1],-fn[2]], vn:[nA,nC,nB], col:col, al:1, tex:_CURTEX}); }
+    else { FC.push({verts:[A,B,C], n:fn, vn:[nA,nB,nC], col:col, al:1, tex:_CURTEX}); } }
+}
+function buildCuisine(){
+  var C=PCUISINE;
+  var H=C.counterH/100, ct=C.counterT/100, pl=C.plinthH/100, bd=C.baseD/100, ovh=C.overhang/100, mod=C.module/100;
+  var caisBot=pl, caisTop=H-ct, caisH=caisTop-caisBot;
+  var wallD=C.wallD/100, wallH=C.wallH/100, wallGap=C.wallGap/100, wallYb=H+wallGap;
+  var colH=Math.max(H+wallGap+wallH, 2.0);
+  var cCais=FINISH.kcaisson, cFac=FINISH.kfacade, cPlan=FINISH.kplan, cMet=FINISH.kmetal, cDark=[46,48,52];
+  var A=C.runA/100, B=C.runB/100, Cc=C.runC/100;
+  var hasL=(C.layout==='L'||C.layout==='U'), hasU=(C.layout==='U'), isI=(C.layout==='I');
+  var maxZ = bd + (C.ilot? ((C.ilotY!=null?C.ilotY/100:1.0)+bd+0.15) : 0.9);
+  _KOX=-A/2; _KOZ=-maxZ/2;
+
+  /* plan de travail continu avec découpes rectangulaires (évier/plaque).
+     cuts = [{a0,a1 (le long, m), c0,c1 (travers depuis le fond, m)}] */
+  function worktop(axis,s,len,back,face,cuts){ _CURTEX=FINISH_TEX.kplan;
+    var dep=bd+ovh; cuts=(cuts||[]).slice().sort(function(a,b){return a.a0-b.a0;});
+    function slab(a0,a1,c0,c1){ if(a1-a0<0.004||c1-c0<0.004) return;
+      kmod(axis, (a0+a1)/2, back+face*((c0+c1)/2), (a1-a0), caisTop, ct, (c1-c0), cPlan,1); }
+    var pos=s;
+    for(var i=0;i<cuts.length;i++){ var cu=cuts[i]; var a0=Math.max(pos,cu.a0), a1=Math.min(s+len,cu.a1);
+      slab(pos, cu.a0, 0, dep);              /* segment plein avant la découpe */
+      slab(a0, a1, 0, cu.c0);                /* bande arrière (derrière la découpe) */
+      slab(a0, a1, cu.c1, dep);              /* bande avant  (devant la découpe)   */
+      pos=cu.a1;
+    }
+    slab(pos, s+len, 0, dep);                /* dernier segment plein */
+    _CURTEX=null; }
+  function plinth(axis,along,back,face,w){ kmod(axis, along, back+face*(bd/2-0.03), w, 0, pl, bd*0.82, cDark,1); }
+  function caissonBody(axis,along,back,face,w){ _CURTEX=FINISH_TEX.kcaisson;
+    kmod(axis, along, back+face*bd/2, w-0.006, caisBot, caisH, bd-0.006, cCais,1); _CURTEX=null; }
+
+  /* --- run de caissons bas --- ; special = {sink:along, hob:along, dw:along} (m) */
+  function baseRun(axis,s,len,back,face,special,fx){
+    var mods=kModules(len,mod,C.drawers);
+    special=special||{};
+    mods.forEach(function(m){ var along=s+m.s+m.w/2, kind=m.kind, isSink=false;
+      if(special.dw!=null && Math.abs(along-special.dw)<=m.w/2){ kind='lv'; }
+      if(special.sink!=null && Math.abs(along-special.sink)<=m.w/2){ kind='porte2'; special._sinkAlong=along; isSink=true; }
+      if(special.hob!=null && Math.abs(along-special.hob)<=m.w/2){ kind='tiroirs'; special._hobAlong=along; }
+      if(isSink){ /* caisson raccourci : pas de dessus plein sous la cuve (sinon il masque le creux) */
+        _CURTEX=FINISH_TEX.kcaisson; var sct=caisTop-0.26;
+        kmod(axis, along, back+face*bd/2, m.w-0.006, caisBot, sct-caisBot, bd-0.006, cCais,1);
+        kmod(axis, along, back+face*(bd-0.008), m.w-0.006, caisBot, caisH, 0.012, cCais,1); /* dosseret arrière seulement */
+        _CURTEX=null;
+      } else caissonBody(axis,along,back,face,m.w);
+      plinth(axis,along,back,face,m.w);
+      _CURTEX=FINISH_TEX.kfacade;
+      kFront(axis, along, back+face*bd, face, m.w-0.006, caisBot, caisH, kind, cFac, cMet);
+      _CURTEX=null;
+    });
+    /* découpes du plan (évier / plaque) */
+    var cuts=[], sinkCc=bd*0.5, hobC=bd*0.44;
+    var sL=Math.min((C.sinkL||100)/100, len-0.1), sW=Math.min((C.sinkW||46)/100, bd-0.05);
+    if(special._sinkAlong!=null && C.sink) cuts.push({a0:special._sinkAlong-sL/2+0.02, a1:special._sinkAlong+sL/2-0.02, c0:sinkCc-sW/2+0.02, c1:sinkCc+sW/2-0.02});
+    if(special._hobAlong!=null && C.hob)  cuts.push({a0:special._hobAlong-0.28, a1:special._hobAlong+0.28, c0:hobC-0.21, c1:hobC+0.21});
+    worktop(axis,s,len,back,face,cuts);
+    /* --- ÉVIER inox à encastrer : cadre + cuve (bonde) + égouttoir + mitigeur --- */
+    if(special._sinkAlong!=null && C.sink){ var sa=special._sinkAlong, cwC=back+face*sinkCc, mount=(C.sinkMount||'dessus');
+      var rimY=caisTop + (mount==='dessus'?0.008:-0.004), drain=!!C.sinkDrainer, bh=0.21;
+      var bowlL=drain?Math.min(0.42,sL*0.46):(sL-0.055);
+      var bowlOff=drain? -(sL/2 - bowlL/2 - 0.03) : 0;
+      var drainL=drain? (sL - bowlL - 0.06) : 0, drainOff=drain? (bowlOff + bowlL/2 + drainL/2 + 0.02) : 0;
+      /* cadre inox : bandeau périphérique (ne recouvre PAS les cuves) */
+      var rt=0.028;
+      kmod(axis, sa, cwC-sW/2+rt/2, sL, rimY-0.006, 0.012, rt, cMet,1);
+      kmod(axis, sa, cwC+sW/2-rt/2, sL, rimY-0.006, 0.012, rt, cMet,1);
+      kmod(axis, sa-sL/2+rt/2, cwC, rt, rimY-0.006, 0.012, sW, cMet,1);
+      kmod(axis, sa+sL/2-rt/2, cwC, rt, rimY-0.006, 0.012, sW, cMet,1);
+      /* cuve OUVERTE (4 parois inox + fond), encastrée sous le plan ; on voit dans le creux */
+      var bwW=drain?sW*0.84:(sW-0.07), wt=0.018, byb=rimY-bh, bc=sa+bowlOff, cInt=[150,154,160], cBot=[132,136,142];
+      kmod(axis, bc-bowlL/2+wt/2, cwC, wt, byb, bh, bwW, cInt,1);
+      kmod(axis, bc+bowlL/2-wt/2, cwC, wt, byb, bh, bwW, cInt,1);
+      kmod(axis, bc, cwC-bwW/2+wt/2, bowlL, byb, bh, wt, cInt,1);
+      kmod(axis, bc, cwC+bwW/2-wt/2, bowlL, byb, bh, wt, cInt,1);
+      kmod(axis, bc, cwC, bowlL-2*wt, byb, wt, bwW-2*wt, cBot,1);         /* fond de cuve (inox brossé) */
+      if(axis==='x') kcyl(bc, cwC, 0.026, byb+0.005, byb+0.03, [70,72,78],12); else kcyl(cwC, bc, 0.026, byb+0.005, byb+0.03, [70,72,78],12); /* bonde */
+      if(drain){ var dcx=sa+drainOff, dchan=[(cMet[0]*0.78)|0,(cMet[1]*0.78)|0,(cMet[2]*0.78)|0];
+        kmod(axis, dcx, cwC, drainL, rimY-0.02, 0.014, sW*0.80, cMet,1);                          /* plage d'égouttage creusée */
+        var nb=5, span=sW*0.60;
+        for(var g=0;g<nb;g++){ var cc=cwC-span/2+span*g/(nb-1);
+          kmod(axis, dcx, cc, drainL*0.86, rimY-0.028, 0.006, 0.009, dchan,1); } }               /* rainures dans le sens de la cuve */
+      /* mitigeur : maillage importé (Robinet de base), posé sur le plan derrière la cuve */
+      _CURTEX=FINISH_TEX.kmetal;
+      placeFaucet(axis, sa+bowlOff, back+face*0.06, caisTop, face, cMet);
+      _CURTEX=null;
+    }
+    /* --- PLAQUE affleurante posée sur la découpe + hotte --- */
+    if(special._hobAlong!=null && C.hob){ var ha=special._hobAlong;
+      kmod(axis, ha, back+face*hobC, 0.60, caisTop+0.004, 0.016, 0.50, [26,28,32],1);
+      /* 4 foyers */
+      var fo=[[-0.14,-0.10],[0.14,-0.10],[-0.14,0.10],[0.14,0.10]];
+      fo.forEach(function(o){ var ox=o[0],oz=o[1]; if(axis==='x') kcyl(ha+ox, back+face*(hobC+oz), 0.055, caisTop+0.012, caisTop+0.016, [12,12,14],14);
+        else kcyl(back+face*(hobC+oz), ha+ox, 0.055, caisTop+0.012, caisTop+0.016, [12,12,14],14); });
+      if(C.hood){ kmod(axis, ha, back+face*(wallD*0.6), mod*0.98, wallYb, 0.10, wallD*1.05, cMet,1);
+        kmod(axis, ha, back+face*(wallD*0.28), 0.26, wallYb+0.10, 0.55, 0.18, cMet,1); }
+    }
+    return special;
+  }
+  /* --- meubles hauts --- (sautent la zone hotte) */
+  function wallRun(axis,s,len,back,face,skipAlong){
+    if(!C.wallOn) return;
+    var mods=kModules(len,mod,0);
+    mods.forEach(function(m){ var along=s+m.s+m.w/2;
+      if(skipAlong!=null && Math.abs(along-skipAlong)<mod*0.7) return;
+      _CURTEX=FINISH_TEX.kcaisson;
+      kmod(axis, along, back+face*wallD/2, m.w-0.006, wallYb, wallH, wallD-0.006, cCais,1); _CURTEX=null;
+      _CURTEX=FINISH_TEX.kfacade;
+      kFront(axis, along, back+face*wallD, face, m.w-0.006, wallYb, wallH, (C.frontStyle==='vitre'?'vitre':(m.w>0.55?'porte2':'porte1')), cFac, cMet, true);
+      _CURTEX=null;
+    });
+  }
+  /* --- meuble HAUT d'ANGLE : 'diag' (façade diagonale, plan pentagonal) ou 'L' (2 caissons) --- */
+  function cornerWallUnit(cx,cz,dxs,dzs,cs){
+    if(!C.wallOn) return;
+    var ty=C.cornerType||'diag', y0=wallYb, y1=wallYb+wallH, wd=wallD, ym=(y0+y1)/2;
+    function W(x,z,y){ return [cx+dxs*x+_KOX, y, cz+dzs*z+_KOZ]; }   /* coord locale (x,z>=0) -> monde */
+    function hbarAt(x,z,ox,oz){ kb(cx+dxs*(x+ox)+_KOX, ym, cz+dzs*(z+oz)+_KOZ, 0.02, wallH*0.42, 0.02, cMet,1); }
+    if(ty==='L'){
+      _CURTEX=FINISH_TEX.kcaisson;
+      kb(cx+dxs*(cs/2)+_KOX, ym, cz+dzs*(wd/2)+_KOZ, cs, wallH, wd, cCais,1);   /* aile le long du mur X */
+      kb(cx+dxs*(wd/2)+_KOX, ym, cz+dzs*(cs/2)+_KOZ, wd, wallH, cs, cCais,1);   /* aile le long du mur Z */
+      _CURTEX=FINISH_TEX.kfacade;
+      kb(cx+dxs*((wd+cs)/2)+_KOX, ym, cz+dzs*(wd+0.011)+_KOZ, cs-wd-0.006, wallH-0.01, 0.02, cFac,1);  /* porte aile X */
+      kb(cx+dxs*(wd+0.011)+_KOX, ym, cz+dzs*((wd+cs)/2)+_KOZ, 0.02, wallH-0.01, cs-wd-0.006, cFac,1);  /* porte aile Z */
+      _CURTEX=null;
+      hbarAt((wd+cs)/2, wd, 0, 0.03); hbarAt(wd, (wd+cs)/2, 0.03, 0);
+      return;
+    }
+    /* pentagone diagonal : (0,0)-(cs,0)-(cs,wd)-(wd,cs)-(0,cs) ; façade = arête (cs,wd)->(wd,cs) */
+    var P=[[0,0],[cs,0],[cs,wd],[wd,cs],[0,cs]];
+    var ctr=[0,0]; for(var i=0;i<5;i++){ ctr[0]+=cx+dxs*P[i][0]+_KOX; ctr[1]+=cz+dzs*P[i][1]+_KOZ; } ctr=[ctr[0]/5,ctr[1]/5];
+    for(var i=0;i<5;i++){ var a=P[i], b=P[(i+1)%5], door=(i===2);
+      var A0=W(a[0],a[1],y0),B0=W(b[0],b[1],y0),B1=W(b[0],b[1],y1),A1=W(a[0],a[1],y1);
+      var nx=-(B0[2]-A0[2]), nz=(B0[0]-A0[0]), nl=Math.hypot(nx,nz)||1; nx/=nl; nz/=nl;   /* normale horizontale sortante */
+      if(((A0[0]+B0[0])/2-ctr[0])*nx+((A0[2]+B0[2])/2-ctr[1])*nz<0){ nx=-nx; nz=-nz; }
+      _CURTEX=door?FINISH_TEX.kfacade:FINISH_TEX.kcaisson;
+      face([A0,B0,B1,A1],[nx,0,nz],door?cFac:cCais,1); }
+    _CURTEX=FINISH_TEX.kcaisson;
+    for(var i=1;i<4;i++){ face([W(P[0][0],P[0][1],y1),W(P[i][0],P[i][1],y1),W(P[i+1][0],P[i+1][1],y1)],[0,1,0],cCais,1);
+      face([W(P[0][0],P[0][1],y0),W(P[i+1][0],P[i+1][1],y0),W(P[i][0],P[i][1],y0)],[0,-1,0],cCais,1); }
+    _CURTEX=null;
+    var mx=(P[2][0]+P[3][0])/2, mz=(P[2][1]+P[3][1])/2;
+    hbarAt(mx, mz, 0.025, 0.025);   /* poignée sur la diagonale */
+  }
+  /* --- colonne toute hauteur --- */
+  function column(axis,along,back,face,kind){
+    _CURTEX=FINISH_TEX.kcaisson; kmod(axis, along, back+face*bd/2, mod-0.006, 0, colH, bd-0.006, cCais,1); _CURTEX=null;
+    plinth(axis,along,back,face,mod);
+    _CURTEX=FINISH_TEX.kfacade;
+    if(kind==='frigo') kFront(axis, along, back+face*bd, face, mod-0.006, pl, colH-pl, 'frigo', cFac, cMet);
+    else if(kind==='four'){ kFront(axis, along, back+face*bd, face, mod-0.006, colH-1.05, 1.05, 'four', cFac, cMet);
+                            kFront(axis, along, back+face*bd, face, mod-0.006, pl, colH-1.05-pl-0.02, 'porte2', cFac, cMet); }
+    else kFront(axis, along, back+face*bd, face, mod-0.006, pl, colH-pl, 'porte2', cFac, cMet);
+    _CURTEX=null;
+  }
+
+  /* ---- RUN A (mur arrière), avec électroménager encastré ---- */
+  var colN=(C.fridge?1:0)+(C.oven?1:0), colW=colN*mod;
+  var baseA=Math.max(mod, A-colW);
+  var spA={};
+  if(C.sink) spA.sink=baseA*(C.sinkPos/100);
+  if(C.hob)  spA.hob = baseA*(C.hobPos/100);
+  if(C.dishwasher) spA.dw = Math.max(0.3, (spA.sink!=null?spA.sink:baseA*0.7) - mod);
+  var cs=Math.min(0.62, wallD+0.28), corner=(hasL&&C.wallOn&&(C.cornerType||'diag')!=='aucun');   /* meuble haut d'angle */
+  baseRun('x', 0, baseA, 0, +1, spA);
+  var wA0=corner?cs:0;
+  wallRun('x', wA0, baseA-wA0, 0, +1, spA._hobAlong);
+  var cxi=baseA;
+  if(C.fridge){ column('x', cxi+mod/2, 0, +1, 'frigo'); cxi+=mod; }
+  if(C.oven){ column('x', cxi+mod/2, 0, +1, 'four'); cxi+=mod; }
+
+  /* ---- RUN B (mur gauche) ---- */
+  if(hasL){ baseRun('z', bd, B-bd, 0, +1, null); var wB0=corner?Math.max(bd,cs):bd; wallRun('z', wB0, B-wB0, 0, +1, null); }
+  /* ---- RUN C (mur droit, implantation U) ---- */
+  if(hasU){ baseRun('z', bd, Cc-bd, A, -1, null); wallRun('z', bd, Cc-bd, A, -1, null); }
+  /* ---- meuble haut d'angle (jonction runs A/B) ---- */
+  if(corner) cornerWallUnit(0,0,1,1,cs);
+
+  /* ---- ÎLOT (position libre X / Y) ---- */
+  if(C.ilot){ var iw=C.ilotW/100, ibackZ=bd + (C.ilotY!=null?C.ilotY/100:1.0), ixs=(A-iw)/2 + (C.ilotX||0)/100;
+    baseRun('x', ixs, iw, ibackZ, +1, null);
+    /* dossier fermé côté opposé */
+    _CURTEX=FINISH_TEX.kfacade; kmod('x', ixs+iw/2, ibackZ - 0.01, iw, caisBot, caisH, 0.02, cFac,1); _CURTEX=null;
+  }
+
+  var totalH=Math.max(colH, wallYb+wallH, H+0.3);
+  DIMS={ w:Math.max(A,B,Cc)+0.3, h:totalH, d:maxZ+0.3 };
+  return DIMS;
+}
+function buildCuisineUI(){
+  var C=PCUISINE, g=[];
+  g.push({title:'Implantation', fields:[
+    {type:'choice',label:'Type',key:'layout',options:[{id:'I',l:'Linéaire I'},{id:'L',l:'En L'},{id:'U',l:'En U'},{id:'ilot',l:'Îlot seul'}]},
+    {type:'slider',label:'Longueur A (mur)',unit:'cm',key:'runA',min:120,max:800,step:10},
+    {type:'slider',label:'Longueur B',unit:'cm',key:'runB',min:120,max:600,step:10},
+    {type:'slider',label:'Longueur C',unit:'cm',key:'runC',min:120,max:600,step:10},
+    {type:'choice',label:'Îlot central',key:'ilot',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+    {type:'slider',label:'Îlot largeur',unit:'cm',key:'ilotW',min:80,max:360,step:10},
+    {type:'slider',label:'Îlot profondeur',unit:'cm',key:'ilotD',min:60,max:140,step:5},
+    {type:'slider',label:'Îlot position X',unit:'cm',key:'ilotX',min:-300,max:300,step:5},
+    {type:'slider',label:'Îlot distance mur (Y)',unit:'cm',key:'ilotY',min:60,max:400,step:5}
+  ]});
+  g.push({title:'Dimensions', fields:[
+    {type:'slider',label:'Hauteur plan',unit:'cm',key:'counterH',min:80,max:100,step:1},
+    {type:'slider',label:'Profondeur bas',unit:'cm',key:'baseD',min:40,max:70,step:1},
+    {type:'slider',label:'Épaisseur plan',unit:'cm',key:'counterT',min:2,max:12,step:0.5},
+    {type:'slider',label:'Débord plan',unit:'cm',key:'overhang',min:0,max:8,step:0.5},
+    {type:'slider',label:'Socle',unit:'cm',key:'plinthH',min:6,max:20,step:1},
+    {type:'slider',label:'Trame module',unit:'cm',key:'module',min:30,max:100,step:5}
+  ]});
+  g.push({title:'Meubles hauts', fields:[
+    {type:'choice',label:'Meubles hauts',key:'wallOn',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+    {type:'choice',label:'Meuble d\'angle (haut)',key:'cornerType',options:[{id:'diag',l:'Diagonal'},{id:'L',l:'En L'},{id:'aucun',l:'Aucun'}]},
+    {type:'slider',label:'Hauteur',unit:'cm',key:'wallH',min:40,max:100,step:1},
+    {type:'slider',label:'Profondeur',unit:'cm',key:'wallD',min:25,max:45,step:1},
+    {type:'slider',label:'Hauteur libre plan',unit:'cm',key:'wallGap',min:40,max:80,step:1}
+  ]});
+  g.push({title:'Façades', fields:[
+    {type:'choice',label:'Style',key:'frontStyle',options:[{id:'plan',l:'Lisse'},{id:'shaker',l:'Cadre (shaker)'},{id:'vitre',l:'Vitré (hauts)'}]},
+    {type:'choice',label:'Poignée',key:'handle',options:[{id:'horiz',l:'Barre horizontale'},{id:'horiz2',l:'Barre plate horiz.'},{id:'vert',l:'Barre verticale'},{id:'bouton',l:'Bouton'},{id:'aucune',l:'Sans (gorge)'}]},
+    {type:'slider',label:'Part de tiroirs',unit:'%',key:'drawers',min:0,max:100,step:5}
+  ]});
+  g.push({title:'Électroménager', fields:[
+    {type:'choice',label:'Réfrigérateur (colonne)',key:'fridge',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+    {type:'choice',label:'Four (colonne)',key:'oven',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+    {type:'choice',label:'Plaque de cuisson',key:'hob',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+    {type:'choice',label:'Hotte',key:'hood',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+    {type:'choice',label:'Lave-vaisselle',key:'dishwasher',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+    {type:'choice',label:'Évier',key:'sink',options:[{id:0,l:'Non'},{id:1,l:'Oui'}]},
+    {type:'choice',label:'Montage évier',key:'sinkMount',options:[{id:'dessus',l:'Posé (sur plan)'},{id:'sous',l:'Sous plan'}]},
+    {type:'choice',label:'Égouttoir',key:'sinkDrainer',options:[{id:1,l:'Avec'},{id:0,l:'Sans'}]},
+    {type:'slider',label:'Longueur évier',unit:'cm',key:'sinkL',min:40,max:140,step:5},
+    {type:'slider',label:'Largeur évier',unit:'cm',key:'sinkW',min:35,max:55,step:1},
+    {type:'slider',label:'Hauteur robinet',unit:'cm',key:'faucetH',min:18,max:45,step:1},
+    {type:'slider',label:'Position plaque',unit:'%',key:'hobPos',min:5,max:95,step:5},
+    {type:'slider',label:'Position évier',unit:'%',key:'sinkPos',min:5,max:95,step:5}
+  ]});
+  buildObjUI(C, g, buildCuisineUI);
+}
+
+/* ============================================================================
    SCÈNE — assemblage de configurations enregistrées (glisser-déposer).
    Chaque instance = {mode, params, name, x,z (sol cm), y (hauteur cm), rotY (°)}.
    instanceFaces() reconstruit l'objet via son builder puis translate/tourne ses faces. */
@@ -7260,6 +7940,7 @@ function build(){
   else if(MODE==='flos'){ r=buildFlos(); }
   else if(MODE==='murrideau'){ r=buildMurRideau(); }
   else if(MODE==='furn'){ r=buildFurniture(); }
+  else if(MODE==='cuisine'){ r=buildCuisine(); }
   else if(MODE==='hangar'){ r=buildHangar(); }
   else if(MODE==='quadripod'){
     r = (AL_PRODUCT==='woo') ? buildWoo()
@@ -8583,6 +9264,38 @@ function buildUI(){
 
     host.appendChild(fld);
   });
+  if(MODE==='meuble') buildMeubleThicknessUI(host);
+}
+/* réglages d'épaisseur du meuble : homogène ou par pan (bas/haut/gauche/droite/fond) */
+function buildMeubleThicknessUI(host){
+  normMeuble(P);
+  var lbl=document.createElement('div'); lbl.className='slbl'; lbl.style.marginTop='6px'; lbl.textContent='Épaisseur'; host.appendChild(lbl);
+  var grid=document.createElement('div'); grid.className='mat-grid';
+  [['homog','Homogène'],['pan','Par pan']].forEach(function(o){
+    var b=document.createElement('button'); b.textContent=o[1]; if(P.thMode===o[0]) b.className='on';
+    b.onclick=function(){ P.thMode=o[0]; build(); buildUI(); updateDims(); };
+    grid.appendChild(b);
+  });
+  host.appendChild(grid);
+  function thSlider(label,key,min,max){
+    var val=P[key], fld=document.createElement('div'); fld.className='fld';
+    fld.innerHTML='<div class="fh"><label>'+label+' <span class="u">cm</span></label>'+
+      '<input type="number" min="'+min+'" max="'+max+'" step="0.2" value="'+val+'"></div>'+
+      '<input type="range" min="'+min+'" max="'+max+'" step="0.2" value="'+val+'">';
+    var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
+    function apply(v){ v=Math.max(min,Math.min(max,v)); P[key]=v; num.value=v; rng.value=v; build(); updateDims(); }
+    rng.oninput=function(){ apply(+rng.value); };
+    num.oninput=function(){ if(!isNaN(parseFloat(num.value))) apply(parseFloat(num.value)); };
+    num.onblur =function(){ apply(isNaN(parseFloat(num.value))?val:parseFloat(num.value)); };
+    host.appendChild(fld);
+  }
+  if(P.thMode==='pan'){
+    thSlider('Panneau bas','thBas',1,8); thSlider('Panneau haut','thHaut',1,8);
+    thSlider('Montant gauche','thG',1,8); thSlider('Montant droit','thD',1,8);
+    thSlider('Fond','thFond',0.4,6);
+  } else {
+    thSlider('Épaisseur (homogène)','th',0.6,8);
+  }
 }
 
 /* ----------------------------------------------------------------------------
@@ -9035,7 +9748,7 @@ function buildImmeubleUI(){
     });
     target.appendChild(grid);
   })();
-  if((PIM.toit||'terrasse')==='terrasse'){ slider('Acrotère','cm','acro',0,200,5); }
+  if((PIM.toit||'terrasse')==='terrasse'){ slider('Acrotère','cm','acro',0,200,5); slider('Épaisseur acrotère','cm','acroT',6,40,1); }
   else { slider('Pente','°','pente',2,60,1); slider('Débord de toit','cm','debToit',0,200,5); }
 
   group('Façades (par orientation)');
@@ -9234,13 +9947,14 @@ function buildObjUI(params, groups, rebuildUI){
 
   /* sélecteur de série de profil (IPE, IPN, HEA, HEB, UPN) */
   function vertsF(f){
+    var obj=f.obj||params;
     var d=document.createElement('div'); d.className='fld';
     d.innerHTML='<div class="fh"><label>'+(f.label||'Sommets')+'</label></div>';
-    var ta=document.createElement('textarea'); ta.rows=3; ta.value=params[f.key]||'';
+    var ta=document.createElement('textarea'); ta.rows=3; ta.value=obj[f.key]||'';
     ta.style.cssText='width:100%;font-family:monospace;font-size:10px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:4px;resize:vertical;outline:none;';
-    ta.onchange=function(){ params[f.key]=ta.value; build(); updateDims(); };
+    ta.onchange=function(){ obj[f.key]=ta.value; build(); updateDims(); };
     d.appendChild(ta);
-    var hint=document.createElement('div'); hint.className='exp-note'; hint.textContent='Sommets « x,z » (cm) séparés par des espaces.';
+    var hint=document.createElement('div'); hint.className='exp-note'; hint.textContent=f.hint||'Sommets « x,z » (cm) séparés par des espaces.';
     d.appendChild(hint); target.appendChild(d);
   }
   function steelSerie(f){
@@ -9900,6 +10614,7 @@ function finishKey(){
   if(MODE==='flos') return 'objet';
   if(MODE==='murrideau') return FINISH_TARGET; /* cwframe | cwspandrel | cwvent */
   if(MODE==='furn') return FINISH_TARGET;      /* fstruct | fgarn */
+  if(MODE==='cuisine') return FINISH_TARGET;   /* kcaisson | kfacade | kplan | kmetal */
   if(MODE==='hangar') return FINISH_TARGET;    /* hossature | hbardage | hbeton */
   if(MODE==='dalle') return FINISH_TARGET;     /* sol | fauxplaf */
   if(MODE==='immeuble') return FINISH_TARGET;  /* imdalle | impoteau | impoutre | imvoile */
@@ -9911,7 +10626,7 @@ function finishKey(){
 function buildFinishElems(){
   var host=document.getElementById('finish-elems');
   host.innerHTML='';
-  var elems = (MODE==='immeuble')?FINISH_ELEMS_IMMEUBLE : (MODE==='meuble')?FINISH_ELEMS_MEUBLE : (MODE==='porte')?FINISH_ELEMS_PORTE : (MODE==='fenetre')?FINISH_ELEMS_FENETRE : (MODE==='murrideau')?FINISH_ELEMS_MURRIDEAU : (MODE==='furn')?(FURN.type==='meuble'?FINISH_ELEMS_MEUBLE:FINISH_ELEMS_FURN) : (MODE==='hangar')?FINISH_ELEMS_HANGAR : (MODE==='piscine')?FINISH_ELEMS_PISCINE : (MODE==='veranda')?FINISH_ELEMS_VERANDA : (MODE==='cheminee')?FINISH_ELEMS_CHEMINEE : (MODE==='dalle')?FINISH_ELEMS_DALLE : (MODE==='technal')?FINISH_ELEMS_TECHNAL : null;
+  var elems = (MODE==='immeuble')?FINISH_ELEMS_IMMEUBLE : (MODE==='meuble')?FINISH_ELEMS_MEUBLE : (MODE==='porte')?FINISH_ELEMS_PORTE : (MODE==='fenetre')?FINISH_ELEMS_FENETRE : (MODE==='murrideau')?FINISH_ELEMS_MURRIDEAU : (MODE==='furn')?(FURN.type==='meuble'?FINISH_ELEMS_MEUBLE:FINISH_ELEMS_FURN) : (MODE==='cuisine')?FINISH_ELEMS_CUISINE : (MODE==='hangar')?FINISH_ELEMS_HANGAR : (MODE==='piscine')?FINISH_ELEMS_PISCINE : (MODE==='veranda')?FINISH_ELEMS_VERANDA : (MODE==='cheminee')?FINISH_ELEMS_CHEMINEE : (MODE==='dalle')?FINISH_ELEMS_DALLE : (MODE==='technal')?FINISH_ELEMS_TECHNAL : null;
   if(!elems){ host.style.display='none'; return; }
   /* recale la cible si elle n'appartient pas a l'objet courant */
   if(!elems.some(function(e){return e.id===FINISH_TARGET;})) FINISH_TARGET=elems[0].id;
@@ -10445,6 +11160,7 @@ function refreshView(){
       else if(cat.id==='flos'){ buildFlosUI(); }
       else if(cat.id==='murrideau'){ buildMurRideauUI(); }
       else if(cat.id==='objets'){ buildFurnUI(); }
+      else if(cat.id==='cuisine'){ buildCuisineUI(); }
       else if(cat.id==='hangar'){ buildHangarUI(); }
       else if(cat.id==='piscine'){ buildPiscineUI(); }
       else if(cat.id==='veranda'){ buildVerandaUI(); }
@@ -11314,345 +12030,4 @@ var I18N_EXTRA={
 "Porte-fen.":{"en":"French door","es":"Puerta-ventana","it":"Portafinestra","de":"Terrassentür","pt":"Porta-janela","hu":"Ajtó-ablak","zh":"落地窗","ja":"テラス窓","hi":"फ्रेंच दरवाज़ा","ar":"باب زجاجي"},
 "Façade avant":{"en":"Front facade","es":"Fachada frontal","it":"Facciata anteriore","de":"Vordere Fassade","pt":"Fachada frontal","hu":"Elülső homlokzat","zh":"前立面","ja":"前面","hi":"अगला अग्रभाग","ar":"الواجهة الأمامية"},
 "Côté droit":{"en":"Right side","es":"Lado derecho","it":"Lato destro","de":"Rechte Seite","pt":"Lado direito","hu":"Jobb oldal","zh":"右侧","ja":"右面","hi":"दाहिनी भुजा","ar":"الجانب الأيمن"},
-"Façade arrière":{"en":"Rear facade","es":"Fachada trasera","it":"Facciata posteriore","de":"Hintere Fassade","pt":"Fachada traseira","hu":"Hátsó homlokzat","zh":"后立面","ja":"背面","hi":"पिछला अग्रभाग","ar":"الواجهة الخلفية"},
-"Côté gauche":{"en":"Left side","es":"Lado izquierdo","it":"Lato sinistro","de":"Linke Seite","pt":"Lado esquerdo","hu":"Bal oldal","zh":"左侧","ja":"左面","hi":"बायीं भुजा","ar":"الجانب الأيسر"},
-"Cheminée":{"en":"Fireplace","es":"Chimenea","it":"Camino","de":"Kamin","pt":"Lareira","hu":"Kandalló","zh":"壁炉","ja":"暖炉","hi":"फायरप्लेस","ar":"مدفأة"},
-"Type de foyer":{"en":"Hearth type","es":"Tipo de hogar","it":"Tipo focolare","de":"Feuerraumtyp","pt":"Tipo de lar","hu":"Tűztér típus","zh":"炉膛类型","ja":"炉タイプ","hi":"चूल्हा प्रकार","ar":"نوع الموقد"},
-"Foyer ouvert":{"en":"Open hearth","es":"Hogar abierto","it":"Focolare aperto","de":"Offener Kamin","pt":"Lar aberto","hu":"Nyílt tűztér","zh":"开放式","ja":"開放炉","hi":"खुला चूल्हा","ar":"موقد مفتوح"},
-"Insert":{"en":"Insert","es":"Insertable","it":"Inserto","de":"Kamineinsatz","pt":"Recuperador","hu":"Kandallóbetét","zh":"嵌入式","ja":"焼却炉","hi":"इंसर्ट","ar":"إدراج"},
-"Poêle":{"en":"Stove","es":"Estufa","it":"Stufa","de":"Ofen","pt":"Salamandra","hu":"Kályha","zh":"火炉","ja":"ストーブ","hi":"स्टोव","ar":"موقد قائم"},
-"Suspendue":{"en":"Suspended","es":"Suspendida","it":"Sospesa","de":"Hängend","pt":"Suspensa","hu":"Függesztett","zh":"悬挂式","ja":"吊り下げ","hi":"लटकी","ar":"معلّقة"},
-"Double face":{"en":"Double-sided","es":"Doble cara","it":"Bifacciale","de":"Doppelseitig","pt":"Dupla face","hu":"Kétoldalas","zh":"双面","ja":"両面","hi":"दोहरा","ar":"مزدوجة الوجه"},
-"Éthanol":{"en":"Ethanol","es":"Etanol","it":"Etanolo","de":"Ethanol","pt":"Etanol","hu":"Etanol","zh":"乙醇","ja":"エタノール","hi":"इथेनॉल","ar":"إيثانول"},
-"Hauteur foyer":{"en":"Hearth height","es":"Altura hogar","it":"Altezza focolare","de":"Feuerraumhöhe","pt":"Altura lar","hu":"Tűztér magasság","zh":"炉膛高","ja":"炉高さ","hi":"चूल्हा ऊँचाई","ar":"ارتفاع الموقد"},
-"Hauteur conduit":{"en":"Flue height","es":"Altura conducto","it":"Altezza canna","de":"Rohrhöhe","pt":"Altura conduta","hu":"Kürtő magasság","zh":"烟道高","ja":"煙突高さ","hi":"नली ऊँचाई","ar":"ارتفاع المدخنة"},
-"Habillage":{"en":"Surround","es":"Revestimiento","it":"Rivestimento","de":"Verkleidung","pt":"Revestimento","hu":"Burkolat","zh":"饰面","ja":"化粧","hi":"आवरण","ar":"كسوة"},
-"Matériau":{"en":"Material","es":"Material","it":"Materiale","de":"Material","pt":"Material","hu":"Anyag","zh":"材料","ja":"素材","hi":"सामग्री","ar":"مادة"},
-"Pierre":{"en":"Stone","es":"Piedra","it":"Pietra","de":"Stein","pt":"Pedra","hu":"Kő","zh":"石材","ja":"石","hi":"पत्थर","ar":"حجر"},
-"Métal":{"en":"Metal","es":"Metal","it":"Metallo","de":"Metall","pt":"Metal","hu":"Fém","zh":"金属","ja":"金属","hi":"धातु","ar":"معدن"},
-"Béton":{"en":"Concrete","es":"Hormigón","it":"Calcestruzzo","de":"Beton","pt":"Betão","hu":"Beton","zh":"混凝土","ja":"コンクリート","hi":"कंक्रीट","ar":"خرسانة"},
-"Brique":{"en":"Brick","es":"Ladrillo","it":"Mattone","de":"Ziegel","pt":"Tijolo","hu":"Tégla","zh":"砖","ja":"レンガ","hi":"ईंट","ar":"طوب"},
-"Construction":{"en":"Construction","es":"Construcción","it":"Costruzione","de":"Bauweise","pt":"Construção","hu":"Kivitel","zh":"结构","ja":"構造","hi":"निर्माण","ar":"البناء"},
-"Emplacement":{"en":"Location","es":"Ubicación","it":"Posizione","de":"Position","pt":"Localização","hu":"Elhelyezés","zh":"位置","ja":"位置","hi":"स्थान","ar":"الموضع"},
-"Aucun":{"en":"None","es":"Ninguno","it":"Nessuno","de":"Keine","pt":"Nenhum","hu":"Nincs","zh":"无","ja":"なし","hi":"कोई नहीं","ar":"لا شيء"},
-"Bleu":{"en":"Blue","es":"Azul","it":"Blu","de":"Blau","pt":"Azul","hu":"Kék","zh":"蓝色","ja":"青","hi":"नीला","ar":"أزرق"},
-"Sable":{"en":"Sand","es":"Arena","it":"Sabbia","de":"Sand","pt":"Areia","hu":"Homok","zh":"沙色","ja":"サンド","hi":"रेत","ar":"رملي"},
-"Gris clair":{"en":"Light grey","es":"Gris claro","it":"Grigio chiaro","de":"Hellgrau","pt":"Cinza claro","hu":"Világosszürke","zh":"浅灰","ja":"ライトグレー","hi":"हल्का धूसर","ar":"رمادي فاتح"},
-"Anthracite":{"en":"Anthracite","es":"Antracita","it":"Antracite","de":"Anthrazit","pt":"Antracite","hu":"Antracit","zh":"深灰","ja":"アンスラサイト","hi":"एन्थ्रेसाइट","ar":"فحمي"},
-"Vert lagon":{"en":"Lagoon green","es":"Verde laguna","it":"Verde laguna","de":"Lagunengrün","pt":"Verde lagoa","hu":"Lagúnazöld","zh":"湖绿","ja":"ラグーングリーン","hi":"लैगून हरा","ar":"أخضر بحيري"},
-"Cotes":{"en":"Dimensions","es":"Cotas","it":"Quote","de":"Maße","pt":"Cotas","hu":"Méretek","zh":"尺寸","ja":"寸法","hi":"माप","ar":"الأبعاد"},
-"Standard":{"en":"Standard","es":"Estándar","it":"Standard","de":"Standard","pt":"Padrão","hu":"Szabvány","zh":"标准","ja":"標準","hi":"मानक","ar":"قياسي"},
-"Sur-mesure":{"en":"Custom","es":"A medida","it":"Su misura","de":"Maßanfertigung","pt":"Sob medida","hu":"Egyedi","zh":"定制","ja":"オーダー","hi":"कस्टम","ar":"حسب الطلب"},
-"Format H×L (cm)":{"en":"Size H×W (cm)","es":"Formato Al×An (cm)","it":"Formato A×L (cm)","de":"Format H×B (cm)","pt":"Formato A×L (cm)","hu":"Méret Ma×Sz (cm)","zh":"尺寸 高×宽 (cm)","ja":"寸法 高×幅 (cm)","hi":"आकार ऊँ×चौ (सेमी)","ar":"المقاس ارتفاع×عرض (سم)"},
-"Ouvrant (Soleal FY 65)":{"en":"Sash (Soleal FY 65)","es":"Hoja (Soleal FY 65)","it":"Anta (Soleal FY 65)","de":"Flügel (Soleal FY 65)","pt":"Folha (Soleal FY 65)","hu":"Szárny (Soleal FY 65)","zh":"开启扇 (Soleal FY 65)","ja":"障子 (Soleal FY 65)","hi":"पल्ला (Soleal FY 65)","ar":"مصراع (Soleal FY 65)"},
-"Minimal":{"en":"Minimal","es":"Mínimo","it":"Minimale","de":"Minimal","pt":"Mínimo","hu":"Minimál","zh":"极简","ja":"ミニマル","hi":"न्यूनतम","ar":"أدنى"},
-"Apparent":{"en":"Visible","es":"Visto","it":"A vista","de":"Sichtbar","pt":"Aparente","hu":"Látszó","zh":"明框","ja":"見付","hi":"दृश्य","ar":"ظاهر"},
-"Perspective":{"en":"Perspective","es":"Perspectiva","it":"Prospettiva","de":"Perspektive","pt":"Perspetiva","hu":"Perspektíva","zh":"透视","ja":"パース","hi":"परिप्रेक्ष्य","ar":"منظور"},
-"Dessus":{"en":"Top","es":"Superior","it":"Dall'alto","de":"Oben","pt":"Superior","hu":"Felülnézet","zh":"顶视","ja":"上面","hi":"ऊपर से","ar":"أعلى"},
-"Face":{"en":"Front","es":"Frontal","it":"Fronte","de":"Vorne","pt":"Frente","hu":"Elölnézet","zh":"正视","ja":"正面","hi":"सामने","ar":"أمام"},
-"Droite":{"en":"Right","es":"Derecha","it":"Destra","de":"Rechts","pt":"Direita","hu":"Jobb","zh":"右视","ja":"右面","hi":"दायाँ","ar":"يمين"},
-"Remplissage":{"en":"Infill","es":"Relleno","it":"Riempimento","de":"Füllung","pt":"Enchimento","hu":"Kitöltés","zh":"填充","ja":"面材","hi":"भराव","ar":"الملء"},
-"Barreaudage":{"en":"Vertical bars","es":"Barrotes","it":"Bacchettatura","de":"Stäbe","pt":"Gradeamento","hu":"Rúdozás","zh":"竖栏","ja":"縦格子","hi":"ऊर्ध्वाधर छड़ें","ar":"قضبان عمودية"},
-"Lisses horiz.":{"en":"Horizontal rails","es":"Travesaños horiz.","it":"Correnti orizz.","de":"Horizontale Riegel","pt":"Barras horiz.","hu":"Vízszintes lécek","zh":"横栏","ja":"横桟","hi":"क्षैतिज छड़ें","ar":"قضبان أفقية"},
-"Câbles inox":{"en":"Steel cables","es":"Cables inox","it":"Cavi inox","de":"Edelstahlseile","pt":"Cabos inox","hu":"Rozsdamentes kábelek","zh":"不锈钢缆","ja":"ステンレスワイヤー","hi":"स्टील केबल","ar":"كابلات فولاذية"},
-"Verre":{"en":"Glass","es":"Vidrio","it":"Vetro","de":"Glas","pt":"Vidro","hu":"Üveg","zh":"玻璃","ja":"ガラス","hi":"कांच","ar":"زجاج"},
-"Tôle perforée":{"en":"Perforated sheet","es":"Chapa perforada","it":"Lamiera forata","de":"Lochblech","pt":"Chapa perfurada","hu":"Perforált lemez","zh":"穿孔板","ja":"パンチングメタル","hi":"छिद्रित शीट","ar":"صفيحة مثقّبة"},
-"Plein / tôle":{"en":"Solid / sheet","es":"Ciego / chapa","it":"Pieno / lamiera","de":"Voll / Blech","pt":"Cheio / chapa","hu":"Tömör / lemez","zh":"实心/板","ja":"無地/板","hi":"ठोस/शीट","ar":"صمّاء / صفيحة"}
-};
-(function(){for(var fr in I18N_EXTRA){var t=I18N_EXTRA[fr];for(var lg in t){if(!I18N[lg])I18N[lg]={};if(I18N[lg][fr]===undefined)I18N[lg][fr]=t[lg];}}})();
-/* Arabe : interface existante (fusion dans I18N.ar sans écraser) */
-var I18N_AR={
-"Catalogues et configurateurs d'objets 3D":"كتالوجات ومُهيّئات كائنات ثلاثية الأبعاد","Génériques":"عامة","Fabricants":"المصنّعون","Catégorie":"الفئة","Rechercher…":"بحث…",
-"Bâtiment":"مبنى","Éléments de construction":"عناصر البناء","Mobilier":"الأثاث",
-"Immeuble":"عمارة","Hangar métallique":"حظيرة معدنية","Mur":"جدار","Poteau":"عمود","Poutre":"عارضة","Dalle":"بلاطة","Fenêtre":"نافذة","Porte":"باب","Mur-rideau":"جدار ستائري","Garde-corps":"درابزين","Forme":"شكل","Objets":"كائنات","Lampe":"مصباح","Piscine":"مسبح",
-"Escalier":"درج","Coque":"قوقعة","Ouverture de toit":"فتحة سقف","Fenêtre d'angle":"نافذة زاوية",
-"Dimensions & structure":"الأبعاد والهيكل","Rendu":"العرض","Finition":"التشطيب","Export":"تصدير","Exporter votre configuration":"صدّر تهيئتك","Moteur rendu":"محرك العرض",
-"⊕ Recentrer":"⊕ إعادة التوسيط","Recentrer":"إعادة التوسيط","GLISSER · orbiter | MOLETTE · zoomer":"سحب · تدوير | العجلة · تكبير","Mon compte":"حسابي",
-"Longueur":"الطول","Largeur":"العرض","Hauteur":"الارتفاع","Profondeur":"العمق","Type":"النوع","Épaisseur":"السماكة","Matériaux":"المواد","Ouverture":"الفتح","Sens":"الاتجاه","Vantaux":"المصاريع","Nombre de vantaux":"عدد المصاريع",
-"Forme du contour":"شكل المحيط","Niveaux":"المستويات","Dalles":"البلاطات","Trame de poteaux":"شبكة الأعمدة","Structure":"الهيكل","Façades (par orientation)":"الواجهات (حسب الاتجاه)","Retraits (attique)":"التراجعات","Noyau central":"النواة المركزية","Site / géolocalisation":"الموقع / تحديد جغرافي","Toiture":"السقف",
-"Logiciel":"برمجي","Lissé":"ناعم","Réaliste":"واقعي","Plat + arêtes":"مسطّح + حواف","Lignes cachées":"خطوط مخفية","Filaire":"هيكل سلكي",
-"Rectangle":"مستطيل","En L":"على شكل L","En U":"على شكل U","En T":"على شكل T","Polygone libre":"مضلّع حر","Libre":"حر","Ronde":"دائري","Ovale":"بيضوي","Couloir de nage":"مسبح سباحة",
-"Marbre":"رخام","Bois":"خشب","Alu":"ألمنيوم","Inox":"فولاذ مقاوم","Verre":"زجاج","Blanc":"أبيض","Noir":"أسود","Gris":"رمادي","Oui":"نعم","Non":"لا"
-};
-(function(){ if(!I18N.ar)I18N.ar={}; for(var fr in I18N_AR){ if(I18N.ar[fr]===undefined) I18N.ar[fr]=I18N_AR[fr]; } })();
-var LANG='fr', mo=null, pend=false;
-var FLAGS={"fr": "<svg viewBox=\"0 0 3 2\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"3\" height=\"2\" fill=\"#fff\"/><rect width=\"1\" height=\"2\" fill=\"#0055A4\"/><rect x=\"2\" width=\"1\" height=\"2\" fill=\"#EF4135\"/></svg>", "en": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#012169\"/><path d=\"M0,0L6,4M6,0L0,4\" stroke=\"#fff\" stroke-width=\"0.7\"/><path d=\"M0,0L6,4M6,0L0,4\" stroke=\"#C8102E\" stroke-width=\"0.35\"/><rect x=\"2.4\" width=\"1.2\" height=\"4\" fill=\"#fff\"/><rect y=\"1.4\" width=\"6\" height=\"1.2\" fill=\"#fff\"/><rect x=\"2.7\" width=\"0.6\" height=\"4\" fill=\"#C8102E\"/><rect y=\"1.7\" width=\"6\" height=\"0.6\" fill=\"#C8102E\"/></svg>", "es": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#AA151B\"/><rect y=\"1\" width=\"6\" height=\"2\" fill=\"#F1BF00\"/></svg>", "it": "<svg viewBox=\"0 0 3 2\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"1\" height=\"2\" fill=\"#009246\"/><rect x=\"1\" width=\"1\" height=\"2\" fill=\"#fff\"/><rect x=\"2\" width=\"1\" height=\"2\" fill=\"#CE2B37\"/></svg>", "de": "<svg viewBox=\"0 0 5 3\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"5\" height=\"1\" fill=\"#000\"/><rect y=\"1\" width=\"5\" height=\"1\" fill=\"#DD0000\"/><rect y=\"2\" width=\"5\" height=\"1\" fill=\"#FFCE00\"/></svg>", "pt": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#DA291C\"/><rect width=\"2.4\" height=\"4\" fill=\"#046A38\"/><circle cx=\"2.4\" cy=\"2\" r=\"0.55\" fill=\"#FFE600\"/></svg>", "hu": "<svg viewBox=\"0 0 6 3\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"1\" fill=\"#CD2A3E\"/><rect y=\"1\" width=\"6\" height=\"1\" fill=\"#fff\"/><rect y=\"2\" width=\"6\" height=\"1\" fill=\"#436F4D\"/></svg>", "zh": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#DE2910\"/><circle cx=\"1.2\" cy=\"1.1\" r=\"0.55\" fill=\"#FFDE00\"/><circle cx=\"2.2\" cy=\"0.6\" r=\"0.2\" fill=\"#FFDE00\"/><circle cx=\"2.5\" cy=\"1.4\" r=\"0.2\" fill=\"#FFDE00\"/></svg>", "ja": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#fff\"/><circle cx=\"3\" cy=\"2\" r=\"1.1\" fill=\"#BC002D\"/></svg>", "hi": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"1.34\" fill=\"#FF9933\"/><rect y=\"1.33\" width=\"6\" height=\"1.34\" fill=\"#fff\"/><rect y=\"2.66\" width=\"6\" height=\"1.34\" fill=\"#138808\"/><circle cx=\"3\" cy=\"2\" r=\"0.42\" fill=\"none\" stroke=\"#000080\" stroke-width=\"0.1\"/></svg>", "ar": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#006C35\"/><rect x=\"1\" y=\"1.6\" width=\"4\" height=\"0.5\" fill=\"#fff\"/></svg>"};
-function setFlag(){ var fe=document.getElementById('langflag'); if(fe) fe.innerHTML=FLAGS[LANG]||''; }
-function pick(){ try{ var sv=localStorage.getItem('bpo_lang'); if(sv) return sv; }catch(e){}
-  var l=(navigator.language||navigator.userLanguage||'en').slice(0,2).toLowerCase();
-  return (l==='fr'||I18N[l])?l:'en'; }
-function translateDOM(){
-  var root=document.getElementById('app'); if(!root) return;
-  if(mo) mo.disconnect();
-  var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null), nd, list=[];
-  while(nd=w.nextNode()) list.push(nd);
-  var D=I18N[LANG]||{};
-  for(var i=0;i<list.length;i++){ var n=list[i];
-    if(n.__fr===undefined) n.__fr=n.nodeValue;
-    var base=n.__fr, k=base.trim().replace(/\u2019/g,"'"); if(!k) continue;
-    var out=base;
-    if(LANG!=='fr'){ var tr=D[k]; if(tr!=null) out=base.replace(k,tr); }
-    if(n.nodeValue!==out) n.nodeValue=out;
-  }
-  var rc=document.getElementById('recenter'); if(rc){ if(rc.__frt===undefined) rc.__frt=rc.title; rc.title=(LANG!=='fr'&&D[rc.__frt])||rc.__frt; }
-  document.documentElement.lang=LANG; document.documentElement.dir=(LANG==='ar')?'rtl':'ltr'; setFlag();
-  if(mo){ mo.takeRecords(); mo.observe(root,{childList:true,subtree:true,characterData:true}); }
-}
-/* Easter egg : hommage à Graphisoft / ArchiCAD quand on passe en hongrois.
-   Recouvre le viewer d'une petite animation, puis revient au viewer (clic pour passer). */
-/* ── Audio d'intro (morceau AJL, exporté depuis Logic) ──────────────────────
-   Fichier EXTERNE à placer à côté de meuble.html : assets/intro.m4a (ou .mp3).
-   Lecture en BOUCLE avec fondu à l'ouverture d'une intro, fondu-sortie à la fermeture.
-   NB : un .m4p (achat iTunes, DRM) ne peut pas être lu — exporter un AAC/MP3/WAV libre. */
-var _introAudio=null, _introFade=null;
-function _introAudioStart(){
-  try{
-    if(!_introAudio){
-      _introAudio=new Audio(); _introAudio.loop=true; _introAudio.preload='auto';
-      _introAudio._srcs=['assets/intro.m4a','assets/intro.mp3','intro.m4a','intro.mp3']; _introAudio._si=0;
-      _introAudio.onerror=function(){ if(_introAudio._si<_introAudio._srcs.length-1){ _introAudio._si++; _introAudio.src=_introAudio._srcs[_introAudio._si]; _introAudio.play().catch(function(){}); } };
-      _introAudio.src=_introAudio._srcs[0];
-    }
-    clearInterval(_introFade);
-    try{ _introAudio.currentTime=0; }catch(e){}
-    _introAudio.volume=0;
-    var pr=_introAudio.play();
-    if(pr&&pr.then) pr.then(function(){ var v=0; clearInterval(_introFade); _introFade=setInterval(function(){ v=Math.min(0.6,v+0.05); _introAudio.volume=v; if(v>=0.6) clearInterval(_introFade); },60); }).catch(function(){});
-  }catch(e){}
-}
-function _introAudioStop(){
-  try{ if(!_introAudio) return; clearInterval(_introFade);
-    var v=_introAudio.volume;
-    _introFade=setInterval(function(){ v=Math.max(0,v-0.06); _introAudio.volume=v; if(v<=0){ clearInterval(_introFade); try{_introAudio.pause();}catch(e){} } },50);
-  }catch(e){}
-}
-/* _introToViewer() : au bout du délai, bascule le viewer sur l'immeuble et LAISSE FILER le morceau (pas de coupe) */
-function _introToViewer(){
-  try{ if(_introAudio) _introAudio.loop=false; }catch(e){}
-  try{ if(typeof selectCat==='function'){ selectCat('immeuble'); if(typeof buildCatList==='function') buildCatList(); if(typeof refreshView==='function') refreshView(); } }catch(e){}
-}
-function playGraphisoftTribute(){
-  var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsTribute')) return;
-  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
-  var ov=document.createElement('div'); ov.id='gsTribute';
-  ov.style.cssText='position:absolute;inset:0;z-index:9999;overflow:hidden;cursor:pointer;'+
-    'background:radial-gradient(ellipse at 50% 38%,#241a12 0%,#15100f 66%,#0a0708 100%);'+
-    'display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;opacity:0;transition:opacity .5s;';
-  ov.innerHTML=''+
-'<style>'+
-'#gsTribute .flag{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#ce2939 33%,#fff 33% 66%,#477050 66%);opacity:.9;}'+
-'#gsTribute .grid{position:absolute;inset:-25%;background-image:linear-gradient(rgba(255,138,61,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,61,.09) 1px,transparent 1px);background-size:34px 34px;animation:gsPan 19s linear infinite;}'+
-'@keyframes gsPan{to{transform:translate(34px,34px);}}'+
-'#gsTribute .scene{position:absolute;top:42%;left:50%;width:150px;height:150px;margin:-75px 0 0 -75px;perspective:640px;opacity:.30;}'+
-'#gsTribute .cube{position:absolute;inset:0;transform-style:preserve-3d;animation:gsSpin 15s linear infinite;}'+
-'#gsTribute .cube i{position:absolute;width:150px;height:150px;border:1px solid rgba(255,138,61,.8);display:block;}'+
-'#gsTribute .cube .f1{transform:translateZ(75px);}#gsTribute .cube .f2{transform:rotateY(180deg) translateZ(75px);}'+
-'#gsTribute .cube .f3{transform:rotateY(90deg) translateZ(75px);}#gsTribute .cube .f4{transform:rotateY(-90deg) translateZ(75px);}'+
-'#gsTribute .cube .f5{transform:rotateX(90deg) translateZ(75px);}#gsTribute .cube .f6{transform:rotateX(-90deg) translateZ(75px);}'+
-'@keyframes gsSpin{from{transform:rotateX(-22deg) rotateY(0);}to{transform:rotateX(-22deg) rotateY(360deg);}}'+
-'#gsTribute .txt{position:relative;text-align:center;padding:22px;color:#eaf2ff;text-shadow:0 2px 20px rgba(0,0,0,.7);max-width:92%;}'+
-'#gsTribute .l{opacity:0;transform:translateY(15px);animation:gsIn .9s cubic-bezier(.2,.7,.2,1) forwards;}'+
-'@keyframes gsIn{to{opacity:1;transform:none;}}'+
-'#gsTribute .brand{font-size:12px;letter-spacing:.5em;color:var(--am,#ff8a3d);font-weight:600;}'+
-'#gsTribute .acad{font-size:38px;font-weight:800;letter-spacing:.03em;margin:8px 0 3px;background:linear-gradient(90deg,#ffd3ac,var(--am,#ff8a3d),#ff6a12);-webkit-background-clip:text;background-clip:text;color:transparent;}'+
-'#gsTribute .sub{font-size:11.5px;color:#c9a889;letter-spacing:.14em;}'+
-'#gsTribute .founder{font-size:25px;font-weight:700;margin-top:24px;color:#fff;}'+
-'#gsTribute .role{font-size:10px;color:var(--am,#ff8a3d);letter-spacing:.28em;text-transform:uppercase;margin-top:2px;}'+
-'#gsTribute .team{font-size:13.5px;color:#efe3d8;margin-top:16px;line-height:2.05;}'+
-'#gsTribute .team b{font-weight:600;color:#fff;}'+
-'#gsTribute .thx{font-size:12px;color:#c9a889;margin-top:18px;font-style:italic;letter-spacing:.04em;}'+
-'#gsTribute .en{font-size:10px;color:#a58a72;letter-spacing:.08em;margin-top:1px;font-style:italic;}'+
-'#gsTribute .sec{font-size:10px;color:var(--am,#ff8a3d);letter-spacing:.26em;text-transform:uppercase;margin-top:20px;font-weight:600;}'+
-'#gsTribute .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#5a6c78;letter-spacing:.12em;}'+
-'</style>'+
-'<div class="flag"></div><div class="grid"></div>'+
-'<div class="scene"><div class="cube"><i class="f1"></i><i class="f2"></i><i class="f3"></i><i class="f4"></i><i class="f5"></i><i class="f6"></i></div></div>'+
-'<div class="txt">'+
-'<div class="l brand" style="animation-delay:.2s">TISZTELETTEL · GRAPHISOFT</div>'+
-'<div class="l en" style="animation-delay:.35s">with respect</div>'+
-'<div class="l acad" style="animation-delay:.7s">ArchiCAD</div>'+
-'<div class="l sub" style="animation-delay:1.2s">Budapest · 1982</div>'+
-'<div class="l founder" style="animation-delay:2.1s">Bojár Gábor</div>'+
-'<div class="l role" style="animation-delay:2.45s">az ArchiCAD és a GDL megalkotója</div>'+
-'<div class="l en" style="animation-delay:2.6s">founder of ArchiCAD &amp; GDL</div>'+
-'<div class="l thx" style="animation-delay:2.9s">À mon mentor — pour son intelligence et sa vision.</div>'+
-'<div class="l en" style="animation-delay:3.05s">To my mentor — for his brilliance and vision.</div>'+
-'<div class="l team" style="animation-delay:3.3s">'+
-'<span class="l" style="animation-delay:3.4s"><b>Seidl Tibor</b></span> · '+
-'<span class="l" style="animation-delay:3.7s"><b>Hinsenkamp Tamás</b></span> · '+
-'<span class="l" style="animation-delay:4.0s"><b>Sulli Gábor</b></span><br>'+
-'<span class="l" style="animation-delay:4.3s"><b>Szabó Ildikó</b></span> · '+
-'<span class="l" style="animation-delay:4.6s"><b>Heidekker András</b></span> · '+
-'<span class="l" style="animation-delay:4.9s"><b>Halász Dóra</b></span>'+
-'</div>'+
-'<div class="l sec" style="animation-delay:5.6s">Graphisoft France · Abvent</div>'+
-'<div class="l team" style="animation-delay:5.9s">'+
-'<span class="l" style="animation-delay:6.0s"><b>Xavier Soule</b></span> · '+
-'<span class="l" style="animation-delay:6.3s"><b>Gérard Bomer</b></span> · '+
-'<span class="l" style="animation-delay:6.6s"><b>Éric Larrouil</b></span><br>'+
-'<span class="l" style="animation-delay:6.9s"><b>† Pierre Judde</b></span> <span class="en" style="display:inline">in memoriam</span>'+
-'</div>'+
-'<div class="l thx" style="animation-delay:7.7s">…és az egész Graphisoft csapatnak — köszönjük.</div>'+
-'<div class="l en" style="animation-delay:7.95s">…and to the whole Graphisoft team — thank you.</div>'+
-'</div><div class="skip">◾ kattints a kihagyáshoz · click to skip</div>';
-  vp.appendChild(ov);
-  requestAnimationFrame(function(){ ov.style.opacity='1'; });
-  _introAudioStart();
-  function _rm(){ if(ov.parentNode){ ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); } }
-  function close(){ clearTimeout(timer); _introAudioStop(); _rm(); }               /* clic utilisateur : ferme + coupe le son */
-  var timer=setTimeout(function(){ _introToViewer(); _rm(); }, 120000);            /* 2 min sans clic : bascule sur le viewer (immeuble), le morceau continue */
-  ov.addEventListener('click', close);
-}
-/* Message d'introduction à l'outil (corps en paragraphes ; ligne finale = INTRO_HOP). */
-var INTRO_MSG={
- fr:"Voici la 1ère version de BPO Architectural Parametrics. Cet outil n'a pas vocation à remplacer un logiciel BIM d'architecture — ArchiCAD (Graphisoft) le fait très bien ! Nous souhaitons d'ailleurs dédier cet outil à Bojár Gábor, son fondateur, notre mentor ;)<br><br>Nous souhaitons mettre à la disposition de tout le monde la puissance des outils paramétriques, pour vous faire gagner du temps dans la réalisation de vos projets.<br><br>N'hésitez pas à nous envoyer des commentaires et des souhaits.<br><br>Nous allons bientôt ajouter une rubrique « Fabricants » !",
- en:"This is the first version of BPO Architectural Parametrics. This tool is not meant to replace architectural BIM software — ArchiCAD (Graphisoft) does that very well! We would also like to dedicate this tool to Bojár Gábor, its founder, our mentor ;)<br><br>We want to make the power of parametric tools available to everyone, to save you time in bringing your projects to life.<br><br>Feel free to send us your comments and wishes.<br><br>We will soon be adding a « Manufacturers » section!",
- es:"Esta es la primera versión de BPO Architectural Parametrics. Esta herramienta no pretende sustituir a un software BIM de arquitectura — ¡ArchiCAD (Graphisoft) lo hace muy bien! Además, queremos dedicar esta herramienta a Bojár Gábor, su fundador, nuestro mentor ;)<br><br>Queremos poner la potencia de las herramientas paramétricas al alcance de todos, para ahorrarle tiempo en la realización de sus proyectos.<br><br>No dude en enviarnos sus comentarios y deseos.<br><br>¡Pronto añadiremos una sección « Fabricantes »!",
- it:"Questa è la prima versione di BPO Architectural Parametrics. Questo strumento non intende sostituire un software BIM di architettura — ArchiCAD (Graphisoft) lo fa benissimo! Desideriamo inoltre dedicare questo strumento a Bojár Gábor, il suo fondatore, il nostro mentore ;)<br><br>Vogliamo mettere la potenza degli strumenti parametrici alla portata di tutti, per farvi risparmiare tempo nella realizzazione dei vostri progetti.<br><br>Non esitate a inviarci commenti e desideri.<br><br>Presto aggiungeremo una sezione « Produttori »!",
- de:"Dies ist die erste Version von BPO Architectural Parametrics. Dieses Werkzeug soll keine Architektur-BIM-Software ersetzen — ArchiCAD (Graphisoft) macht das hervorragend! Wir möchten dieses Werkzeug außerdem Bojár Gábor widmen, seinem Gründer, unserem Mentor ;)<br><br>Wir möchten die Leistung parametrischer Werkzeuge allen zugänglich machen, um Ihnen Zeit bei der Umsetzung Ihrer Projekte zu sparen.<br><br>Senden Sie uns gerne Ihre Kommentare und Wünsche.<br><br>Bald fügen wir einen Bereich « Hersteller » hinzu!",
- pt:"Esta é a primeira versão do BPO Architectural Parametrics. Esta ferramenta não pretende substituir um software BIM de arquitetura — o ArchiCAD (Graphisoft) faz isso muito bem! Queremos também dedicar esta ferramenta a Bojár Gábor, o seu fundador, o nosso mentor ;)<br><br>Queremos colocar o poder das ferramentas paramétricas ao alcance de todos, para lhe poupar tempo na realização dos seus projetos.<br><br>Não hesite em enviar-nos os seus comentários e desejos.<br><br>Em breve adicionaremos uma secção « Fabricantes »!",
- zh:"这是 BPO Architectural Parametrics 的第一个版本。此工具并非用于取代建筑 BIM 软件——ArchiCAD（Graphisoft）在这方面做得非常出色！我们也想将此工具献给它的创始人、我们的导师 Bojár Gábor ;)<br><br>我们希望让所有人都能使用参数化工具的强大功能，帮助您在项目实现中节省时间。<br><br>欢迎向我们发送意见和建议。<br><br>我们即将添加 « 厂商 » 板块！",
- ja:"これは BPO Architectural Parametrics の最初のバージョンです。このツールは建築 BIM ソフトを置き換えるものではありません——ArchiCAD（Graphisoft）がそれを見事に担っています！また、このツールを創業者であり私たちの師である Bojár Gábor に捧げます ;)<br><br>パラメトリックツールの力をすべての人に届け、プロジェクトの実現にかかる時間を短縮したいと考えています。<br><br>ご意見・ご要望をぜひお寄せください。<br><br>まもなく « メーカー » セクションを追加します！",
- hi:"यह BPO Architectural Parametrics का पहला संस्करण है। यह टूल किसी आर्किटेक्चरल BIM सॉफ़्टवेयर की जगह लेने के लिए नहीं है — ArchiCAD (Graphisoft) यह काम बहुत अच्छे से करता है! हम यह टूल इसके संस्थापक, हमारे गुरु Bojár Gábor को समर्पित करना चाहते हैं ;)<br><br>हम पैरामीट्रिक टूल्स की शक्ति सभी तक पहुँचाना चाहते हैं, ताकि आपके प्रोजेक्ट्स को साकार करने में आपका समय बचे।<br><br>अपनी टिप्पणियाँ और सुझाव हमें ज़रूर भेजें।<br><br>हम जल्द ही « निर्माता » रूब्रिक जोड़ेंगे!"
-};
-/* Ligne de clôture, mise en valeur, traduite par langue. */
-var INTRO_HOP={
- fr:"Nous espérons que vous apprécierez ces outils.",
- en:"We hope you enjoy these tools.",
- es:"Esperamos que disfrute de estas herramientas.",
- it:"Ci auguriamo che questi strumenti vi piacciano.",
- de:"Wir hoffen, dass Ihnen diese Werkzeuge gefallen.",
- pt:"Esperamos que goste destas ferramentas.",
- zh:"希望您喜欢这些工具。",
- ja:"これらのツールを楽しんでいただければ幸いです。",
- hi:"हमें आशा है कि आपको ये टूल्स पसंद आएँगे।"
-};
-/* Écran d'introduction à l'outil (toutes langues sauf hongrois). Clic pour passer. */
-function playIntro(l){
-  var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsIntro') || document.getElementById('gsTribute')) return;
-  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
-  var msg=INTRO_MSG[l]||INTRO_MSG.en, hop=INTRO_HOP[l]||INTRO_HOP.en;
-  var ov=document.createElement('div'); ov.id='gsIntro';
-  ov.style.cssText='position:absolute;inset:0;z-index:9999;overflow:hidden;cursor:pointer;'+
-    'background:radial-gradient(ellipse at 50% 30%,#241a12 0%,#15100f 56%,#0a0708 100%);'+
-    'display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;opacity:0;transition:opacity .5s;';
-  ov.innerHTML=''+
-'<style>'+
-'#gsIntro .flag{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--am,#ff8a3d),#ffc79a,var(--am,#ff8a3d));opacity:.92;}'+
-'#gsIntro .grid{position:absolute;inset:-25%;background-image:linear-gradient(rgba(255,138,61,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,61,.09) 1px,transparent 1px);background-size:34px 34px;animation:giPan 19s linear infinite;}'+
-'@keyframes giPan{to{transform:translate(34px,34px);}}'+
-/* Bâtiment paramétrique en fond : étages qui se resserrent/élargissent en cascade (retraits) */
-'#gsIntro .massing{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-1deg);width:210px;display:flex;flex-direction:column-reverse;align-items:center;gap:4px;opacity:.16;filter:drop-shadow(0 0 22px rgba(255,138,61,.4));pointer-events:none;}'+
-'#gsIntro .massing i{display:block;height:32px;background:linear-gradient(180deg,rgba(255,150,80,.95),rgba(255,106,18,.62));border:1px solid rgba(255,196,150,.7);border-radius:2px;transform-origin:center;animation:mFloor 7.8s ease-in-out infinite;}'+
-'@keyframes mFloor{0%,100%{transform:scaleX(1);}50%{transform:scaleX(.4);}}'+
-'#gsIntro .card{position:relative;max-width:640px;width:86%;max-height:84%;overflow:auto;text-align:center;padding:26px;color:#f3e8dd;text-shadow:0 2px 16px rgba(0,0,0,.55);}'+
-'#gsIntro .l{opacity:0;transform:translateY(14px);animation:giIn 1.05s cubic-bezier(.2,.7,.2,1) forwards;}'+
-'@keyframes giIn{to{opacity:1;transform:none;}}'+
-'#gsIntro .brand{font-size:12px;letter-spacing:.42em;color:var(--am,#ff8a3d);font-weight:700;}'+
-'#gsIntro .title{font-size:29px;font-weight:800;margin:6px 0 2px;background:linear-gradient(90deg,#ffd3ac,var(--am,#ff8a3d),#ff6a12);-webkit-background-clip:text;background-clip:text;color:transparent;}'+
-'#gsIntro .ver{font-size:11px;color:#c9a889;letter-spacing:.16em;margin-bottom:16px;}'+
-'#gsIntro .msg{font-size:14.5px;line-height:1.72;color:#efe3d8;margin:0 0 16px;text-align:left;}'+
-'#gsIntro .hop{font-size:16px;font-weight:700;color:var(--am,#ff8a3d);letter-spacing:.02em;}'+
-'#gsIntro .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#7a6551;letter-spacing:.12em;}'+
-'</style>'+
-'<div class="flag"></div><div class="grid"></div>'+
-'<div class="massing">'+
-'<i style="width:152px;animation-delay:0s"></i>'+
-'<i style="width:152px;animation-delay:.28s"></i>'+
-'<i style="width:144px;animation-delay:.56s"></i>'+
-'<i style="width:144px;animation-delay:.84s"></i>'+
-'<i style="width:132px;animation-delay:1.12s"></i>'+
-'<i style="width:120px;animation-delay:1.4s"></i>'+
-'<i style="width:106px;animation-delay:1.68s"></i>'+
-'<i style="width:92px;animation-delay:1.96s"></i>'+
-'</div>'+
-'<div class="card">'+
-'<div class="l brand" style="animation-delay:.15s">BPO · ARCHITECTURAL PARAMETRICS</div>'+
-'<div class="l title" style="animation-delay:.4s">Architectural Parametrics</div>'+
-'<div class="l ver" style="animation-delay:.7s">v1 — première version · first release</div>'+
-'<p class="l msg" style="animation-delay:1.0s">'+msg+'</p>'+
-'<div class="l hop" style="animation-delay:2.0s">'+hop+'</div>'+
-'</div><div class="skip">◾ click to continue</div>';
-  vp.appendChild(ov);
-  requestAnimationFrame(function(){ ov.style.opacity='1'; });
-  _introAudioStart();
-  function _rm(){ if(ov.parentNode){ ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); } }
-  function close(){ clearTimeout(timer); _introAudioStop(); _rm(); }               /* clic utilisateur : ferme + coupe le son */
-  var timer=setTimeout(function(){ _introToViewer(); _rm(); }, 120000);            /* 2 min sans clic : bascule sur le viewer (immeuble), le morceau continue */
-  ov.addEventListener('click', close);
-}
-/* Page « À propos » : parcours d'Antoine Lacronique, affichée dans le viewer (clic pour passer). */
-function playAbout(){
-  var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsAbout') || document.getElementById('gsIntro') || document.getElementById('gsTribute')) return;
-  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
-  var ov=document.createElement('div'); ov.id='gsAbout';
-  ov.style.cssText='position:absolute;inset:0;z-index:9999;overflow:hidden;cursor:pointer;'+
-    'background:radial-gradient(ellipse at 50% 30%,#241a12 0%,#15100f 56%,#0a0708 100%);'+
-    'display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;opacity:0;transition:opacity .5s;';
-  ov.innerHTML=''+
-'<style>'+
-'#gsAbout .flag{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--am,#ff8a3d),#ffc79a,var(--am,#ff8a3d));opacity:.92;}'+
-'#gsAbout .grid{position:absolute;inset:-25%;background-image:linear-gradient(rgba(255,138,61,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,61,.09) 1px,transparent 1px);background-size:34px 34px;animation:gaPan 19s linear infinite;}'+
-'@keyframes gaPan{to{transform:translate(34px,34px);}}'+
-'#gsAbout .massing{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-1deg);width:210px;display:flex;flex-direction:column-reverse;align-items:center;gap:4px;opacity:.14;filter:drop-shadow(0 0 22px rgba(255,138,61,.4));pointer-events:none;}'+
-'#gsAbout .massing i{display:block;height:32px;background:linear-gradient(180deg,rgba(255,150,80,.95),rgba(255,106,18,.62));border:1px solid rgba(255,196,150,.7);border-radius:2px;transform-origin:center;animation:gaFloor 7.8s ease-in-out infinite;}'+
-'@keyframes gaFloor{0%,100%{transform:scaleX(1);}50%{transform:scaleX(.4);}}'+
-'#gsAbout .card{position:relative;max-width:660px;width:88%;max-height:86%;overflow:auto;text-align:center;padding:26px;color:#f3e8dd;text-shadow:0 2px 16px rgba(0,0,0,.55);}'+
-'#gsAbout .l{opacity:0;transform:translateY(14px);animation:gaIn 1.05s cubic-bezier(.2,.7,.2,1) forwards;}'+
-'@keyframes gaIn{to{opacity:1;transform:none;}}'+
-'#gsAbout .brand{font-size:12px;letter-spacing:.42em;color:var(--am,#ff8a3d);font-weight:700;}'+
-'#gsAbout .name{font-size:30px;font-weight:800;margin:6px 0 1px;background:linear-gradient(90deg,#ffd3ac,var(--am,#ff8a3d),#ff6a12);-webkit-background-clip:text;background-clip:text;color:transparent;}'+
-'#gsAbout .role{font-size:11px;color:#c9a889;letter-spacing:.16em;margin-bottom:18px;text-transform:uppercase;}'+
-'#gsAbout .msg{font-size:14.5px;line-height:1.72;color:#efe3d8;margin:0 0 14px;text-align:left;}'+
-'#gsAbout .path{display:flex;justify-content:center;flex-wrap:wrap;gap:9px;margin:16px 0 6px;}'+
-'#gsAbout .path span{border:1px solid rgba(255,138,61,.5);color:#ffd3ac;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;letter-spacing:.04em;background:rgba(255,138,61,.07);}'+
-'#gsAbout .path b{color:var(--am,#ff8a3d);margin:0 2px;font-weight:800;}'+
-'#gsAbout .clients{font-size:10.5px;color:#b79877;letter-spacing:.02em;margin:12px 0 2px;line-height:1.65;}'+
-'#gsAbout .clients b{color:#e7d3bd;font-weight:600;}'+
-'#gsAbout .bpo{font-size:14px;line-height:1.6;color:#f3e8dd;margin-top:16px;}'+
-'#gsAbout .bpo b{color:var(--am,#ff8a3d);}'+
-'#gsAbout .hop{font-size:16px;font-weight:700;color:var(--am,#ff8a3d);letter-spacing:.02em;margin-top:16px;}'+
-'#gsAbout .en{font-size:10.5px;color:#a58a72;letter-spacing:.06em;margin-top:3px;font-style:italic;}'+
-'#gsAbout .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#7a6551;letter-spacing:.12em;}'+
-'</style>'+
-'<div class="flag"></div><div class="grid"></div>'+
-'<div class="massing">'+
-'<i style="width:152px;animation-delay:0s"></i><i style="width:152px;animation-delay:.28s"></i>'+
-'<i style="width:144px;animation-delay:.56s"></i><i style="width:132px;animation-delay:.84s"></i>'+
-'<i style="width:120px;animation-delay:1.12s"></i><i style="width:106px;animation-delay:1.4s"></i>'+
-'<i style="width:92px;animation-delay:1.68s"></i></div>'+
-'<div class="card">'+
-'<div class="l brand" style="animation-delay:.15s">À PROPOS · BPO</div>'+
-'<div class="l name" style="animation-delay:.4s">Antoine Lacronique</div>'+
-'<div class="l role" style="animation-delay:.7s">architecte DPLG · DESA · expert BIM &amp; GDL</div>'+
-'<p class="l msg" style="animation-delay:1.0s">Architecte diplômé de l’École Spéciale d’Architecture de Paris (1996), référence internationale du <b>GDL</b> (Graphisoft) et du <b>BIM</b>. Fondateur d’<b>impactArchitecture</b>, d’<b>Abvent Industrie</b> et de <b>Cat-e</b> (catalogues 3D intelligents), il dirige aujourd’hui l’agence <b>Architecture_AL</b>.</p>'+
-'<div class="l path" style="animation-delay:1.6s"><span>Graphisoft · GDL</span><span>Abvent Industrie</span><span>Cat-e</span><span>Architecture_AL</span></div>'+
-'<div class="l clients" style="animation-delay:2.1s">Configurateurs &amp; catalogues 3D pour <b>Google</b> · <b>Trimble</b> · <b>Saint-Gobain</b> · <b>Isover</b> · <b>Technal</b> · <b>Velux</b> · <b>Grohe</b> · <b>Terreal</b></div>'+
-'<p class="l bpo" style="animation-delay:2.7s"><b>BPO Architectural Parametrics</b> — créé en <b>2026</b>, par des architectes pour les architectes (et les autres), pour <b>démocratiser</b> les outils paramétriques de conception.</p>'+
-'<div class="l hop" style="animation-delay:3.4s">Concevoir vite, concevoir juste — pour tous.</div>'+
-'<div class="l en" style="animation-delay:3.6s">Built in 2026 by architects, for architects — to democratize parametric design.</div>'+
-'</div><div class="skip">◾ cliquez pour fermer · click to close</div>';
-  vp.appendChild(ov);
-  requestAnimationFrame(function(){ ov.style.opacity='1'; });
-  _introAudioStart();
-  function _rm(){ if(ov.parentNode){ ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); } }
-  function close(){ clearTimeout(timer); _introAudioStop(); _rm(); }               /* clic utilisateur : ferme + coupe le son */
-  var timer=setTimeout(function(){ _introToViewer(); _rm(); }, 120000);            /* 2 min sans clic : bascule sur le viewer (immeuble), le morceau continue */
-  ov.addEventListener('click', close);
-}
-try{ window.playAbout=playAbout; }catch(e){}   /* exposé au global : le bouton « À propos » (onclick inline) est hors de cet IIFE */
-function setLang(l){ LANG=I18N[l]||l==='fr'?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
-  var sel=document.getElementById('langsel'); if(sel) sel.value=LANG; translateDOM();
-  if(l==='hu') playGraphisoftTribute(); else playIntro(l); }
-function start(){
-  LANG=pick();
-  var sel=document.getElementById('langsel');
-  if(sel){ sel.value=LANG; sel.addEventListener('change',function(){ setLang(this.value); }); }
-  mo=new MutationObserver(function(){ if(pend||LANG==='fr')return; pend=true; setTimeout(function(){pend=false; translateDOM();},40); });
-  translateDOM();
-}
-if(document.readyState!=='loading') setTimeout(start,60); else document.addEventListener('DOMContentLoaded',function(){ setTimeout(start,60); });
-})();
-</script>
-</body>
-</html>
+"Façade arrière":{"en":"Rear facade","es":"Fachada trasera","it":"Facciata posteriore","de":
