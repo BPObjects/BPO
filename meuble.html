@@ -13490,7 +13490,7 @@ function start(){
 }
 if(document.readyState!=='loading') setTimeout(start,60); else document.addEventListener('DOMContentLoaded',function(){ setTimeout(start,60); });
 window.playAbout=function(){ try{ var l=(document.getElementById('langsel')||{}).value||(typeof LANG!=='undefined'?LANG:'fr'); if(l==='hu'){ if(typeof playGraphisoftTribute==='function') playGraphisoftTribute(); } else if(typeof playIntro==='function'){ playIntro(l); } }catch(e){} };
-(function(){ var au=null, b=document.getElementById('soundBtn'); if(b) b.onclick=function(){ try{ if(!au){ au=new Audio('Logic.wav'); au.loop=true; au.volume=0.6; } if(au.paused){ au.play().then(function(){ b.classList.add('on'); b.title='Couper la musique'; }).catch(function(){}); } else { au.pause(); b.classList.remove('on'); b.title='Musique d ambiance'; } }catch(e){} }; })();
+(function(){ var au=null, b=document.getElementById('soundBtn'); if(!b) return; b.onclick=function(){ try{ if(!au){ au=new Audio('Logic.mp3'); au.loop=true; au.volume=0.6; au.addEventListener('error',function(){ b.classList.remove('on'); b.style.color='#e05555'; b.title='Logic.wav illisible - rends-le disponible hors ligne dans Dropbox, ou sers le site via http'; }); } if(au.paused){ b.title='chargement...'; au.play().then(function(){ b.classList.add('on'); b.style.color=''; b.title='Couper la musique'; }).catch(function(err){ b.classList.remove('on'); b.style.color='#e05555'; b.title='Lecture refusee: '+(err&&err.name||err); }); } else { au.pause(); b.classList.remove('on'); b.title='Musique d ambiance'; } }catch(e){ b.title='Erreur: '+e.message; } }; })();
 })();
 </script>
 </body>
