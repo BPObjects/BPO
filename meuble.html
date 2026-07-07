@@ -2541,6 +2541,17 @@ function drawGizmo(cam,W,H){
       ctx.beginPath(); ctx.arc(cp.x,cp.y,5,0,6.283); ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='rgba(255,138,61,0.95)'; ctx.stroke();
       SCN_GIZ={rx:hp.x,ry:hp.y,cx:cx0,cz:cz0};
     }
+    /* poignée de HAUTEUR (axe Y) : flèche verticale bleue au-dessus de l'objet */
+    var _yb=scnYbounds(inst), _topY=_yb.mx+0.02;
+    var vBase=proj(cam,[cx0,_topY,cz0],W,H), vTip=proj(cam,[cx0,_topY+0.55,cz0],W,H), vRef=proj(cam,[cx0,_topY+1.55,cz0],W,H);
+    if(vBase&&vTip){
+      ctx.beginPath(); ctx.moveTo(vBase.x,vBase.y); ctx.lineTo(vTip.x,vTip.y); ctx.strokeStyle='rgba(94,184,255,0.9)'; ctx.lineWidth=2; ctx.stroke();
+      var va=Math.atan2(vTip.y-vBase.y, vTip.x-vBase.x);
+      ctx.beginPath(); ctx.moveTo(vTip.x,vTip.y); ctx.lineTo(vTip.x-9*Math.cos(va-0.42),vTip.y-9*Math.sin(va-0.42)); ctx.moveTo(vTip.x,vTip.y); ctx.lineTo(vTip.x-9*Math.cos(va+0.42),vTip.y-9*Math.sin(va+0.42)); ctx.stroke();
+      ctx.beginPath(); ctx.arc(vTip.x,vTip.y,7,0,6.283); ctx.fillStyle=(SCN_VDRAG?'#5eb8ff':'rgba(94,184,255,0.95)'); ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
+      var _ppmY=(vRef)?(Math.hypot(vRef.x-vBase.x,vRef.y-vBase.y)/1.55):60;
+      if(!SCN_GIZ) SCN_GIZ={cx:cx0,cz:cz0}; SCN_GIZ.vx=vTip.x; SCN_GIZ.vy=vTip.y; SCN_GIZ.ppmY=(_ppmY>4?_ppmY:60);
+    }
     return;
   }
   /* tracé de cloison en cours (immeuble) */
@@ -2557,6 +2568,9 @@ function drawGizmo(cam,W,H){
     for(var pi=0;pi<PART_CUR.length;pi++){ var pp=proj(cam,[PART_CUR[pi][0],0,PART_CUR[pi][1]],W,H); if(!pp)continue;
       if(!started){ctx.moveTo(pp.x,pp.y);started=true;}else ctx.lineTo(pp.x,pp.y); }
     ctx.stroke();
+    /* trémie : aperçu de fermeture du polygone (pointillé bleu) */
+    if(PART_MODE==='tremie' && PART_CUR.length>=2){ var _tp0=proj(cam,[PART_CUR[0][0],0,PART_CUR[0][1]],W,H), _tpl=proj(cam,[PART_CUR[PART_CUR.length-1][0],0,PART_CUR[PART_CUR.length-1][1]],W,H);
+      if(_tp0&&_tpl){ ctx.setLineDash([4,4]); ctx.strokeStyle='rgba(94,184,255,0.85)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(_tpl.x,_tpl.y); ctx.lineTo(_tp0.x,_tp0.y); ctx.stroke(); ctx.setLineDash([]); } }
     for(var pi=0;pi<PART_CUR.length;pi++){ var pp=proj(cam,[PART_CUR[pi][0],0,PART_CUR[pi][1]],W,H); if(!pp)continue;
       ctx.beginPath(); ctx.arc(pp.x,pp.y,4,0,6.283); ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='#ff8a3d'; ctx.lineWidth=2; ctx.stroke(); }
     if(PART_HOVER && PART_CUR.length){ var lpp=PART_CUR[PART_CUR.length-1], lp=proj(cam,[lpp[0],0,lpp[1]],W,H), hp=proj(cam,[PART_HOVER[0],0,PART_HOVER[1]],W,H);
@@ -2972,6 +2986,10 @@ function cfgRender(){
     makeItemEl:function(cfg){
       var d=document.createElement('div'); d.className='save-item';
       d.innerHTML='<span class="nm" title="'+cfgEsc(cfg.name)+'">'+cfgEsc(cfg.name)+'</span><span class="meta">'+cfgEsc(cfg.label||cfg.mode)+' · '+cfgEsc(cfg.date||'')+'</span>';
+      /* glisser une config dans le viewer → l'ajoute à la scène (bascule en mode Scène au besoin) */
+      d.setAttribute('draggable','true');
+      d.addEventListener('dragstart',function(e){ SCN_DRAG_CFG=cfg; if(e.dataTransfer){ try{ e.dataTransfer.setData('text/plain', cfg.id); }catch(_e){} } });
+      d.addEventListener('dragend',function(){ setTimeout(function(){ SCN_DRAG_CFG=null; },60); });
       var row=document.createElement('div'); row.className='row';
       function mk(txt,title,fn){ var b=document.createElement('button'); b.textContent=txt; if(title) b.title=title; b.onclick=fn; return b; }
       row.appendChild(mk('Éditer','Charger et rééditer',function(){ cfgApply(cfg); }));
@@ -3758,6 +3776,50 @@ function dallePrism(poly, y0, t, col){
   var bot=poly.map(function(p){return [p[0],y0,p[1]];});
   for(var k=0;k<tri.length;k+=3) face([bot[tri[k+2]],bot[tri[k+1]],bot[tri[k]]],[0,-1,0],col,1);
 }
+/* dalle percée d'un ou plusieurs trous (trémies). Murs ext + parois de chaque trou (normales
+   vers l'intérieur du trou) + dessus/dessous triangulés via le contour fusionné (méthode du pont). */
+function dallePrismHoles(outer, holes, y0, t, col){
+  holes=(holes||[]).filter(function(h){return h&&h.length>=3;});
+  if(!holes.length){ dallePrism(outer,y0,t,col); return; }
+  var y1=y0+t, n=outer.length;
+  for(var i=0;i<n;i++){ var a=outer[i], b=outer[(i+1)%n];
+    var q=[[a[0],y0,a[1]],[b[0],y0,b[1]],[b[0],y1,b[1]],[a[0],y1,a[1]]];
+    face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), col,1); }
+  holes.forEach(function(h){ var H=h.slice(); if(_ringArea(H)>0) H.reverse();   /* CW → parois tournées vers le vide */
+    var m=H.length; for(var i=0;i<m;i++){ var a=H[i], b=H[(i+1)%m];
+      var q=[[a[0],y0,a[1]],[b[0],y0,b[1]],[b[0],y1,b[1]],[a[0],y1,a[1]]];
+      face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), col,1); } });
+  var merged=mergeHoles(outer, holes);
+  var tri=_triPolyHoles(merged);
+  var top=merged.map(function(p){return [p[0],y1,p[1]];});
+  for(var k=0;k<tri.length;k+=3) face([top[tri[k]],top[tri[k+1]],top[tri[k+2]]],[0,1,0],col,1);
+  var bot=merged.map(function(p){return [p[0],y0,p[1]];});
+  for(var k=0;k<tri.length;k+=3) face([bot[tri[k+2]],bot[tri[k+1]],bot[tri[k]]],[0,-1,0],col,1);
+}
+/* triangulateur robuste 2D pour polygone « ponté » (avec trous) : tolère les sommets
+   coïncidents du pont (ignorés dans le test d'oreille) et supprime les sommets colinéaires. */
+function _triPolyHoles(P){
+  var n=P.length; if(n<3) return [];
+  var idx=[]; for(var i=0;i<n;i++) idx.push(i);
+  var area=0; for(var i=0;i<n;i++){ var j=(i+1)%n; area+=P[i][0]*P[j][1]-P[j][0]*P[i][1]; } var ccw=area>0;
+  function cr(o,a,b){ return (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]); }
+  function eq(a,b){ return Math.abs(a[0]-b[0])<1e-9 && Math.abs(a[1]-b[1])<1e-9; }
+  function inTri(p,a,b,c){ if(eq(p,a)||eq(p,b)||eq(p,c)) return false; var d1=cr(p,a,b),d2=cr(p,b,c),d3=cr(p,c,a); var neg=(d1<0)||(d2<0)||(d3<0),pos=(d1>0)||(d2>0)||(d3>0); return !(neg&&pos); }
+  var tris=[], guard=0;
+  while(idx.length>3 && guard++<n*n*2){ var found=false;
+    for(var k=0;k<idx.length;k++){ var i0=idx[(k-1+idx.length)%idx.length],i1=idx[k],i2=idx[(k+1)%idx.length]; var a=P[i0],b=P[i1],c=P[i2]; var conv=cr(a,b,c);
+      if(Math.abs(conv)<1e-12){ idx.splice(k,1); found=true; break; }   /* sommet colinéaire/dégénéré */
+      if((ccw&&conv<=0)||(!ccw&&conv>=0)) continue;                     /* sommet réflexe */
+      var ok=true; for(var m=0;m<idx.length;m++){ var im=idx[m]; if(im===i0||im===i1||im===i2) continue; if(inTri(P[im],a,b,c)){ ok=false; break; } }
+      if(!ok) continue; tris.push(i0,i1,i2); idx.splice(k,1); found=true; break; }
+    if(!found) break; }
+  if(idx.length===3) tris.push(idx[0],idx[1],idx[2]);
+  return tris;
+}
+/* liste des polygones de trémies (en coords plan) qui percent la dalle de l'étage fi */
+function tremiesForFloor(fi){ var out=[]; (PIM&&PIM.tremies?PIM.tremies:[]).forEach(function(tr){
+    var fl=tr.floors||[]; if(fl.indexOf(fi)>=0){ var p=partParse(tr.verts); if(p&&p.length>=3) out.push(p.map(function(q){return [q[0],q[1]];})); } });
+  return out; }
 function buildMur(){
   var L = PM.len/100, H = PM.hgt/100;       /* longueur, hauteur (m) */
 
@@ -4527,7 +4589,7 @@ function addShadows(){
 /* --- cloisons d'étage : parseur "x,z x,z" (cm->m) + état du tracé interactif --- */
 function partParse(str){ var pts=[]; String(str||'').trim().split(/[\s;]+/).forEach(function(tk){ var c=tk.split(','); if(c.length<2)return; var X=parseFloat(c[0]),Z=parseFloat(c[1]); if(!isNaN(X)&&!isNaN(Z)) pts.push([X/100,Z/100]); }); return pts; }
 function partStr(pts){ return pts.map(function(p){return Math.round(p[0]*100)+','+Math.round(p[1]*100);}).join(' '); }
-var IMM_PART_Y=[0], IMM_PART_E=0.2, PART_ON=false, PART_CUR=null, PART_PREV=null, PART_HOVER=null, PORTE_ON=false, ERASE_ON=false;
+var IMM_PART_Y=[0], IMM_PART_E=0.2, PART_ON=false, PART_CUR=null, PART_PREV=null, PART_HOVER=null, PORTE_ON=false, ERASE_ON=false, PART_MODE='wall';   /* PART_MODE : 'wall' (cloison) | 'tremie' (trou de dalle) */
 /* efface la porte (priorité) ou la cloison la plus proche du clic, sur l'étage courant */
 function partEraseAt(gx,gz){ var fi=PIM.partFloor|0, bestDoor=null, bd=0.35, bestPart=null, bp=0.35;
   (PIM.partitions||[]).forEach(function(pt,pidx){ if((pt.floor|0)!==fi) return; var pts=partParse(pt.verts);
@@ -4777,11 +4839,20 @@ function partEnterPlanView(){
   ORTHO=true; CUT_Y=ly+1.1; build(); DIRTY=true;   /* rebuild : ajoute le poché des poteaux/voiles coupés */
 }
 function partExitPlanView(){ if(PART_PREV){ ORTHO=PART_PREV.ortho; CUT_Y=PART_PREV.cut; LAYOUT=PART_PREV.layout; if(typeof SINGLEVIEW!=='undefined') SINGLEVIEW=PART_PREV.single; var c=PART_PREV.cam; CAM.r=c.r;CAM.th=c.th;CAM.ph=c.ph;CAM.tx=c.tx;CAM.ty=c.ty;CAM.tz=c.tz; PART_PREV=null; } build(); DIRTY=true; }
-function partFinish(){ if(PART_CUR && PART_CUR.length>=2){ if(!PIM.partitions)PIM.partitions=[];
+function partFinish(){
+  if(PART_MODE==='tremie'){
+    if(PART_CUR && PART_CUR.length>=3){ if(!PIM.tremies)PIM.tremies=[];
+      PIM.tremies.push({ floors:[PIM.partFloor|0], verts:partStr(PART_CUR) }); }
+    PART_ON=false; PART_MODE='wall'; PART_CUR=null; partExitPlanView(); build(); DIRTY=true; return;
+  }
+  if(PART_CUR && PART_CUR.length>=2){ if(!PIM.partitions)PIM.partitions=[];
     function cp(o){ return o?JSON.parse(JSON.stringify(o)):null; }
     PIM.partitions.push({floor:PIM.partFloor|0, verts:partStr(PART_CUR), type:PIM.partType||'placo', thick:PIM.partThick||7, height:PIM.partHeight||0,
       doublA:cp(PIM.partDoublA), doublB:cp(PIM.partDoublB), matA:cp(PIM.partMatA), matB:cp(PIM.partMatB), matE:cp(PIM.partMatE)}); }
   PART_ON=false; PART_CUR=null; partExitPlanView(); build(); DIRTY=true; }
+/* Calques immeuble : visibilité par famille d'éléments (1=visible, 0=masqué).
+   Appliqué en filtrant FC en fin de build ; l'export IFC (IMM_STRUCT) n'est pas affecté. */
+var IMM_LAYERS={slab:1,column:1,beam:1,wall:1,facade:1,partition:1,roof:1};
 function buildImmeuble(){
   var cl=function(v,a,b){return v<a?a:(v>b?b:v);};
   var libre=(PIM.shape==='libre'), POLY=libre?parsePoly(PIM.verts):null;
@@ -4827,8 +4898,10 @@ function buildImmeuble(){
     var sp;
     if(detailDeb){ sp=expandPerEdge(pl, debEdgesM(fi,pl)); }
     else sp = dd>0 ? _expandOut(pl,dd) : pl;
-    IMM_STRUCT.slabs.push({st:i, poly:sp, yTop:yT, t:e});
-    if(detailDeb || dd>0 || insetOf(i)>0 || libre){ dallePrism(sp, yT-e, e, slCol); }
+    var _hol=tremiesForFloor(i);
+    IMM_STRUCT.slabs.push({st:i, poly:sp, yTop:yT, t:e, holes:_hol});
+    if(_hol.length){ dallePrismHoles(sp, _hol, yT-e, e, slCol); }
+    else if(detailDeb || dd>0 || insetOf(i)>0 || libre){ dallePrism(sp, yT-e, e, slCol); }
     else { rects.forEach(function(r){ box(r.cx, yT-e/2, r.cz, r.w, e, r.d, slCol,1); }); }
   }
   /* POTEAUX continus : du sol au soffite du dernier niveau porté (touchent toutes les dalles) */
@@ -4935,7 +5008,7 @@ function buildImmeuble(){
   _IFCTAG={st:N,ty:'roof'}; var roofH=buildImmRoof(rp, rx0,rx1,rz0,rz1, roof); _IFCTAG=null; _CURTEX=null;
   /* ---- CLOISONS d'étage (tracées dans le plan) ---- */
   IMM_PART_Y=levelY.slice(); IMM_PART_E=e;   /* pour l'outil de tracé */
-  if(PIM.partitions && PIM.partitions.length){ _CURTEX=null; _doorMeshCache={};
+  if(PIM.partitions && PIM.partitions.length){ _CURTEX=null; _doorMeshCache={}; _IFCTAG={ty:'partition'};
     function wallCore(a,b,y0,y1,t,mA,mB,mE){
       var dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz)||1,ux=dx/L,uz=dz/L,nx=-uz,nz=ux,h=t/2;
       var A0=[a[0]+nx*h,a[1]+nz*h],B0=[a[0]-nx*h,a[1]-nz*h],A1=[b[0]+nx*h,b[1]+nz*h],B1=[b[0]-nx*h,b[1]-nz*h];
@@ -4973,7 +5046,7 @@ function buildImmeuble(){
     PIM.partitions.forEach(function(pt){ var fi=Math.max(0,Math.min(N-1, pt.floor|0));
       var pts=partParse(pt.verts); if(pts.length<2) return;
       var np=pts.length, closed=(np>2 && Math.abs(pts[0][0]-pts[np-1][0])<1e-4 && Math.abs(pts[0][1]-pts[np-1][1])<1e-4);
-      var y0=levelY[fi]+e*0.5, ceil=levelY[fi+1]-e, ph=(pt.height>0? Math.min(pt.height/100, ceil-y0):(ceil-y0)), y1=y0+ph;
+      var y0=levelY[fi], ceil=levelY[fi+1]-e, ph=(pt.height>0? Math.min(pt.height/100, ceil-y0):(ceil-y0)), y1=y0+ph;   /* base posée sur le dessus de dalle (sol de l'étage) */
       var t=Math.max(0.04,(pt.thick||7)/100), ty=pt.type||'placo', hh=t/2;
       /* capture pour l'export IFC : cloison native (IfcWall) + portes (IfcOpeningElement + IfcDoor) */
       IMM_STRUCT.parts.push({st:fi, y0:y0, y1:y1, t:t, ty:ty, pts:pts.map(function(p){return [p[0],p[1]];}),
@@ -5009,6 +5082,8 @@ function buildImmeuble(){
   var _hbInfo=Math.max(2.0,(PIM.basementH||280)/100), basementY=[]; for(var _bi=1;_bi<=nBas;_bi++) basementY[_bi]=-_bi*_hbInfo;
   IMM_INFO={levelY:levelY.slice(), x0:x0, x1:x1, z0:z0, z1:z1, e:e, roofTop:roof+roofH, nBas:nBas, basementY:basementY, poly:(typeof poly!=='undefined'&&poly)?poly.slice():null};
   if(PART_ON && CUT_Y!=null) _pochePlan(CUT_Y);   /* poché des poteaux/voiles coupés → visibles en plan pendant le tracé */
+  /* CALQUES : retire les faces des familles masquées (l'export IFC lit IMM_STRUCT, non affecté) */
+  if(typeof IMM_LAYERS!=='undefined'){ FC=FC.filter(function(f){ return !(f.ifc && f.ifc.ty && IMM_LAYERS[f.ifc.ty]===0); }); }
   DIMS={ w:L, h:roof+e+roofH, d:W, cy:(roof+roofH-e)/2 };
   return DIMS;
 }
@@ -5113,7 +5188,7 @@ function buildImmRoof(poly,x0,x1,z0,z1,yBase){
     face(v,n,rcol,1); }
   if(t==='terrasse'){
     var ac=Math.max(0,(PIM.acro||0))/100, at=Math.max(0.05,(PIM.acroT||20)/100);
-    if(ac>0){ _IFCTAG=null;
+    if(ac>0){ _IFCTAG={ty:'roof'};
       acroRing(poly, yBase, yBase+ac, at, rcol);                 /* anneau continu, coins en coupe d'onglet */
       for(var i=0;i<poly.length;i++){ var a=poly[i], b=poly[(i+1)%poly.length];
         if(typeof IMM_STRUCT!=='undefined'&&IMM_STRUCT) IMM_STRUCT.acro.push({ax:a[0],az:a[1],bx:b[0],bz:b[1],t:at,y0:yBase,y1:yBase+ac}); } }
@@ -9947,7 +10022,8 @@ cv.addEventListener('mousedown', function(e){
     if(SG.xt && _distSeg(mx,my,SG.cx,SG.cy,SG.xt.x,SG.xt.y)<12){ GZ='x'; GZ_G0=unprojGround(mx,my,cv.width,cv.height,getCam()); return; }
     if(SG.zt && _distSeg(mx,my,SG.cx,SG.cy,SG.zt.x,SG.zt.y)<12){ GZ='z'; GZ_G0=unprojGround(mx,my,cv.width,cv.height,getCam()); return; }
   } if(ERASE_MODE && typeof CTX!=='undefined' && CTX.on){ var re=cv.getBoundingClientRect(); var idx=pickContext(e.clientX-re.left, e.clientY-re.top); if(idx>=0){ CTX.buildings.splice(idx,1); build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; } if(ROT_MODE && SITE.on){ var rr=cv.getBoundingClientRect(), cc=proj(getCam(),[0,0,0],cv.width,cv.height); RLAST=Math.atan2((e.clientY-rr.top)-(cc?cc.y:cv.height/2),(e.clientX-rr.left)-(cc?cc.x:cv.width/2)); RDRAG=true; return; } if(MOVE_SITE && SITE.on){ var rr=cv.getBoundingClientRect(); SITE_G0=unprojGround(e.clientX-rr.left,e.clientY-rr.top,cv.width,cv.height,getCam()); SDRAG=true; return; }
-  if(MODE==='scene' && SCENE.instances.length && !e.shiftKey){ var rc2=cv.getBoundingClientRect(), mx2=e.clientX-rc2.left, my2=e.clientY-rc2.top, cam2=getCam(), bst=-1, bdd=32*32;
+  if(MODE==='scene' && SCENE.instances.length && !e.shiftKey && (e.button||0)===0){ var rc2=cv.getBoundingClientRect(), mx2=e.clientX-rc2.left, my2=e.clientY-rc2.top, cam2=getCam(), bst=-1, bdd=32*32;
+    if(SCN_GIZ && SCN_GIZ.vx!=null && Math.hypot(SCN_GIZ.vx-mx2, SCN_GIZ.vy-my2)<14){ var _iv=SCENE.instances[SCENE.sel]; SCN_VDRAG={my:e.clientY, y0:_iv?_iv.y:0, ppm:SCN_GIZ.ppmY||60}; DIRTY=true; return; }   /* poignée de hauteur */
     if(SCN_GIZ && Math.hypot(SCN_GIZ.rx-mx2, SCN_GIZ.ry-my2)<14){ SCN_ROT={cx:SCN_GIZ.cx, cz:SCN_GIZ.cz}; DIRTY=true; return; }   /* poignée de rotation */
     for(var si=0;si<SCENE.instances.length;si++){ var it2=SCENE.instances[si], sp=proj(cam2,[it2.x/100,(it2.y/100)||0,it2.z/100],cv.width,cv.height); if(sp){ var dd2=(sp.x-mx2)*(sp.x-mx2)+(sp.y-my2)*(sp.y-my2); if(dd2<bdd){bdd=dd2;bst=si;} } }
     if(bst>=0){ SCENE.sel=bst; var _si=SCENE.instances[bst]; SCN_DRAG={g0:unprojGround(mx2,my2,cv.width,cv.height,cam2), ox:_si.x, oz:_si.z}; if(typeof buildSceneUI==='function') buildSceneUI(); DIRTY=true; return; } }
@@ -9960,7 +10036,7 @@ cv.addEventListener('mousedown', function(e){
     if(gTop){ var dX=CUTX.on?Math.abs(gTop[0]-CUTX.pos):1e9, dZ=CUTZ.on?Math.abs(gTop[1]-CUTZ.pos):1e9;
       if(dX<0.7 && dX<=dZ){ SECT_DRAG='x'; DIRTY=true; return; } if(dZ<0.7){ SECT_DRAG='z'; DIRTY=true; return; } } }
   if(e.shiftKey){PAN=true;}else{drag=true;} lastX=e.clientX; lastY=e.clientY; });
-window.addEventListener('mouseup', function(){ drag=false; PAN=false; SDRAG=false; RDRAG=false; GZ=null; if(SECT_DRAG){ SECT_DRAG=null; DIRTY=true; } if(GIZ_DRAG>=0){ GIZ_DRAG=-1; DIRTY=true; } if(SCN_ROT){ SCN_ROT=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } if(SCN_DRAG){ SCN_DRAG=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } });
+window.addEventListener('mouseup', function(){ drag=false; PAN=false; SDRAG=false; RDRAG=false; GZ=null; if(SECT_DRAG){ SECT_DRAG=null; DIRTY=true; } if(GIZ_DRAG>=0){ GIZ_DRAG=-1; DIRTY=true; } if(SCN_ROT){ SCN_ROT=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } if(SCN_DRAG){ SCN_DRAG=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } if(SCN_VDRAG){ SCN_VDRAG=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } });
 window.addEventListener('mousemove', function(e){
   if(SECT_DRAG){ var rsm=cv.getBoundingClientRect(), gS=groundInTopView(e.clientX-rsm.left,e.clientY-rsm.top);
     if(gS && typeof IMM_INFO!=='undefined' && IMM_INFO){ var I=IMM_INFO, C=(SECT_DRAG==='x'?CUTX:CUTZ), lo=(SECT_DRAG==='x'?I.x0:I.z0), hi=(SECT_DRAG==='x'?I.x1:I.z1), v=(SECT_DRAG==='x'?gS[0]:gS[1]); C.pos=Math.max(lo,Math.min(hi,v)); DIRTY=true; if(typeof updateViewOverlay==='function'){ var ov=document.getElementById('viewOverlay'); if(ov)ov._sig=''; } } return; }
@@ -9981,6 +10057,7 @@ window.addEventListener('mousemove', function(e){
     var g=unprojGround(mx,my,cv.width,cv.height,getCam()); if(g&&GZ_G0){ var dx=g[0]-GZ_G0[0], dz=g[1]-GZ_G0[1]; if(GZ==='x') SITE.posX+=dx; else if(GZ==='z') SITE.posZ+=dz; else { SITE.posX+=dx; SITE.posZ+=dz; } GZ_G0=g; build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; }
   if(RDRAG){ var rr=cv.getBoundingClientRect(), cc=proj(getCam(),[0,0,0],cv.width,cv.height), a=Math.atan2((e.clientY-rr.top)-(cc?cc.y:cv.height/2),(e.clientX-rr.left)-(cc?cc.x:cv.width/2)); var dA=a-RLAST; RLAST=a; SITE.north+=dA*180/Math.PI; build(); DIRTY=true; if(WGL.gActive) WGL.render(); return; }
   if(SDRAG){ var rr=cv.getBoundingClientRect(), g=unprojGround(e.clientX-rr.left,e.clientY-rr.top,cv.width,cv.height,getCam()); if(g&&SITE_G0){ SITE.posX+=(g[0]-SITE_G0[0]); SITE.posZ+=(g[1]-SITE_G0[1]); SITE_G0=g; build(); DIRTY=true; if(WGL.gActive) WGL.render(); } return; }
+  if(SCN_VDRAG){ var it6=SCENE.instances[SCENE.sel]; if(it6){ var dyv=(SCN_VDRAG.my-e.clientY)/(SCN_VDRAG.ppm||60); it6.y=SCN_VDRAG.y0+Math.round(dyv*100); if(!e.shiftKey) it6.y=Math.round(it6.y/5)*5; build(); DIRTY=true; } return; }
   if(SCN_ROT){ var rr3=cv.getBoundingClientRect(), g3=unprojGround(e.clientX-rr3.left,e.clientY-rr3.top,cv.width,cv.height,getCam());
     if(g3){ var it5=SCENE.instances[SCENE.sel]; if(it5){ var deg=Math.atan2(-(g3[0]-SCN_ROT.cx), g3[1]-SCN_ROT.cz)*180/Math.PI; if(!e.shiftKey) deg=Math.round(deg/5)*5; it5.rotY=Math.round((deg+360)%360); build(); DIRTY=true; } } return; }
   if(SCN_DRAG){ var rs2=cv.getBoundingClientRect(), g2=unprojGround(e.clientX-rs2.left,e.clientY-rs2.top,cv.width,cv.height,getCam());
@@ -10741,8 +10818,8 @@ function buildImmeubleUI(){
     target.appendChild(fg);
     var lt=document.createElement('div'); lt.className='exp-note'; lt.style.marginTop='4px'; lt.textContent='Nouvelle cloison — type, épaisseur, matériaux, doublage'; target.appendChild(lt);
     partControls(target, PIM, PART_KEYS_PIM, function(struct){ if(struct) buildImmeubleUI(); });
-    var tb=document.createElement('button'); tb.style.cssText='width:100%;margin-top:6px;font-size:11px;padding:6px;'; tb.textContent=PART_ON?'■ Terminer le tracé':'✏️ Tracer une cloison'; if(PART_ON)tb.className='on';
-    tb.onclick=function(){ if(PART_ON){ partFinish(); } else { PART_ON=true; PART_CUR=[]; partEnterPlanView(); } buildImmeubleUI(); };
+    var tb=document.createElement('button'); tb.style.cssText='width:100%;margin-top:6px;font-size:11px;padding:6px;'; tb.textContent=(PART_ON&&PART_MODE==='wall')?'■ Terminer le tracé':'✏️ Tracer une cloison'; if(PART_ON&&PART_MODE==='wall')tb.className='on';
+    tb.onclick=function(){ if(PART_ON&&PART_MODE==='wall'){ partFinish(); } else { PORTE_ON=false; ERASE_ON=false; PART_MODE='wall'; PART_ON=true; PART_CUR=[]; partEnterPlanView(); } buildImmeubleUI(); };
     target.appendChild(tb);
     if(PART_ON){ var cb=document.createElement('button'); cb.style.cssText='width:100%;margin-top:4px;font-size:10px;padding:4px;'; cb.textContent='Annuler'; cb.onclick=function(){ PART_ON=false; PART_CUR=null; partExitPlanView(); buildImmeubleUI(); }; target.appendChild(cb); }
     var pl=(PIM.partitions||[]);
@@ -10799,6 +10876,57 @@ function buildImmeubleUI(){
       var sb2=db2('⤾','Inverser le sens d\'ouverture (côté du mur)',function(){ dr.swing=dr.swing?0:1; });
       var xb=document.createElement('button'); xb.textContent='✕'; xb.style.cssText='font-size:10px;padding:1px 5px;'; xb.onclick=function(){ pt.doors.splice(didx,1); if(DOORSEL&&DOORSEL.pt===pt){ DOORSEL=null; } build(); DIRTY=true; buildImmeubleUI(); };
       row.appendChild(sp); row.appendChild(hb); row.appendChild(sb2); row.appendChild(xb); target.appendChild(row); }); });
+  })();
+
+  group('Trémies (plan d\'étage)');
+  (function(){
+    var Nf2=Math.max(1,PIM.nFloors|0);
+    var note=document.createElement('div'); note.className='exp-note'; note.style.margin='2px 0 5px';
+    note.innerHTML='<div>Perce la dalle d\'un étage (cage d\'escalier, vide sur séjour, ascenseur…). Choisis l\'étage puis « Dessiner » : clique les points en vue de dessus, double-clic pour fermer.</div><div style="margin-top:3px;">Rectangle = 4 points · L = 6 points · ou forme libre. Ensuite coche les étages à percer (copie pour une cage d\'escalier).</div>';
+    target.appendChild(note);
+    var lf=document.createElement('div'); lf.className='exp-note'; lf.textContent='Étage à dessiner'; target.appendChild(lf);
+    var fg=document.createElement('div'); fg.className='mat-grid';
+    for(var i=0;i<Nf2;i++){ (function(i){ var b=document.createElement('button'); b.textContent='R+'+i; if((PIM.partFloor|0)===i)b.className='on'; b.onclick=function(){ PIM.partFloor=i; if(PART_ON&&PART_MODE==='tremie') partEnterPlanView(); buildImmeubleUI(); }; fg.appendChild(b); })(i); }
+    target.appendChild(fg);
+    var tb=document.createElement('button'); tb.style.cssText='width:100%;margin-top:6px;font-size:11px;padding:6px;'; tb.textContent=(PART_ON&&PART_MODE==='tremie')?'■ Terminer la trémie':'⬚ Dessiner une trémie'; if(PART_ON&&PART_MODE==='tremie')tb.className='on';
+    tb.onclick=function(){ if(PART_ON&&PART_MODE==='tremie'){ partFinish(); } else { PORTE_ON=false; ERASE_ON=false; PART_MODE='tremie'; PART_ON=true; PART_CUR=[]; partEnterPlanView(); } buildImmeubleUI(); };
+    target.appendChild(tb);
+    if(PART_ON&&PART_MODE==='tremie'){ var cb=document.createElement('button'); cb.style.cssText='width:100%;margin-top:4px;font-size:10px;padding:4px;'; cb.textContent='Annuler'; cb.onclick=function(){ PART_ON=false; PART_MODE='wall'; PART_CUR=null; partExitPlanView(); buildImmeubleUI(); }; target.appendChild(cb); }
+    var trs=(PIM.tremies||[]);
+    var ll=document.createElement('div'); ll.className='exp-note'; ll.style.marginTop='7px'; ll.innerHTML='Trémies <span>('+trs.length+')</span>'; target.appendChild(ll);
+    trs.forEach(function(tr,idx){
+      var box2=document.createElement('div'); box2.style.cssText='border:1px solid var(--ln);border-radius:6px;padding:5px;margin:3px 0;';
+      var hd=document.createElement('div'); hd.style.cssText='display:flex;justify-content:space-between;align-items:center;font-size:10px;gap:3px;';
+      var sp=document.createElement('span'); sp.style.flex='1'; sp.textContent='Trémie '+(idx+1)+' · '+partParse(tr.verts).length+' pts';
+      var xb=document.createElement('button'); xb.textContent='✕'; xb.style.cssText='font-size:10px;padding:0 5px;'; xb.onclick=function(){ PIM.tremies.splice(idx,1); build(); DIRTY=true; buildImmeubleUI(); };
+      hd.appendChild(sp); hd.appendChild(xb); box2.appendChild(hd);
+      var fll=document.createElement('div'); fll.className='exp-note'; fll.style.marginTop='3px'; fll.textContent='Percer les étages :'; box2.appendChild(fll);
+      var fl=document.createElement('div'); fl.style.cssText='display:flex;flex-wrap:wrap;gap:3px;';
+      for(var i=0;i<Nf2;i++){ (function(i){ var on=(tr.floors||[]).indexOf(i)>=0; var b=document.createElement('button'); b.textContent='R+'+i; b.style.cssText='font-size:10px;padding:2px 6px;'; if(on)b.className='on';
+        b.onclick=function(){ tr.floors=(tr.floors||[]).slice(); var k=tr.floors.indexOf(i); if(k>=0)tr.floors.splice(k,1); else tr.floors.push(i); tr.floors.sort(function(a,b){return a-b;}); build(); DIRTY=true; buildImmeubleUI(); }; fl.appendChild(b); })(i); }
+      box2.appendChild(fl);
+      var qk=document.createElement('div'); qk.style.cssText='display:flex;gap:4px;margin-top:4px;';
+      function qb(t,fn){ var b=document.createElement('button'); b.textContent=t; b.style.cssText='flex:1;font-size:10px;padding:3px;'; b.onclick=function(){ fn(); build(); DIRTY=true; buildImmeubleUI(); }; return b; }
+      qk.appendChild(qb('Tous les étages',function(){ tr.floors=[]; for(var j=0;j<Nf2;j++) tr.floors.push(j); }));
+      qk.appendChild(qb('Aucun',function(){ tr.floors=[]; }));
+      box2.appendChild(qk);
+      target.appendChild(box2);
+    });
+  })();
+
+  group('Calques (afficher / masquer)');
+  (function(){
+    var note=document.createElement('div'); note.className='exp-note'; note.style.margin='2px 0 4px'; note.textContent='Masque des familles à l\'affichage (l\'export IFC reste complet).';
+    target.appendChild(note);
+    var defs=[['slab','Dalles'],['column','Poteaux'],['beam','Poutres'],['wall','Voiles / noyau'],['facade','Façades / murs-rideaux'],['partition','Cloisons'],['roof','Toiture / acrotère']];
+    var grid=document.createElement('div'); grid.className='mat-grid';
+    defs.forEach(function(d){ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.textContent=(on?'☑ ':'☐ ')+d[1]; if(on)b.className='on'; b.style.cssText='font-size:10px;padding:3px 6px;text-align:left;';
+      b.onclick=function(){ IMM_LAYERS[d[0]]=on?0:1; build(); DIRTY=true; buildImmeubleUI(); }; grid.appendChild(b); });
+    target.appendChild(grid);
+    var qk=document.createElement('div'); qk.style.cssText='display:flex;gap:4px;margin-top:5px;';
+    function qb(t,fn){ var b=document.createElement('button'); b.textContent=t; b.style.cssText='flex:1;font-size:10px;padding:3px;'; b.onclick=function(){ fn(); build(); DIRTY=true; buildImmeubleUI(); }; return b; }
+    qk.appendChild(qb('Tout afficher',function(){ for(var k in IMM_LAYERS) IMM_LAYERS[k]=1; }));
+    target.appendChild(qk);
   })();
 
   group('Façades (par orientation)');
@@ -11326,13 +11454,49 @@ function buildToitureUI(){
   ], buildToitureUI);
 }
 /* ── SCÈNE : glisser-déposer de configs + gizmo curseurs + sauvegarde ── */
-var SCN_DROP_BOUND=false, SCN_DRAG_CFG=null, SCN_DRAG=null, SCN_CUR=null, SCN_ROT=null, SCN_GIZ=null;
+var SCN_DROP_BOUND=false, SCN_DRAG_CFG=null, SCN_DRAG=null, SCN_CUR=null, SCN_ROT=null, SCN_GIZ=null, SCN_VDRAG=null;
+/* entre en mode Scène (assemblage) par programmation (ex. après un glisser-déposer) */
+function enterSceneMode(){ try{ if(typeof scnResync==='function') scnResync(); if(typeof selectCat==='function') selectCat('scene'); if(typeof buildCatList==='function') buildCatList(); var sb=document.getElementById('sceneBtn'); if(sb) sb.style.borderColor='var(--am)'; }catch(e){} }
+/* niveaux (Y monde) d'un immeuble présent dans la scène — pour le menu « placer à l'étage » */
+function immLevelsInScene(){ if(typeof SCENE==='undefined'||!SCENE.instances) return null;
+  var imm=null; SCENE.instances.forEach(function(it){ if(it && !it.group && it.mode==='immeuble') imm=it; });
+  if(!imm) return null;
+  try{ instanceFaces(imm); }catch(e){}   /* effet de bord : build() renseigne IMM_INFO.levelY pour cet immeuble */
+  var ly=(typeof IMM_INFO!=='undefined'&&IMM_INFO&&IMM_INFO.levelY)?IMM_INFO.levelY.slice():null;
+  if(!ly||ly.length<2) return null;
+  var baseY=(imm.y||0)/100;
+  return { levels: ly.map(function(v){ return baseY+v; }) };   /* levels[0..N] : N+1 niveaux */
+}
+/* petit menu contextuel : place l'objet idx à l'étage choisi (base posée sur le niveau) */
+function scnStoreyMenu(px,py,idx){
+  var old=document.getElementById('scnCtxMenu'); if(old&&old.parentNode) old.parentNode.removeChild(old);
+  var info=immLevelsInScene();
+  var m=document.createElement('div'); m.id='scnCtxMenu'; m.style.cssText='position:fixed;left:'+px+'px;top:'+py+'px;z-index:9998;background:rgba(22,26,34,0.98);border:1px solid #33404d;border-radius:7px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.5);font:12px system-ui,sans-serif;color:#cdd6e0;min-width:130px;';
+  var t=document.createElement('div'); t.textContent='Placer à l’étage'; t.style.cssText='font-size:10px;opacity:.65;padding:3px 8px 5px;'; m.appendChild(t);
+  if(!info){ var em=document.createElement('div'); em.textContent='(aucun immeuble dans la scène)'; em.style.cssText='padding:4px 8px;opacity:.6;font-size:10px;'; m.appendChild(em); }
+  else { var N=info.levels.length-1;
+    for(var fi=0; fi<N; fi++){ (function(fi){ var b=document.createElement('div'); b.textContent=storeyLabel(fi); b.style.cssText='padding:5px 10px;cursor:pointer;border-radius:4px;';
+      b.onmouseenter=function(){ b.style.background='#2a3340'; }; b.onmouseleave=function(){ b.style.background=''; };
+      b.onclick=function(){ var inst=SCENE.instances[idx]; if(inst){ var base=scnYbounds(inst).mn; inst.y+=Math.round((info.levels[fi]-base)*100); build(); DIRTY=true; if(typeof buildSceneUI==='function') buildSceneUI(); } if(m.parentNode) m.parentNode.removeChild(m); };
+      m.appendChild(b); })(fi); }
+  }
+  document.body.appendChild(m);
+  setTimeout(function(){ document.addEventListener('mousedown', function h(ev){ if(!m.contains(ev.target)){ if(m.parentNode) m.parentNode.removeChild(m); document.removeEventListener('mousedown',h,true); } }, true); },0);
+}
 function scnBindDrop(){ if(SCN_DROP_BOUND) return; var vp=document.getElementById('vp'); if(!vp) return; SCN_DROP_BOUND=true;
-  vp.addEventListener('dragover', function(e){ if(MODE==='scene'){ e.preventDefault(); } });
-  vp.addEventListener('drop', function(e){ if(MODE!=='scene') return; e.preventDefault();
-    var id=(e.dataTransfer&&e.dataTransfer.getData('text/plain'))||''; var cfg=SCN_DRAG_CFG||cfgLoad().filter(function(c){return c.id===id;})[0]; SCN_DRAG_CFG=null; if(!cfg) return;
+  vp.addEventListener('dragover', function(e){ if(MODE==='scene' || SCN_DRAG_CFG){ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='copy'; } });
+  vp.addEventListener('drop', function(e){
+    var id=(e.dataTransfer&&e.dataTransfer.getData('text/plain'))||''; var cfg=SCN_DRAG_CFG||cfgLoad().filter(function(c){return c.id===id;})[0]; SCN_DRAG_CFG=null; if(!cfg) return; e.preventDefault();
+    if(MODE!=='scene') enterSceneMode();
     var r=cv.getBoundingClientRect(), g=unprojGround(e.clientX-r.left, e.clientY-r.top, cv.width, cv.height, getCam());
     scnAddInstance(cfg, g?g[0]:0, g?g[1]:0); refreshView(); });
+  /* clic droit sur une instance (mode Scène) → menu « placer à l'étage » */
+  if(typeof cv!=='undefined' && cv) cv.addEventListener('contextmenu', function(e){
+    if(MODE!=='scene' || !SCENE.instances || !SCENE.instances.length) return;
+    var rc=cv.getBoundingClientRect(), mx=e.clientX-rc.left, my=e.clientY-rc.top, cam=getCam(), bst=-1, bdd=38*38;
+    for(var si=0;si<SCENE.instances.length;si++){ var it=SCENE.instances[si], sp=proj(cam,[it.x/100,(it.y/100)||0,it.z/100],cv.width,cv.height); if(sp){ var dd=(sp.x-mx)*(sp.x-mx)+(sp.y-my)*(sp.y-my); if(dd<bdd){bdd=dd;bst=si;} } }
+    if(bst<0) return; e.preventDefault(); SCENE.sel=bst; if(typeof buildSceneUI==='function') buildSceneUI(); DIRTY=true; scnStoreyMenu(e.clientX,e.clientY,bst);
+  });
 }
 function scnLive(){ build(); DIRTY=true; if(WGL.gActive) WGL.render(); }
 function buildSceneUI(){
@@ -13104,7 +13268,7 @@ refreshView();        /* affiche l'objet courant */
   if(fmt) fmt.onchange=function(){ PLOT.format=fmt.value; plotRefresh(); };
   if(ori) ori.onchange=function(){ PLOT.orient=ori.value; plotRefresh(); };
   /* champs du cartouche : préremplissage + liaison + mémorisation (localStorage) */
-  cartLoad(); plotLoad();
+  cartLoad(); plotLoad(); try{ scnBindDrop(); }catch(e){}
   [['cfProject','project'],['cfProjAddr','projAddr'],['cfOwner','owner'],['cfOwnerAddr','ownerAddr'],
    ['cfPhase','phase'],['cfRef','ref'],['cfDraw','draw'],['cfPlanche','planche'],
    ['cfAgName','agName'],['cfAgPerson','agPerson'],['cfAgAddr','agAddr'],['cfAgContact','agContact'],['cfAgOrdre','agOrdre']].forEach(function(p){
