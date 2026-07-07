@@ -3037,6 +3037,11 @@ function _pochePlan(Yc){
     quad([x-h,y,z-h],[x+h,y,z-h],[x+h,y,z+h],[x-h,y,z+h]); } });
   (IMM_STRUCT.cores||[]).forEach(function(w){ if(w.y0<=Yc && w.y1>Yc){ var dx=w.bx-w.ax, dz=w.bz-w.az, L=Math.hypot(dx,dz)||1, nx=-dz/L*(w.t/2), nz=dx/L*(w.t/2);
     quad([w.ax+nx,y,w.az+nz],[w.bx+nx,y,w.bz+nz],[w.bx-nx,y,w.bz-nz],[w.ax-nx,y,w.az-nz]); } });
+  /* cloisons en poché (footprint rempli) → toujours visibles en plan (pas de flicker sur la tranche) ; pts déjà courbés */
+  var pcW=[70,72,78];
+  (IMM_STRUCT.parts||[]).forEach(function(pr){ if(!(pr.y0<=Yc && pr.y1>Yc)) return; var pts=pr.pts||[], t=pr.t||0.07;
+    for(var s=0;s<pts.length-1;s++){ var a=pts[s], b=pts[s+1], dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1, nx=-dz/L*(t/2), nz=dx/L*(t/2);
+      FC.push({verts:[[a[0]+nx,y,a[1]+nz],[b[0]+nx,y,b[1]+nz],[b[0]-nx,y,b[1]-nz],[a[0]-nx,y,a[1]-nz]], n:[0,1,0], col:pcW, al:1, tex:null}); } });
   return FC.length-n0;
 }
 function captureView(kind, coteScaleN, storey){
@@ -3444,7 +3449,7 @@ function plotPrint(){
   w.onload=function(){ setTimeout(function(){ try{w.focus();w.print();}catch(e){} }, 350); };
 }
 function getCam(){
-  if((PART_ON||PORTE_ON||ERASE_ON) && MODE==='immeuble') return orthoCam('top');   /* tracé / portes / effacer : vue de dessus */
+  if((PART_ON||PORTE_ON||ERASE_ON||PART_EDIT_TGT) && MODE==='immeuble') return orthoCam('top');   /* tracé / portes / effacer / édition de sommets : vue de dessus */
   var r=CAM.r, th=CAM.th, ph=CAM.ph, ty=CAM.ty, tx=CAM.tx||0, tz=CAM.tz||0;
   var ex = tx + r*Math.sin(ph)*Math.sin(th);
   var ey = ty + r*Math.cos(ph);
@@ -3818,7 +3823,7 @@ function _triPolyHoles(P){
 }
 /* liste des polygones de trémies (en coords plan) qui percent la dalle de l'étage fi */
 function tremiesForFloor(fi){ var out=[]; (PIM&&PIM.tremies?PIM.tremies:[]).forEach(function(tr){
-    var fl=tr.floors||[]; if(fl.indexOf(fi)>=0){ var p=partParse(tr.verts); if(p&&p.length>=3) out.push(p.map(function(q){return [q[0],q[1]];})); } });
+    var fl=tr.floors||[]; if(fl.indexOf(fi)>=0){ var p=partParse(tr.verts); if(p&&p.length>=3){ var pc=(typeof arcCurve==='function')?arcCurve(p, tr):p; out.push(pc.map(function(q){return [q[0],q[1]];})); } } });
   return out; }
 function buildMur(){
   var L = PM.len/100, H = PM.hgt/100;       /* longueur, hauteur (m) */
@@ -4590,6 +4595,13 @@ function addShadows(){
 function partParse(str){ var pts=[]; String(str||'').trim().split(/[\s;]+/).forEach(function(tk){ var c=tk.split(','); if(c.length<2)return; var X=parseFloat(c[0]),Z=parseFloat(c[1]); if(!isNaN(X)&&!isNaN(Z)) pts.push([X/100,Z/100]); }); return pts; }
 function partStr(pts){ return pts.map(function(p){return Math.round(p[0]*100)+','+Math.round(p[1]*100);}).join(' '); }
 var IMM_PART_Y=[0], IMM_PART_E=0.2, PART_ON=false, PART_CUR=null, PART_PREV=null, PART_HOVER=null, PORTE_ON=false, ERASE_ON=false, PART_MODE='wall';   /* PART_MODE : 'wall' (cloison) | 'tremie' (trou de dalle) */
+var PART_EDIT_TGT=null;   /* cloison/trémie posée en cours d'édition de sommets (réutilise l'éditeur de polygone : CUR_POLY/POLY_TARGET) */
+/* entre/sort de l'édition des sommets d'une cloison/trémie posée */
+function partEditStart(tgt){ PART_ON=false; PORTE_ON=false; ERASE_ON=false; PART_MODE='wall'; PART_EDIT_TGT=tgt;
+  var fl=(tgt.floor!=null)?tgt.floor:(tgt.floors&&tgt.floors.length?tgt.floors[0]:(PIM.partFloor|0));   /* affiche l'étage de l'élément édité (sinon le plan de coupe le masque) */
+  PIM.partFloor=Math.max(0,Math.min((PIM.nFloors|0)-1, fl|0));
+  partEnterPlanView(); build(); DIRTY=true; if(typeof buildImmeubleUI==='function') buildImmeubleUI(); }
+function partEditStop(){ PART_EDIT_TGT=null; CUR_POLY=null; POLY_TARGET=null; partExitPlanView(); build(); DIRTY=true; if(typeof buildImmeubleUI==='function') buildImmeubleUI(); }
 /* efface la porte (priorité) ou la cloison la plus proche du clic, sur l'étage courant */
 function partEraseAt(gx,gz){ var fi=PIM.partFloor|0, bestDoor=null, bd=0.35, bestPart=null, bp=0.35;
   (PIM.partitions||[]).forEach(function(pt,pidx){ if((pt.floor|0)!==fi) return; var pts=partParse(pt.verts);
@@ -5044,7 +5056,7 @@ function buildImmeuble(){
        directions partant du sommet ; 180° (mur droit) -> 0, 90° -> t/2, aigu -> plus. */
     function miterExt(cosA,h){ var d=1+cosA; if(d<1e-4) return 0; var s=Math.sqrt(Math.max(0,1-cosA*cosA)), th=s/d; return th>1e-4? Math.min(h/th, h*6) : h*6; }
     PIM.partitions.forEach(function(pt){ var fi=Math.max(0,Math.min(N-1, pt.floor|0));
-      var pts=partParse(pt.verts); if(pts.length<2) return;
+      var pts=(typeof arcCurve==='function')?arcCurve(partParse(pt.verts), pt):partParse(pt.verts); if(pts.length<2) return;
       var np=pts.length, closed=(np>2 && Math.abs(pts[0][0]-pts[np-1][0])<1e-4 && Math.abs(pts[0][1]-pts[np-1][1])<1e-4);
       var y0=levelY[fi], ceil=levelY[fi+1]-e, ph=(pt.height>0? Math.min(pt.height/100, ceil-y0):(ceil-y0)), y1=y0+ph;   /* base posée sur le dessus de dalle (sol de l'étage) */
       var t=Math.max(0.04,(pt.thick||7)/100), ty=pt.type||'placo', hh=t/2;
@@ -5081,9 +5093,11 @@ function buildImmeuble(){
   }
   var _hbInfo=Math.max(2.0,(PIM.basementH||280)/100), basementY=[]; for(var _bi=1;_bi<=nBas;_bi++) basementY[_bi]=-_bi*_hbInfo;
   IMM_INFO={levelY:levelY.slice(), x0:x0, x1:x1, z0:z0, z1:z1, e:e, roofTop:roof+roofH, nBas:nBas, basementY:basementY, poly:(typeof poly!=='undefined'&&poly)?poly.slice():null};
-  if(PART_ON && CUT_Y!=null) _pochePlan(CUT_Y);   /* poché des poteaux/voiles coupés → visibles en plan pendant le tracé */
+  if((PART_ON||PART_EDIT_TGT) && CUT_Y!=null) _pochePlan(CUT_Y);   /* poché des poteaux/voiles/cloisons coupés → visibles en plan pendant le tracé/édition */
   /* CALQUES : retire les faces des familles masquées (l'export IFC lit IMM_STRUCT, non affecté) */
   if(typeof IMM_LAYERS!=='undefined'){ FC=FC.filter(function(f){ return !(f.ifc && f.ifc.ty && IMM_LAYERS[f.ifc.ty]===0); }); }
+  /* édition de sommets d'une cloison/trémie posée : l'éditeur de polygone (CUR_POLY/POLY_TARGET) la vise */
+  if(PART_EDIT_TGT){ CUR_POLY=partParse(PART_EDIT_TGT.verts); POLY_TARGET=PART_EDIT_TGT; }
   DIMS={ w:L, h:roof+e+roofH, d:W, cy:(roof+roofH-e)/2 };
   return DIMS;
 }
@@ -10828,7 +10842,8 @@ function buildImmeubleUI(){
       var sp=document.createElement('span'); sp.style.flex='1'; sp.textContent='R+'+(pt.floor|0)+' · '+(pt.type||'placo')+' · '+partParse(pt.verts).length+' pts';
       var eb2=document.createElement('button'); eb2.textContent=(PART_EDIT_IDX===idx?'▾':'✎'); eb2.title='Modifier (matériaux, doublage…)'; eb2.style.cssText='font-size:11px;padding:0 5px;'; eb2.onclick=function(){ PART_EDIT_IDX=(PART_EDIT_IDX===idx?-1:idx); buildImmeubleUI(); };
       var xb=document.createElement('button'); xb.textContent='✕'; xb.style.cssText='font-size:10px;padding:0 5px;'; xb.onclick=function(){ PIM.partitions.splice(idx,1); if(PART_EDIT_IDX===idx)PART_EDIT_IDX=-1; build(); DIRTY=true; buildImmeubleUI(); };
-      row.appendChild(sp); row.appendChild(eb2); row.appendChild(xb); target.appendChild(row);
+      var vb=document.createElement('button'); vb.textContent=(PART_EDIT_TGT===pt?'✓◇':'◇'); vb.title='Éditer les sommets (déplacer / ajouter / courber en plan)'; vb.style.cssText='font-size:11px;padding:0 5px;'; if(PART_EDIT_TGT===pt)vb.className='on'; vb.onclick=function(){ if(PART_EDIT_TGT===pt) partEditStop(); else partEditStart(pt); };
+      row.appendChild(sp); row.appendChild(vb); row.appendChild(eb2); row.appendChild(xb); target.appendChild(row);
       if(PART_EDIT_IDX===idx){ var ed=document.createElement('div'); ed.style.cssText='border:1px solid var(--ln);border-radius:6px;padding:5px;margin:2px 0 4px;'; partControls(ed, pt, PART_KEYS_PT, function(struct){ build(); DIRTY=true; if(struct) buildImmeubleUI(); }); target.appendChild(ed); } });
     /* ---- PORTES ---- */
     var dhh=document.createElement('div'); dhh.className='exp-note'; dhh.style.marginTop='9px'; dhh.textContent='Portes (dans les cloisons)'; target.appendChild(dhh);
@@ -10898,8 +10913,9 @@ function buildImmeubleUI(){
       var box2=document.createElement('div'); box2.style.cssText='border:1px solid var(--ln);border-radius:6px;padding:5px;margin:3px 0;';
       var hd=document.createElement('div'); hd.style.cssText='display:flex;justify-content:space-between;align-items:center;font-size:10px;gap:3px;';
       var sp=document.createElement('span'); sp.style.flex='1'; sp.textContent='Trémie '+(idx+1)+' · '+partParse(tr.verts).length+' pts';
+      var vb=document.createElement('button'); vb.textContent=(PART_EDIT_TGT===tr?'✓◇':'◇'); vb.title='Éditer les sommets (déplacer / ajouter / courber en plan)'; vb.style.cssText='font-size:11px;padding:0 5px;'; if(PART_EDIT_TGT===tr)vb.className='on'; vb.onclick=function(){ if(PART_EDIT_TGT===tr) partEditStop(); else partEditStart(tr); };
       var xb=document.createElement('button'); xb.textContent='✕'; xb.style.cssText='font-size:10px;padding:0 5px;'; xb.onclick=function(){ PIM.tremies.splice(idx,1); build(); DIRTY=true; buildImmeubleUI(); };
-      hd.appendChild(sp); hd.appendChild(xb); box2.appendChild(hd);
+      hd.appendChild(sp); hd.appendChild(vb); hd.appendChild(xb); box2.appendChild(hd);
       var fll=document.createElement('div'); fll.className='exp-note'; fll.style.marginTop='3px'; fll.textContent='Percer les étages :'; box2.appendChild(fll);
       var fl=document.createElement('div'); fl.style.cssText='display:flex;flex-wrap:wrap;gap:3px;';
       for(var i=0;i<Nf2;i++){ (function(i){ var on=(tr.floors||[]).indexOf(i)>=0; var b=document.createElement('button'); b.textContent='R+'+i; b.style.cssText='font-size:10px;padding:2px 6px;'; if(on)b.className='on';
