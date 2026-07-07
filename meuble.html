@@ -42,7 +42,8 @@ html,body{height:100%;background:var(--bg);color:var(--tx);
 header{grid-row:1;}
 #savecol{grid-row:4;}
 #langbar{position:absolute;right:14px;top:9px;display:flex;align-items:center;gap:6px;}
-#langflag{flex:none;display:inline-block;}
+#langflag{flex:none;display:inline-block;vertical-align:middle;line-height:0;}
+#langflag svg{display:block;width:100%;height:100%;}
 @keyframes flagpop{0%{transform:scale(.3) rotate(-18deg);opacity:.2}55%{transform:scale(1.3) rotate(8deg);opacity:1}100%{transform:scale(1) rotate(0)}}
 #langflag.pop{animation:flagpop .55s cubic-bezier(.34,1.56,.64,1);}
 #langsel{padding-left:6px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:4px 6px;cursor:pointer;outline:none;}
@@ -336,13 +337,14 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     </div>
     <div id="langbar">
       <button id="aboutBtn" title="À propos de BPO" onclick="try{playAbout();}catch(e){}">À propos</button>
-      <button id="prefsBtn" title="Préférences" onclick="try{togglePrefs();}catch(e){}" style="filter:grayscale(1);font-size:13px;padding:3px 8px;">⚙</button>
+      <button id="prefsBtn" title="Préférences" onclick="try{togglePrefs();}catch(e){}" style="background:#ff8a3d;color:#3a3a3a;border:1px solid #ff8a3d;font-size:18px;line-height:1;padding:2px 8px;">⚙&#xFE0E;</button>
       <span id="langflag" style="display:inline-block;width:22px;height:15px;border:1px solid var(--ln);border-radius:2px;overflow:hidden;text-align:center;"></span>
       <select id="langsel" title="Language / Langue">
       <option value="fr">🇫🇷 Français</option><option value="en">🇬🇧 English</option><option value="es">🇪🇸 Español</option>
       <option value="it">🇮🇹 Italiano</option><option value="de">🇩🇪 Deutsch</option><option value="pt">🇵🇹 Português</option>
       <option value="hu">🇭🇺 Magyar</option><option value="zh">🇨🇳 中文</option><option value="ja">🇯🇵 日本語</option><option value="hi">🇮🇳 हिन्दी</option>
       <option value="ar">🇸🇦 العربية</option>
+      <option value="ru">🇷🇺 Русский</option><option value="uk">🇺🇦 Українська</option>
     </select>
     </div>
   </header>
@@ -370,9 +372,11 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     <div class="dims" id="dims">—</div>
     <button class="vp-btn" id="undoBtn" title="Annuler (Ctrl+Z)" style="left:9px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:16px;line-height:1;">↶</button>
     <button class="vp-btn" id="redoBtn" title="Refaire (Ctrl+Y)" style="left:48px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:16px;line-height:1;">↷</button>
+    <button class="vp-btn" id="resetBtn" title="Réinitialiser l'objet (valeurs par défaut) — annulable" style="left:87px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:15px;line-height:1;">↺</button>
     <button class="vp-btn" id="layoutBtn" title="4 vues (Perspective / Dessus / Face / Droite) — double-clic sur une vue pour l'agrandir" style="left:87px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:15px;line-height:1;">⊞</button>
     <button class="vp-btn" id="themeBtn" title="Thème clair / sombre" style="left:126px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:14px;line-height:1;">◐</button>
     <div id="viewOverlay" style="position:absolute;top:8px;left:165px;z-index:30;display:none;align-items:center;gap:5px;background:rgba(24,28,36,0.88);border:1px solid #33404d;border-radius:6px;padding:2px 7px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
+    <div id="floorBar" style="position:absolute;bottom:52px;left:50%;transform:translateX(-50%);z-index:30;display:none;align-items:center;gap:6px;background:rgba(24,28,36,0.9);border:1px solid #33404d;border-radius:7px;padding:4px 10px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
     <button class="vp-btn" id="recenter" title="Recentrer la vue" style="top:auto;right:auto;bottom:14px;left:50%;transform:translateX(-50%);">⊕ Recentrer</button>
     <button class="vp-btn" id="sceneBtn" title="Scène — assemblage de configurations" style="top:8px;right:10px;background:#1b1b1b;color:#f2f2f2;border-color:#888;filter:grayscale(1);">◱ Scène</button>
     <div id="prefsPanel" style="position:absolute;top:46px;right:10px;z-index:40;display:none;width:250px;max-height:80%;overflow:auto;background:rgba(22,26,34,0.97);border:1px solid #33404d;border-radius:8px;padding:10px 12px;color:#cdd6e0;box-shadow:0 8px 26px rgba(0,0,0,.55);font-family:system-ui,sans-serif;"></div>
@@ -471,6 +475,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     <div id="shape-sel" style="display:none;">
       <div class="slbl">Forme</div>
       <div class="shape-grid" id="shape-grid"></div>
+      <div id="forme-mod"></div>
     </div>
 
     <!-- Message placeholder pour les catégories pas encore remplies -->
@@ -1207,7 +1212,8 @@ var SHAPES = [
   {id:'cylindre', l:'Cylindre'},
   {id:'cone',     l:'Cône'},
   {id:'prisme',   l:'Prisme'},
-  {id:'tore',     l:'Tore'}
+  {id:'tore',     l:'Tore'},
+  {id:'profil',   l:'Profil libre'}
 ];
 
 
@@ -1950,7 +1956,7 @@ var UILIGHT = false;       /* thème clair (UI) — NE PAS confondre avec LIGHT 
 
 /* ===== PRÉFÉRENCES DE PRÉSENTATION (persistées) : thème, polices, ciel/sol WebGL, trame ===== */
 var PREFS_KEY='BPO_PREFS_v1';
-var PREFS=(function(){ var d={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0};
+var PREFS=(function(){ var d={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0,coteColor:'',coteSize:0,coteFont:''};
   try{ var s=JSON.parse(localStorage.getItem(PREFS_KEY)); if(s) for(var k in s){ if(k in d) d[k]=s[k]; } }catch(e){} return d; })();
 function prefsSave(){ try{ localStorage.setItem(PREFS_KEY, JSON.stringify(PREFS)); }catch(e){} }
 /* hex '#rrggbb' -> [r,g,b] en 0..1, ou null */
@@ -1986,6 +1992,15 @@ function prefsUI(){
   var rGs=row('Taille de la trame'); var sel=document.createElement('select'); sel.style.cssText='font-size:11px;padding:3px 5px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;';
   [['0','Auto'],['0.5','0,5 m'],['1','1 m'],['2','2 m'],['5','5 m'],['10','10 m']].forEach(function(o){ var op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sel.appendChild(op); });
   sel.value=String(PREFS.gridStep||0); sel.onchange=function(){ PREFS.gridStep=parseFloat(sel.value)||0; prefsSave(); DIRTY=true; }; rGs.appendChild(sel); p.appendChild(rGs);
+  /* Cotes (dimensions) */
+  var hdC=document.createElement('div'); hdC.textContent='Cotes (dimensions)'; hdC.style.cssText='font-weight:600;font-size:12px;margin:13px 0 3px;border-top:1px solid #33404d;padding-top:9px;'; p.appendChild(hdC);
+  var rCc=row('Couleur des cotes'); rCc.appendChild(colorCtl(PREFS.coteColor,'#7fc4ff',function(v){ PREFS.coteColor=v; prefsSave(); DIRTY=true; })); p.appendChild(rCc);
+  var rCs=row('Taille des cotes'); var selCS=document.createElement('select'); selCS.style.cssText='font-size:11px;padding:3px 5px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;';
+  [['0','Auto'],['9','9 px'],['10','10 px'],['11','11 px'],['12','12 px'],['14','14 px'],['16','16 px'],['18','18 px']].forEach(function(o){ var op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; selCS.appendChild(op); });
+  selCS.value=String(PREFS.coteSize||0); selCS.onchange=function(){ PREFS.coteSize=parseFloat(selCS.value)||0; prefsSave(); DIRTY=true; }; rCs.appendChild(selCS); p.appendChild(rCs);
+  var rCf=row('Police des cotes'); var selCF=document.createElement('select'); selCF.style.cssText='font-size:11px;padding:3px 5px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;';
+  [['','Mono (défaut)'],['system-ui,sans-serif','Système'],['Georgia,serif','Serif'],['Arial,Helvetica,sans-serif','Arial']].forEach(function(o){ var op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; selCF.appendChild(op); });
+  selCF.value=PREFS.coteFont||''; selCF.onchange=function(){ PREFS.coteFont=selCF.value; prefsSave(); DIRTY=true; }; rCf.appendChild(selCF); p.appendChild(rCf);
   /* Sauvegarde des données (export/import) */
   var hd2=document.createElement('div'); hd2.textContent='Sauvegarde des données'; hd2.style.cssText='font-weight:600;font-size:12px;margin:13px 0 3px;border-top:1px solid #33404d;padding-top:9px;'; p.appendChild(hd2);
   var note2=document.createElement('div'); note2.style.cssText='font-size:9.5px;opacity:.6;margin-bottom:6px;'; note2.textContent='Configs, scènes, planches, cartouche… stockées dans CE navigateur uniquement. Exportez un fichier pour sauvegarder / transférer.'; p.appendChild(note2);
@@ -2006,6 +2021,28 @@ var P  = { w:100, h:200, d:55, sh:3, dr:2 };  /* paramètres meuble */
 /* Angle d'ouverture des portes (0 = fermé, 90 = grand ouvert), en degrés */
 var DOOR_OPEN = 0;
 var PF = { w:100, h:100, d:100 };             /* paramètres forme  */
+
+/* Paramètres ROUTE / chaussée (unités cm sauf indication). Le tracé peut être
+   droit (longueur), courbe (rayon+angle) ou libre (polyligne éditable avec arcs).
+   Le profil en long accepte une pente globale et, en mode libre, une altitude
+   par sommet (profil PVI). */
+var PROUTE = {
+  trace:'droit',            /* 'droit' | 'courbe' | 'libre' */
+  length:3000, radius:5000, angle:90,
+  verts:'0,0 3000,0 6000,1500', bulges:[], opens:[], alt:[],
+  corner:400,               /* rayon d'arrondi des angles du tracé libre (cm ; 0 = angle vif) */
+  lanes:2, laneW:350, thick:25, camber:2,   /* dévers % */
+  axis:'tirets', axisColor:'#f4c000',        /* aucune|continue|tirets|double|mixte */
+  edge:'continue', edgeColor:'#ffffff',      /* lignes de rive : aucune|continue|tirets */
+  laneSep:'tirets', laneSepColor:'#ffffff',  /* séparateurs de voies : aucune|tirets|continue */
+  markW:12, dashLen:300, dashGap:600,
+  sidewalk:true, swWidth:150, swHeight:14, swCross:1.5,
+  tpc:false, tpcW:300, tpcH:15, tpcType:'gazon', colMed:'#4f7d3a',  /* terre-plein central : gazon|beton|glissiere */
+  curb:'fr_t2',             /* none | fr_t2 | fr_a2 | us_barrier | us_mountable */
+  gutter:'cs2',             /* none | cs1 | cs2 | us_pan */
+  slope:0,                  /* pente longitudinale globale % (droit/courbe/libre) */
+  colAsph:'#3d3f43', colConc:'#b4b4ae'
+};
 
 /* ============================================================================
    MUR MULTICOUCHE (catégorie générique "Mur")
@@ -2396,6 +2433,7 @@ var CATALOG = {
       {id:'escalier',   label:'Escalier',         status:'ready', grp:'construction', icon:'🪜'},
       {id:'ferme',      label:'Ferme',            status:'ready', grp:'construction', icon:'📐'},
       {id:'forme',      label:'Forme',            status:'ready', grp:'construction', icon:'🔷'},
+      {id:'route',      label:'Route / chaussée', status:'ready', grp:'construction', icon:'🛣︎'},
       /* --- MOBILIER / AGENCEMENT --- */
       {id:'objets',     label:'Objets',           status:'ready', grp:'mobilier', icon:'🪑'},
       {id:'cuisine',    label:'Cuisine',          status:'ready', grp:'mobilier', icon:'🍳'}
@@ -2440,6 +2478,7 @@ function selectCat(catId){
   var cat = curCat();
   if(cat.id==='objet'){ MODE='meuble'; }
   else if(cat.id==='forme'){ MODE='forme'; }
+  else if(cat.id==='route'){ MODE='route'; }
   else if(cat.id==='mur'){ MODE='mur'; }
   else if(cat.id==='dalle'){ MODE='dalle'; }
   else if(cat.id==='piscine'){ MODE='piscine'; }
@@ -2521,8 +2560,8 @@ var CUTZ={on:false,pos:0,keep:1};    /* coupe longitudinale : plan à z=pos */
 var _SECT_ACTIVE=false, _SA_AXIS='x', _SA_POS=0, _SA_KEEP=-1;   /* coupe active pendant le rendu d'une vue */
 var SECT_DRAG=null;   /* 'x' ou 'z' pendant le déplacement d'une cible de coupe en plan, sinon null */
 var QUAD_VIEWS=['persp','top','front','right'], QUAD_LABEL_HITS=[];   /* vue de chaque quadrant + zones cliquables des libellés */
-function coteInk(def){ return COTE_INK||def; }
-function coteFont(){ return 'bold '+COTE_FS+'px monospace'; }
+function coteInk(def){ return COTE_INK || ((typeof PREFS!=='undefined'&&PREFS.coteColor)||def); }
+function coteFont(){ var _f=(typeof PREFS!=='undefined'&&PREFS.coteFont)?PREFS.coteFont:'monospace'; var _s=(typeof PREFS!=='undefined'&&PREFS.coteSize>0&&COTE_INK==null)?PREFS.coteSize:COTE_FS; return 'bold '+_s+'px '+_f; }
 function coteOff(def){ return COTE_OFF!=null?COTE_OFF:def; }   /* distance de la cote au dessin (m) */
 function drawGizmo(cam,W,H){
   if(PLOT_CLEAN) return;
@@ -2836,9 +2875,12 @@ function _fillMenu(m, items){
 }
 /* ---------- Annuler / Refaire (historique multi-niveaux) ---------- */
 var UNDO_HIST=[], REDO_HIST=[], _undoBase=null, _undoMode=null, _undoApplying=false, _undoTimer=null, UNDO_MAX=80;
-function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,escalier:PE,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
-function undoParams(){ return paramObjFor(MODE); }
-function _undoSnap(){ var o=undoParams(); return o?JSON.stringify(o):null; }
+function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,escalier:PE,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
+/* La Scène (assemblage) a son propre stockage : on l'expose à l'undo mais PAS à
+   paramObjFor (donc pas aux « Mes configurations »). SCENE.sel est un index,
+   les instances sont sérialisables → snapshot/restore JSON sûr. */
+function undoParams(){ return (MODE==='scene' && typeof SCENE!=='undefined') ? SCENE : paramObjFor(MODE); }
+function _undoSnap(){ var o=undoParams(); if(!o) return null; try{ return JSON.stringify(o); }catch(e){ return null; } }
 function _undoBtns(){ var u=document.getElementById('undoBtn'), r=document.getElementById('redoBtn'); if(u) u.style.opacity=UNDO_HIST.length?'1':'0.5'; if(r) r.style.opacity=REDO_HIST.length?'1':'0.5'; }
 function undoReset(){ UNDO_HIST=[]; REDO_HIST=[]; _undoBase=_undoSnap(); _undoBtns(); }
 function undoOnView(){ if(_undoApplying) return; if(_undoMode!==MODE){ _undoMode=MODE; undoReset(); } else if(_undoBase===null){ _undoBase=_undoSnap(); } }
@@ -2847,6 +2889,32 @@ function undoSchedule(){ if(_undoApplying) return; clearTimeout(_undoTimer); _un
 function _undoApply(json){ var o=undoParams(); if(!o||json==null) return; var d; try{ d=JSON.parse(json); }catch(_e){ return; } _undoApplying=true; for(var k in d) o[k]=d[k]; refreshView(); _undoApplying=false; _undoBtns(); }
 function doUndo(){ clearTimeout(_undoTimer); undoCommitNow(); if(!UNDO_HIST.length) return; REDO_HIST.push(_undoBase); var prev=UNDO_HIST.pop(); _undoBase=prev; _undoApply(prev); }
 function doRedo(){ clearTimeout(_undoTimer); if(!REDO_HIST.length) return; UNDO_HIST.push(_undoBase); var nx=REDO_HIST.pop(); _undoBase=nx; _undoApply(nx); }
+
+/* --- RÉINITIALISATION — valeurs par défaut de l'outil courant (annulable) --- */
+var PARAM_DEFAULTS={};
+function captureDefaults(){
+  ['meuble','forme','route','mur','dalle','piscine','veranda','cheminee','immeuble','poteau','poutre',
+   'gardecorps','escalier','ferme','toiture','porte','fenetre','murrideau','furn','cuisine','hangar',
+   'technal','velux','flos','scene'].forEach(function(m){
+    try{ var o=(m==='scene' && typeof SCENE!=='undefined')?SCENE:paramObjFor(m);
+      if(o && PARAM_DEFAULTS[m]===undefined) PARAM_DEFAULTS[m]=JSON.parse(JSON.stringify(o)); }catch(e){}
+  });
+}
+/* Réinitialise l'objet paramétrique courant à son état par défaut. L'opération
+   est enregistrée dans l'historique, donc Ctrl+Z la restaure. */
+function resetTool(){
+  var o=undoParams();
+  if(!o){ alert('Rien à réinitialiser pour cette catégorie.'); return; }
+  var d=PARAM_DEFAULTS[MODE];
+  if(!d){ alert('Valeurs par défaut indisponibles ici.'); return; }
+  if(!confirm('Réinitialiser cet objet à ses valeurs par défaut ?\n(annulable avec Ctrl+Z)')) return;
+  undoCommitNow();                              /* fige l'état courant dans l'historique */
+  for(var k in o){ if(!(k in d)) delete o[k]; } /* purge les clés hors défaut (déformeurs, etc.) */
+  for(var k2 in d){ o[k2]=JSON.parse(JSON.stringify(d[k2])); }
+  CUR_POLY=null; POLY_TARGET=null;
+  refreshView(); DIRTY=true;
+  undoCommitNow();                              /* enregistre le reset comme nouvel état */
+}
 /* ============================================================================
    MES CONFIGURATIONS — sauvegarde locale (localStorage) + réédition
    Enregistre l'objet paramétrique courant (params du MODE) sous un nom, dans une
@@ -6519,8 +6587,379 @@ function buildTore(){
 /* Table de correspondance forme -> builder */
 var SHAPE_BLD = {
   cube:buildCube, sphere:buildSphere, cylindre:buildCylindre,
-  cone:buildCone, prisme:buildPrisme, tore:buildTore
+  cone:buildCone, prisme:buildPrisme, tore:buildTore, profil:buildProfil
 };
+
+/* ============================================================================
+   MODELEUR — déformeurs universels + congé d'arêtes + découpe (mode Forme).
+   Les réglages sont stockés DANS PF (donc sauvegardés avec la configuration) :
+     PF.mTaper  effilement du sommet  (-100..100 %)
+     PF.mTwist  torsion base->sommet  (degrés)
+     PF.mBend   cintrage              (degrés)
+     PF.mRound  arrondi / sphérisation (0..100 %) -> arrondit bords & angles
+     PF.mFillet congé d'arêtes du cube (0..100 % du plus petit côté)
+     PF.mCut    plan de coupe 'off'|'x'|'y'|'z'
+     PF.mCutPos position du plan (0..100 %) ; PF.mCutKeep côté conservé (1|-1)
+   La primitive est construite normalement, puis applyFormeDeformers() la
+   remappe aux dimensions (L×H×P — écrase le tore, etc.), la subdivise, applique
+   les déformeurs, recalcule les normales, et découpe. Non destructif. */
+function _fmodDeformActive(){ return (PF.mTaper||0)||(PF.mTwist||0)||(PF.mBend||0)||(PF.mRound||0); }
+function _formePlain(){ return !_fmodDeformActive() && !(PF.mFillet||0) && (PF.mCut||'off')==='off'; }
+
+function _facesBBox(faces, fs){
+  var mn=[1e18,1e18,1e18], mx=[-1e18,-1e18,-1e18];
+  for(var i=fs;i<faces.length;i++){ var vv=faces[i].verts;
+    for(var j=0;j<vv.length;j++){ var p=vv[j];
+      for(var k=0;k<3;k++){ if(p[k]<mn[k])mn[k]=p[k]; if(p[k]>mx[k])mx[k]=p[k]; } } }
+  return {mn:mn, mx:mx};
+}
+/* Remappe la boîte englobante des faces [fs..] vers Wm×Hm×Dm (centrée X/Z, base Y=0). */
+function _fmodRemap(faces, fs, Wm, Hm, Dm){
+  var bb=_facesBBox(faces,fs), mn=bb.mn, mx=bb.mx;
+  var ex=mx[0]-mn[0], ey=mx[1]-mn[1], ez=mx[2]-mn[2];
+  var sx=ex>1e-6?Wm/ex:1, sy=ey>1e-6?Hm/ey:1, sz=ez>1e-6?Dm/ez:1;
+  var cx=(mn[0]+mx[0])/2, cz=(mn[2]+mx[2])/2, by=mn[1];
+  for(var i=fs;i<faces.length;i++){ var f=faces[i], vv=f.verts, j;
+    for(j=0;j<vv.length;j++){ var p=vv[j]; p[0]=(p[0]-cx)*sx; p[1]=(p[1]-by)*sy; p[2]=(p[2]-cz)*sz; }
+    if(f.vn){ for(j=0;j<f.vn.length;j++){ var q=f.vn[j], nx=q[0]/sx, ny=q[1]/sy, nz=q[2]/sz, L=Math.hypot(nx,ny,nz)||1; f.vn[j]=[nx/L,ny/L,nz/L]; } }
+    if(f.n){ var a=f.n[0]/sx, b=f.n[1]/sy, c=f.n[2]/sz, L2=Math.hypot(a,b,c)||1; f.n=[a/L2,b/L2,c/L2]; }
+  }
+}
+/* Subdivise en place les faces [fs..] (grille adaptative) pour lisser twist/bend. */
+function _fmodSubdiv(faces, fs, target){
+  function d3(a,b){ return Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]); }
+  function mix(a,b,t){ return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]; }
+  function mixN(a,b,t){ var x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t,z=a[2]+(b[2]-a[2])*t,L=Math.hypot(x,y,z)||1; return [x/L,y/L,z/L]; }
+  var tail=faces.splice(fs);
+  tail.forEach(function(f){
+    var V=f.verts, N=f.vn;
+    function push(vs,ns){ faces.push({verts:vs, n:f.n, col:f.col, al:f.al, vn:ns, tex:f.tex, ifc:f.ifc}); }
+    if(V.length===4){
+      var mE=Math.max(d3(V[0],V[1]),d3(V[1],V[2]),d3(V[2],V[3]),d3(V[3],V[0]));
+      var n=Math.max(1,Math.min(16,Math.round(mE/target)));
+      if(n<=1){ faces.push(f); return; }
+      var P=function(u,v){ return mix(mix(V[0],V[1],u), mix(V[3],V[2],u), v); };
+      var NP=N?function(u,v){ return mixN(mixN(N[0],N[1],u), mixN(N[3],N[2],u), v); }:null;
+      for(var i=0;i<n;i++)for(var j=0;j<n;j++){ var u0=i/n,u1=(i+1)/n,v0=j/n,v1=(j+1)/n;
+        push([P(u0,v0),P(u1,v0),P(u1,v1),P(u0,v1)], NP?[NP(u0,v0),NP(u1,v0),NP(u1,v1),NP(u0,v1)]:null); }
+    } else if(V.length===3){
+      var mE2=Math.max(d3(V[0],V[1]),d3(V[1],V[2]),d3(V[2],V[0]));
+      var m=Math.max(1,Math.min(16,Math.round(mE2/target)));
+      if(m<=1){ faces.push(f); return; }
+      var A=V[0],B=V[1],C=V[2], nA=N&&N[0],nB=N&&N[1],nC=N&&N[2];
+      var Q=function(i,j){ var bi=i/m,bj=j/m; return [A[0]+(B[0]-A[0])*bi+(C[0]-A[0])*bj, A[1]+(B[1]-A[1])*bi+(C[1]-A[1])*bj, A[2]+(B[2]-A[2])*bi+(C[2]-A[2])*bj]; };
+      var QN=N?function(i,j){ var bi=i/m,bj=j/m, x=nA[0]+(nB[0]-nA[0])*bi+(nC[0]-nA[0])*bj, y=nA[1]+(nB[1]-nA[1])*bi+(nC[1]-nA[1])*bj, z=nA[2]+(nB[2]-nA[2])*bi+(nC[2]-nA[2])*bj, L=Math.hypot(x,y,z)||1; return [x/L,y/L,z/L]; }:null;
+      for(var i2=0;i2<m;i2++)for(var j2=0;j2<m-i2;j2++){
+        push([Q(i2,j2),Q(i2+1,j2),Q(i2,j2+1)], QN?[QN(i2,j2),QN(i2+1,j2),QN(i2,j2+1)]:null);
+        if(j2<m-i2-1) push([Q(i2+1,j2),Q(i2+1,j2+1),Q(i2,j2+1)], QN?[QN(i2+1,j2),QN(i2+1,j2+1),QN(i2,j2+1)]:null);
+      }
+    } else { faces.push(f); }
+  });
+}
+/* Applique les déformeurs non-linéaires sur les sommets des faces [fs..]. */
+function _fmodDeform(faces, fs){
+  var bb=_facesBBox(faces,fs), mn=bb.mn, mx=bb.mx;
+  var by=mn[1], H=Math.max(1e-6, mx[1]-mn[1]);
+  var cx=(mn[0]+mx[0])/2, cy=(mn[1]+mx[1])/2, cz=(mn[2]+mx[2])/2;
+  var Rs=Math.max(mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2])/2;
+  var taper=(PF.mTaper||0)/100, tw=(PF.mTwist||0)*Math.PI/180, bend=(PF.mBend||0)*Math.PI/180, round=(PF.mRound||0)/100;
+  function def(p){
+    var x=p[0], y=p[1], z=p[2], t=(y-by)/H;
+    if(taper){ var s=1+taper*t; x*=s; z*=s; }
+    if(tw){ var a=tw*t, ca=Math.cos(a), sa=Math.sin(a), nx=x*ca-z*sa, nz=x*sa+z*ca; x=nx; z=nz; }
+    if(bend){ var R=H/bend, ang=bend*t, rr=R-x; x=R-rr*Math.cos(ang); y=by+rr*Math.sin(ang); }
+    if(round){ var dx=x-cx, dy=y-cy, dz=z-cz, L=Math.hypot(dx,dy,dz)||1;
+      x+=(cx+dx/L*Rs - x)*round; y+=(cy+dy/L*Rs - y)*round; z+=(cz+dz/L*Rs - z)*round; }
+    p[0]=x; p[1]=y; p[2]=z;
+  }
+  for(var i=fs;i<faces.length;i++){ faces[i].verts.forEach(def); }
+}
+/* Recalcule des normales lissées (par position) après déformation. */
+function _fmodSmoothNormals(faces, fs){
+  var map={};
+  function key(p){ return Math.round(p[0]*1000)+'_'+Math.round(p[1]*1000)+'_'+Math.round(p[2]*1000); }
+  function newell(vs){ var nx=0,ny=0,nz=0,i,n=vs.length; for(i=0;i<n;i++){ var a=vs[i], b=vs[(i+1)%n]; nx+=(a[1]-b[1])*(a[2]+b[2]); ny+=(a[2]-b[2])*(a[0]+b[0]); nz+=(a[0]-b[0])*(a[1]+b[1]); } var L=Math.hypot(nx,ny,nz)||1; return [nx/L,ny/L,nz/L]; }
+  for(var i=fs;i<faces.length;i++){ var f=faces[i]; f._fn=newell(f.verts);
+    f.verts.forEach(function(p){ var k=key(p), m=map[k]||(map[k]=[0,0,0]); m[0]+=f._fn[0]; m[1]+=f._fn[1]; m[2]+=f._fn[2]; }); }
+  for(var i2=fs;i2<faces.length;i2++){ var g=faces[i2]; g.n=g._fn; delete g._fn;
+    g.vn=g.verts.map(function(p){ var m=map[key(p)], L=Math.hypot(m[0],m[1],m[2])||1; return [m[0]/L,m[1]/L,m[2]/L]; }); }
+}
+/* Découpe les faces [fs..] par un plan aligné sur un axe + capuchon plat. */
+function _fmodCut(faces, fs){
+  var cut=PF.mCut||'off'; if(cut==='off') return;
+  var ax={x:0,y:1,z:2}[cut]; if(ax===undefined) return;
+  var bb=_facesBBox(faces,fs), mn=bb.mn, mx=bb.mx;
+  var pos=mn[ax]+(mx[ax]-mn[ax])*((PF.mCutPos==null?50:PF.mCutPos)/100);
+  var keep=(PF.mCutKeep||1);
+  function side(p){ return keep*(p[ax]-pos); }
+  function lerp(a,b,t){ return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]; }
+  var kept=faces.splice(fs), capMap={};
+  function ck(p){ return Math.round(p[0]*1e4)+'_'+Math.round(p[1]*1e4)+'_'+Math.round(p[2]*1e4); }
+  kept.forEach(function(f){
+    var V=f.verts, N=f.vn, m=V.length, out=[], outN=[];
+    for(var i=0;i<m;i++){ var A=V[i], B=V[(i+1)%m], sA=side(A), sB=side(B), nA=N&&N[i], nB=N&&N[(i+1)%m];
+      if(sA>=0){ out.push(A); if(N)outN.push(nA); }
+      if((sA<0)!==(sB<0)){ var t=sA/(sA-sB), P=lerp(A,B,t); out.push(P); if(N)outN.push(lerp(nA,nB,t)); capMap[ck(P)]=P; }
+    }
+    if(out.length>=3) faces.push({verts:out, n:f.n, col:f.col, al:f.al, vn:N?outN:null, tex:f.tex, ifc:f.ifc});
+  });
+  var cpk=Object.keys(capMap); if(cpk.length<3) return;
+  var pts=cpk.map(function(k){ return capMap[k]; });
+  var u=(ax+1)%3, w=(ax+2)%3, c=[0,0,0];
+  pts.forEach(function(p){ c[0]+=p[0];c[1]+=p[1];c[2]+=p[2]; }); c[0]/=pts.length;c[1]/=pts.length;c[2]/=pts.length;
+  pts.sort(function(A,B){ return Math.atan2(A[w]-c[w],A[u]-c[u]) - Math.atan2(B[w]-c[w],B[u]-c[u]); });
+  var nrm=[0,0,0]; nrm[ax]=keep>0?1:-1;
+  var col=kept.length?kept[kept.length-1].col:colForme();
+  faces.push({verts: keep>0?pts:pts.slice().reverse(), n:nrm, col:col, al:1, vn:null, tex:_CURTEX, ifc:_IFCTAG});
+}
+/* Point d'entrée : appliqué après la construction de la primitive forme. */
+function applyFormeDeformers(fs){
+  if(SHAPE!=='profil') _fmodRemap(FC, fs, PF.w/100, PF.h/100, PF.d/100);
+  if(_fmodDeformActive()){
+    var bb=_facesBBox(FC,fs), H=Math.max(1e-6, bb.mx[1]-bb.mn[1]);
+    _fmodSubdiv(FC, fs, H/14);
+    _fmodDeform(FC, fs);
+    _fmodSmoothNormals(FC, fs);
+  }
+  _fmodCut(FC, fs);
+  var e=_facesBBox(FC,fs);
+  DIMS={ w:e.mx[0]-e.mn[0], h:e.mx[1]-e.mn[1], d:e.mx[2]-e.mn[2] };
+}
+
+/* CUBE À ARÊTES ARRONDIES (congé constant). Maillage = grille de boîte projetée
+   sur la surface d'une boîte arrondie (SDF) : arêtes + coins arrondis, normales
+   exactes. r = rayon de congé en mètres. Base à Y=0. */
+function buildRoundedBox(w,h,d,r,col){
+  var hx=w/2, hy=h/2, hz=d/2;
+  r=Math.max(0.001, Math.min(r, Math.min(hx,hy,hz)-1e-3));
+  var ix=hx-r, iy=hy-r, iz=hz-r, N=16;
+  function cl(v,a,b){ return v<a?a:(v>b?b:v); }
+  function proj(p){
+    var qx=cl(p[0],-ix,ix), qy=cl(p[1],-iy,iy), qz=cl(p[2],-iz,iz);
+    var dx=p[0]-qx, dy=p[1]-qy, dz=p[2]-qz, L=Math.hypot(dx,dy,dz);
+    if(L<1e-9) return { p:[p[0],p[1]+hy,p[2]], n:null };
+    return { p:[qx+dx/L*r, qy+dy/L*r + hy, qz+dz/L*r], n:[dx/L,dy/L,dz/L] };
+  }
+  /* 6 faces : origine centrée, base à -hy (on remonte de +hy dans proj) */
+  var faces6=[
+    { c:[ hx,0,0], ua:[0,0, hz], va:[0, hy,0] },
+    { c:[-hx,0,0], ua:[0,0,-hz], va:[0, hy,0] },
+    { c:[0, hy,0], ua:[ hx,0,0], va:[0,0, hz] },
+    { c:[0,-hy,0], ua:[ hx,0,0], va:[0,0,-hz] },
+    { c:[0,0, hz], ua:[-hx,0,0], va:[0, hy,0] },
+    { c:[0,0,-hz], ua:[ hx,0,0], va:[0, hy,0] }
+  ];
+  faces6.forEach(function(F){
+    for(var i=0;i<N;i++)for(var j=0;j<N;j++){
+      var u0=-1+2*i/N, u1=-1+2*(i+1)/N, v0=-1+2*j/N, v1=-1+2*(j+1)/N;
+      function pt(u,v){ return [F.c[0]+F.ua[0]*u+F.va[0]*v, F.c[1]+F.ua[1]*u+F.va[1]*v, F.c[2]+F.ua[2]*u+F.va[2]*v]; }
+      var a=proj(pt(u0,v0)), b=proj(pt(u1,v0)), cc=proj(pt(u1,v1)), dd=proj(pt(u0,v1));
+      var nn=[a.n&&a.n[0]||0,0,0];
+      var fn=[ (a.n?a.n[0]:0)+(b.n?b.n[0]:0)+(cc.n?cc.n[0]:0)+(dd.n?dd.n[0]:0),
+               (a.n?a.n[1]:0)+(b.n?b.n[1]:0)+(cc.n?cc.n[1]:0)+(dd.n?dd.n[1]:0),
+               (a.n?a.n[2]:0)+(b.n?b.n[2]:0)+(cc.n?cc.n[2]:0)+(dd.n?dd.n[2]:0) ];
+      var Lf=Math.hypot(fn[0],fn[1],fn[2])||1; fn=[fn[0]/Lf,fn[1]/Lf,fn[2]/Lf];
+      face([a.p,b.p,cc.p,dd.p], fn, col, 1,
+        (a.n&&b.n&&cc.n&&dd.n)?[a.n,b.n,cc.n,dd.n]:null);
+    }
+  });
+  DIMS={w:w,h:h,d:d}; return DIMS;
+}
+
+/* PROFIL LIBRE : polygone éditable (poignées comme la dalle/table) extrudé en
+   hauteur. Le contour est stocké dans PF.verts (cm) + PF.bulges (arcs). */
+function buildProfil(){
+  var raw=parsePoly(PF.verts);
+  if(!raw || raw.length<3){ raw=[[-60,-40],[60,-40],[60,40],[0,40],[-60,20]]; PF.verts='-60,-40 60,-40 60,40 0,40 -60,20'; raw=parsePoly(PF.verts); }
+  CUR_POLY=raw; POLY_TARGET=PF;
+  var CP=arcCurve(raw, PF), h=PF.h/100, c=colForme(), n=CP.length;
+  var cx=0, cz=0; CP.forEach(function(p){ cx+=p[0]; cz+=p[1]; }); cx/=n; cz/=n;
+  for(var i=0;i<n;i++){
+    var a=CP[i], b=CP[(i+1)%n], ax=a[0],az=a[1],bx=b[0],bz=b[1];
+    var ex=bx-ax, ez=bz-az, L=Math.hypot(ex,ez)||1, nrm=[ez/L,0,-ex/L];
+    var mx2=(ax+bx)/2-cx, mz2=(az+bz)/2-cz;
+    if(nrm[0]*mx2+nrm[2]*mz2<0) nrm=[-nrm[0],0,-nrm[2]];
+    face([[ax,0,az],[bx,0,bz],[bx,h,bz],[ax,h,az]], nrm, c);
+  }
+  var top=CP.map(function(p){return [p[0],h,p[1]];});
+  var bot=CP.map(function(p){return [p[0],0,p[1]];});
+  var tT=triangulateFace(top,[0,1,0]);
+  for(var k=0;k<tT.length;k+=3) face([top[tT[k]],top[tT[k+1]],top[tT[k+2]]],[0,1,0],c);
+  var tB=triangulateFace(bot,[0,-1,0]);
+  for(var k2=0;k2<tB.length;k2+=3) face([bot[tB[k2+2]],bot[tB[k2+1]],bot[tB[k2]]],[0,-1,0],c);
+  var bb=polyBBox(CP);
+  DIMS={w:bb.w, h:h, d:bb.d}; return DIMS;
+}
+
+/* ============================================================================
+   ROUTE / CHAUSSÉE — configurateur de voirie.
+   Tracé droit / courbe / libre (polyligne éditable + arcs) ; chaussée à voies
+   avec dévers ; marquage axial / rive / séparateurs (type + couleur) ; caniveau,
+   bordure (FR T2/A2, US barrier/mountable), trottoir ; pente longitudinale.
+   Le tracé libre réutilise l'éditeur de polygone (poignées + arcs).
+   ============================================================================ */
+function _hexRGB(h){ h=String(h||'#000000').replace('#',''); if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; var n=parseInt(h,16)||0; return [(n>>16)&255,(n>>8)&255,n&255]; }
+function routeResample(pts, step){
+  if(!pts||pts.length<2) return (pts||[]).slice();
+  var out=[pts[0].slice()], i, j;
+  for(i=0;i<pts.length-1;i++){ var a=pts[i], b=pts[i+1], dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz), m=Math.max(1,Math.round(L/step));
+    for(j=1;j<=m;j++){ var t=j/m; out.push([a[0]+dx*t, a[1]+dz*t]); } }
+  return out;
+}
+/* Arrondit les angles d'une polyligne (mètres) par un raccord de Bézier
+   quadratique de rayon ~r (m). Les extrémités sont conservées. */
+function routeRoundCorners(pts, r){
+  if(r<=0 || !pts || pts.length<3) return pts;
+  var out=[pts[0].slice()], i;
+  for(i=1;i<pts.length-1;i++){
+    var A=pts[i-1], V=pts[i], C=pts[i+1];
+    var inx=V[0]-A[0], inz=V[1]-A[1], Li=Math.hypot(inx,inz)||1, dix=inx/Li, diz=inz/Li;
+    var oux=C[0]-V[0], ouz=C[1]-V[1], Lo=Math.hypot(oux,ouz)||1, dox=oux/Lo, doz=ouz/Lo;
+    if(dix*dox+diz*doz>0.9995){ out.push(V.slice()); continue; }   /* quasi-aligné */
+    var d=Math.min(r, Li*0.5, Lo*0.5);
+    var P1=[V[0]-dix*d, V[1]-diz*d], P2=[V[0]+dox*d, V[1]+doz*d], seg=10, k;
+    for(k=0;k<=seg;k++){ var t=k/seg, u=1-t;
+      out.push([ u*u*P1[0]+2*u*t*V[0]+t*t*P2[0], u*u*P1[1]+2*u*t*V[1]+t*t*P2[1] ]); }
+  }
+  out.push(pts[pts.length-1].slice());
+  return out;
+}
+function routeCenterline(){
+  var pts, step=0.5, i;
+  if(PROUTE.trace==='courbe'){
+    var R=PROUTE.radius/100, A=PROUTE.angle*Math.PI/180, m=Math.max(2,Math.round(Math.abs(R*A)/step));
+    pts=[]; for(i=0;i<=m;i++){ var a=A*i/m; pts.push([R*Math.sin(a), R*(1-Math.cos(a))]); }
+  } else if(PROUTE.trace==='libre'){
+    var raw=parsePoly(PROUTE.verts); if(!raw||raw.length<2){ raw=[[0,0],[30,0]]; PROUTE.verts='0,0 3000,0'; }
+    CUR_POLY=raw; POLY_TARGET=PROUTE;
+    var cp=arcCurve(raw, PROUTE);
+    /* rayon d'angle minimum = demi-largeur totale de la route (sinon le bord
+       intérieur se replie sur lui-même dans les virages serrés). */
+    var outerHalf=(PROUTE.tpc?PROUTE.tpcW/200:0)+PROUTE.lanes*PROUTE.laneW/200
+      +(PROUTE.gutter==='none'?0:(PROUTE.gutter==='cs1'?0.2:(PROUTE.gutter==='us_pan'?0.45:0.3)))
+      +((PROUTE.sidewalk&&PROUTE.curb!=='none')?(0.2+PROUTE.swWidth/100):0);
+    var effR=Math.max((PROUTE.corner||0)/100, outerHalf*1.08);
+    cp=routeRoundCorners(cp, effR);
+    pts=routeResample(cp, step);
+  } else {
+    var L=PROUTE.length/100; pts=routeResample([[0,0],[L,0]], step);
+  }
+  var n=pts.length, S=[0];
+  for(i=1;i<n;i++){ S[i]=S[i-1]+Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]); }
+  var baseY=[], slope=PROUTE.slope/100, alt=PROUTE.alt;
+  var useAlt=(PROUTE.trace==='libre' && alt && alt.length>=2 && alt.some(function(v){return v;}));
+  if(useAlt){
+    var raw2=parsePoly(PROUTE.verts)||[[0,0],[30,0]], Dc=[0];
+    for(i=1;i<raw2.length;i++){ Dc[i]=Dc[i-1]+Math.hypot(raw2[i][0]-raw2[i-1][0], raw2[i][1]-raw2[i-1][1]); }
+    var Dtot=Dc[Dc.length-1]||1, Stot=S[n-1]||1;
+    var altAt=function(d){ for(var k=0;k<Dc.length-1;k++){ if(d<=Dc[k+1]){ var t=(d-Dc[k])/((Dc[k+1]-Dc[k])||1); return ((alt[k]||0)+((alt[k+1]||0)-(alt[k]||0))*t)/100; } } return (alt[Math.min(alt.length,raw2.length)-1]||0)/100; };
+    for(i=0;i<n;i++) baseY[i]=altAt(S[i]/Stot*Dtot);
+  } else {
+    for(i=0;i<n;i++) baseY[i]=S[i]*slope;
+  }
+  var rp=[], sc=[];
+  for(i=0;i<n;i++){
+    var pa=pts[Math.max(0,i-1)], pb=pts[i], pc=pts[Math.min(n-1,i+1)];
+    var inx=pb[0]-pa[0], inz=pb[1]-pa[1], Li=Math.hypot(inx,inz)||1; inx/=Li; inz/=Li;
+    var oux=pc[0]-pb[0], ouz=pc[1]-pb[1], Lo=Math.hypot(oux,ouz)||1; oux/=Lo; ouz/=Lo;
+    if(i===0){ inx=oux; inz=ouz; } if(i===n-1){ oux=inx; ouz=inz; }
+    var nIx=inz, nIz=-inx, nOx=ouz, nOz=-oux;               /* normales droites des 2 segments */
+    var mx=nIx+nOx, mz=nIz+nOz, Lm=Math.hypot(mx,mz);       /* bissectrice = onglet */
+    if(Lm<1e-6){ mx=nIx; mz=nIz; Lm=1; }
+    mx/=Lm; mz/=Lm;
+    var cosd=mx*nIx+mz*nIz, s=1/Math.max(0.25,cosd); if(s>4)s=4;  /* largeur constante en virage */
+    rp.push([mx,mz]); sc.push(s);
+  }
+  return {pts:pts, S:S, baseY:baseY, rp:rp, sc:sc, n:n};
+}
+function routeProfile(){
+  var laneW=PROUTE.laneW/100, half=PROUTE.lanes*laneW/2, crown=half*PROUTE.camber/100;
+  var asph=_hexRGB(PROUTE.colAsph), conc=_hexRGB(PROUTE.colConc);
+  var tpcOn=!!PROUTE.tpc, tpcHalf=tpcOn?(PROUTE.tpcW/200):0, tpcTopY=tpcOn?(PROUTE.tpcH/100):0;
+  var medCol=(PROUTE.tpcType==='gazon')?_hexRGB(PROUTE.colMed):conc;
+  /* dévers : le point haut est l'axe (sans TPC) ou le bord côté TPC (avec TPC),
+     et la chaussée descend vers l'extérieur. */
+  function roadY(o){ var oo=Math.abs(o)-tpcHalf; if(oo<=0) return tpcTopY; if(oo>half)oo=half; return -oo/(half||1)*crown; }
+  var Rp, base;
+  if(tpcOn){ Rp=[[0,tpcTopY],[tpcHalf,tpcTopY],[tpcHalf,0],[tpcHalf+half,-crown]]; base=tpcHalf+half; }
+  else { Rp=[[0,0],[half,-crown]]; base=half; }
+  var edgeY=-crown, o=base;
+  var gutterW = PROUTE.gutter==='none'?0:(PROUTE.gutter==='cs1'?0.20:(PROUTE.gutter==='us_pan'?0.45:0.30));
+  if(gutterW>0){ edgeY=edgeY-0.005; o=o+gutterW; Rp.push([o, edgeY]); }
+  if(PROUTE.sidewalk && PROUTE.curb!=='none'){
+    var ch=PROUTE.swHeight/100, curbTop=0.15, faceRun=0;
+    if(PROUTE.curb==='us_mountable'){ faceRun=ch*0.9; }
+    else if(PROUTE.curb==='fr_a2'){ curbTop=0.20; faceRun=0.02; }
+    else if(PROUTE.curb==='us_barrier'){ curbTop=0.15; ch=Math.max(ch,0.15); }
+    Rp.push([o, edgeY]);
+    Rp.push([o+faceRun, edgeY+ch]);
+    Rp.push([o+faceRun+curbTop, edgeY+ch]);
+    var sw=PROUTE.swWidth/100, cross=PROUTE.swCross/100;
+    Rp.push([o+faceRun+curbTop+sw, edgeY+ch - sw*cross]);
+  }
+  var Lp=[], i; for(i=Rp.length-1;i>=1;i--) Lp.push([-Rp[i][0], Rp[i][1]]);
+  var P=Lp.concat(Rp), C=[];
+  for(i=0;i<P.length-1;i++){
+    var o0=P[i][0], o1=P[i+1][0], mo=(o0+o1)/2, col;
+    if(Math.abs(o0-o1)<1e-6) col=conc;                          /* face verticale (bordure/TPC) */
+    else if(tpcOn && Math.abs(mo)<tpcHalf-1e-3) col=medCol;     /* dessus du terre-plein */
+    else if(Math.abs(mo)<=tpcHalf+half+1e-3) col=asph;          /* chaussée */
+    else col=conc;                                              /* caniveau / trottoir */
+    C.push(col);
+  }
+  return {P:P, col:C, half:half, crown:crown, roadY:roadY, tpc:tpcOn, tpcHalf:tpcHalf};
+}
+function buildRoute(){
+  var fs=FC.length, cl=routeCenterline(), pr=routeProfile();
+  var P=pr.P, segCol=pr.col, n=cl.n, thick=PROUTE.thick/100, i, k;
+  var minY=1e9; P.forEach(function(p){ if(p[1]<minY)minY=p[1]; });
+  var yBot=minY-thick, leftO=P[0][0], rightO=P[P.length-1][0], conc=_hexRGB(PROUTE.colConc);
+  function W(i,o,y){ var rp=cl.rp[i], c=cl.pts[i], oo=o*(cl.sc?cl.sc[i]:1); return [ c[0]+rp[0]*oo, cl.baseY[i]+y, c[1]+rp[1]*oo ]; }
+  function quad(A,B,C,D,col){ var ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2], vx=D[0]-A[0],vy=D[1]-A[1],vz=D[2]-A[2];
+    var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx, L=Math.hypot(nx,ny,nz)||1; face([A,B,C,D],[nx/L,ny/L,nz/L],col); }
+  for(i=0;i<n-1;i++){ for(k=0;k<P.length-1;k++){
+    quad(W(i,P[k][0],P[k][1]), W(i,P[k+1][0],P[k+1][1]), W(i+1,P[k+1][0],P[k+1][1]), W(i+1,P[k][0],P[k][1]), segCol[k]); } }
+  for(i=0;i<n-1;i++) quad(W(i,rightO,yBot),W(i,leftO,yBot),W(i+1,leftO,yBot),W(i+1,rightO,yBot),conc);
+  for(i=0;i<n-1;i++){
+    quad(W(i,leftO,yBot),W(i,leftO,P[0][1]),W(i+1,leftO,P[0][1]),W(i+1,leftO,yBot),conc);
+    quad(W(i,rightO,P[P.length-1][1]),W(i,rightO,yBot),W(i+1,rightO,yBot),W(i+1,rightO,P[P.length-1][1]),conc);
+  }
+  function cap(i){
+    var poly=[], k2; for(k2=0;k2<P.length;k2++) poly.push(W(i,P[k2][0],P[k2][1]));
+    poly.push(W(i,rightO,yBot)); poly.push(W(i,leftO,yBot));
+    var sgn=(i===0?-1:1), a=cl.pts[Math.max(0,i-1)], b=cl.pts[Math.min(n-1,i+1)];
+    var tx=sgn*(b[0]-a[0]), tz=sgn*(b[1]-a[1]), L=Math.hypot(tx,tz)||1, t=[tx/L,0,tz/L];
+    var tri=triangulateFace(poly, t);
+    for(var q=0;q<tri.length;q+=3) face([poly[tri[q]],poly[tri[q+1]],poly[tri[q+2]]], t, conc);
+  }
+  cap(0); cap(n-1);
+  var half=pr.half, mW=PROUTE.markW/100, tpcHalf=pr.tpcHalf;
+  function drawMark(o,col,dashed){
+    var eps=0.006, dl=PROUTE.dashLen/100, dg=PROUTE.dashGap/100, per=Math.max(0.1,dl+dg), oL=o-mW/2, oR=o+mW/2;
+    var yL=pr.roadY(oL)+eps, yR=pr.roadY(oR)+eps;
+    for(var i=0;i<n-1;i++){ if(dashed){ var sm=(cl.S[i]+cl.S[i+1])/2; if((sm % per) > dl) continue; }
+      face([W(i,oL,yL),W(i,oR,yR),W(i+1,oR,yR),W(i+1,oL,yL)],[0,1,0],col); }
+  }
+  if(!pr.tpc){
+    var ax=_hexRGB(PROUTE.axisColor);
+    if(PROUTE.axis==='continue') drawMark(0,ax,false);
+    else if(PROUTE.axis==='tirets') drawMark(0,ax,true);
+    else if(PROUTE.axis==='double'){ drawMark(-mW*1.2,ax,false); drawMark(mW*1.2,ax,false); }
+    else if(PROUTE.axis==='mixte'){ drawMark(-mW*1.2,ax,false); drawMark(mW*1.2,ax,true); }
+  } else {                                    /* TPC : ligne de rive interne de chaque chaussée */
+    var ic=_hexRGB(PROUTE.edgeColor);
+    drawMark(-(tpcHalf+mW), ic, false); drawMark(tpcHalf+mW, ic, false);
+  }
+  if(PROUTE.edge!=='aucune'){ var ec=_hexRGB(PROUTE.edgeColor), eo=Math.max(0.01,tpcHalf+half-mW); drawMark(-eo,ec,PROUTE.edge==='tirets'); drawMark(eo,ec,PROUTE.edge==='tirets'); }
+  if(PROUTE.laneSep!=='aucune'){
+    var lc=_hexRGB(PROUTE.laneSepColor), laneW=PROUTE.laneW/100, dsh=(PROUTE.laneSep==='tirets');
+    if(!pr.tpc){ if(PROUTE.lanes>2) for(k=1;k<PROUTE.lanes;k++){ var ob=-half+k*laneW; if(Math.abs(ob)<1e-3) continue; drawMark(ob,lc,dsh); } }
+    else { for(var jj=1; jj*laneW<half-1e-3; jj++){ drawMark(tpcHalf+jj*laneW,lc,dsh); drawMark(-(tpcHalf+jj*laneW),lc,dsh); } }
+  }
+  var bb=_facesBBox(FC,fs);
+  DIMS={ w:Math.max(0.1,bb.mx[0]-bb.mn[0]), h:Math.max(0.1,bb.mx[1]-bb.mn[1]), d:Math.max(0.1,bb.mx[2]-bb.mn[2]) };
+  return DIMS;
+}
 
 /* build() : reconstruit l'objet courant selon le mode actif (meuble ou forme).
    C'est LE point d'entrée unique appelé à chaque changement de paramètre. */
@@ -8760,7 +9199,17 @@ function build(){
      buildMeuble la repositionne par élément (corps/étagère). */
   _CURTEX = FINISH_TEX.forme;
   var r;
-  if(MODE==='forme'){ r=(SHAPE_BLD[SHAPE]||buildCube)(); }
+  if(MODE==='forme'){
+    var _fs=FC.length;
+    if(SHAPE==='cube' && (PF.mFillet||0)>0){
+      var _mn=Math.min(PF.w,PF.h,PF.d)/100;
+      r=buildRoundedBox(PF.w/100, PF.h/100, PF.d/100, (PF.mFillet/100)*_mn*0.5, colForme());
+    } else {
+      r=(SHAPE_BLD[SHAPE]||buildCube)();
+    }
+    applyFormeDeformers(_fs);
+    r=DIMS;   /* dimensions hors-tout réelles après déformation/découpe */
+  }
   else if(MODE==='mur'){ r=buildMur(); }
   else if(MODE==='dalle'){ r=buildDalle(); }
   else if(MODE==='piscine'){ r=buildPiscine(); }
@@ -8782,6 +9231,7 @@ function build(){
   else if(MODE==='murrideau'){ r=buildMurRideau(); }
   else if(MODE==='furn'){ r=buildFurniture(); }
   else if(MODE==='cuisine'){ r=buildCuisine(); }
+  else if(MODE==='route'){ r=buildRoute(); }
   else if(MODE==='hangar'){ r=buildHangar(); }
   else if(MODE==='quadripod'){
     r = (AL_PRODUCT==='woo') ? buildWoo()
@@ -8890,6 +9340,8 @@ document.addEventListener('mousedown', function(ev){ if(_edgeMenu && !_edgeMenu.
   });
   var ub=document.getElementById('undoBtn'); if(ub) ub.onclick=function(){ doUndo(); };
   var rb=document.getElementById('redoBtn'); if(rb) rb.onclick=function(){ doRedo(); };
+  try{ captureDefaults(); }catch(e){}
+  var rsb=document.getElementById('resetBtn'); if(rsb) rsb.onclick=function(){ resetTool(); };
   var lb=document.getElementById('layoutBtn'); if(lb) lb.onclick=function(){ LAYOUT=(LAYOUT==='quad')?'single':'quad'; if(LAYOUT!=='quad') SINGLEVIEW='persp'; DIRTY=true; };
   var tb=document.getElementById('themeBtn'); if(tb) tb.onclick=function(){ UILIGHT=!UILIGHT; document.documentElement.classList.toggle('light',UILIGHT); document.body.classList.toggle('light',UILIGHT); PREFS.theme=UILIGHT?'light':'dark'; prefsSave(); DIRTY=true; if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
   var cs=document.getElementById('cat-search'); if(cs) cs.addEventListener('input',function(){ SEARCH=cs.value; buildCatList(); });
@@ -9290,7 +9742,7 @@ function updateViewOverlay(){
   var vis = (!isQuad || isImm) && !inMEP;   /* vue simple : toujours ; 4-vues : seulement en immeuble (contrôle de coupe) */
   var sig=vis?(LAYOUT+'|'+SINGLEVIEW+'|'+(isImm?1:0)+'|'+PLAN_STOREY+'|'+(CUTX.on?'X'+CUTX.keep:'-')+'|'+(CUTZ.on?'Z'+CUTZ.keep:'-')+'|'+(isImm?(PIM.nFloors|0):0)+'|'+(isImm?(PIM.nBasement|0):0)+'|'+(typeof QUAD_VIEWS!=='undefined'?QUAD_VIEWS.join(','):'')):'hidden';
   if(ov._sig===sig) return; ov._sig=sig;
-  if(!vis){ ov.style.display='none'; ov.innerHTML=''; return; }
+  if(!vis){ ov.style.display='none'; ov.innerHTML=''; var _fb0=document.getElementById('floorBar'); if(_fb0){ _fb0.style.display='none'; _fb0.innerHTML=''; } return; }
   var selCss='background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:5px;padding:2px 6px;font-size:11px;line-height:1.2;';
   var btnCss='background:#232a34;color:#cdd6e0;border:1px solid #3a4653;border-radius:5px;padding:2px 7px;font-size:11px;line-height:1.2;cursor:pointer;';
   ov.style.display='flex'; ov.innerHTML='';
@@ -9343,6 +9795,15 @@ function updateViewOverlay(){
     ov.appendChild(s);
   } else if(isImm && SINGLEVIEW!=='persp'){
     addCoupeControls();
+  }
+  /* libellé de la vue (Plan RDC / Dessus / Face / coupe…) déplacé en bas, au-dessus de Recentrer */
+  var fb=document.getElementById('floorBar');
+  if(fb){ var _lbl='';
+    if(!isQuad && SINGLEVIEW && SINGLEVIEW!=='persp'){
+      _lbl={top:(isImm&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Dessus',front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[SINGLEVIEW]||'';
+      if(SINGLEVIEW!=='top' && isImm){ var _sa={front:'z',back:'z',left:'x',right:'x'}[SINGLEVIEW]; if(_sa==='x'&&CUTX.on) _lbl+=' — coupe transversale'; else if(_sa==='z'&&CUTZ.on) _lbl+=' — coupe longitudinale'; }
+    }
+    if(_lbl){ fb.textContent=_lbl; fb.style.color='#ff8a3d'; fb.style.fontWeight='600'; fb.style.display='block'; } else { fb.style.display='none'; }
   }
 }
 /* libellé d'un quadrant selon sa vue (avec ▾ = cliquable pour changer). */
@@ -9405,7 +9866,7 @@ function frame(){
     ORTHO=_O;
     var lbl={top:(MODE==='immeuble'&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Dessus',front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[SINGLEVIEW]||'';
     if(SINGLEVIEW!=='top' && MODE==='immeuble'){ var _sa={front:'z',back:'z',left:'x',right:'x'}[SINGLEVIEW]; if(_sa==='x'&&CUTX.on) lbl+=' — coupe transversale'; else if(_sa==='z'&&CUTZ.on) lbl+=' — coupe longitudinale'; }
-    _viewLabel(0,0,lbl); return; }
+    return; }   /* libellé de vue affiché dans #floorBar (en bas) via updateViewOverlay */
   renderScene(getCam(),W,H);
 }
 function renderScene(cam,W,H){
@@ -9455,7 +9916,8 @@ function renderScene(cam,W,H){
      rempli d'un dégradé radial : lisse à l'infini, aucune facette.
      Dans les autres modes (plat/lignes cachées/filaire) on veut voir le
      maillage, donc on laisse la sphère passer par le rendu normal. */
-  if(MODE==='forme' && SHAPE==='sphere' && (RENDER==='smooth' || RENDER==='real')){
+  if(MODE==='forme' && SHAPE==='sphere' && (RENDER==='smooth' || RENDER==='real')
+     && PF.w===PF.h && PF.h===PF.d && _formePlain()){
     var sr=Math.min(PF.w,PF.h,PF.d)/200;          /* rayon en m */
     var ctr=proj(cam,[0,sr,0],W,H);
     var edg=proj(cam,[sr,sr,0],W,H);
@@ -10091,7 +10553,8 @@ cv.addEventListener('wheel', function(e){
        pivot = cible + r·(sx·droite + sy·haut) → cible += (rAncien−rNouveau)·(sx·droite+sy·haut). */
     var rect=cv.getBoundingClientRect(), W=cv.width, H=cv.height;
     var px=(e.clientX-rect.left)*W/(rect.width||W), py=(e.clientY-rect.top)*H/(rect.height||H);
-    var cam=getCam(), sx=(px-W/2)*(W/H)/(2.14*(W/2)), sy=(H/2-py)/(2.14*(H/2)), d=oldR-newR;
+    var cam=(LAYOUT!=='quad' && typeof SINGLEVIEW!=='undefined' && SINGLEVIEW && SINGLEVIEW!=='persp')?orthoCam(SINGLEVIEW):getCam();   /* zoom-curseur : axes de la vue réellement affichée (ortho plan/élévation) */
+    var sx=(px-W/2)*(W/H)/(2.14*(W/2)), sy=(H/2-py)/(2.14*(H/2)), d=oldR-newR;
     CAM.tx=(CAM.tx||0)+d*(cam.right[0]*sx+cam.up[0]*sy);
     CAM.ty=(CAM.ty||0)+d*(cam.right[1]*sx+cam.up[1]*sy);
     CAM.tz=(CAM.tz||0)+d*(cam.right[2]*sx+cam.up[2]*sy);
@@ -11133,11 +11596,24 @@ function buildObjUI(params, groups, rebuildUI){
       else if(f.type==='preset') presetSel(f);
       else if(f.type==='facecfg') faceCfg(f);
       else if(f.type==='choice') choice(f);
+      else if(f.type==='color') colorF(f);
+      else if(f.type==='note') noteF(f);
       else if(f.type==='steelSerie') steelSerie(f);
       else if(f.type==='steelSize') steelSize(f);
       else if(f.type==='verts') vertsF(f);
     });
   });
+  function colorF(f){
+    var d=document.createElement('div'); d.className='fh'; d.style.marginTop='6px';
+    d.innerHTML='<label>'+(f.label||'Couleur')+'</label>';
+    var inp=document.createElement('input'); inp.type='color'; inp.value=params[f.key]||'#ffffff';
+    inp.style.cssText='width:46px;height:22px;border:1px solid var(--ln);background:var(--p2);border-radius:4px;cursor:pointer;padding:0;';
+    inp.oninput=function(){ params[f.key]=inp.value; build(); DIRTY=true; };
+    d.appendChild(inp); target.appendChild(d);
+  }
+  function noteF(f){
+    var d=document.createElement('div'); d.className='exp-note'; d.style.cssText='margin:6px 0 2px;line-height:1.4;'; d.innerHTML=f.text||''; target.appendChild(d);
+  }
 
   /* sélecteur de série de profil (IPE, IPN, HEA, HEB, UPN) */
   function vertsF(f){
@@ -11703,6 +12179,83 @@ function buildMurRideauUI(){
   ];
   buildObjUI(P, groups, buildMurRideauUI);
 }
+/* UI du mode ROUTE / chaussée */
+function buildRouteUI(){
+  var P=PROUTE;
+  var groups=[
+    {title:'Tracé', fields:[
+      {type:'choice',key:'trace',options:[{id:'droit',l:'Droit'},{id:'courbe',l:'Courbe'},{id:'libre',l:'Libre'}]}
+    ].concat(
+      P.trace==='droit'?[{type:'slider',label:'Longueur',unit:'cm',key:'length',min:200,max:30000,step:50}]:
+      P.trace==='courbe'?[{type:'slider',label:'Rayon',unit:'cm',key:'radius',min:300,max:50000,step:50},{type:'slider',label:'Angle',unit:'°',key:'angle',min:5,max:270,step:1}]:
+      [{type:'verts',key:'verts',label:'Tracé (sommets)',hint:'Vue Dessus : glissez les poignées, ajoutez/courbez des points. « x,z » en cm.'},
+       {type:'slider',label:'Rayon d’angle',unit:'cm',key:'corner',min:0,max:3000,step:50}]
+    )},
+    {title:'Chaussée', fields:[
+      {type:'slider',label:'Voies',unit:'',key:'lanes',min:1,max:8,step:1},
+      {type:'slider',label:'Largeur voie',unit:'cm',key:'laneW',min:200,max:500,step:5},
+      {type:'slider',label:'Épaisseur',unit:'cm',key:'thick',min:5,max:80,step:1},
+      {type:'slider',label:'Dévers',unit:'%',key:'camber',min:0,max:6,step:0.5}
+    ]},
+    {title:'Terre-plein central', fields:[
+      {type:'choice',label:'TPC',key:'tpc',options:[{id:false,l:'Sans'},{id:true,l:'Avec'}]}
+    ].concat(P.tpc?[
+      {type:'slider',label:'Largeur',unit:'cm',key:'tpcW',min:80,max:1200,step:10},
+      {type:'slider',label:'Hauteur',unit:'cm',key:'tpcH',min:0,max:60,step:1},
+      {type:'choice',label:'Type',key:'tpcType',options:[{id:'gazon',l:'Engazonné'},{id:'beton',l:'Béton'},{id:'glissiere',l:'Glissière'}]},
+      {type:'color',key:'colMed',label:'Couleur TPC'}
+    ]:[])},
+    {title:'Ligne axiale', fields:[
+      {type:'choice',key:'axis',options:[{id:'aucune',l:'Aucune'},{id:'continue',l:'Continue'},{id:'tirets',l:'Tirets'},{id:'double',l:'Double'},{id:'mixte',l:'Mixte'}]},
+      {type:'color',key:'axisColor',label:'Couleur'}
+    ]},
+    {title:'Rives & voies', fields:[
+      {type:'choice',label:'Lignes de rive',key:'edge',options:[{id:'aucune',l:'Aucune'},{id:'continue',l:'Continue'},{id:'tirets',l:'Tirets'}]},
+      {type:'color',key:'edgeColor',label:'Couleur rives'}
+    ].concat(P.lanes>2?[
+      {type:'choice',label:'Séparateurs de voies',key:'laneSep',options:[{id:'aucune',l:'Aucune'},{id:'tirets',l:'Tirets'},{id:'continue',l:'Continue'}]},
+      {type:'color',key:'laneSepColor',label:'Couleur séparateurs'}
+    ]:[]).concat([
+      {type:'slider',label:'Largeur marquage',unit:'cm',key:'markW',min:5,max:30,step:1},
+      {type:'slider',label:'Tiret',unit:'cm',key:'dashLen',min:50,max:1000,step:10},
+      {type:'slider',label:'Intervalle',unit:'cm',key:'dashGap',min:50,max:2000,step:10}
+    ])},
+    {title:'Bordures & trottoirs', fields:[
+      {type:'choice',label:'Trottoir',key:'sidewalk',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}
+    ].concat(P.sidewalk?[
+      {type:'choice',label:'Bordure',key:'curb',options:[{id:'fr_t2',l:'FR T2'},{id:'fr_a2',l:'FR A2'},{id:'us_barrier',l:'US barrier'},{id:'us_mountable',l:'US mount.'},{id:'none',l:'Sans'}]},
+      {type:'choice',label:'Caniveau',key:'gutter',options:[{id:'none',l:'Aucun'},{id:'cs1',l:'CS1'},{id:'cs2',l:'CS2'},{id:'us_pan',l:'US pan'}]},
+      {type:'slider',label:'Largeur trottoir',unit:'cm',key:'swWidth',min:60,max:400,step:5},
+      {type:'slider',label:'Hauteur bordure',unit:'cm',key:'swHeight',min:2,max:30,step:1}
+    ]:[])},
+    {title:'Profil en long', fields:[
+      {type:'slider',label:'Pente',unit:'%',key:'slope',min:-15,max:15,step:0.5}
+    ].concat(P.trace==='libre'?[{type:'note',text:'Réglez une altitude par sommet ci-dessous pour varier la pente par tronçon.'}]:[])},
+    {title:'Couleurs', fields:[
+      {type:'color',key:'colAsph',label:'Enrobé'},
+      {type:'color',key:'colConc',label:'Béton bordure/trottoir'}
+    ]}
+  ];
+  buildObjUI(P, groups, buildRouteUI);
+  if(P.trace==='libre') routeAltEditor();
+}
+function routeAltEditor(){
+  var host=document.getElementById('params'); if(!host) return;
+  var pts=parsePoly(PROUTE.verts)||[]; if(pts.length<2) return;
+  if(!PROUTE.alt) PROUTE.alt=[];
+  var wrap=document.createElement('div'); wrap.className='fld';
+  wrap.innerHTML='<div class="slbl" style="margin-top:6px;">Altitude par sommet (cm)</div>';
+  for(var i=0;i<pts.length;i++){ (function(i){
+    var row=document.createElement('div'); row.className='fh'; row.style.marginTop='4px';
+    row.innerHTML='<label>Point '+(i+1)+'</label>';
+    var inp=document.createElement('input'); inp.type='number'; inp.step='10'; inp.value=(PROUTE.alt[i]||0);
+    inp.style.cssText='width:84px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:3px;';
+    inp.oninput=function(){ PROUTE.alt[i]=parseFloat(inp.value)||0; build(); DIRTY=true; if(typeof updateDims==='function')updateDims(); };
+    row.appendChild(inp); wrap.appendChild(row);
+  })(i); }
+  host.appendChild(wrap);
+}
+
 function buildShapeGrid(){
   var host=document.getElementById('shape-grid');
   host.innerHTML='';
@@ -11718,6 +12271,41 @@ function buildShapeGrid(){
     };
     host.appendChild(b);
   });
+  buildFormeMod();
+}
+
+/* Panneau MODELEUR (mode Forme) : déformeurs + congé + découpe. */
+function fmodApply(key, val){ PF[key]=val; build(); DIRTY=true; if(typeof updateDims==='function') updateDims(); }
+function fmodResetAll(){ ['mTaper','mTwist','mBend','mRound','mFillet'].forEach(function(k){ PF[k]=0; }); PF.mCut='off'; PF.mCutPos=50; PF.mCutKeep=1; buildFormeMod(); build(); DIRTY=true; if(typeof updateDims==='function') updateDims(); }
+function buildFormeMod(){
+  var host=document.getElementById('forme-mod'); if(!host) return;
+  function sld(key,label,unit,min,max,step,def){
+    var v=(PF[key]!=null?PF[key]:(def||0)), id='fm_'+key;
+    return '<div class="fh" style="margin-top:8px;"><label>'+label+'</label>'+
+      '<span class="u" id="'+id+'v">'+v+unit+'</span></div>'+
+      '<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+v+'" '+
+      'oninput="document.getElementById(\''+id+'v\').textContent=this.value+\''+unit+'\';fmodApply(\''+key+'\',parseFloat(this.value));">';
+  }
+  var html='<div class="slbl" style="margin-top:12px;">Modeleur</div>';
+  html+=sld('mTaper','Effiler',' %',-100,100,1,0);
+  html+=sld('mTwist','Torsion','°',-360,360,5,0);
+  html+=sld('mBend','Cintrer','°',-180,180,5,0);
+  html+=sld('mRound','Arrondir bords',' %',0,100,1,0);
+  if(SHAPE==='cube') html+=sld('mFillet','Congé arêtes',' %',0,100,1,0);
+  var cut=PF.mCut||'off';
+  html+='<div class="slbl" style="margin-top:12px;">Découpe</div>';
+  html+='<select id="fm_cut" onchange="PF.mCut=this.value;if(PF.mCutPos==null)PF.mCutPos=50;buildFormeMod();build();DIRTY=true;if(typeof updateDims===\'function\')updateDims();" style="width:100%;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:5px;">'+
+    '<option value="off"'+(cut==='off'?' selected':'')+'>Aucune</option>'+
+    '<option value="x"'+(cut==='x'?' selected':'')+'>Plan vertical (largeur)</option>'+
+    '<option value="y"'+(cut==='y'?' selected':'')+'>Plan horizontal (hauteur)</option>'+
+    '<option value="z"'+(cut==='z'?' selected':'')+'>Plan vertical (profondeur)</option></select>';
+  if(cut!=='off'){
+    html+=sld('mCutPos','Position',' %',0,100,1,50);
+    html+='<button onclick="PF.mCutKeep=-(PF.mCutKeep||1);build();DIRTY=true;if(typeof updateDims===\'function\')updateDims();" style="width:100%;margin-top:6px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:6px;cursor:pointer;">Inverser le côté conservé</button>';
+  }
+  html+='<button onclick="fmodResetAll();" style="width:100%;margin-top:10px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:6px;cursor:pointer;">↺ Réinitialiser les déformations</button>';
+  if(SHAPE==='profil') html+='<div style="margin-top:10px;font-size:10px;color:var(--tx);opacity:.75;line-height:1.4;">Passez en vue <b>Dessus</b> : glissez les poignées pour déformer le profil, ajoutez ou courbez des points comme pour une dalle. Réglez la hauteur avec le curseur Hauteur.</div>';
+  host.innerHTML=html;
 }
 
 /* Génère les boutons de mode de rendu */
@@ -12358,6 +12946,8 @@ function refreshView(){
   document.getElementById('obj-controls').style.display = ready ? '' : 'none';
   /* sélecteur de forme seulement dans la catégorie Forme */
   document.getElementById('shape-sel').style.display = (ready && cat.id==='forme') ? '' : 'none';
+  var _fm=document.getElementById('forme-mod');
+  if(_fm){ if(ready && cat.id==='forme'){ if(!(document.activeElement && document.activeElement.type==='range')) buildFormeMod(); } else { _fm.innerHTML=''; } }
   /* slider portes seulement pour le meuble (catégorie Objet) */
   var doorRow=document.getElementById('door-row');
   if(doorRow) doorRow.style.display = (ready && cat.id==='objet') ? '' : 'none';
@@ -12367,7 +12957,7 @@ function refreshView(){
   var finLbl=finElems ? finElems.previousElementSibling : null;
   /* Le bloc Finition (RAL + matieres) est desormais disponible pour TOUS les objets
      parametriques. Seuls les produits fabricants (rendu WebGL) n'en ont pas. */
-  var showFinish = ready && cat.id!=='scene';   /* Finition pour tous les objets prets, sauf la Scène (assemblage) */
+  var showFinish = ready && cat.id!=='scene' && cat.id!=='route';   /* Finition pour tous les objets prets, sauf la Scène et la Route (couleurs propres) */
   [finElems, finPanel, finLbl].forEach(function(el){ if(el) el.style.display = showFinish ? '' : 'none'; });
 
   /* message placeholder pour les catégories à venir */
@@ -12413,6 +13003,7 @@ function refreshView(){
       else if(cat.id==='piscine'){ buildPiscineUI(); }
       else if(cat.id==='veranda'){ buildVerandaUI(); }
       else if(cat.id==='cheminee'){ buildChemineeUI(); }
+      else if(cat.id==='route'){ buildRouteUI(); }
       else { buildUI(); }
       buildFinishUI();   /* panneau Finition pour tous les objets parametriques */
       updateDims();
@@ -13618,6 +14209,8 @@ var I18N_AR={
 (function(){ if(!I18N.ar)I18N.ar={}; for(var fr in I18N_AR){ if(I18N.ar[fr]===undefined) I18N.ar[fr]=I18N_AR[fr]; } })();
 var LANG='fr', mo=null, pend=false;
 var FLAGS={"fr": "<svg viewBox=\"0 0 3 2\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"3\" height=\"2\" fill=\"#fff\"/><rect width=\"1\" height=\"2\" fill=\"#0055A4\"/><rect x=\"2\" width=\"1\" height=\"2\" fill=\"#EF4135\"/></svg>", "en": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#012169\"/><path d=\"M0,0L6,4M6,0L0,4\" stroke=\"#fff\" stroke-width=\"0.7\"/><path d=\"M0,0L6,4M6,0L0,4\" stroke=\"#C8102E\" stroke-width=\"0.35\"/><rect x=\"2.4\" width=\"1.2\" height=\"4\" fill=\"#fff\"/><rect y=\"1.4\" width=\"6\" height=\"1.2\" fill=\"#fff\"/><rect x=\"2.7\" width=\"0.6\" height=\"4\" fill=\"#C8102E\"/><rect y=\"1.7\" width=\"6\" height=\"0.6\" fill=\"#C8102E\"/></svg>", "es": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#AA151B\"/><rect y=\"1\" width=\"6\" height=\"2\" fill=\"#F1BF00\"/></svg>", "it": "<svg viewBox=\"0 0 3 2\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"1\" height=\"2\" fill=\"#009246\"/><rect x=\"1\" width=\"1\" height=\"2\" fill=\"#fff\"/><rect x=\"2\" width=\"1\" height=\"2\" fill=\"#CE2B37\"/></svg>", "de": "<svg viewBox=\"0 0 5 3\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"5\" height=\"1\" fill=\"#000\"/><rect y=\"1\" width=\"5\" height=\"1\" fill=\"#DD0000\"/><rect y=\"2\" width=\"5\" height=\"1\" fill=\"#FFCE00\"/></svg>", "pt": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#DA291C\"/><rect width=\"2.4\" height=\"4\" fill=\"#046A38\"/><circle cx=\"2.4\" cy=\"2\" r=\"0.55\" fill=\"#FFE600\"/></svg>", "hu": "<svg viewBox=\"0 0 6 3\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"1\" fill=\"#CD2A3E\"/><rect y=\"1\" width=\"6\" height=\"1\" fill=\"#fff\"/><rect y=\"2\" width=\"6\" height=\"1\" fill=\"#436F4D\"/></svg>", "zh": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#DE2910\"/><circle cx=\"1.2\" cy=\"1.1\" r=\"0.55\" fill=\"#FFDE00\"/><circle cx=\"2.2\" cy=\"0.6\" r=\"0.2\" fill=\"#FFDE00\"/><circle cx=\"2.5\" cy=\"1.4\" r=\"0.2\" fill=\"#FFDE00\"/></svg>", "ja": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#fff\"/><circle cx=\"3\" cy=\"2\" r=\"1.1\" fill=\"#BC002D\"/></svg>", "hi": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"1.34\" fill=\"#FF9933\"/><rect y=\"1.33\" width=\"6\" height=\"1.34\" fill=\"#fff\"/><rect y=\"2.66\" width=\"6\" height=\"1.34\" fill=\"#138808\"/><circle cx=\"3\" cy=\"2\" r=\"0.42\" fill=\"none\" stroke=\"#000080\" stroke-width=\"0.1\"/></svg>", "ar": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#006C35\"/><rect x=\"1\" y=\"1.6\" width=\"4\" height=\"0.5\" fill=\"#fff\"/></svg>"};
+FLAGS.ru='<svg viewBox="0 0 3 2" preserveAspectRatio="none" width="100%" height="100%"><rect width="3" height="2" fill="#fff"/><rect y="0.667" width="3" height="0.667" fill="#0039A6"/><rect y="1.333" width="3" height="0.667" fill="#D52B1E"/></svg>';
+FLAGS.uk='<svg viewBox="0 0 3 2" preserveAspectRatio="none" width="100%" height="100%"><rect width="3" height="1" fill="#0057B7"/><rect y="1" width="3" height="1" fill="#FFD700"/></svg>';
 /* Dégradés « drapeau national en longueur » par langue, utilisés pour le liseré de l'animation d'intro.
    Rayures verticales (90deg) pour les drapeaux à bandes verticales, horizontales (180deg) sinon. */
 var FLAG_BANDS={
@@ -13631,7 +14224,9 @@ var FLAG_BANDS={
  zh:'linear-gradient(90deg,#FFDE00 0 5%,#DE2910 5%)',
  ja:'linear-gradient(90deg,#fff 0 42%,#BC002D 42% 58%,#fff 58%)',
  hi:'linear-gradient(180deg,#FF9933 0 33.33%,#fff 33.33% 66.66%,#138808 66.66%)',
- ar:'linear-gradient(90deg,#CE1126 0 10%,transparent 10%),linear-gradient(180deg,#000 0 33.33%,#fff 33.33% 66.66%,#007A3D 66.66%)'
+ ar:'linear-gradient(90deg,#CE1126 0 10%,transparent 10%),linear-gradient(180deg,#000 0 33.33%,#fff 33.33% 66.66%,#007A3D 66.66%)',
+ ru:'linear-gradient(180deg,#ffffff 0 33.33%,#0039A6 33.33% 66.66%,#D52B1E 66.66%)',
+ uk:'linear-gradient(180deg,#0057B7 0 50%,#FFD700 50%)'
 };
 function setFlag(){ var fe=document.getElementById('langflag'); if(fe) fe.innerHTML=FLAGS[LANG]||''; }
 /* Complément de traductions (menu gauche + panneau Mise en page + fond de plan + barre de coupe).
@@ -13726,9 +14321,665 @@ var I18N_ADD5={
 "Cotes en direct • guides d'alignement sur les points • Maj = angles à 45° • tape un nombre ou R puis une distance (cm) + Entrée • Échap annule.":{"en":"Live dimensions • alignment guides on points • Shift = 45° angles • type a number or R then a distance (cm) + Enter • Esc cancels.","es":"Cotas en directo • guías de alineación en los puntos • Mayús = ángulos de 45° • escribe un número o R y luego una distancia (cm) + Intro • Esc cancela.","it":"Quote in tempo reale • guide di allineamento sui punti • Maiusc = angoli a 45° • digita un numero o R poi una distanza (cm) + Invio • Esc annulla.","de":"Live-Maße • Ausrichtungshilfen an den Punkten • Umschalt = 45°-Winkel • Zahl oder R eingeben, dann Abstand (cm) + Enter • Esc bricht ab.","pt":"Cotas em direto • guias de alinhamento nos pontos • Shift = ângulos de 45° • escreve um número ou R e depois uma distância (cm) + Enter • Esc cancela.","hu":"Élő méretek • illesztővonalak a pontokon • Shift = 45°-os szögek • írj be egy számot vagy R-t, majd egy távolságot (cm) + Enter • Esc megszakít.","zh":"实时尺寸 • 点的对齐参考线 • Shift = 45° 角 • 输入数字或 R 再输入距离（cm）+ 回车 • Esc 取消。","ja":"リアルタイム寸法 • 点の整列ガイド • Shift = 45°角 • 数値または R を入力して距離（cm）+ Enter • Esc で取消。","hi":"लाइव आयाम • बिंदुओं पर संरेखण गाइड • Shift = 45° कोण • कोई संख्या या R टाइप करें फिर दूरी (cm) + Enter • Esc रद्द करता है।","ar":"أبعاد مباشرة • خطوط محاذاة على النقاط • Shift = زوايا 45° • اكتب رقمًا أو R ثم مسافة (سم) + Enter • Esc للإلغاء."}
 };
 (function(){ for(var fr in I18N_ADD5){ var t=I18N_ADD5[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
+var I18N_RUUK={
+"Catalogues et configurateurs d'objets 3D":{"ru":"Каталоги и конфигураторы 3D-объектов","uk":"Каталоги та конфігуратори 3D-об'єктів"},
+"Génériques":{"ru":"Типовые","uk":"Типові"},
+"Fabricants":{"ru":"Производители","uk":"Виробники"},
+"Catégorie":{"ru":"Категория","uk":"Категорія"},
+"GLISSER · orbiter | MOLETTE · zoomer":{"ru":"ПЕРЕТАСКИВАНИЕ · вращение | КОЛЁСИКО · масштаб","uk":"ПЕРЕТЯГУВАННЯ · обертання | КОЛІЩАТКО · масштаб"},
+"⊕ Recentrer":{"ru":"⊕ Центрировать","uk":"⊕ Центрувати"},
+"Dimensions & structure":{"ru":"Размеры и структура","uk":"Розміри та структура"},
+"Rendu":{"ru":"Рендеринг","uk":"Рендеринг"},
+"Finition":{"ru":"Отделка","uk":"Оздоблення"},
+"Export":{"ru":"Экспорт","uk":"Експорт"},
+"Forme":{"ru":"Форма","uk":"Форма"},
+"Brillance":{"ru":"Блеск","uk":"Блиск"},
+"Ouverture portes":{"ru":"Открывание дверей","uk":"Відкривання дверей"},
+"OBJ universel · DAE pour SketchUp · IFC pour ArchiCAD/BIM (unités m)":{"ru":"OBJ универсальный · DAE для SketchUp · IFC для ArchiCAD/BIM (единицы м)","uk":"OBJ універсальний · DAE для SketchUp · IFC для ArchiCAD/BIM (одиниці м)"},
+"Mur":{"ru":"Стена","uk":"Стіна"},
+"Dalle":{"ru":"Плита","uk":"Плита"},
+"Immeuble":{"ru":"Здание","uk":"Будівля"},
+"Poteau":{"ru":"Колонна","uk":"Колона"},
+"Poutre":{"ru":"Балка","uk":"Балка"},
+"Porte":{"ru":"Дверь","uk":"Двері"},
+"Fenêtre":{"ru":"Окно","uk":"Вікно"},
+"Mur-rideau":{"ru":"Навесная стена","uk":"Навісна стіна"},
+"Objets":{"ru":"Объекты","uk":"Об'єкти"},
+"Lampe":{"ru":"Светильник","uk":"Світильник"},
+"Toiture":{"ru":"Кровля","uk":"Покрівля"},
+"Coque":{"ru":"Оболочка","uk":"Оболонка"},
+"Escalier":{"ru":"Лестница","uk":"Сходи"},
+"Garde-corps":{"ru":"Ограждение","uk":"Огородження"},
+"Ouverture de toit":{"ru":"Проём в крыше","uk":"Отвір у даху"},
+"Fenêtre d'angle":{"ru":"Угловое окно","uk":"Кутове вікно"},
+"Hangar métallique":{"ru":"Металлический ангар","uk":"Металевий ангар"},
+"Lissé":{"ru":"Сглаженный","uk":"Згладжений"},
+"Réaliste":{"ru":"Реалистичный","uk":"Реалістичний"},
+"Plat + arêtes":{"ru":"Плоский + рёбра","uk":"Плоский + ребра"},
+"Lignes cachées":{"ru":"Скрытые линии","uk":"Приховані лінії"},
+"Filaire":{"ru":"Каркасный","uk":"Каркасний"},
+"Logiciel":{"ru":"Программный","uk":"Програмний"},
+"Matériau natif":{"ru":"Родной материал","uk":"Рідний матеріал"},
+"Matière perso.":{"ru":"Свой материал","uk":"Свій матеріал"},
+"Aucune texture (couleur unie)":{"ru":"Без текстуры (сплошной цвет)","uk":"Без текстури (суцільний колір)"},
+"Dimensions":{"ru":"Размеры","uk":"Розміри"},
+"Longueur":{"ru":"Длина","uk":"Довжина"},
+"Largeur":{"ru":"Ширина","uk":"Ширина"},
+"Hauteur":{"ru":"Высота","uk":"Висота"},
+"Avec":{"ru":"С","uk":"З"},
+"Sans":{"ru":"Без","uk":"Без"},
+"Contour":{"ru":"Контур","uk":"Контур"},
+"Mur droit":{"ru":"Прямая стена","uk":"Пряма стіна"},
+"Rectangle":{"ru":"Прямоугольник","uk":"Прямокутник"},
+"En L":{"ru":"L-образный","uk":"L-подібний"},
+"En U":{"ru":"U-образный","uk":"U-подібний"},
+"Portée (largeur)":{"ru":"Пролёт (ширина)","uk":"Проліт (ширина)"},
+"Travées":{"ru":"Пролёты","uk":"Прольоти"},
+"Pente toiture":{"ru":"Уклон кровли","uk":"Ухил покрівлі"},
+"Forme de toiture":{"ru":"Форма кровли","uk":"Форма покрівлі"},
+"2 pans":{"ru":"Двускатная","uk":"Двосхила"},
+"Monopente":{"ru":"Односкатная","uk":"Односхила"},
+"Type de ferme":{"ru":"Тип фермы","uk":"Тип ферми"},
+"Enveloppe":{"ru":"Оболочка","uk":"Оболонка"},
+"Couverture":{"ru":"Кровельное покрытие","uk":"Покрівельне покриття"},
+"Bardage métal":{"ru":"Металлическая обшивка","uk":"Металева обшивка"},
+"Parpaing":{"ru":"Шлакоблок","uk":"Шлакоблок"},
+"Aucun (ouvert)":{"ru":"Нет (открытый)","uk":"Немає (відкритий)"},
+"Planchers":{"ru":"Перекрытия","uk":"Перекриття"},
+"Portes sectionnelles":{"ru":"Секционные ворота","uk":"Секційні ворота"},
+"Faux plafond":{"ru":"Подвесной потолок","uk":"Підвісна стеля"},
+"Sol fini":{"ru":"Чистовой пол","uk":"Чистова підлога"},
+"Ossature":{"ru":"Каркас","uk":"Каркас"},
+"Bardage":{"ru":"Обшивка","uk":"Обшивка"},
+"Maçonnerie":{"ru":"Каменная кладка","uk":"Кам'яна кладка"},
+"1 DOIGT orbiter | 2 DOIGTS zoomer":{"ru":"1 ПАЛЕЦ вращение | 2 ПАЛЬЦА масштаб","uk":"1 ПАЛЕЦЬ обертання | 2 ПАЛЬЦІ масштаб"},
+"Acier":{"ru":"Сталь","uk":"Сталь"},
+"Afficher le siège":{"ru":"Показать сиденье","uk":"Показати сидіння"},
+"Allège":{"ru":"Подоконная стенка","uk":"Підвіконна стінка"},
+"Allèges (bandeaux)":{"ru":"Подоконные стенки (пояса)","uk":"Підвіконні стінки (пояси)"},
+"Ambiance":{"ru":"Атмосфера","uk":"Атмосфера"},
+"Angle":{"ru":"Угол","uk":"Кут"},
+"Angle droite":{"ru":"Правый угол","uk":"Правий кут"},
+"Angle gauche":{"ru":"Левый угол","uk":"Лівий кут"},
+"Angle tête":{"ru":"Верхний угол","uk":"Верхній кут"},
+"Appui de fenêtre":{"ru":"Подоконник","uk":"Підвіконня"},
+"Armoire 2 portes":{"ru":"Шкаф 2-дверный","uk":"Шафа 2-дверна"},
+"Armoire 3 portes":{"ru":"Шкаф 3-дверный","uk":"Шафа 3-дверна"},
+"Armoires":{"ru":"Шкафы","uk":"Шафи"},
+"Arrière":{"ru":"Задняя сторона","uk":"Задня сторона"},
+"Assises":{"ru":"Сиденья","uk":"Сидіння"},
+"Aucun":{"ru":"Нет","uk":"Немає"},
+"Avant":{"ru":"Передняя сторона","uk":"Передня сторона"},
+"Avec rives":{"ru":"С обрамлением","uk":"З обрамленням"},
+"Banquette":{"ru":"Скамья","uk":"Лава"},
+"Barre":{"ru":"Штанга","uk":"Штанга"},
+"Barreaudage":{"ru":"Балясины","uk":"Балясини"},
+"Battant":{"ru":"Створка","uk":"Стулка"},
+"Blancs / Noirs":{"ru":"Белые / Чёрные","uk":"Білі / Чорні"},
+"Bleus":{"ru":"Синие","uk":"Сині"},
+"Bois":{"ru":"Дерево","uk":"Дерево"},
+"Bois (solivage)":{"ru":"Дерево (балки перекрытия)","uk":"Дерево (балки перекриття)"},
+"Bois lamellé":{"ru":"Клеёный брус","uk":"Клеєний брус"},
+"Bouton":{"ru":"Кнопка","uk":"Кнопка"},
+"Brique":{"ru":"Кирпич","uk":"Цегла"},
+"Bruns":{"ru":"Коричневые","uk":"Коричневі"},
+"Buffet bas":{"ru":"Низкий буфет","uk":"Низький буфет"},
+"Bureau administratif 1p":{"ru":"Офисный стол 1-местный","uk":"Офісний стіл 1-місний"},
+"Bâti":{"ru":"Короб","uk":"Короб"},
+"Béquille":{"ru":"Дверная ручка","uk":"Дверна ручка"},
+"Béton":{"ru":"Бетон","uk":"Бетон"},
+"Béton / Enduit":{"ru":"Бетон / Штукатурка","uk":"Бетон / Штукатурка"},
+"Béton banché":{"ru":"Монолитный бетон","uk":"Монолітний бетон"},
+"Béton cellulaire":{"ru":"Ячеистый бетон","uk":"Комірчастий бетон"},
+"Béton plein":{"ru":"Тяжёлый бетон","uk":"Важкий бетон"},
+"Cadre":{"ru":"Рама","uk":"Рама"},
+"Cadre / dormant":{"ru":"Рама / коробка","uk":"Рама / коробка"},
+"Canapé 2 places":{"ru":"Диван 2-местный","uk":"Диван 2-місний"},
+"Canapé 3 places":{"ru":"Диван 3-местный","uk":"Диван 3-місний"},
+"Canapés":{"ru":"Диваны","uk":"Дивани"},
+"Capots apparents":{"ru":"Видимые накладки","uk":"Видимі накладки"},
+"Carré":{"ru":"Квадрат","uk":"Квадрат"},
+"Cassette":{"ru":"Кассета","uk":"Касета"},
+"Chaise classique":{"ru":"Классический стул","uk":"Класичний стілець"},
+"Chaise garnie":{"ru":"Мягкий стул","uk":"М'який стілець"},
+"Chaise haute (bar)":{"ru":"Высокий стул (барный)","uk":"Високий стілець (барний)"},
+"Chaise lounge":{"ru":"Кресло лаунж","uk":"Крісло лаунж"},
+"Chaise à accoudoirs":{"ru":"Стул с подлокотниками","uk":"Стілець з підлокітниками"},
+"Chaises":{"ru":"Стулья","uk":"Стільці"},
+"Ciseaux":{"ru":"Ножничная ферма","uk":"Ножична ферма"},
+"Colonnes":{"ru":"Колонны","uk":"Колони"},
+"Colonnes du retour":{"ru":"Колонны возврата","uk":"Колони повороту"},
+"Commode":{"ru":"Комод","uk":"Комод"},
+"Console":{"ru":"Консоль","uk":"Консоль"},
+"Contreventement":{"ru":"Раскосы жёсткости","uk":"Розкоси жорсткості"},
+"Cornière":{"ru":"Уголок","uk":"Куточок"},
+"Cornières d'angle":{"ru":"Угловые уголки","uk":"Кутові куточки"},
+"Corps":{"ru":"Корпус","uk":"Корпус"},
+"Couleur libre":{"ru":"Свободный цвет","uk":"Вільний колір"},
+"Coulissant":{"ru":"Раздвижной","uk":"Розсувний"},
+"Coulissante":{"ru":"Раздвижная","uk":"Розсувна"},
+"Coupe des extrémités":{"ru":"Обрезка концов","uk":"Обрізка кінців"},
+"Coupe en tête":{"ru":"Обрезка вверху","uk":"Обрізка вгорі"},
+"Couverture étage":{"ru":"Покрытие этажа","uk":"Покриття поверху"},
+"Croisillons":{"ru":"Раскосы","uk":"Розкоси"},
+"Cube":{"ru":"Куб","uk":"Куб"},
+"Cuvette":{"ru":"Чаша","uk":"Чаша"},
+"Cylindre":{"ru":"Цилиндр","uk":"Циліндр"},
+"Céramique":{"ru":"Керамика","uk":"Кераміка"},
+"Cône":{"ru":"Конус","uk":"Конус"},
+"Dalle RDC":{"ru":"Плита 1-го этажа","uk":"Плита 1-го поверху"},
+"Dalle alvéolée":{"ru":"Пустотная плита","uk":"Пустотна плита"},
+"Damier":{"ru":"Шахматный узор","uk":"Шаховий візерунок"},
+"Dans le plan":{"ru":"В плоскости","uk":"У площині"},
+"Desserte à roulettes":{"ru":"Сервировочный столик на колёсиках","uk":"Сервірувальний столик на коліщатках"},
+"Dimensions façade":{"ru":"Размеры фасада","uk":"Розміри фасаду"},
+"Dormant":{"ru":"Коробка","uk":"Коробка"},
+"Double":{"ru":"Двойной","uk":"Подвійний"},
+"Dressing haut":{"ru":"Высокий гардероб","uk":"Високий гардероб"},
+"Débord appui":{"ru":"Выступ подоконника","uk":"Виступ підвіконня"},
+"En I":{"ru":"I-образный","uk":"I-подібний"},
+"Extérieur":{"ru":"Снаружи","uk":"Зовні"},
+"Fauteuil":{"ru":"Кресло","uk":"Крісло"},
+"Façades":{"ru":"Фасады","uk":"Фасади"},
+"Façades + toiture":{"ru":"Фасады + кровля","uk":"Фасади + покрівля"},
+"Ferme W":{"ru":"Ферма W","uk":"Ферма W"},
+"Filantes":{"ru":"Сквозные","uk":"Наскрізні"},
+"Fixe":{"ru":"Глухой","uk":"Глухий"},
+"Fondations":{"ru":"Фундамент","uk":"Фундамент"},
+"Forme du contour":{"ru":"Форма контура","uk":"Форма контуру"},
+"Garnissage":{"ru":"Заполнение","uk":"Заповнення"},
+"Goussets d'assemblage":{"ru":"Соединительные фасонки","uk":"З'єднувальні фасонки"},
+"Gris":{"ru":"Серые","uk":"Сірі"},
+"Hauteur assise":{"ru":"Высота сиденья","uk":"Висота сидіння"},
+"Hauteur au mur":{"ru":"Высота у стены","uk":"Висота біля стіни"},
+"Hauteur imposte":{"ru":"Высота фрамуги","uk":"Висота фрамуги"},
+"Hauteur libre":{"ru":"Свободная высота","uk":"Вільна висота"},
+"Hauteur passage":{"ru":"Высота прохода","uk":"Висота проходу"},
+"Hauteur poignée":{"ru":"Высота ручки","uk":"Висота ручки"},
+"Hauteur section":{"ru":"Высота сечения","uk":"Висота перерізу"},
+"Hauteur tableau":{"ru":"Высота проёма","uk":"Висота отвору"},
+"Horizontale":{"ru":"Горизонтальная","uk":"Горизонтальна"},
+"Horizontaux / vantail":{"ru":"Горизонтальные / створка","uk":"Горизонтальні / стулка"},
+"Importer une image / photo":{"ru":"Импортировать изображение / фото","uk":"Імпортувати зображення / фото"},
+"Imposte":{"ru":"Фрамуга","uk":"Фрамуга"},
+"Imposte (haut fixe)":{"ru":"Фрамуга (верх глухой)","uk":"Фрамуга (верх глухий)"},
+"Intérieur":{"ru":"Внутри","uk":"Всередині"},
+"Isolation murs":{"ru":"Утепление стен","uk":"Утеплення стін"},
+"Isolation toiture":{"ru":"Утепление кровли","uk":"Утеплення покрівлі"},
+"Jaunes":{"ru":"Жёлтые","uk":"Жовті"},
+"Joint debout":{"ru":"Стоячий фальц","uk":"Стоячий фальц"},
+"Largeur cadre":{"ru":"Ширина рамы","uk":"Ширина рами"},
+"Largeur dormant":{"ru":"Ширина коробки","uk":"Ширина коробки"},
+"Largeur meneau":{"ru":"Ширина импоста","uk":"Ширина імпоста"},
+"Largeur ouvrant":{"ru":"Ширина створки","uk":"Ширина стулки"},
+"Largeur passage":{"ru":"Ширина прохода","uk":"Ширина проходу"},
+"Largeur section":{"ru":"Ширина сечения","uk":"Ширина перерізу"},
+"Largeur tableau":{"ru":"Ширина проёма","uk":"Ширина отвору"},
+"Le produit conserve ses matériaux d'origine (rendu PBR). Passez en « Teinte perso. » pour le recolorer dans une teinte RAL.":{"ru":"Изделие сохраняет исходные материалы (рендеринг PBR). Переключитесь на «Свой оттенок», чтобы перекрасить его в оттенок RAL.","uk":"Виріб зберігає початкові матеріали (рендеринг PBR). Перемкніться на «Свій відтінок», щоб перефарбувати його у відтінок RAL."},
+"Les deux":{"ru":"Оба","uk":"Обидва"},
+"Lisse":{"ru":"Гладкий","uk":"Гладкий"},
+"Lisses horiz.":{"ru":"Горизонт. прогоны","uk":"Горизонт. прогони"},
+"Longrine":{"ru":"Ростверк","uk":"Ростверк"},
+"Longrine périph.":{"ru":"Периметральный ростверк","uk":"Периметральний ростверк"},
+"Longueur (portée)":{"ru":"Длина (пролёт)","uk":"Довжина (проліт)"},
+"L'objet utilise son matériau natif (presets / couches ci-dessus). Passez en « Matière perso. » pour appliquer une teinte RAL ou une texture à tout l'objet.":{"ru":"Объект использует свой родной материал (пресеты / слои выше). Переключитесь на «Свой материал», чтобы применить оттенок RAL или текстуру ко всему объекту.","uk":"Об'єкт використовує свій рідний матеріал (пресети / шари вище). Перемкніться на «Свій матеріал», щоб застосувати відтінок RAL або текстуру до всього об'єкта."},
+"Massifs":{"ru":"Массивные","uk":"Масивні"},
+"Matériau":{"ru":"Материал","uk":"Матеріал"},
+"Matériau porteur":{"ru":"Несущий материал","uk":"Несучий матеріал"},
+"Meneaux horizontaux":{"ru":"Горизонтальные импосты","uk":"Горизонтальні імпости"},
+"Meneaux verticaux":{"ru":"Вертикальные импосты","uk":"Вертикальні імпости"},
+"Meuble paramétrique":{"ru":"Параметрическая мебель","uk":"Параметричні меблі"},
+"Mi-vitré":{"ru":"Наполовину остеклённый","uk":"Наполовину засклений"},
+"Montants":{"ru":"Стойки","uk":"Стійки"},
+"Moteur":{"ru":"Движок","uk":"Рушій"},
+"Mouluré":{"ru":"С профилем","uk":"З профілем"},
+"Mur porteur":{"ru":"Несущая стена","uk":"Несуча стіна"},
+"Méridienne":{"ru":"Кушетка","uk":"Кушетка"},
+"Métal":{"ru":"Металл","uk":"Метал"},
+"Nervuré":{"ru":"Рифлёный","uk":"Рифлений"},
+"Nombre":{"ru":"Количество","uk":"Кількість"},
+"Nombre de vantaux":{"ru":"Количество створок","uk":"Кількість стулок"},
+"Ondulé":{"ru":"Волнистый","uk":"Хвилястий"},
+"Onglet":{"ru":"Ус (под углом)","uk":"Вус (під кутом)"},
+"Oranges":{"ru":"Оранжевые","uk":"Помаранчеві"},
+"Oscillo":{"ru":"Откидное","uk":"Відкидне"},
+"Ossature bois":{"ru":"Деревянный каркас","uk":"Дерев'яний каркас"},
+"Ossature métal":{"ru":"Металлический каркас","uk":"Металевий каркас"},
+"Ouverture":{"ru":"Открывание","uk":"Відкривання"},
+"Ouvrant":{"ru":"Створка","uk":"Стулка"},
+"Ouvrants intégrés":{"ru":"Встроенные створки","uk":"Вбудовані стулки"},
+"Panneau":{"ru":"Панель","uk":"Панель"},
+"Pannes / pan":{"ru":"Прогоны / скат","uk":"Прогони / схил"},
+"Pierre":{"ru":"Камень","uk":"Камінь"},
+"Pignon":{"ru":"Фронтон","uk":"Фронтон"},
+"Places":{"ru":"Места","uk":"Місця"},
+"Plein":{"ru":"Сплошной","uk":"Суцільний"},
+"Pliante":{"ru":"Складная","uk":"Складана"},
+"Poignée":{"ru":"Ручка","uk":"Ручка"},
+"Polonceau":{"ru":"Ферма Полонсо","uk":"Ферма Полонсо"},
+"Portes":{"ru":"Двери","uk":"Двері"},
+"Portes vitrées":{"ru":"Остеклённые двери","uk":"Засклені двері"},
+"Portique":{"ru":"Портальная рама","uk":"Портальна рама"},
+"Pose bardage":{"ru":"Монтаж обшивки","uk":"Монтаж обшивки"},
+"Position":{"ru":"Положение","uk":"Положення"},
+"Position pannes":{"ru":"Положение прогонов","uk":"Положення прогонів"},
+"Poutrelles-hourdis":{"ru":"Балки-вкладыши","uk":"Балки-вкладиші"},
+"Prisme":{"ru":"Призма","uk":"Призма"},
+"Profil bardage":{"ru":"Профиль обшивки","uk":"Профіль обшивки"},
+"Profil des arbalétriers":{"ru":"Профиль стропильных ног","uk":"Профіль кроквяних ніг"},
+"Profil des poteaux":{"ru":"Профиль колонн","uk":"Профіль колон"},
+"Profil normalisé":{"ru":"Стандартный профиль","uk":"Стандартний профіль"},
+"Profilés":{"ru":"Профили","uk":"Профілі"},
+"Profondeur":{"ru":"Глубина","uk":"Глибина"},
+"Rangée ouvrante":{"ru":"Открывающийся ряд","uk":"Відкривний ряд"},
+"Rangées":{"ru":"Ряды","uk":"Ряди"},
+"Rectang.":{"ru":"Прямоуг.","uk":"Прямокут."},
+"Remplissage":{"ru":"Заполнение","uk":"Заповнення"},
+"Rives":{"ru":"Обрамление","uk":"Обрамлення"},
+"Rond":{"ru":"Круглый","uk":"Круглий"},
+"Rouges":{"ru":"Красные","uk":"Червоні"},
+"Sandwich":{"ru":"Сэндвич","uk":"Сендвіч"},
+"Section":{"ru":"Сечение","uk":"Переріз"},
+"Section lisses":{"ru":"Сечение прогонов","uk":"Переріз прогонів"},
+"Sifflet":{"ru":"Косой срез","uk":"Косий зріз"},
+"Simple":{"ru":"Одинарный","uk":"Одинарний"},
+"Siège":{"ru":"Сиденье","uk":"Сидіння"},
+"Sol souple":{"ru":"Мягкое покрытие пола","uk":"М'яке покриття підлоги"},
+"Sols / Carrelage":{"ru":"Полы / Плитка","uk":"Підлоги / Плитка"},
+"Soubassement (bas plein)":{"ru":"Цоколь (глухой низ)","uk":"Цоколь (глухий низ)"},
+"Soufflet":{"ru":"Фрамужное (нижнеподвесное)","uk":"Фрамужне (нижньопідвісне)"},
+"Sous-face":{"ru":"Нижняя поверхность","uk":"Нижня поверхня"},
+"Sphère":{"ru":"Сфера","uk":"Сфера"},
+"Structure":{"ru":"Структура","uk":"Структура"},
+"Structure porteuse":{"ru":"Несущая структура","uk":"Несуча структура"},
+"Sur chant":{"ru":"На ребро","uk":"На ребро"},
+"Sur structure":{"ru":"На структуре","uk":"На структурі"},
+"Table 4 pieds":{"ru":"Стол на 4 ножках","uk":"Стіл на 4 ніжках"},
+"Table basse":{"ru":"Журнальный столик","uk":"Журнальний столик"},
+"Table ronde":{"ru":"Круглый стол","uk":"Круглий стіл"},
+"Table tréteaux":{"ru":"Стол на козлах","uk":"Стіл на козлах"},
+"Tables":{"ru":"Столы","uk":"Столи"},
+"Tabouret bar dossier":{"ru":"Барный табурет со спинкой","uk":"Барний табурет зі спинкою"},
+"Tabouret bas":{"ru":"Низкий табурет","uk":"Низький табурет"},
+"Tabouret carré":{"ru":"Квадратный табурет","uk":"Квадратний табурет"},
+"Tabouret de bar":{"ru":"Барный табурет","uk":"Барний табурет"},
+"Tabouret rond":{"ru":"Круглый табурет","uk":"Круглий табурет"},
+"Tabourets":{"ru":"Табуреты","uk":"Табурети"},
+"Textile / Moquette":{"ru":"Текстиль / Ковролин","uk":"Текстиль / Килимове покриття"},
+"Tore":{"ru":"Тор","uk":"Тор"},
+"Tout vitré":{"ru":"Полностью остеклённый","uk":"Повністю засклений"},
+"Trame d'angle (retour)":{"ru":"Угловой шаг (возврат)","uk":"Кутовий крок (поворот)"},
+"Treillis (N)":{"ru":"Решётчатая (N)","uk":"Ґратчаста (N)"},
+"Tube":{"ru":"Труба","uk":"Труба"},
+"Type":{"ru":"Тип","uk":"Тип"},
+"Type de dalle":{"ru":"Тип плиты","uk":"Тип плити"},
+"Vantail":{"ru":"Створка","uk":"Стулка"},
+"Verre":{"ru":"Стекло","uk":"Скло"},
+"Verticale":{"ru":"Вертикальная","uk":"Вертикальна"},
+"Verticaux / vantail":{"ru":"Вертикальные / створка","uk":"Вертикальні / стулка"},
+"Verts":{"ru":"Зелёные","uk":"Зелені"},
+"Violets":{"ru":"Фиолетовые","uk":"Фіолетові"},
+"Vitrage — meneaux":{"ru":"Остекление — импосты","uk":"Скління — імпости"},
+"Vitré haut":{"ru":"Остеклённый верх","uk":"Засклений верх"},
+"À plat":{"ru":"Плашмя","uk":"Плазом"},
+"Épaisseur":{"ru":"Толщина","uk":"Товщина"},
+"Épaisseur mur":{"ru":"Толщина стены","uk":"Товщина стіни"},
+"Épaisseur vantail":{"ru":"Толщина створки","uk":"Товщина стулки"},
+"Étages":{"ru":"Этажи","uk":"Поверхи"},
+"Étagères":{"ru":"Полки","uk":"Полиці"},
+"Piscine":{"ru":"Бассейн","uk":"Басейн"},
+"Forme du bassin":{"ru":"Форма чаши","uk":"Форма чаші"},
+"Construction":{"ru":"Конструкция","uk":"Конструкція"},
+"Coque polyester":{"ru":"Полиэфирная чаша","uk":"Поліефірна чаша"},
+"Revêtement / couleur eau":{"ru":"Покрытие / цвет воды","uk":"Покриття / колір води"},
+"Margelle":{"ru":"Копинг (борт)","uk":"Копінг (борт)"},
+"Largeur margelle":{"ru":"Ширина копинга","uk":"Ширина копінгу"},
+"Plage de piscine":{"ru":"Зона у бассейна","uk":"Зона біля басейну"},
+"Largeur plage":{"ru":"Ширина зоны","uk":"Ширина зони"},
+"Escalier d'angle":{"ru":"Угловая лестница","uk":"Кутові сходи"},
+"Couloir de nage":{"ru":"Плавательная дорожка","uk":"Плавальна доріжка"},
+"Ronde":{"ru":"Круглая","uk":"Кругла"},
+"Ovale":{"ru":"Овальная","uk":"Овальна"},
+"Modèle":{"ru":"Модель","uk":"Модель"},
+"Variante":{"ru":"Вариант","uk":"Варіант"},
+"Chrome":{"ru":"Хром","uk":"Хром"},
+"Laiton":{"ru":"Латунь","uk":"Латунь"},
+"Noir":{"ru":"Чёрный","uk":"Чорний"},
+"Blanc":{"ru":"Белый","uk":"Білий"},
+"Gamme / ouverture":{"ru":"Серия / открывание","uk":"Серія / відкривання"},
+"Fenêtre-balcon (CABRIO)":{"ru":"Окно-балкон (CABRIO)","uk":"Вікно-балкон (CABRIO)"},
+"Verrière toit plat":{"ru":"Зенитный фонарь для плоской крыши","uk":"Зенітний ліхтар для плоского даху"},
+"Conduit de lumière":{"ru":"Световод","uk":"Світловод"},
+"Conduit":{"ru":"Канал","uk":"Канал"},
+"Longueur conduit":{"ru":"Длина канала","uk":"Довжина каналу"},
+"Coulissant à galandage":{"ru":"Раздвижная в пенал","uk":"Розсувна в пенал"},
+"Porte d’entrée":{"ru":"Входная дверь","uk":"Вхідні двері"},
+"Vitré":{"ru":"Остеклённый","uk":"Засклений"},
+"Trame":{"ru":"Сетка","uk":"Сітка"},
+"Type d’ouverture":{"ru":"Тип открывания","uk":"Тип відкривання"},
+"Dimensions standard":{"ru":"Стандартные размеры","uk":"Стандартні розміри"},
+"Frappe":{"ru":"Распашное","uk":"Розпашне"},
+"Oscillo-battant":{"ru":"Поворотно-откидное","uk":"Поворотно-відкидне"},
+"Sens":{"ru":"Направление","uk":"Напрямок"},
+"Vitrage":{"ru":"Остекление","uk":"Скління"},
+"Bleuté":{"ru":"Голубоватое","uk":"Блакитнувате"},
+"Fumé":{"ru":"Тонированное","uk":"Тоноване"},
+"Vert":{"ru":"Зелёное","uk":"Зелене"},
+"Clair":{"ru":"Прозрачное","uk":"Прозоре"},
+"Soubassement":{"ru":"Цоколь","uk":"Цоколь"},
+"Appui":{"ru":"Подоконник","uk":"Підвіконня"},
+"Vantaux":{"ru":"Створки","uk":"Стулки"},
+"Taille standard":{"ru":"Стандартный размер","uk":"Стандартний розмір"},
+"Pente du toit":{"ru":"Уклон крыши","uk":"Ухил даху"},
+"Finition intérieure":{"ru":"Внутренняя отделка","uk":"Внутрішнє оздоблення"},
+"Pin naturel":{"ru":"Натуральная сосна","uk":"Натуральна сосна"},
+"Blanc peint":{"ru":"Окрашенный белый","uk":"Пофарбований білий"},
+"Blanc PU":{"ru":"Белый ПУ","uk":"Білий ПУ"},
+"Contexte toiture":{"ru":"Контекст кровли","uk":"Контекст покрівлі"},
+"Rotation (centre-pivot)":{"ru":"Поворот (центр вращения)","uk":"Обертання (центр обертання)"},
+"Projection (haut)":{"ru":"Проекция (сверху)","uk":"Проекція (зверху)"},
+"Exporter votre configuration":{"ru":"Экспортировать вашу конфигурацию","uk":"Експортувати вашу конфігурацію"},
+"Poteaux":{"ru":"Колонны","uk":"Колони"},
+"Poutres":{"ru":"Балки","uk":"Балки"},
+"Voiles":{"ru":"Стены (диафрагмы)","uk":"Стіни (діафрагми)"},
+"Sous-sol":{"ru":"Подвал","uk":"Підвал"},
+"Nombre de sous-sols":{"ru":"Количество подвалов","uk":"Кількість підвалів"},
+"Hauteur sous-sol":{"ru":"Высота подвала","uk":"Висота підвалу"},
+"Moteur rendu":{"ru":"Движок рендеринга","uk":"Рушій рендерингу"},
+"Emprise":{"ru":"Пятно застройки","uk":"Пляма забудови"},
+"Niveaux":{"ru":"Уровни","uk":"Рівні"},
+"Hauteur par niveau":{"ru":"Высота на уровень","uk":"Висота на рівень"},
+"Nombre de niveaux":{"ru":"Количество уровней","uk":"Кількість рівнів"},
+"Dalles":{"ru":"Плиты","uk":"Плити"},
+"Trame de poteaux":{"ru":"Сетка колонн","uk":"Сітка колон"},
+"Retraits (attique)":{"ru":"Отступы (аттик)","uk":"Відступи (аттик)"},
+"Niveaux en retrait":{"ru":"Уровни с отступом","uk":"Рівні з відступом"},
+"Retrait par niveau":{"ru":"Отступ на уровень","uk":"Відступ на рівень"},
+"Noyau central":{"ru":"Центральное ядро","uk":"Центральне ядро"},
+"Largeur noyau (X)":{"ru":"Ширина ядра (X)","uk":"Ширина ядра (X)"},
+"Profondeur noyau (Z)":{"ru":"Глубина ядра (Z)","uk":"Глибина ядра (Z)"},
+"Cage (ascenseur/escalier)":{"ru":"Шахта (лифт/лестница)","uk":"Шахта (ліфт/сходи)"},
+"Façades (par orientation)":{"ru":"Фасады (по ориентации)","uk":"Фасади (за орієнтацією)"},
+"Site / Géolocalisation":{"ru":"Участок / Геолокация","uk":"Ділянка / Геолокація"},
+"Projection":{"ru":"Проекция","uk":"Проекція"},
+"Vues orthographiques":{"ru":"Ортогональные виды","uk":"Ортогональні види"},
+"Isolation":{"ru":"Утепление","uk":"Утеплення"},
+"Plafond / sous-face":{"ru":"Потолок / нижняя поверхность","uk":"Стеля / нижня поверхня"},
+"Sol":{"ru":"Пол","uk":"Підлога"},
+"Revêtement":{"ru":"Покрытие","uk":"Покриття"},
+"Longueur (X)":{"ru":"Длина (X)","uk":"Довжина (X)"},
+"Largeur (Z)":{"ru":"Ширина (Z)","uk":"Ширина (Z)"},
+"En T":{"ru":"T-образный","uk":"T-подібний"},
+"Polygone libre":{"ru":"Свободный многоугольник","uk":"Вільний багатокутник"},
+"Découpe sur X":{"ru":"Вырез по X","uk":"Виріз по X"},
+"Découpe sur Z":{"ru":"Вырез по Z","uk":"Виріз по Z"},
+"Découpe X":{"ru":"Вырез X","uk":"Виріз X"},
+"Découpe Z":{"ru":"Вырез Z","uk":"Виріз Z"},
+"Ouverture U (X)":{"ru":"Проём U (X)","uk":"Отвір U (X)"},
+"Profondeur U (Z)":{"ru":"Глубина U (Z)","uk":"Глибина U (Z)"},
+"Ouverture U":{"ru":"Проём U","uk":"Отвір U"},
+"Profondeur U":{"ru":"Глубина U","uk":"Глибина U"},
+"Largeur du fût (X)":{"ru":"Ширина стержня (X)","uk":"Ширина стрижня (X)"},
+"Largeur fût":{"ru":"Ширина стержня","uk":"Ширина стрижня"},
+"Épaisseur barre (Z)":{"ru":"Толщина стержня (Z)","uk":"Товщина стрижня (Z)"},
+"Épaisseur barre":{"ru":"Толщина стержня","uk":"Товщина стрижня"},
+"Sommets (x,z cm)":{"ru":"Вершины (x,z см)","uk":"Вершини (x,z см)"},
+"Débord (toutes dalles)":{"ru":"Свес (все плиты)","uk":"Звис (усі плити)"},
+"Débord de dalle":{"ru":"Свес плиты","uk":"Звис плити"},
+"Débord par niveau":{"ru":"Свес на уровень","uk":"Звис на рівень"},
+"Débord de toit":{"ru":"Свес крыши","uk":"Звис даху"},
+"Avancée façade (devant dalles)":{"ru":"Вынос фасада (перед плитами)","uk":"Виніс фасаду (перед плитами)"},
+"Avancée rosace":{"ru":"Вынос розетки","uk":"Виніс розетки"},
+"Épaisseur dalle":{"ru":"Толщина плиты","uk":"Товщина плити"},
+"Épaisseur automatique":{"ru":"Автоматическая толщина","uk":"Автоматична товщина"},
+"Épaisseur structure":{"ru":"Толщина структуры","uk":"Товщина структури"},
+"Épaisseur porteur":{"ru":"Толщина несущего слоя","uk":"Товщина несучого шару"},
+"Poteau (côté)":{"ru":"Колонна (сторона)","uk":"Колона (сторона)"},
+"Poutre (hauteur)":{"ru":"Балка (высота)","uk":"Балка (висота)"},
+"Poutre (largeur)":{"ru":"Балка (ширина)","uk":"Балка (ширина)"},
+"Poutres visibles":{"ru":"Видимые балки","uk":"Видимі балки"},
+"Entraxe cible":{"ru":"Целевой шаг осей","uk":"Цільовий крок осей"},
+"Entraxe montants (rideau)":{"ru":"Шаг стоек (навесная стена)","uk":"Крок стійок (навісна стіна)"},
+"Entraxe traverses (rideau)":{"ru":"Шаг ригелей (навесная стена)","uk":"Крок ригелів (навісна стіна)"},
+"Trame automatique":{"ru":"Автоматическая сетка","uk":"Автоматична сітка"},
+"Sections automatiques":{"ru":"Автоматические сечения","uk":"Автоматичні перерізи"},
+"Travées en X":{"ru":"Пролёты по X","uk":"Прольоти по X"},
+"Travées en Z":{"ru":"Пролёты по Z","uk":"Прольоти по Z"},
+"Hauteur fenêtre (murs)":{"ru":"Высота окна (стены)","uk":"Висота вікна (стіни)"},
+"Allège (murs)":{"ru":"Подоконная стенка (стены)","uk":"Підвіконна стінка (стіни)"},
+"Teinte du vitrage":{"ru":"Оттенок остекления","uk":"Відтінок скління"},
+"Finition ext.":{"ru":"Отделка снаружи","uk":"Оздоблення зовні"},
+"Finition int.":{"ru":"Отделка внутри","uk":"Оздоблення всередині"},
+"Isolation ext. (ITE)":{"ru":"Наружное утепление (ITE)","uk":"Зовнішнє утеплення (ITE)"},
+"Isolation int. (ITI)":{"ru":"Внутреннее утепление (ITI)","uk":"Внутрішнє утеплення (ITI)"},
+"Épaisseur ITE":{"ru":"Толщина ITE","uk":"Товщина ITE"},
+"Épaisseur ITI":{"ru":"Толщина ITI","uk":"Товщина ITI"},
+"Épaisseur isolant":{"ru":"Толщина утеплителя","uk":"Товщина утеплювача"},
+"Épaisseur isolation":{"ru":"Толщина утепления","uk":"Товщина утеплення"},
+"Isolant en plénum":{"ru":"Утеплитель в запотолочном пространстве","uk":"Утеплювач у запстельовому просторі"},
+"Faux plafond (BA13)":{"ru":"Подвесной потолок (BA13)","uk":"Підвісна стеля (BA13)"},
+"Épaisseur BA13":{"ru":"Толщина BA13","uk":"Товщина BA13"},
+"Épaisseur plafond":{"ru":"Толщина потолка","uk":"Товщина стелі"},
+"Chape":{"ru":"Стяжка","uk":"Стяжка"},
+"Pente":{"ru":"Уклон","uk":"Ухил"},
+"Acrotère":{"ru":"Парапет","uk":"Парапет"},
+"Coin retiré":{"ru":"Убранный угол","uk":"Прибраний кут"},
+"Distance au bureau":{"ru":"Расстояние до стола","uk":"Відстань до столу"},
+"Distance à la dalle":{"ru":"Расстояние до плиты","uk":"Відстань до плити"},
+"Rotation":{"ru":"Поворот","uk":"Обертання"},
+"Quadripode":{"ru":"Четыре опоры","uk":"Чотири опори"},
+"Béquille (importée)":{"ru":"Ручка (импортированная)","uk":"Ручка (імпортована)"},
+"Droit":{"ru":"Прямой","uk":"Прямий"},
+"Bas-D":{"ru":"Низ-П","uk":"Низ-П"},
+"Bas-G":{"ru":"Низ-Л","uk":"Низ-Л"},
+"Haut-D":{"ru":"Верх-П","uk":"Верх-П"},
+"Haut-G":{"ru":"Верх-Л","uk":"Верх-Л"},
+"Bac acier":{"ru":"Профнастил","uk":"Профнастил"},
+"VEC (collé)":{"ru":"VEC (структурное остекление)","uk":"VEC (структурне скління)"},
+"Bac collab.":{"ru":"Профнастил (совместный)","uk":"Профнастил (спільний)"},
+"Adresse introuvable":{"ru":"Адрес не найден","uk":"Адресу не знайдено"},
+"Chargement…":{"ru":"Загрузка…","uk":"Завантаження…"},
+"Recherche…":{"ru":"Поиск…","uk":"Пошук…"},
+"Géocoder l'adresse":{"ru":"Геокодировать адрес","uk":"Геокодувати адресу"},
+"Voir sur OpenStreetMap":{"ru":"Смотреть на OpenStreetMap","uk":"Дивитися на OpenStreetMap"},
+"Fond © OpenStreetMap — visible en moteur Logiciel.":{"ru":"Подложка © OpenStreetMap — видна в программном движке.","uk":"Підкладка © OpenStreetMap — видима у програмному рушії."},
+"Liste de sommets « x,z » séparés par des espaces.":{"ru":"Список вершин «x,z», разделённых пробелами.","uk":"Список вершин «x,z», розділених пробілами."},
+"Sommets « x,z » (cm) séparés par des espaces.":{"ru":"Вершины «x,z» (см), разделённые пробелами.","uk":"Вершини «x,z» (см), розділені пробілами."},
+"Véranda":{"ru":"Веранда","uk":"Веранда"},
+"1 pente":{"ru":"1 скат","uk":"1 схил"},
+"2 pentes":{"ru":"2 ската","uk":"2 схили"},
+"Écartement profils":{"ru":"Шаг профилей","uk":"Крок профілів"},
+"Teinte":{"ru":"Оттенок","uk":"Відтінок"},
+"Façades (par côté)":{"ru":"Фасады (по сторонам)","uk":"Фасади (за сторонами)"},
+"Côté":{"ru":"Сторона","uk":"Сторона"},
+"Type de face":{"ru":"Тип грани","uk":"Тип грані"},
+"Vitrée":{"ru":"Остеклённая","uk":"Засклена"},
+"Pleine":{"ru":"Сплошная","uk":"Суцільна"},
+"Vide":{"ru":"Пустая","uk":"Порожня"},
+"Ouvrants":{"ru":"Створки","uk":"Стулки"},
+"Tous":{"ru":"Все","uk":"Усі"},
+"1 sur 2":{"ru":"1 из 2","uk":"1 з 2"},
+"Centre":{"ru":"Центр","uk":"Центр"},
+"Type ouvrant":{"ru":"Тип створки","uk":"Тип стулки"},
+"Porte-fen.":{"ru":"Балконная дверь","uk":"Балконні двері"},
+"Façade avant":{"ru":"Передний фасад","uk":"Передній фасад"},
+"Côté droit":{"ru":"Правая сторона","uk":"Права сторона"},
+"Façade arrière":{"ru":"Задний фасад","uk":"Задній фасад"},
+"Côté gauche":{"ru":"Левая сторона","uk":"Ліва сторона"},
+"Cheminée":{"ru":"Камин","uk":"Камін"},
+"Type de foyer":{"ru":"Тип топки","uk":"Тип топки"},
+"Foyer ouvert":{"ru":"Открытая топка","uk":"Відкрита топка"},
+"Insert":{"ru":"Каминная топка (инсерт)","uk":"Камінна топка (інсерт)"},
+"Poêle":{"ru":"Печь","uk":"Піч"},
+"Suspendue":{"ru":"Подвесной","uk":"Підвісний"},
+"Double face":{"ru":"Двусторонний","uk":"Двосторонній"},
+"Éthanol":{"ru":"Биокамин (этанол)","uk":"Біокамін (етанол)"},
+"Hauteur foyer":{"ru":"Высота топки","uk":"Висота топки"},
+"Hauteur conduit":{"ru":"Высота дымохода","uk":"Висота димоходу"},
+"Habillage":{"ru":"Облицовка","uk":"Облицювання"},
+"Emplacement":{"ru":"Расположение","uk":"Розташування"},
+"Bleu":{"ru":"Синий","uk":"Синій"},
+"Sable":{"ru":"Песочный","uk":"Піщаний"},
+"Gris clair":{"ru":"Светло-серый","uk":"Світло-сірий"},
+"Anthracite":{"ru":"Антрацит","uk":"Антрацит"},
+"Vert lagon":{"ru":"Лагунный зелёный","uk":"Лагунний зелений"},
+"Cotes":{"ru":"Размеры","uk":"Розміри"},
+"Standard":{"ru":"Стандарт","uk":"Стандарт"},
+"Sur-mesure":{"ru":"На заказ","uk":"На замовлення"},
+"Format H×L (cm)":{"ru":"Формат В×Ш (см)","uk":"Формат В×Ш (см)"},
+"Ouvrant (Soleal FY 65)":{"ru":"Створка (Soleal FY 65)","uk":"Стулка (Soleal FY 65)"},
+"Minimal":{"ru":"Минимальный","uk":"Мінімальний"},
+"Apparent":{"ru":"Видимый","uk":"Видимий"},
+"Perspective":{"ru":"Перспектива","uk":"Перспектива"},
+"Dessus":{"ru":"Сверху","uk":"Зверху"},
+"Face":{"ru":"Спереди","uk":"Спереду"},
+"Droite":{"ru":"Справа","uk":"Справа"},
+"Câbles inox":{"ru":"Тросы из нержавейки","uk":"Троси з нержавійки"},
+"Tôle perforée":{"ru":"Перфорированный лист","uk":"Перфорований лист"},
+"Plein / tôle":{"ru":"Сплошной / лист","uk":"Суцільний / лист"},
+"Vue en plan (dessus)":{"ru":"Вид в плане (сверху)","uk":"Вид у плані (зверху)"},
+"Vue":{"ru":"Вид","uk":"Вид"},
+"Coupe":{"ru":"Разрез","uk":"Розріз"},
+"Transversale":{"ru":"Поперечный","uk":"Поперечний"},
+"Longitudinale":{"ru":"Продольный","uk":"Поздовжній"},
+"Aucune":{"ru":"Нет","uk":"Немає"},
+"Gauche":{"ru":"Слева","uk":"Зліва"},
+"Volume":{"ru":"Объём","uk":"Об'єм"},
+"Volume (toit)":{"ru":"Объём (крыша)","uk":"Об'єм (дах)"},
+"Étage":{"ru":"Этаж","uk":"Поверх"},
+"Transformation":{"ru":"Преобразование","uk":"Перетворення"},
+"Cloisons (plan d'étage)":{"ru":"Перегородки (план этажа)","uk":"Перегородки (план поверху)"},
+"Refend":{"ru":"Несущая стена","uk":"Несуча стіна"},
+"Placo":{"ru":"Гипсокартон","uk":"Гіпсокартон"},
+"Verrière":{"ru":"Стеклянная перегородка","uk":"Скляна перегородка"},
+"Épaisseur (cm)":{"ru":"Толщина (см)","uk":"Товщина (см)"},
+"Hauteur (0=pleine)":{"ru":"Высота (0=полная)","uk":"Висота (0=повна)"},
+"Finition (couleur RAL ou texture)":{"ru":"Отделка (цвет RAL или текстура)","uk":"Оздоблення (колір RAL або текстура)"},
+"Face A":{"ru":"Грань A","uk":"Грань A"},
+"Face B":{"ru":"Грань B","uk":"Грань B"},
+"Tranche":{"ru":"Торец","uk":"Торець"},
+"Défaut":{"ru":"По умолчанию","uk":"За замовчуванням"},
+"Couleur":{"ru":"Цвет","uk":"Колір"},
+"Texture":{"ru":"Текстура","uk":"Текстура"},
+"Doublage (finition + isolant)":{"ru":"Облицовка (отделка + утеплитель)","uk":"Облицювання (оздоблення + утеплювач)"},
+"Doublage":{"ru":"Облицовка","uk":"Облицювання"},
+"Carrelage":{"ru":"Плитка","uk":"Плитка"},
+"BA13":{"ru":"BA13","uk":"BA13"},
+"Isolant":{"ru":"Утеплитель","uk":"Утеплювач"},
+"Épaisseur finition (cm)":{"ru":"Толщина отделки (см)","uk":"Товщина оздоблення (см)"},
+"Épaisseur isolant (cm)":{"ru":"Толщина утеплителя (см)","uk":"Товщина утеплювача (см)"},
+"Activé":{"ru":"Включено","uk":"Увімкнено"},
+"Désactivé":{"ru":"Отключено","uk":"Вимкнено"},
+"Portes (dans les cloisons)":{"ru":"Двери (в перегородках)","uk":"Двері (у перегородках)"},
+"Largeur porte":{"ru":"Ширина двери","uk":"Ширина дверей"},
+"Charnière":{"ru":"Петля","uk":"Завіса"},
+"Début":{"ru":"Начало","uk":"Початок"},
+"Fin":{"ru":"Конец","uk":"Кінець"},
+"Sens d'ouverture":{"ru":"Направление открывания","uk":"Напрямок відкривання"},
+"Placer une porte":{"ru":"Разместить дверь","uk":"Розмістити двері"},
+"Effacer":{"ru":"Стереть","uk":"Стерти"},
+"Simple (défaut)":{"ru":"Простой (по умолчанию)","uk":"Простий (за замовчуванням)"},
+"Désélectionner":{"ru":"Снять выделение","uk":"Зняти виділення"},
+"Fond de plan (DXF / SVG / image)":{"ru":"Подложка плана (DXF / SVG / изображение)","uk":"Підкладка плану (DXF / SVG / зображення)"},
+"Importer DXF / SVG":{"ru":"Импортировать DXF / SVG","uk":"Імпортувати DXF / SVG"},
+"Importer une image / PDF":{"ru":"Импортировать изображение / PDF","uk":"Імпортувати зображення / PDF"},
+"Contour immeuble":{"ru":"Контур здания","uk":"Контур будівлі"},
+"Contour dalle":{"ru":"Контур плиты","uk":"Контур плити"},
+"Créer cloisons":{"ru":"Создать перегородки","uk":"Створити перегородки"},
+"Afficher":{"ru":"Показать","uk":"Показати"},
+"Unité du dessin":{"ru":"Единица чертежа","uk":"Одиниця креслення"},
+"Opacité":{"ru":"Непрозрачность","uk":"Непрозорість"},
+"Calibrer (2 points + distance)":{"ru":"Калибровать (2 точки + расстояние)","uk":"Калібрувати (2 точки + відстань)"},
+"Rendu IA (Gemini)":{"ru":"ИИ-рендеринг (Gemini)","uk":"ШІ-рендеринг (Gemini)"},
+"Rendu IA de la maquette":{"ru":"ИИ-рендеринг макета","uk":"ШІ-рендеринг макета"},
+"Générer le rendu":{"ru":"Сгенерировать рендеринг","uk":"Згенерувати рендеринг"},
+"Recapturer la vue":{"ru":"Заново захватить вид","uk":"Заново захопити вид"},
+"Heure dorée":{"ru":"Золотой час","uk":"Золота година"},
+"Plein jour":{"ru":"Дневной свет","uk":"Денне світло"},
+"Nuit":{"ru":"Ночь","uk":"Ніч"},
+"Nature / lac":{"ru":"Природа / озеро","uk":"Природа / озеро"},
+"Verre & béton":{"ru":"Стекло и бетон","uk":"Скло та бетон"},
+"Bois & pierre":{"ru":"Дерево и камень","uk":"Дерево та камінь"},
+"Nouveau dossier":{"ru":"Новая папка","uk":"Нова тека"},
+"Scène":{"ru":"Сцена","uk":"Сцена"},
+"Scènes enregistrées":{"ru":"Сохранённые сцены","uk":"Збережені сцени"},
+"Musique d'ambiance":{"ru":"Фоновая музыка","uk":"Фонова музика"},
+"Charpente / toiture":{"ru":"Стропильная система / кровля","uk":"Кроквяна система / покрівля"},
+"Paramètres":{"ru":"Параметры","uk":"Параметри"},
+"Mise en page":{"ru":"Компоновка листа","uk":"Компонування аркуша"},
+"Format & orientation":{"ru":"Формат и ориентация","uk":"Формат та орієнтація"},
+"Paysage":{"ru":"Альбомная","uk":"Альбомна"},
+"Portrait":{"ru":"Книжная","uk":"Книжкова"},
+"Échelle (vues plan/élévation)":{"ru":"Масштаб (виды план/фасад)","uk":"Масштаб (види план/фасад)"},
+"Ajustée":{"ru":"Подогнанный","uk":"Підігнаний"},
+"Insérer une vue figée":{"ru":"Вставить зафиксированный вид","uk":"Вставити зафіксований вид"},
+"Étage du plan (coupe à 1 m)":{"ru":"Этаж плана (сечение на 1 м)","uk":"Поверх плану (переріз на 1 м)"},
+"Plan (dessus)":{"ru":"План (сверху)","uk":"План (зверху)"},
+"Élévation face":{"ru":"Фасад спереди","uk":"Фасад спереду"},
+"Élévation droite":{"ru":"Фасад справа","uk":"Фасад справа"},
+"Vue 3D":{"ru":"3D-вид","uk":"3D-вид"},
+"Cotes noires sur le bâti":{"ru":"Чёрные размеры на здании","uk":"Чорні розміри на будівлі"},
+"Distance cotes (sur le plan)":{"ru":"Расстояние размеров (на плане)","uk":"Відстань розмірів (на плані)"},
+"Planches":{"ru":"Листы","uk":"Аркуші"},
+"＋ Nouvelle planche":{"ru":"＋ Новый лист","uk":"＋ Новий аркуш"},
+"Aperçu — glisser pour placer, coin ↘ pour l'échelle, double-clic = échelle exacte":{"ru":"Предпросмотр — перетащите для размещения, угол ↘ для масштаба, двойной клик = точный масштаб","uk":"Попередній перегляд — перетягніть для розміщення, кут ↘ для масштабу, подвійний клік = точний масштаб"},
+"Cartouche":{"ru":"Штамп","uk":"Штамп"},
+"AGENCE / ARCHITECTE (votre identité)":{"ru":"АГЕНТСТВО / АРХИТЕКТОР (ваши данные)","uk":"АГЕНЦІЯ / АРХІТЕКТОР (ваші дані)"},
+"LOGO":{"ru":"ЛОГОТИП","uk":"ЛОГОТИП"},
+"Taille":{"ru":"Размер","uk":"Розмір"},
+"Glissez le logo dans la planche pour le positionner.":{"ru":"Перетащите логотип на лист, чтобы разместить его.","uk":"Перетягніть логотип на аркуш, щоб розмістити його."},
+"Template de planche (cartouche dessiné)":{"ru":"Шаблон листа (нарисованный штамп)","uk":"Шаблон аркуша (намальований штамп)"},
+"＋ Nouveau":{"ru":"＋ Новый","uk":"＋ Новий"},
+"✎ Dessiner":{"ru":"✎ Рисовать","uk":"✎ Малювати"},
+"💾 Enregistrer":{"ru":"💾 Сохранить","uk":"💾 Зберегти"},
+"🗑 Supprimer":{"ru":"🗑 Удалить","uk":"🗑 Видалити"},
+"🖨 Imprimer / exporter PDF":{"ru":"🖨 Печать / экспорт PDF","uk":"🖨 Друк / експорт PDF"},
+"📥 Importer DXF / SVG":{"ru":"📥 Импортировать DXF / SVG","uk":"📥 Імпортувати DXF / SVG"},
+"🖼️ Importer une image / PDF":{"ru":"🖼️ Импортировать изображение / PDF","uk":"🖼️ Імпортувати зображення / PDF"},
+"Image scannée (JPG / PNG / PDF) à mettre à l'échelle":{"ru":"Отсканированное изображение (JPG / PNG / PDF) для масштабирования","uk":"Відсканроване зображення (JPG / PNG / PDF) для масштабування"},
+"Importe une polyligne (DXF, SVG) pour t'en servir de sous-cul : trace par-dessus avec accrochage, ou convertis-la en contour.":{"ru":"Импортируйте полилинию (DXF, SVG) для использования как подложку: обведите её с привязкой или преобразуйте в контур.","uk":"Імпортуйте полілінію (DXF, SVG) для використання як підкладку: обведіть її з прив'язкою або перетворіть на контур."},
+": exporte-le en DXF (DXFOUT) — le binaire DWG n'est pas lisible en navigateur.":{"ru":": экспортируйте его в DXF (DXFOUT) — двоичный DWG не читается в браузере.","uk":": експортуйте його в DXF (DXFOUT) — двійковий DWG не читається у браузері."},
+"Coupes":{"ru":"Разрезы","uk":"Розрізи"},
+"Mes configurations":{"ru":"Мои конфигурации","uk":"Мої конфігурації"},
+"＋ Enregistrer la config actuelle":{"ru":"＋ Сохранить текущую конфигурацию","uk":"＋ Зберегти поточну конфігурацію"},
+"📁 Nouveau dossier":{"ru":"📁 Новая папка","uk":"📁 Нова тека"},
+"glisser pour ranger":{"ru":"перетащите для упорядочивания","uk":"перетягніть для впорядкування"},
+"Éditer":{"ru":"Редактировать","uk":"Редагувати"},
+"Màj":{"ru":"Обновить","uk":"Оновити"},
+"◱ Scène":{"ru":"◱ Сцена","uk":"◱ Сцена"},
+"Scène (assemblage)":{"ru":"Сцена (сборка)","uk":"Сцена (збірка)"},
+"Scène — assemblage":{"ru":"Сцена — сборка","uk":"Сцена — збірка"},
+"Glissez une configuration dans la vue pour l'ajouter (elle se pose au sol au point visé), ou cliquez « + ». Sélectionnez un élément puis réglez Position / Hauteur / Rotation.":{"ru":"Перетащите конфигурацию в вид, чтобы добавить её (она ляжет на пол в целевой точке), или нажмите «+». Выберите элемент, затем настройте Положение / Высоту / Поворот.","uk":"Перетягніть конфігурацію у вид, щоб додати її (вона ляже на підлогу в цільовій точці), або натисніть «+». Виберіть елемент, потім налаштуйте Положення / Висоту / Обертання."},
+"Configurations disponibles":{"ru":"Доступные конфигурации","uk":"Доступні конфігурації"},
+"Aucune config. Enregistrez d'abord un objet (murs, toiture, escalier…) via 💾.":{"ru":"Нет конфигураций. Сначала сохраните объект (стены, кровля, лестница…) через 💾.","uk":"Немає конфігурацій. Спочатку збережіть об'єкт (стіни, покрівля, сходи…) через 💾."},
+"Éléments de la scène":{"ru":"Элементы сцены","uk":"Елементи сцени"},
+"Décor (mode Réaliste)":{"ru":"Окружение (режим Реалистичный)","uk":"Оточення (режим Реалістичний)"},
+"💾 Enregistrer cette scène":{"ru":"💾 Сохранить эту сцену","uk":"💾 Зберегти цю сцену"},
+"Vide — glissez une config ci-dessus dans la vue.":{"ru":"Пусто — перетащите конфигурацию сверху в вид.","uk":"Порожньо — перетягніть конфігурацію зверху у вид."},
+"Eau":{"ru":"Вода","uk":"Вода"},
+"Arbres":{"ru":"Деревья","uk":"Дерева"},
+"OBJ universel · DAE pour SketchUp · IFC4 pour ArchiCAD/Revit · IFC 2x3 pour SketchUp / vieux importeurs (unités m)":{"ru":"OBJ универсальный · DAE для SketchUp · IFC4 для ArchiCAD/Revit · IFC 2x3 для SketchUp / старых импортёров (единицы м)","uk":"OBJ універсальний · DAE для SketchUp · IFC4 для ArchiCAD/Revit · IFC 2x3 для SketchUp / старих імпортерів (одиниці м)"},
+"🎨 Rendu IA (Gemini)":{"ru":"🎨 ИИ-рендеринг (Gemini)","uk":"🎨 ШІ-рендеринг (Gemini)"},
+"Bâtiment":{"ru":"Здание","uk":"Будівля"},
+"Éléments de construction":{"ru":"Строительные элементы","uk":"Будівельні елементи"},
+"Mobilier":{"ru":"Мебель","uk":"Меблі"},
+"Cuisine":{"ru":"Кухня","uk":"Кухня"},
+"Rechercher…":{"ru":"Поиск…","uk":"Пошук…"},
+"Recentrer":{"ru":"Центрировать","uk":"Центрувати"},
+"Mon compte":{"ru":"Моя учётная запись","uk":"Мій обліковий запис"},
+"Matériaux":{"ru":"Материалы","uk":"Матеріали"},
+"Site / géolocalisation":{"ru":"Участок / геолокация","uk":"Ділянка / геолокація"},
+"Libre":{"ru":"Свободный","uk":"Вільний"},
+"Marbre":{"ru":"Мрамор","uk":"Мармур"},
+"Alu":{"ru":"Алюминий","uk":"Алюміній"},
+"Inox":{"ru":"Нержавейка","uk":"Нержавійка"},
+"Oui":{"ru":"Да","uk":"Так"},
+"Non":{"ru":"Нет","uk":"Ні"}
+};
+(function(){ for(var fr in I18N_RUUK){ var t=I18N_RUUK[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
 function pick(){ try{ var sv=localStorage.getItem('bpo_lang'); if(sv) return sv; }catch(e){}
   var l=(navigator.language||navigator.userLanguage||'en').slice(0,2).toLowerCase();
-  return (l==='fr'||I18N[l])?l:'en'; }
+  return (l==='fr'||I18N[l]||(typeof FLAGS!=='undefined'&&FLAGS[l]))?l:'en'; }
 function translateDOM(){
   var root=document.getElementById('app'); if(!root) return;
   if(mo) mo.disconnect();
@@ -13835,7 +15086,9 @@ var INTRO_MSG={
  zh:"这是 BPO Architectural Parametrics 的第一个版本。此工具并非用于取代建筑 BIM 软件——ArchiCAD（Graphisoft）在这方面做得非常出色！我们也想将此工具献给它的创始人、我们的导师 Bojár Gábor ;)<br><br>我们希望让所有人都能使用参数化工具的强大功能，帮助您在项目实现中节省时间。<br><br>欢迎向我们发送意见和建议。<br><br>我们即将添加 « 厂商 » 板块！",
  ja:"これは BPO Architectural Parametrics の最初のバージョンです。このツールは建築 BIM ソフトを置き換えるものではありません——ArchiCAD（Graphisoft）がそれを見事に担っています！また、このツールを創業者であり私たちの師である Bojár Gábor に捧げます ;)<br><br>パラメトリックツールの力をすべての人に届け、プロジェクトの実現にかかる時間を短縮したいと考えています。<br><br>ご意見・ご要望をぜひお寄せください。<br><br>まもなく « メーカー » セクションを追加します！",
  hi:"यह BPO Architectural Parametrics का पहला संस्करण है। यह टूल किसी आर्किटेक्चरल BIM सॉफ़्टवेयर की जगह लेने के लिए नहीं है — ArchiCAD (Graphisoft) यह काम बहुत अच्छे से करता है! हम यह टूल इसके संस्थापक, हमारे गुरु Bojár Gábor को समर्पित करना चाहते हैं ;)<br><br>हम पैरामीट्रिक टूल्स की शक्ति सभी तक पहुँचाना चाहते हैं, ताकि आपके प्रोजेक्ट्स को साकार करने में आपका समय बचे।<br><br>अपनी टिप्पणियाँ और सुझाव हमें ज़रूर भेजें।<br><br>हम जल्द ही « निर्माता » रूब्रिक जोड़ेंगे!",
- ar:"هذه هي النسخة الأولى من BPO Architectural Parametrics. لا تهدف هذه الأداة إلى استبدال برامج BIM المعمارية — فـ ArchiCAD (Graphisoft) يقوم بذلك على أكمل وجه! كما نودّ إهداء هذه الأداة إلى بويار غابور، مؤسِّسها ومعلِّمنا ;)<br><br>نريد أن نُتيح قوة الأدوات البارامترية للجميع، لتوفير وقتك في إنجاز مشاريعك.<br><br>لا تتردّد في إرسال ملاحظاتك واقتراحاتك إلينا.<br><br>سنضيف قريبًا قسم « المصنّعون »!"
+ ar:"هذه هي النسخة الأولى من BPO Architectural Parametrics. لا تهدف هذه الأداة إلى استبدال برامج BIM المعمارية — فـ ArchiCAD (Graphisoft) يقوم بذلك على أكمل وجه! كما نودّ إهداء هذه الأداة إلى بويار غابور، مؤسِّسها ومعلِّمنا ;)<br><br>نريد أن نُتيح قوة الأدوات البارامترية للجميع، لتوفير وقتك في إنجاز مشاريعك.<br><br>لا تتردّد في إرسال ملاحظاتك واقتراحاتك إلينا.<br><br>سنضيف قريبًا قسم « المصنّعون »!",
+ ru:"Это первая версия BPO Architectural Parametrics. Этот инструмент не призван заменить архитектурное BIM-ПО — ArchiCAD (Graphisoft) прекрасно с этим справляется! Мы также хотим посвятить его основателю ArchiCAD, нашему наставнику Бояру Габору ;)<br><br>Мы хотим сделать мощь параметрических инструментов доступной каждому, чтобы вы экономили время при реализации проектов.<br><br>Не стесняйтесь присылать нам замечания и пожелания.<br><br>Скоро мы добавим раздел « Производители »!",
+ uk:"Це перша версія BPO Architectural Parametrics. Цей інструмент не має на меті замінити архітектурне BIM-ПЗ — ArchiCAD (Graphisoft) чудово з цим впорається! Ми також хочемо присвятити його засновнику ArchiCAD, нашому наставнику Бояру Габору ;)<br><br>Ми прагнемо зробити потужність параметричних інструментів доступною кожному, щоб ви заощаджували час у реалізації проєктів.<br><br>Не вагайтеся надсилати нам зауваження та побажання.<br><br>Незабаром ми додамо розділ « Виробники »!"
 };
 /* Ligne de clôture, mise en valeur, traduite par langue. */
 var INTRO_HOP={
@@ -13848,7 +15101,9 @@ var INTRO_HOP={
  zh:"希望您喜欢这些工具。",
  ja:"これらのツールを楽しんでいただければ幸いです。",
  hi:"हमें आशा है कि आपको ये टूल्स पसंद आएँगे।",
- ar:"نأمل أن تستمتع بهذه الأدوات."
+ ar:"نأمل أن تستمتع بهذه الأدوات.",
+ ru:"Надеемся, вам понравятся эти инструменты.",
+ uk:"Слава Україні! 🇺🇦"
 };
 /* Écran d'introduction à l'outil (toutes langues sauf hongrois). Clic pour passer. */
 function playIntro(l){
@@ -13903,7 +15158,7 @@ function playIntro(l){
   function close(){ clearTimeout(timer); animSoundStop(); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
   ov.addEventListener('click', close);
 }
-function setLang(l){ LANG=I18N[l]||l==='fr'?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
+function setLang(l){ LANG=(l==='fr'||I18N[l]||(typeof FLAGS!=='undefined'&&FLAGS[l]))?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
   var sel=document.getElementById('langsel'); if(sel) sel.value=LANG; translateDOM();
   if(l==='hu') playGraphisoftTribute(); else playIntro(l); }
 function start(){
@@ -13919,5 +15174,6 @@ window.playAbout=function(){ try{ var l=(document.getElementById('langsel')||{})
 window.SOUND_ON=true;   /* son joué pendant les animations (intro langue / À propos) */
 })();
 </script>
+<!-- ru/uk intégrés -->
 </body>
 </html>
