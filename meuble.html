@@ -45,9 +45,6 @@ header{grid-row:1;}
 #langflag{flex:none;display:inline-block;}
 @keyframes flagpop{0%{transform:scale(.3) rotate(-18deg);opacity:.2}55%{transform:scale(1.3) rotate(8deg);opacity:1}100%{transform:scale(1) rotate(0)}}
 #langflag.pop{animation:flagpop .55s cubic-bezier(.34,1.56,.64,1);}
-#soundBtn{background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:12px;padding:3px 7px;cursor:pointer;outline:none;line-height:1;}
-#soundBtn:hover{border-color:var(--am,#ff8a3d);color:var(--am,#ff8a3d);}
-#soundBtn.on{border-color:var(--cy,#5eb8ff);color:var(--cy,#5eb8ff);}
 #langsel{padding-left:6px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:4px 6px;cursor:pointer;outline:none;}
 #aboutBtn{background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:6px;font-size:11px;padding:4px 9px;cursor:pointer;outline:none;white-space:nowrap;}
 #aboutBtn:hover{border-color:var(--am,#ff8a3d);color:var(--am,#ff8a3d);}
@@ -339,7 +336,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     </div>
     <div id="langbar">
       <button id="aboutBtn" title="À propos de BPO" onclick="try{playAbout();}catch(e){}">À propos</button>
-      <button id="soundBtn" title="Musique d'ambiance">🔈</button>
+      <button id="prefsBtn" title="Préférences" onclick="try{togglePrefs();}catch(e){}" style="filter:grayscale(1);font-size:13px;padding:3px 8px;">⚙</button>
       <span id="langflag" style="display:inline-block;width:22px;height:15px;border:1px solid var(--ln);border-radius:2px;overflow:hidden;text-align:center;"></span>
       <select id="langsel" title="Language / Langue">
       <option value="fr">🇫🇷 Français</option><option value="en">🇬🇧 English</option><option value="es">🇪🇸 Español</option>
@@ -375,9 +372,10 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     <button class="vp-btn" id="redoBtn" title="Refaire (Ctrl+Y)" style="left:48px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:16px;line-height:1;">↷</button>
     <button class="vp-btn" id="layoutBtn" title="4 vues (Perspective / Dessus / Face / Droite) — double-clic sur une vue pour l'agrandir" style="left:87px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:15px;line-height:1;">⊞</button>
     <button class="vp-btn" id="themeBtn" title="Thème clair / sombre" style="left:126px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:14px;line-height:1;">◐</button>
-    <div id="viewOverlay" style="position:absolute;top:8px;left:165px;z-index:30;display:none;align-items:center;gap:6px;background:rgba(24,28,36,0.88);border:1px solid #33404d;border-radius:8px;padding:5px 8px;font-size:12px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
+    <div id="viewOverlay" style="position:absolute;top:8px;left:165px;z-index:30;display:none;align-items:center;gap:5px;background:rgba(24,28,36,0.88);border:1px solid #33404d;border-radius:6px;padding:2px 7px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
     <button class="vp-btn" id="recenter" title="Recentrer la vue" style="top:auto;right:auto;bottom:14px;left:50%;transform:translateX(-50%);">⊕ Recentrer</button>
     <button class="vp-btn" id="sceneBtn" title="Scène — assemblage de configurations" style="top:8px;right:10px;background:#1b1b1b;color:#f2f2f2;border-color:#888;filter:grayscale(1);">◱ Scène</button>
+    <div id="prefsPanel" style="position:absolute;top:46px;right:10px;z-index:40;display:none;width:250px;max-height:80%;overflow:auto;background:rgba(22,26,34,0.97);border:1px solid #33404d;border-radius:8px;padding:10px 12px;color:#cdd6e0;box-shadow:0 8px 26px rgba(0,0,0,.55);font-family:system-ui,sans-serif;"></div>
     <div class="vp-bar" id="render-banner" style="right:206px;"></div>
     <div class="vp-bar" id="webgl-bar" style="right:128px;"></div>
     <!-- ESPACE PAPIER : éditeur de mise en page plein cadre -->
@@ -1025,8 +1023,9 @@ WGL.renderG=function(){
     var dW=(typeof DIMS!=='undefined'&&DIMS)?DIMS.w:1.0, dD=(typeof DIMS!=='undefined'&&DIMS)?DIMS.d:1.0, dH=(typeof DIMS!=='undefined'&&DIMS)?DIMS.h:1.0;
     var L0=e.L[0], hyl=Math.max(0.25,L0[1]), ks=dH*0.45/hyl;
     gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.useProgram(WGL.progSky);
-    gl.uniform3f(gl.getUniformLocation(WGL.progSky,'topC'),0.40,0.60,0.86);
-    gl.uniform3f(gl.getUniformLocation(WGL.progSky,'horC'),0.87,0.91,0.96);
+    var _pTop=(typeof prefHex01==='function'&&prefHex01(PREFS.skyTop))||[0.40,0.60,0.86], _pHor=(typeof prefHex01==='function'&&prefHex01(PREFS.skyHor))||[0.87,0.91,0.96];
+    gl.uniform3f(gl.getUniformLocation(WGL.progSky,'topC'),_pTop[0],_pTop[1],_pTop[2]);
+    gl.uniform3f(gl.getUniformLocation(WGL.progSky,'horC'),_pHor[0],_pHor[1],_pHor[2]);
     var spq=gl.getAttribLocation(WGL.progSky,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.skyBuf); gl.enableVertexAttribArray(spq); gl.vertexAttribPointer(spq,2,gl.FLOAT,false,0,0);
     gl.drawArrays(gl.TRIANGLES,0,6);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.useProgram(WGL.progFloor);
@@ -1034,8 +1033,9 @@ WGL.renderG=function(){
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'oc'),0,0);
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'oh'),dW*0.5,dD*0.5);
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'sdir'),-L0[0]*ks,-L0[2]*ks);
-    gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'floorC'),0.88,0.89,0.90);
-    gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'horC'),0.87,0.91,0.96);
+    var _pGrd=(typeof prefHex01==='function'&&prefHex01(PREFS.ground))||[0.88,0.89,0.90];
+    gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'floorC'),_pGrd[0],_pGrd[1],_pGrd[2]);
+    gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'horC'),_pHor[0],_pHor[1],_pHor[2]);
     var fpq=gl.getAttribLocation(WGL.progFloor,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.floorBuf); gl.enableVertexAttribArray(fpq); gl.vertexAttribPointer(fpq,3,gl.FLOAT,false,0,0);
     gl.drawArrays(gl.TRIANGLES,0,6);
   }
@@ -1947,6 +1947,50 @@ var RENDER = 'smooth';   /* mode de rendu : smooth | flat | hidden | wire */
 var ENGINE = 'soft';
 var ORTHO = false;   /* projection orthographique (élévations / IGH) */
 var UILIGHT = false;       /* thème clair (UI) — NE PAS confondre avec LIGHT (direction lumière) */
+
+/* ===== PRÉFÉRENCES DE PRÉSENTATION (persistées) : thème, polices, ciel/sol WebGL, trame ===== */
+var PREFS_KEY='BPO_PREFS_v1';
+var PREFS=(function(){ var d={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0};
+  try{ var s=JSON.parse(localStorage.getItem(PREFS_KEY)); if(s) for(var k in s){ if(k in d) d[k]=s[k]; } }catch(e){} return d; })();
+function prefsSave(){ try{ localStorage.setItem(PREFS_KEY, JSON.stringify(PREFS)); }catch(e){} }
+/* hex '#rrggbb' -> [r,g,b] en 0..1, ou null */
+function prefHex01(h){ if(!h) return null; h=(''+h).replace('#',''); if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; if(h.length<6) return null; var n=parseInt(h,16); if(isNaN(n)) return null; return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255]; }
+/* applique thème + couleur police, puis redessine */
+function applyPrefs(){
+  if(PREFS.theme){ UILIGHT=(PREFS.theme==='light'); document.documentElement.classList.toggle('light',UILIGHT); if(document.body) document.body.classList.toggle('light',UILIGHT); }
+  var rs=document.documentElement.style;
+  if(PREFS.fontColor) rs.setProperty('--tx',PREFS.fontColor); else rs.removeProperty('--tx');
+  DIRTY=true; if(typeof WGL!=='undefined' && WGL.render && (WGL.gActive||WGL.txActive)) WGL.render();
+}
+function togglePrefs(){ var p=document.getElementById('prefsPanel'); if(!p) return; if(p.style.display==='block'){ p.style.display='none'; } else { prefsUI(); p.style.display='block'; } }
+function prefsUI(){
+  var p=document.getElementById('prefsPanel'); if(!p) return;
+  p.innerHTML='';
+  var hd=document.createElement('div'); hd.style.cssText='font-weight:600;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;';
+  hd.innerHTML='<span>Préférences</span>'; var x=document.createElement('span'); x.textContent='✕'; x.style.cssText='cursor:pointer;opacity:.7;'; x.onclick=function(){ p.style.display='none'; }; hd.appendChild(x); p.appendChild(hd);
+  function row(label){ var d=document.createElement('div'); d.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;font-size:12px;'; var s=document.createElement('span'); s.textContent=label; s.style.opacity='.9'; d.appendChild(s); return d; }
+  function colorCtl(val,def,on){ var c=document.createElement('input'); c.type='color'; c.value=val||def; c.style.cssText='width:40px;height:24px;padding:0;border:1px solid #3a4653;border-radius:4px;background:none;cursor:pointer;'; c.oninput=function(){ on(c.value); }; return c; }
+  /* Thème */
+  var rT=row('Thème'); var wr=document.createElement('div'); wr.style.cssText='display:flex;gap:4px;'; var cur=(PREFS.theme||(UILIGHT?'light':'dark'));
+  [['light','Blanc'],['dark','Noir']].forEach(function(o){ var b=document.createElement('button'); b.textContent=o[1]; var on=(cur===o[0]); b.style.cssText='font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(on?'#ff8a3d':'#232a34')+';color:'+(on?'#141821':'#cdd6e0')+';'; b.onclick=function(){ PREFS.theme=o[0]; prefsSave(); applyPrefs(); prefsUI(); }; wr.appendChild(b); });
+  rT.appendChild(wr); p.appendChild(rT);
+  /* Couleur des polices */
+  var rF=row('Couleur des polices'); rF.appendChild(colorCtl(PREFS.fontColor,'#e8e9ec',function(v){ PREFS.fontColor=v; prefsSave(); applyPrefs(); })); p.appendChild(rF);
+  /* Ciel WebGL (haut + horizon) */
+  var rSt=row('Ciel — haut (WebGL)'); rSt.appendChild(colorCtl(PREFS.skyTop,'#6699db',function(v){ PREFS.skyTop=v; prefsSave(); applyPrefs(); })); p.appendChild(rSt);
+  var rSh=row('Ciel — horizon (WebGL)'); rSh.appendChild(colorCtl(PREFS.skyHor,'#deeaf5',function(v){ PREFS.skyHor=v; prefsSave(); applyPrefs(); })); p.appendChild(rSh);
+  /* Sol WebGL */
+  var rG=row('Sol (WebGL)'); rG.appendChild(colorCtl(PREFS.ground,'#e0e3e6',function(v){ PREFS.ground=v; prefsSave(); applyPrefs(); })); p.appendChild(rG);
+  /* Trame : couleur + taille */
+  var rGc=row('Couleur de la trame'); rGc.appendChild(colorCtl(PREFS.gridColor,'#8c94a0',function(v){ PREFS.gridColor=v; prefsSave(); DIRTY=true; })); p.appendChild(rGc);
+  var rGs=row('Taille de la trame'); var sel=document.createElement('select'); sel.style.cssText='font-size:11px;padding:3px 5px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;';
+  [['0','Auto'],['0.5','0,5 m'],['1','1 m'],['2','2 m'],['5','5 m'],['10','10 m']].forEach(function(o){ var op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sel.appendChild(op); });
+  sel.value=String(PREFS.gridStep||0); sel.onchange=function(){ PREFS.gridStep=parseFloat(sel.value)||0; prefsSave(); DIRTY=true; }; rGs.appendChild(sel); p.appendChild(rGs);
+  /* Réinitialiser */
+  var rst=document.createElement('button'); rst.textContent='Réinitialiser'; rst.style.cssText='width:100%;margin-top:10px;font-size:11px;padding:6px;border-radius:5px;border:1px solid #3a4653;background:#232a34;color:#cdd6e0;cursor:pointer;';
+  rst.onclick=function(){ PREFS={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0}; prefsSave(); applyPrefs(); prefsUI(); }; p.appendChild(rst);
+  var note=document.createElement('div'); note.style.cssText='font-size:9.5px;opacity:.6;margin-top:6px;'; note.textContent='Sol/ciel visibles en rendu WebGL. D\'autres réglages à venir.'; p.appendChild(note);
+}
 var LAYOUT = 'single';   /* 'single' | 'quad' (4 vues façon Rhino) */
 var SINGLEVIEW = 'persp'; /* en 'single' : 'persp' | 'top' | 'front' | 'right' (plein cadre) */     /* moteur de rendu global : 'soft' (logiciel) | 'webgl' */
 var P  = { w:100, h:200, d:55, sh:3, dr:2 };  /* paramètres meuble */
@@ -2462,7 +2506,12 @@ var PLOT_CLEAN=false;   /* true pendant une capture de vue pour la mise en page 
 var COTE_INK=null, COTE_FS=10, COTE_OFF=null;   /* override couleur/taille/distance des cotes en capture */
 var CUT_Y=null;   /* plan de coupe horizontal (m) : les faces entièrement au-dessus sont masquées (plan d'étage) */
 var PLAN_STOREY=null;   /* immeuble : étage affiché en vue de dessus (null = volume/toit) */
-var SECT_ON=false, SECT_AXIS='x', SECT_POS=0, SECT_KEEP=-1, _SECT_ACTIVE=false, SECT_DRAG=false;   /* coupe verticale (élévations) : axe x=transversale, z=longitudinale */
+/* Deux plans de coupe verticaux indépendants, affichables en même temps :
+   transversale (axe x, vue gauche/droite) et longitudinale (axe z, vue face/arrière). */
+var CUTX={on:false,pos:0,keep:-1};   /* coupe transversale : plan à x=pos */
+var CUTZ={on:false,pos:0,keep:1};    /* coupe longitudinale : plan à z=pos */
+var _SECT_ACTIVE=false, _SA_AXIS='x', _SA_POS=0, _SA_KEEP=-1;   /* coupe active pendant le rendu d'une vue */
+var SECT_DRAG=null;   /* 'x' ou 'z' pendant le déplacement d'une cible de coupe en plan, sinon null */
 var QUAD_VIEWS=['persp','top','front','right'], QUAD_LABEL_HITS=[];   /* vue de chaque quadrant + zones cliquables des libellés */
 function coteInk(def){ return COTE_INK||def; }
 function coteFont(){ return 'bold '+COTE_FS+'px monospace'; }
@@ -2557,29 +2606,30 @@ function drawGizmo(cam,W,H){
       ctx.stroke(); });
     ctx.setLineDash([]); ctx.restore();
   }
-  /* cible de coupe en plan (vue de dessus) : trait du plan de coupe + flèches de sens de regard.
-     Déplaçable en glissant (voir mousedown/mousemove). */
-  if(MODE==='immeuble' && SECT_ON && cam.fwd && cam.fwd[1]<-0.9 && typeof IMM_INFO!=='undefined' && IMM_INFO && !WGL.gActive && !WGL.txActive){
-    var I=IMM_INFO, yz=0.02, A,B, off=0.6;
-    if(SECT_AXIS==='x'){ A=[SECT_POS,yz,I.z0-off]; B=[SECT_POS,yz,I.z1+off]; }
-    else { A=[I.x0-off,yz,SECT_POS]; B=[I.x1+off,yz,SECT_POS]; }
-    var pa=proj(cam,A,W,H), pb=proj(cam,B,W,H);
-    if(pa&&pb){ ctx.save();
-      ctx.setLineDash([10,6]); ctx.strokeStyle='#ff5a3d'; ctx.lineWidth=2.5;
-      ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); ctx.setLineDash([]);
-      /* flèches de sens de regard (côté conservé) à chaque extrémité */
-      var d=(SECT_AXIS==='x')?[SECT_KEEP<0?-1:1,0,0]:[0,0,SECT_KEEP<0?-1:1];
-      [A,B].forEach(function(P){ var tip=[P[0]+d[0]*0.9,P[1],P[2]+d[2]*0.9], pE=proj(cam,P,W,H), pT=proj(cam,tip,W,H);
-        if(pE&&pT){ ctx.strokeStyle='#ff5a3d'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(pE.x,pE.y); ctx.lineTo(pT.x,pT.y); ctx.stroke();
-          var ang=Math.atan2(pT.y-pE.y,pT.x-pE.x), ah=7;
-          ctx.beginPath(); ctx.moveTo(pT.x,pT.y); ctx.lineTo(pT.x-ah*Math.cos(ang-0.4),pT.y-ah*Math.sin(ang-0.4)); ctx.moveTo(pT.x,pT.y); ctx.lineTo(pT.x-ah*Math.cos(ang+0.4),pT.y-ah*Math.sin(ang+0.4)); ctx.stroke(); } });
-      /* poignées d'extrémité */
-      ctx.fillStyle='#ff5a3d'; [pa,pb].forEach(function(p){ ctx.beginPath(); ctx.arc(p.x,p.y,5,0,6.283); ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#fff'; ctx.stroke(); });
-      /* libellé A—A / B—B */
-      ctx.fillStyle='#ff8a3d'; ctx.font='bold 12px system-ui'; var letter=(SECT_AXIS==='x'?'A':'B');
-      ctx.fillText(letter, pa.x-12, pa.y+4); ctx.fillText(letter, pb.x+6, pb.y+4);
-      ctx.restore();
-    }
+  /* cibles de coupe en plan (vue de dessus) : trait du plan + flèches de sens de regard, pour CHAQUE coupe active.
+     Déplaçables en glissant (voir mousedown/mousemove). A = transversale (axe x), B = longitudinale (axe z). */
+  if(MODE==='immeuble' && cam.fwd && cam.fwd[1]<-0.9 && typeof IMM_INFO!=='undefined' && IMM_INFO && !WGL.gActive && !WGL.txActive){
+    var I=IMM_INFO, yz=0.02, off=0.6;
+    [['x',CUTX,'A'],['z',CUTZ,'B']].forEach(function(S){ var axis=S[0], C=S[1], letter=S[2]; if(!C.on) return;
+      var A,B; if(axis==='x'){ A=[C.pos,yz,I.z0-off]; B=[C.pos,yz,I.z1+off]; } else { A=[I.x0-off,yz,C.pos]; B=[I.x1+off,yz,C.pos]; }
+      var pa=proj(cam,A,W,H), pb=proj(cam,B,W,H);
+      if(pa&&pb){ ctx.save();
+        ctx.setLineDash([10,6]); ctx.strokeStyle='#ff5a3d'; ctx.lineWidth=2.5;
+        ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke(); ctx.setLineDash([]);
+        /* flèches de sens de regard (côté conservé) à chaque extrémité */
+        var d=(axis==='x')?[C.keep<0?-1:1,0,0]:[0,0,C.keep<0?-1:1];
+        [A,B].forEach(function(P){ var tip=[P[0]+d[0]*0.9,P[1],P[2]+d[2]*0.9], pE=proj(cam,P,W,H), pT=proj(cam,tip,W,H);
+          if(pE&&pT){ ctx.strokeStyle='#ff5a3d'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(pE.x,pE.y); ctx.lineTo(pT.x,pT.y); ctx.stroke();
+            var ang=Math.atan2(pT.y-pE.y,pT.x-pE.x), ah=7;
+            ctx.beginPath(); ctx.moveTo(pT.x,pT.y); ctx.lineTo(pT.x-ah*Math.cos(ang-0.4),pT.y-ah*Math.sin(ang-0.4)); ctx.moveTo(pT.x,pT.y); ctx.lineTo(pT.x-ah*Math.cos(ang+0.4),pT.y-ah*Math.sin(ang+0.4)); ctx.stroke(); } });
+        /* poignées d'extrémité */
+        ctx.fillStyle='#ff5a3d'; [pa,pb].forEach(function(p){ ctx.beginPath(); ctx.arc(p.x,p.y,5,0,6.283); ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#fff'; ctx.stroke(); });
+        /* libellé A—A / B—B */
+        ctx.fillStyle='#ff8a3d'; ctx.font='bold 12px system-ui';
+        ctx.fillText(letter, pa.x-12, pa.y+4); ctx.fillText(letter, pb.x+6, pb.y+4);
+        ctx.restore();
+      }
+    });
   }
   if(!CUR_POLY || WGL.gActive || WGL.txActive) return;
   for(var i=0;i<CUR_POLY.length;i++){
@@ -8718,7 +8768,7 @@ document.addEventListener('mousedown', function(ev){ if(_edgeMenu && !_edgeMenu.
   var ub=document.getElementById('undoBtn'); if(ub) ub.onclick=function(){ doUndo(); };
   var rb=document.getElementById('redoBtn'); if(rb) rb.onclick=function(){ doRedo(); };
   var lb=document.getElementById('layoutBtn'); if(lb) lb.onclick=function(){ LAYOUT=(LAYOUT==='quad')?'single':'quad'; if(LAYOUT!=='quad') SINGLEVIEW='persp'; DIRTY=true; };
-  var tb=document.getElementById('themeBtn'); if(tb) tb.onclick=function(){ UILIGHT=!UILIGHT; document.documentElement.classList.toggle('light',UILIGHT); document.body.classList.toggle('light',UILIGHT); DIRTY=true; if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
+  var tb=document.getElementById('themeBtn'); if(tb) tb.onclick=function(){ UILIGHT=!UILIGHT; document.documentElement.classList.toggle('light',UILIGHT); document.body.classList.toggle('light',UILIGHT); PREFS.theme=UILIGHT?'light':'dark'; prefsSave(); DIRTY=true; if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
   var cs=document.getElementById('cat-search'); if(cs) cs.addEventListener('input',function(){ SEARCH=cs.value; buildCatList(); });
   _undoBtns();
 })();
@@ -9101,8 +9151,9 @@ function _withPlanStorey(fn){
    vue est perpendiculaire au plan de coupe (front/back regardent Z → coupe longitudinale ;
    left/right regardent X → coupe transversale). Sinon on ne coupe pas cette vue. */
 function _withSection(viewKind, fn){
-  var axisOf={front:'z',back:'z',left:'x',right:'x'};
-  if(SECT_ON && MODE==='immeuble' && axisOf[viewKind]===SECT_AXIS){ _SECT_ACTIVE=true; fn(); _SECT_ACTIVE=false; }
+  var axisOf={front:'z',back:'z',left:'x',right:'x'}, ax=axisOf[viewKind];
+  var C = ax==='x'?CUTX : (ax==='z'?CUTZ : null);
+  if(C && C.on && MODE==='immeuble'){ _SECT_ACTIVE=true; _SA_AXIS=ax; _SA_POS=C.pos; _SA_KEEP=C.keep; fn(); _SECT_ACTIVE=false; }
   else fn();
 }
 /* Barre d'outils flottante dans la vue (immeuble, vue simple) : choix d'étage en plan,
@@ -9111,20 +9162,53 @@ function _withSection(viewKind, fn){
 function updateViewOverlay(){
   var ov=document.getElementById('viewOverlay'); if(!ov) return;
   var isImm=(typeof MODE!=='undefined' && MODE==='immeuble' && typeof PIM!=='undefined' && PIM.nFloors);
-  var vis=(LAYOUT!=='quad');   /* vue simple : on montre toujours le menu de vue */
-  var sig=vis?(SINGLEVIEW+'|'+(isImm?1:0)+'|'+PLAN_STOREY+'|'+(SECT_ON?1:0)+'|'+SECT_AXIS+'|'+SECT_KEEP+'|'+(isImm?(PIM.nFloors|0):0)+'|'+(isImm?(PIM.nBasement|0):0)):'hidden';
+  var isQuad=(LAYOUT==='quad');
+  var inMEP=(typeof MEP_MODE!=='undefined' && MEP_MODE);   /* en Mise en page (espace papier), pas de barre de vue 3D */
+  var vis = (!isQuad || isImm) && !inMEP;   /* vue simple : toujours ; 4-vues : seulement en immeuble (contrôle de coupe) */
+  var sig=vis?(LAYOUT+'|'+SINGLEVIEW+'|'+(isImm?1:0)+'|'+PLAN_STOREY+'|'+(CUTX.on?'X'+CUTX.keep:'-')+'|'+(CUTZ.on?'Z'+CUTZ.keep:'-')+'|'+(isImm?(PIM.nFloors|0):0)+'|'+(isImm?(PIM.nBasement|0):0)+'|'+(typeof QUAD_VIEWS!=='undefined'?QUAD_VIEWS.join(','):'')):'hidden';
   if(ov._sig===sig) return; ov._sig=sig;
   if(!vis){ ov.style.display='none'; ov.innerHTML=''; return; }
-  var selCss='background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:5px;padding:3px 5px;font-size:12px;';
-  var btnCss='background:#232a34;color:#cdd6e0;border:1px solid #3a4653;border-radius:5px;padding:2px 7px;font-size:12px;cursor:pointer;';
+  var selCss='background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:5px;padding:2px 6px;font-size:11px;line-height:1.2;';
+  var btnCss='background:#232a34;color:#cdd6e0;border:1px solid #3a4653;border-radius:5px;padding:2px 7px;font-size:11px;line-height:1.2;cursor:pointer;';
   ov.style.display='flex'; ov.innerHTML='';
   function span(t){ var s=document.createElement('span'); s.textContent=t; s.style.opacity='0.8'; return s; }
+  function ensureQuad(view){ if(typeof QUAD_VIEWS==='undefined') return; for(var i=0;i<4;i++){ if(QUAD_VIEWS[i]===view) return; } QUAD_VIEWS[3]=view; }
+  function flipQuad(a,b){ if(typeof QUAD_VIEWS==='undefined') return; for(var i=0;i<4;i++){ if(QUAD_VIEWS[i]===a){QUAD_VIEWS[i]=b;return;} if(QUAD_VIEWS[i]===b){QUAD_VIEWS[i]=a;return;} } ensureQuad(b); }
+  /* Contrôle de coupe, commun aux deux modes (en immeuble). En vue simple il pilote SINGLEVIEW ;
+     en 4-vues il pilote le quadrant d'élévation correspondant (le plan « Dessus » sert de cible déplaçable). */
+  function addCoupeControls(){
+    ov.appendChild(span('Coupes'));
+    function oneCut(label, axis, C, elevView, altView){
+      var I=(typeof IMM_INFO!=='undefined')?IMM_INFO:null;
+      var lo=I?(axis==='x'?I.x0:I.z0):-10, hi=I?(axis==='x'?I.x1:I.z1):10;
+      var tg=document.createElement('button'); tg.textContent=label; tg.title='Activer / désactiver la coupe '+label.toLowerCase();
+      tg.style.cssText=btnCss+(C.on?'background:#ff8a3d;color:#141821;border-color:#ff8a3d;font-weight:600;':'');
+      tg.onclick=function(){ C.on=!C.on;
+        if(C.on){ if(!(C.pos>lo&&C.pos<hi)) C.pos=(lo+hi)/2; if(isQuad) ensureQuad(elevView); else SINGLEVIEW=elevView; }
+        DIRTY=true; updateViewOverlay(); };
+      ov.appendChild(tg);
+      if(C.on){
+        var rg=document.createElement('input'); rg.type='range'; rg.min=lo.toFixed(2); rg.max=hi.toFixed(2); rg.step='0.02'; rg.value=Math.max(lo,Math.min(hi,C.pos)); rg.style.cssText='width:96px;vertical-align:middle;'; rg.title='Position de la coupe '+label.toLowerCase();
+        rg.oninput=function(){ C.pos=parseFloat(rg.value); DIRTY=true; };
+        ov.appendChild(rg);
+        var inv=document.createElement('button'); inv.textContent='⇄'; inv.title='Regarder la coupe '+label.toLowerCase()+' de l\'autre côté'; inv.style.cssText=btnCss;
+        inv.onclick=function(){ C.keep=-C.keep; if(isQuad) flipQuad(elevView,altView); else SINGLEVIEW=(SINGLEVIEW===elevView?altView:elevView); DIRTY=true; updateViewOverlay(); };
+        ov.appendChild(inv);
+      }
+    }
+    oneCut('Transversale','x',CUTX,'right','left');
+    oneCut('Longitudinale','z',CUTZ,'front','back');
+  }
+  if(isQuad){   /* mode 4-vues : la vue se choisit par pastille de quadrant ; ici on n'expose que la coupe */
+    if(isImm) addCoupeControls();
+    return;
+  }
   /* menu de vue général (persp + orthos) */
   ov.appendChild(span('Vue'));
   var vsel=document.createElement('select'); vsel.style.cssText=selCss;
   [['persp','Perspective'],['top','Dessus'],['front','Face'],['back','Arrière'],['left','Gauche'],['right','Droite']].forEach(function(p){ var o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; vsel.appendChild(o); });
   vsel.value=SINGLEVIEW||'persp';
-  vsel.onchange=function(){ SINGLEVIEW=vsel.value; if(SINGLEVIEW!=='left'&&SINGLEVIEW!=='right'&&SINGLEVIEW!=='front'&&SINGLEVIEW!=='back') SECT_ON=SECT_ON&&false; DIRTY=true; updateViewOverlay(); };
+  vsel.onchange=function(){ SINGLEVIEW=vsel.value; DIRTY=true; updateViewOverlay(); };
   ov.appendChild(vsel);
   if(isImm && SINGLEVIEW==='top'){
     ov.appendChild(span('Étage'));
@@ -9135,26 +9219,7 @@ function updateViewOverlay(){
     s.onchange=function(){ PLAN_STOREY=(s.value===''?null:parseInt(s.value,10)); DIRTY=true; if(typeof buildImmeubleUI==='function') buildImmeubleUI(); };
     ov.appendChild(s);
   } else if(isImm && SINGLEVIEW!=='persp'){
-    ov.appendChild(span('Coupe'));
-    var cs=document.createElement('select'); cs.style.cssText=selCss;
-    [['none','Aucune'],['trans','Transversale'],['long','Longitudinale']].forEach(function(p){ var o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; cs.appendChild(o); });
-    cs.value=(!SECT_ON?'none':(SECT_AXIS==='x'?'trans':'long'));
-    cs.onchange=function(){ var I=(typeof IMM_INFO!=='undefined')?IMM_INFO:null;
-      if(cs.value==='none'){ SECT_ON=false; }
-      else if(cs.value==='trans'){ SECT_ON=true; SECT_AXIS='x'; SINGLEVIEW='right'; SECT_KEEP=-1; if(I) SECT_POS=(I.x0+I.x1)/2; }
-      else { SECT_ON=true; SECT_AXIS='z'; SINGLEVIEW='front'; SECT_KEEP=1; if(I) SECT_POS=(I.z0+I.z1)/2; }
-      DIRTY=true; updateViewOverlay(); };
-    ov.appendChild(cs);
-    if(SECT_ON){
-      var I2=(typeof IMM_INFO!=='undefined')?IMM_INFO:null;
-      var lo=I2?(SECT_AXIS==='x'?I2.x0:I2.z0):-10, hi=I2?(SECT_AXIS==='x'?I2.x1:I2.z1):10;
-      var rg=document.createElement('input'); rg.type='range'; rg.min=lo.toFixed(2); rg.max=hi.toFixed(2); rg.step='0.02'; rg.value=Math.max(lo,Math.min(hi,SECT_POS)); rg.style.cssText='width:90px;'; rg.title='Position du plan de coupe';
-      rg.oninput=function(){ SECT_POS=parseFloat(rg.value); DIRTY=true; };
-      ov.appendChild(rg);
-      var inv=document.createElement('button'); inv.textContent='⇄'; inv.title='Regarder la coupe de l\'autre côté'; inv.style.cssText=btnCss;
-      inv.onclick=function(){ SECT_KEEP=-SECT_KEEP; if(SECT_AXIS==='x') SINGLEVIEW=(SINGLEVIEW==='right'?'left':'right'); else SINGLEVIEW=(SINGLEVIEW==='front'?'back':'front'); DIRTY=true; updateViewOverlay(); };
-      ov.appendChild(inv);
-    }
+    addCoupeControls();
   }
 }
 /* libellé d'un quadrant selon sa vue (avec ▾ = cliquable pour changer). */
@@ -9162,7 +9227,7 @@ function quadLabelFor(kind){
   if(kind==='persp') return 'Perspective ▾';
   if(kind==='top') return ((MODE==='immeuble'&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Dessus')+' ▾';
   var base={front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[kind]||kind;
-  if(SECT_ON && MODE==='immeuble'){ var ax={front:'z',back:'z',left:'x',right:'x'}; if(ax[kind]===SECT_AXIS) base+=' — coupe '+(SECT_AXIS==='x'?'transv.':'longit.'); }
+  if(MODE==='immeuble'){ var ax={front:'z',back:'z',left:'x',right:'x'}[kind]; if(ax==='x'&&CUTX.on) base+=' — coupe transv.'; else if(ax==='z'&&CUTZ.on) base+=' — coupe longit.'; }
   return base+' ▾';
 }
 /* rend un quadrant d'après sa vue (persp / dessus + étage / élévation + coupe).
@@ -9199,11 +9264,13 @@ function frame(){
     for(var qi=0;qi<4;qi++){ var qx=quads[qi][0],qy=quads[qi][1],qw=quads[qi][2],qh2=quads[qi][3];
       renderQuad(QUAD_VIEWS[qi],qx,qy,qw,qh2);
       /* pastille de choix de vue, placée près du séparateur central (hors barre d'outils) */
-      var chip=quadLabelFor(QUAD_VIEWS[qi]); ctx.save(); ctx.font='10px system-ui,sans-serif'; ctx.textBaseline='middle';
-      var bw=Math.round(ctx.measureText(chip).width)+13, bh=16, chx=qx+8, chy=(qi<2)?(qy+qh2-bh-6):(qy+6);
+      var chip=quadLabelFor(QUAD_VIEWS[qi]); ctx.save(); ctx.font='13px system-ui,sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
+      var padx=12, bw=Math.ceil(ctx.measureText(chip).width)+padx*2, bh=22;
+      var chx=qx+8; if(chx+bw>qx+qw-4) chx=qx+qw-4-bw; if(chx<qx+4) chx=qx+4;
+      var chy=(qi<2)?(qy+qh2-bh-6):(qy+6);
       ctx.fillStyle='rgba(20,24,32,0.92)'; ctx.fillRect(chx,chy,bw,bh);
       ctx.strokeStyle='#3a4653'; ctx.lineWidth=1; ctx.strokeRect(chx+0.5,chy+0.5,bw-1,bh-1);
-      ctx.fillStyle='#ff8a3d'; ctx.fillText(chip,chx+7,chy+bh/2+0.5); ctx.textBaseline='alphabetic'; ctx.restore();
+      ctx.fillStyle='#ff8a3d'; ctx.fillText(chip,chx+padx,chy+bh/2+0.5); ctx.textBaseline='alphabetic'; ctx.restore();
       QUAD_LABEL_HITS.push({x:chx,y:chy,w:bw,h:bh,q:qi}); }
     ORTHO=_O;
     ctx.strokeStyle='#0a0c10'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(hw,0); ctx.lineTo(hw,H); ctx.moveTo(0,hh); ctx.lineTo(W,hh); ctx.stroke();
@@ -9214,7 +9281,7 @@ function frame(){
     else { _withSection(SINGLEVIEW, function(){ renderScene(orthoCam(SINGLEVIEW),W,H); }); }
     ORTHO=_O;
     var lbl={top:(MODE==='immeuble'&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Dessus',front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[SINGLEVIEW]||'';
-    if(SINGLEVIEW!=='top' && SECT_ON && MODE==='immeuble') lbl+=' — coupe '+(SECT_AXIS==='x'?'transversale':'longitudinale');
+    if(SINGLEVIEW!=='top' && MODE==='immeuble'){ var _sa={front:'z',back:'z',left:'x',right:'x'}[SINGLEVIEW]; if(_sa==='x'&&CUTX.on) lbl+=' — coupe transversale'; else if(_sa==='z'&&CUTZ.on) lbl+=' — coupe longitudinale'; }
     _viewLabel(0,0,lbl); return; }
   renderScene(getCam(),W,H);
 }
@@ -9244,8 +9311,8 @@ function renderScene(cam,W,H){
      Étendue adaptée à la taille de la scène, pas resserré loin pour limiter le nombre de lignes. */
   if(!PLOT_CLEAN){
   var _gext=Math.min(60, Math.max(10, Math.ceil(Math.max((DIMS?DIMS.w:2),(DIMS?DIMS.d:2))/2)+8));
-  var _gst=_gext>28?5:(_gext>15?2:1);
-  ctx.strokeStyle = (RENDER==='real') ? 'rgba(120,128,140,0.20)' : (UILIGHT?'rgba(150,160,175,0.55)':'rgba(140,148,160,0.34)');
+  var _gst=(typeof PREFS!=='undefined'&&PREFS.gridStep>0)?PREFS.gridStep:(_gext>28?5:(_gext>15?2:1));
+  ctx.strokeStyle = (typeof PREFS!=='undefined'&&PREFS.gridColor) ? PREFS.gridColor : ((RENDER==='real') ? 'rgba(120,128,140,0.20)' : (UILIGHT?'rgba(150,160,175,0.55)':'rgba(140,148,160,0.34)'));
   ctx.lineWidth=0.5;
   for(var i=-_gext;i<=_gext;i+=_gst){
     var a=proj(cam,[i,0,-_gext],W,H), b=proj(cam,[i,0,_gext],W,H);
@@ -9296,7 +9363,7 @@ function renderScene(cam,W,H){
     if(CUT_Y!=null){ var mnY=Infinity; for(var vc=0;vc<f.verts.length;vc++){ if(f.verts[vc][1]<mnY) mnY=f.verts[vc][1]; } if(mnY>=CUT_Y-1e-4) continue; }   /* plan d'étage : masque ce qui est au-dessus de la coupe */
     /* coupe verticale (élévation sectionnée) : découpe au plan de coupe avant tout */
     var sVerts=f.verts, sVn=f.vn;
-    if(_SECT_ACTIVE && SECT_AXIS){ var sc=halfSpaceClip(sVerts, sVn, SECT_AXIS==='x'?0:2, SECT_POS, SECT_KEEP); if(!sc) continue; sVerts=sc.verts; sVn=sc.vn; }
+    if(_SECT_ACTIVE){ var sc=halfSpaceClip(sVerts, sVn, _SA_AXIS==='x'?0:2, _SA_POS, _SA_KEEP); if(!sc) continue; sVerts=sc.verts; sVn=sc.vn; }
     /* découpe au plan proche : évite qu'une grande dalle/mur disparaisse quand on rentre dans le bâtiment */
     var clipped=nearClipFace(cam, sVerts, sVn); if(!clipped) continue;
     var fVerts=clipped.verts, fVn=clipped.vn;
@@ -9855,13 +9922,14 @@ cv.addEventListener('mousedown', function(e){
     for(var qh=0;qh<QUAD_LABEL_HITS.length;qh++){ var Lh=QUAD_LABEL_HITS[qh]; if(qlx>=Lh.x&&qlx<Lh.x+Lh.w&&qly>=Lh.y&&qly<Lh.y+Lh.h){
       var order=['persp','top','front','back','left','right'], ci=order.indexOf(QUAD_VIEWS[Lh.q]); QUAD_VIEWS[Lh.q]=order[(ci+1)%order.length]; DIRTY=true; return; } } }
   /* clic près de la cible de coupe en plan → démarre le déplacement du plan de coupe */
-  if(MODE==='immeuble' && SECT_ON){ var rsd=cv.getBoundingClientRect(), gTop=groundInTopView(e.clientX-rsd.left,e.clientY-rsd.top);
-    if(gTop){ var dd=(SECT_AXIS==='x')?Math.abs(gTop[0]-SECT_POS):Math.abs(gTop[1]-SECT_POS); if(dd<0.7){ SECT_DRAG=true; DIRTY=true; return; } } }
+  if(MODE==='immeuble' && (CUTX.on||CUTZ.on)){ var rsd=cv.getBoundingClientRect(), gTop=groundInTopView(e.clientX-rsd.left,e.clientY-rsd.top);
+    if(gTop){ var dX=CUTX.on?Math.abs(gTop[0]-CUTX.pos):1e9, dZ=CUTZ.on?Math.abs(gTop[1]-CUTZ.pos):1e9;
+      if(dX<0.7 && dX<=dZ){ SECT_DRAG='x'; DIRTY=true; return; } if(dZ<0.7){ SECT_DRAG='z'; DIRTY=true; return; } } }
   if(e.shiftKey){PAN=true;}else{drag=true;} lastX=e.clientX; lastY=e.clientY; });
-window.addEventListener('mouseup', function(){ drag=false; PAN=false; SDRAG=false; RDRAG=false; GZ=null; if(SECT_DRAG){ SECT_DRAG=false; DIRTY=true; } if(GIZ_DRAG>=0){ GIZ_DRAG=-1; DIRTY=true; } if(SCN_ROT){ SCN_ROT=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } if(SCN_DRAG){ SCN_DRAG=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } });
+window.addEventListener('mouseup', function(){ drag=false; PAN=false; SDRAG=false; RDRAG=false; GZ=null; if(SECT_DRAG){ SECT_DRAG=null; DIRTY=true; } if(GIZ_DRAG>=0){ GIZ_DRAG=-1; DIRTY=true; } if(SCN_ROT){ SCN_ROT=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } if(SCN_DRAG){ SCN_DRAG=null; if(MODE==='scene'&&typeof buildSceneUI==='function') buildSceneUI(); } });
 window.addEventListener('mousemove', function(e){
   if(SECT_DRAG){ var rsm=cv.getBoundingClientRect(), gS=groundInTopView(e.clientX-rsm.left,e.clientY-rsm.top);
-    if(gS && typeof IMM_INFO!=='undefined' && IMM_INFO){ var I=IMM_INFO, lo=(SECT_AXIS==='x'?I.x0:I.z0), hi=(SECT_AXIS==='x'?I.x1:I.z1), v=(SECT_AXIS==='x'?gS[0]:gS[1]); SECT_POS=Math.max(lo,Math.min(hi,v)); DIRTY=true; if(typeof updateViewOverlay==='function'){ var ov=document.getElementById('viewOverlay'); if(ov)ov._sig=''; } } return; }
+    if(gS && typeof IMM_INFO!=='undefined' && IMM_INFO){ var I=IMM_INFO, C=(SECT_DRAG==='x'?CUTX:CUTZ), lo=(SECT_DRAG==='x'?I.x0:I.z0), hi=(SECT_DRAG==='x'?I.x1:I.z1), v=(SECT_DRAG==='x'?gS[0]:gS[1]); C.pos=Math.max(lo,Math.min(hi,v)); DIRTY=true; if(typeof updateViewOverlay==='function'){ var ov=document.getElementById('viewOverlay'); if(ov)ov._sig=''; } } return; }
   if(MODE==='immeuble' && PART_ON && PART_CUR && PART_CUR.length){ var rH=cv.getBoundingClientRect(), gH=unprojGround(e.clientX-rH.left,e.clientY-rH.top,cv.width,cv.height,getCam());
     if(gH){ PART_HOVER=partResolve([gH[0],gH[1]],e.shiftKey); DIRTY=true; } return; }
   if(BEND_DRAG && CUR_POLY){ var rB=cv.getBoundingClientRect(), gB=unprojGround(e.clientX-rB.left,e.clientY-rB.top,cv.width,cv.height,getCam());
@@ -10631,7 +10699,7 @@ function buildImmeubleUI(){
   (function(){
     var Nf=Math.max(1,PIM.nFloors|0);
     var note=document.createElement('div'); note.className='exp-note'; note.style.margin='2px 0 5px';
-    note.innerHTML='Choisis l\'étage + le type, puis « Tracer » : clique les points (vue de dessus), double-clic pour terminer.<br>• cotes affichées en direct • guides verts d\'alignement sur les points • <b>Maj</b> = angles à 45° • tape un nombre ou <b>R</b> puis une distance (cm) + <b>Entrée</b> • <b>Échap</b> annule.';
+    note.innerHTML='<div>Choisis l\'étage + le type, puis « Tracer » : clique les points (vue de dessus), double-clic pour terminer.</div><div style="margin-top:3px;">Cotes en direct • guides d\'alignement sur les points • Maj = angles à 45° • tape un nombre ou R puis une distance (cm) + Entrée • Échap annule.</div>';
     target.appendChild(note);
     var lf=document.createElement('div'); lf.className='exp-note'; lf.textContent='Étage'; target.appendChild(lf);
     var fg=document.createElement('div'); fg.className='mat-grid';
@@ -10644,7 +10712,7 @@ function buildImmeubleUI(){
     target.appendChild(tb);
     if(PART_ON){ var cb=document.createElement('button'); cb.style.cssText='width:100%;margin-top:4px;font-size:10px;padding:4px;'; cb.textContent='Annuler'; cb.onclick=function(){ PART_ON=false; PART_CUR=null; partExitPlanView(); buildImmeubleUI(); }; target.appendChild(cb); }
     var pl=(PIM.partitions||[]);
-    var ll=document.createElement('div'); ll.className='exp-note'; ll.style.marginTop='6px'; ll.textContent='Cloisons tracées ('+pl.length+')'; target.appendChild(ll);
+    var ll=document.createElement('div'); ll.className='exp-note'; ll.style.marginTop='6px'; ll.innerHTML='Cloisons tracées <span>('+pl.length+')</span>'; target.appendChild(ll);
     pl.forEach(function(pt,idx){ var row=document.createElement('div'); row.style.cssText='display:flex;justify-content:space-between;align-items:center;font-size:10px;margin:1px 0;gap:3px;';
       var sp=document.createElement('span'); sp.style.flex='1'; sp.textContent='R+'+(pt.floor|0)+' · '+(pt.type||'placo')+' · '+partParse(pt.verts).length+' pts';
       var eb2=document.createElement('button'); eb2.textContent=(PART_EDIT_IDX===idx?'▾':'✎'); eb2.title='Modifier (matériaux, doublage…)'; eb2.style.cssText='font-size:11px;padding:0 5px;'; eb2.onclick=function(){ PART_EDIT_IDX=(PART_EDIT_IDX===idx?-1:idx); buildImmeubleUI(); };
@@ -11242,7 +11310,7 @@ function buildSceneUI(){
     '<div class="slbl" style="font-size:10px;margin:4px 0 3px;">Configurations disponibles</div>'+
     (configs.length?'<div id="scnCfgs" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;"></div>'
       :'<div style="font-size:10px;color:var(--dm);margin-bottom:8px;">Aucune config. Enregistrez d\'abord un objet (murs, toiture, escalier…) via 💾.</div>')+
-    '<div class="slbl" style="font-size:10px;margin:6px 0 3px;">Éléments de la scène ('+SCENE.instances.length+')</div><div id="scnList"></div>'+
+    '<div class="slbl" style="font-size:10px;margin:6px 0 3px;">Éléments de la scène <span>('+SCENE.instances.length+')</span></div><div id="scnList"></div>'+
     '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Décor (mode Réaliste)</div>'+
     '<div id="scnDecorRow" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;"></div>'+
     '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Scènes enregistrées</div><div id="scnSaved"></div>'+
@@ -12851,19 +12919,43 @@ function exportIFC(schema){
       var top=(sl.st===nSt-1);
       emit('IFCSLAB', top?',$,.ROOF.':',$,.FLOOR.', (top?'Toiture':'Dalle N'+sl.st), sl.st, solid, 'SweptSolid', [176,176,172], 1);
     });
-    /* POTEAUX : extrusion verticale par étage (natif IfcColumn) */
-    IS.cols.forEach(function(c){
-      /* profil absolu (contour reel en coords de plan) — robuste a l'import Revit,
-         contrairement a IFCRECTANGLEPROFILEDEF dont la Position du profil est ignoree
-         par certains importeurs (poteaux empiles a l'origine). */
-      var hw=c.w/2;
-      var pts=[P2(c.cx-hw,c.cz-hw),P2(c.cx+hw,c.cz-hw),P2(c.cx+hw,c.cz+hw),P2(c.cx-hw,c.cz+hw)];
-      var line=E("IFCPOLYLINE(("+pts.join(',')+","+pts[0]+"))");
-      var prof=E("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,"+line+")");
-      var pos=E("IFCAXIS2PLACEMENT3D("+P3(0,0,c.y0)+",$,$)");
-      var solid=E("IFCEXTRUDEDAREASOLID("+prof+","+pos+","+D3(0,0,1)+","+num(c.y1-c.y0)+")");
-      emit('IFCCOLUMN',',$,.COLUMN.','Poteau N'+c.st, c.st, solid, 'SweptSolid', [164,164,162], 1);
-    });
+    /* POTEAUX :
+       - IFC4 : type partagé (IfcColumnType) + représentation mappée (IfcRepresentationMap/IfcMappedItem),
+         instances placées par ObjectPlacement et reliées via IfcRelDefinesByType
+         → Revit crée UNE famille par section/hauteur (au lieu d'une par poteau).
+       - IFC2X3 : extrusion absolue par poteau (fallback compatible, IfcColumnType moins fiable). */
+    if(!v23){
+      var colTypes={};
+      var colType=function(w,h){
+        var key=w.toFixed(4)+'|'+h.toFixed(4); if(colTypes[key]) return colTypes[key];
+        var hw=w/2;
+        var pts=[P2(-hw,-hw),P2(hw,-hw),P2(hw,hw),P2(-hw,hw)];
+        var prof=E("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,"+E("IFCPOLYLINE(("+pts.join(',')+","+pts[0]+"))")+")");
+        var solid=E("IFCEXTRUDEDAREASOLID("+prof+","+E("IFCAXIS2PLACEMENT3D("+P3(0,0,0)+",$,$)")+","+D3(0,0,1)+","+num(h)+")");
+        styleSolid(solid,[164,164,162],1);
+        var mapRep=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','SweptSolid',("+solid+"))");
+        var repMap=E("IFCREPRESENTATIONMAP("+E("IFCAXIS2PLACEMENT3D("+P3(0,0,0)+",$,$)")+","+mapRep+")");
+        var ct=E("IFCCOLUMNTYPE('"+guid()+"',"+owner+",'Poteau "+Math.round(w*1000)+" mm',$,$,$,("+repMap+"),$,$,.COLUMN.)");
+        return (colTypes[key]={repMap:repMap, type:ct, insts:[]});
+      };
+      IS.cols.forEach(function(c){
+        var T=colType(c.w, c.y1-c.y0);
+        var ipl=E("IFCLOCALPLACEMENT("+bldPl+","+E("IFCAXIS2PLACEMENT3D("+P3(c.cx,c.cz,c.y0)+",$,$)")+")");
+        var mi=E("IFCMAPPEDITEM("+T.repMap+","+E("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,"+P3(0,0,0)+",$,$)")+")");
+        var pds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','MappedRepresentation',("+mi+"))")+"))");
+        var el=E("IFCCOLUMN('"+guid()+"',"+owner+",'Poteau N"+c.st+"','Immeuble BPO - (c) 2026 Antoine Lacronique, architecte',$,"+ipl+","+pds+",$,.COLUMN.)");
+        var st=Math.min(Math.max(0,c.st),nSt-1); (byStorey[st]=byStorey[st]||[]).push(el); T.insts.push(el);
+      });
+      for(var _ck in colTypes){ var _T=colTypes[_ck]; if(_T.insts.length) E("IFCRELDEFINESBYTYPE('"+guid()+"',"+owner+",$,$,("+_T.insts.join(',')+"),"+_T.type+")"); }
+    } else {
+      IS.cols.forEach(function(c){
+        var hw=c.w/2;
+        var pts=[P2(c.cx-hw,c.cz-hw),P2(c.cx+hw,c.cz-hw),P2(c.cx+hw,c.cz+hw),P2(c.cx-hw,c.cz+hw)];
+        var prof=E("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,"+E("IFCPOLYLINE(("+pts.join(',')+","+pts[0]+"))")+")");
+        var solid=E("IFCEXTRUDEDAREASOLID("+prof+","+E("IFCAXIS2PLACEMENT3D("+P3(0,0,c.y0)+",$,$)")+","+D3(0,0,1)+","+num(c.y1-c.y0)+")");
+        emit('IFCCOLUMN',',$,.COLUMN.','Poteau N'+c.st, c.st, solid, 'SweptSolid', [164,164,162], 1);
+      });
+    }
     /* POUTRES : extrusion le long de l'axe (natif IfcBeam) */
     IS.beams.forEach(function(b){
       /* meme strategie que voiles/dalles : contour absolu via panelSolid (largeur b.w,
@@ -13312,7 +13404,114 @@ var I18N_AR={
 (function(){ if(!I18N.ar)I18N.ar={}; for(var fr in I18N_AR){ if(I18N.ar[fr]===undefined) I18N.ar[fr]=I18N_AR[fr]; } })();
 var LANG='fr', mo=null, pend=false;
 var FLAGS={"fr": "<svg viewBox=\"0 0 3 2\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"3\" height=\"2\" fill=\"#fff\"/><rect width=\"1\" height=\"2\" fill=\"#0055A4\"/><rect x=\"2\" width=\"1\" height=\"2\" fill=\"#EF4135\"/></svg>", "en": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#012169\"/><path d=\"M0,0L6,4M6,0L0,4\" stroke=\"#fff\" stroke-width=\"0.7\"/><path d=\"M0,0L6,4M6,0L0,4\" stroke=\"#C8102E\" stroke-width=\"0.35\"/><rect x=\"2.4\" width=\"1.2\" height=\"4\" fill=\"#fff\"/><rect y=\"1.4\" width=\"6\" height=\"1.2\" fill=\"#fff\"/><rect x=\"2.7\" width=\"0.6\" height=\"4\" fill=\"#C8102E\"/><rect y=\"1.7\" width=\"6\" height=\"0.6\" fill=\"#C8102E\"/></svg>", "es": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#AA151B\"/><rect y=\"1\" width=\"6\" height=\"2\" fill=\"#F1BF00\"/></svg>", "it": "<svg viewBox=\"0 0 3 2\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"1\" height=\"2\" fill=\"#009246\"/><rect x=\"1\" width=\"1\" height=\"2\" fill=\"#fff\"/><rect x=\"2\" width=\"1\" height=\"2\" fill=\"#CE2B37\"/></svg>", "de": "<svg viewBox=\"0 0 5 3\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"5\" height=\"1\" fill=\"#000\"/><rect y=\"1\" width=\"5\" height=\"1\" fill=\"#DD0000\"/><rect y=\"2\" width=\"5\" height=\"1\" fill=\"#FFCE00\"/></svg>", "pt": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#DA291C\"/><rect width=\"2.4\" height=\"4\" fill=\"#046A38\"/><circle cx=\"2.4\" cy=\"2\" r=\"0.55\" fill=\"#FFE600\"/></svg>", "hu": "<svg viewBox=\"0 0 6 3\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"1\" fill=\"#CD2A3E\"/><rect y=\"1\" width=\"6\" height=\"1\" fill=\"#fff\"/><rect y=\"2\" width=\"6\" height=\"1\" fill=\"#436F4D\"/></svg>", "zh": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#DE2910\"/><circle cx=\"1.2\" cy=\"1.1\" r=\"0.55\" fill=\"#FFDE00\"/><circle cx=\"2.2\" cy=\"0.6\" r=\"0.2\" fill=\"#FFDE00\"/><circle cx=\"2.5\" cy=\"1.4\" r=\"0.2\" fill=\"#FFDE00\"/></svg>", "ja": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#fff\"/><circle cx=\"3\" cy=\"2\" r=\"1.1\" fill=\"#BC002D\"/></svg>", "hi": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"1.34\" fill=\"#FF9933\"/><rect y=\"1.33\" width=\"6\" height=\"1.34\" fill=\"#fff\"/><rect y=\"2.66\" width=\"6\" height=\"1.34\" fill=\"#138808\"/><circle cx=\"3\" cy=\"2\" r=\"0.42\" fill=\"none\" stroke=\"#000080\" stroke-width=\"0.1\"/></svg>", "ar": "<svg viewBox=\"0 0 6 4\" preserveAspectRatio=\"none\" width=\"100%\" height=\"100%\"><rect width=\"6\" height=\"4\" fill=\"#006C35\"/><rect x=\"1\" y=\"1.6\" width=\"4\" height=\"0.5\" fill=\"#fff\"/></svg>"};
+/* Dégradés « drapeau national en longueur » par langue, utilisés pour le liseré de l'animation d'intro.
+   Rayures verticales (90deg) pour les drapeaux à bandes verticales, horizontales (180deg) sinon. */
+var FLAG_BANDS={
+ fr:'linear-gradient(90deg,#0055A4 0 33.33%,#fff 33.33% 66.66%,#EF4135 66.66%)',
+ en:'linear-gradient(90deg,#012169 0 30%,#fff 30% 38%,#C8102E 38% 62%,#fff 62% 70%,#012169 70%)',
+ es:'linear-gradient(180deg,#AA151B 0 25%,#F1BF00 25% 75%,#AA151B 75%)',
+ it:'linear-gradient(90deg,#008C45 0 33.33%,#fff 33.33% 66.66%,#CD212A 66.66%)',
+ de:'linear-gradient(180deg,#000 0 33.33%,#DD0000 33.33% 66.66%,#FFCE00 66.66%)',
+ pt:'linear-gradient(90deg,#006600 0 40%,#FF0000 40%)',
+ hu:'linear-gradient(180deg,#CE2939 0 33.33%,#fff 33.33% 66.66%,#477050 66.66%)',
+ zh:'linear-gradient(90deg,#FFDE00 0 5%,#DE2910 5%)',
+ ja:'linear-gradient(90deg,#fff 0 42%,#BC002D 42% 58%,#fff 58%)',
+ hi:'linear-gradient(180deg,#FF9933 0 33.33%,#fff 33.33% 66.66%,#138808 66.66%)',
+ ar:'linear-gradient(90deg,#CE1126 0 10%,transparent 10%),linear-gradient(180deg,#000 0 33.33%,#fff 33.33% 66.66%,#007A3D 66.66%)'
+};
 function setFlag(){ var fe=document.getElementById('langflag'); if(fe) fe.innerHTML=FLAGS[LANG]||''; }
+/* Complément de traductions (menu gauche + panneau Mise en page + fond de plan + barre de coupe).
+   Format objet {en,es,it,de,pt,hu,zh,ja,hi,ar} — fusionné dans I18N[langue] pour les clés encore vides. */
+var I18N_ADD2={
+"Piscine":{"en":"Pool","es":"Piscina","it":"Piscina","de":"Pool","pt":"Piscina","hu":"Medence","zh":"泳池","ja":"プール","hi":"स्विमिंग पूल","ar":"حمام سباحة"},
+"Charpente / toiture":{"en":"Roof structure","es":"Estructura de cubierta","it":"Struttura del tetto","de":"Dachtragwerk","pt":"Estrutura do telhado","hu":"Tetőszerkezet","zh":"屋架/屋顶","ja":"小屋組・屋根","hi":"छत संरचना","ar":"هيكل السقف"},
+"Paramètres":{"en":"Parameters","es":"Parámetros","it":"Parametri","de":"Parameter","pt":"Parâmetros","hu":"Paraméterek","zh":"参数","ja":"パラメータ","hi":"पैरामीटर","ar":"المعلمات"},
+"Mise en page":{"en":"Layout","es":"Composición","it":"Impaginazione","de":"Layout","pt":"Layout","hu":"Elrendezés","zh":"排版","ja":"レイアウト","hi":"लेआउट","ar":"التخطيط"},
+"Format & orientation":{"en":"Format & orientation","es":"Formato y orientación","it":"Formato e orientamento","de":"Format & Ausrichtung","pt":"Formato e orientação","hu":"Formátum és tájolás","zh":"格式与方向","ja":"用紙と向き","hi":"प्रारूप और अभिविन्यास","ar":"التنسيق والاتجاه"},
+"Paysage":{"en":"Landscape","es":"Horizontal","it":"Orizzontale","de":"Querformat","pt":"Paisagem","hu":"Fekvő","zh":"横向","ja":"横","hi":"भूदृश्य","ar":"أفقي"},
+"Portrait":{"en":"Portrait","es":"Vertical","it":"Verticale","de":"Hochformat","pt":"Retrato","hu":"Álló","zh":"纵向","ja":"縦","hi":"ऊर्ध्वाधर","ar":"عمودي"},
+"Échelle (vues plan/élévation)":{"en":"Scale (plan/elevation views)","es":"Escala (vistas planta/alzado)","it":"Scala (viste pianta/prospetto)","de":"Maßstab (Grundriss/Ansicht)","pt":"Escala (vistas planta/alçado)","hu":"Lépték (alaprajz/homlokzat)","zh":"比例（平面/立面视图）","ja":"縮尺（平面/立面）","hi":"स्केल (योजना/उन्नयन दृश्य)","ar":"المقياس (المسقط/الواجهة)"},
+"Ajustée":{"en":"Fit","es":"Ajustada","it":"Adattata","de":"Angepasst","pt":"Ajustada","hu":"Illesztett","zh":"自适应","ja":"フィット","hi":"समायोजित","ar":"ملائم"},
+"Insérer une vue figée":{"en":"Insert a fixed view","es":"Insertar una vista fija","it":"Inserisci una vista fissa","de":"Feste Ansicht einfügen","pt":"Inserir uma vista fixa","hu":"Rögzített nézet beszúrása","zh":"插入固定视图","ja":"固定ビューを挿入","hi":"स्थिर दृश्य डालें","ar":"إدراج عرض ثابت"},
+"Étage du plan (coupe à 1 m)":{"en":"Plan storey (cut at 1 m)","es":"Planta (corte a 1 m)","it":"Piano della pianta (taglio a 1 m)","de":"Grundrissgeschoss (Schnitt bei 1 m)","pt":"Piso da planta (corte a 1 m)","hu":"Alaprajzi szint (metszet 1 m-nél)","zh":"平面楼层（1 米剖切）","ja":"平面の階（1mで切断）","hi":"योजना तल (1 मी पर कट)","ar":"طابق المسقط (قطع عند 1 م)"},
+"Plan (dessus)":{"en":"Plan (top)","es":"Planta (superior)","it":"Pianta (dall'alto)","de":"Grundriss (oben)","pt":"Planta (superior)","hu":"Alaprajz (felülnézet)","zh":"平面（俯视）","ja":"平面（上）","hi":"योजना (ऊपर)","ar":"مسقط (علوي)"},
+"Élévation face":{"en":"Front elevation","es":"Alzado frontal","it":"Prospetto frontale","de":"Vorderansicht","pt":"Alçado frontal","hu":"Elülső homlokzat","zh":"正立面","ja":"正面立面","hi":"सामने का उन्नयन","ar":"واجهة أمامية"},
+"Élévation droite":{"en":"Right elevation","es":"Alzado derecho","it":"Prospetto destro","de":"Seitenansicht rechts","pt":"Alçado direito","hu":"Jobb homlokzat","zh":"右立面","ja":"右側立面","hi":"दायाँ उन्नयन","ar":"واجهة يمنى"},
+"Vue 3D":{"en":"3D view","es":"Vista 3D","it":"Vista 3D","de":"3D-Ansicht","pt":"Vista 3D","hu":"3D nézet","zh":"3D 视图","ja":"3Dビュー","hi":"3D दृश्य","ar":"عرض ثلاثي الأبعاد"},
+"Cotes noires sur le bâti":{"en":"Black dimensions on the building","es":"Cotas negras sobre el edificio","it":"Quote nere sull'edificio","de":"Schwarze Maße am Gebäude","pt":"Cotas pretas no edifício","hu":"Fekete méretek az épületen","zh":"建筑上的黑色尺寸","ja":"建物に黒い寸法","hi":"भवन पर काले आयाम","ar":"أبعاد سوداء على المبنى"},
+"Distance cotes (sur le plan)":{"en":"Dimension offset (on sheet)","es":"Distancia de cotas (en la lámina)","it":"Distanza quote (sul foglio)","de":"Maßabstand (auf dem Blatt)","pt":"Distância das cotas (na folha)","hu":"Méretvonal-távolság (a lapon)","zh":"尺寸距离（图纸上）","ja":"寸法の距離（用紙上）","hi":"आयाम दूरी (शीट पर)","ar":"مسافة الأبعاد (على اللوحة)"},
+"Planches":{"en":"Sheets","es":"Láminas","it":"Tavole","de":"Blätter","pt":"Pranchas","hu":"Lapok","zh":"图纸","ja":"シート","hi":"शीट","ar":"اللوحات"},
+"＋ Nouvelle planche":{"en":"＋ New sheet","es":"＋ Nueva lámina","it":"＋ Nuova tavola","de":"＋ Neues Blatt","pt":"＋ Nova prancha","hu":"＋ Új lap","zh":"＋ 新建图纸","ja":"＋ 新規シート","hi":"＋ नई शीट","ar":"＋ لوحة جديدة"},
+"Aperçu — glisser pour placer, coin ↘ pour l'échelle, double-clic = échelle exacte":{"en":"Preview — drag to place, corner ↘ to scale, double-click = exact scale","es":"Vista previa — arrastra para colocar, esquina ↘ para escalar, doble clic = escala exacta","it":"Anteprima — trascina per posizionare, angolo ↘ per la scala, doppio clic = scala esatta","de":"Vorschau — zum Platzieren ziehen, Ecke ↘ zum Skalieren, Doppelklick = exakter Maßstab","pt":"Pré-visualização — arraste para posicionar, canto ↘ para escalar, duplo clique = escala exata","hu":"Előnézet — húzd a helyére, sarok ↘ a léptékhez, dupla kattintás = pontos lépték","zh":"预览 — 拖动放置，角 ↘ 缩放，双击 = 精确比例","ja":"プレビュー — ドラッグで配置、角 ↘ で拡縮、ダブルクリック = 正確な縮尺","hi":"पूर्वावलोकन — रखने के लिए खींचें, कोना ↘ स्केल के लिए, डबल-क्लिक = सटीक स्केल","ar":"معاينة — اسحب للوضع، الزاوية ↘ للمقياس، نقر مزدوج = مقياس دقيق"},
+"Cartouche":{"en":"Title block","es":"Cajetín","it":"Cartiglio","de":"Schriftfeld","pt":"Legenda","hu":"Fejléc","zh":"标题栏","ja":"表題欄","hi":"शीर्षक ब्लॉक","ar":"خانة العنوان"},
+"AGENCE / ARCHITECTE (votre identité)":{"en":"AGENCY / ARCHITECT (your identity)","es":"AGENCIA / ARQUITECTO (su identidad)","it":"STUDIO / ARCHITETTO (la tua identità)","de":"BÜRO / ARCHITEKT (Ihre Identität)","pt":"AGÊNCIA / ARQUITETO (sua identidade)","hu":"IRODA / ÉPÍTÉSZ (az Ön adatai)","zh":"事务所 / 建筑师（您的信息）","ja":"事務所 / 建築家（あなたの情報）","hi":"एजेंसी / वास्तुकार (आपकी पहचान)","ar":"الوكالة / المهندس المعماري (هويتك)"},
+"LOGO":{"en":"LOGO","es":"LOGO","it":"LOGO","de":"LOGO","pt":"LOGO","hu":"LOGÓ","zh":"标志","ja":"ロゴ","hi":"लोगो","ar":"الشعار"},
+"Taille":{"en":"Size","es":"Tamaño","it":"Dimensione","de":"Größe","pt":"Tamanho","hu":"Méret","zh":"大小","ja":"サイズ","hi":"आकार","ar":"الحجم"},
+"Glissez le logo dans la planche pour le positionner.":{"en":"Drag the logo onto the sheet to position it.","es":"Arrastre el logotipo a la lámina para colocarlo.","it":"Trascina il logo sulla tavola per posizionarlo.","de":"Ziehen Sie das Logo auf das Blatt, um es zu platzieren.","pt":"Arraste o logótipo para a prancha para posicioná-lo.","hu":"Húzza a logót a lapra a pozicionáláshoz.","zh":"将标志拖到图纸上进行定位。","ja":"ロゴを用紙にドラッグして配置します。","hi":"इसे स्थान देने के लिए लोगो को शीट पर खींचें।","ar":"اسحب الشعار إلى اللوحة لتحديد موضعه."},
+"Template de planche (cartouche dessiné)":{"en":"Sheet template (drawn title block)","es":"Plantilla de lámina (cajetín dibujado)","it":"Modello di tavola (cartiglio disegnato)","de":"Blattvorlage (gezeichnetes Schriftfeld)","pt":"Modelo de prancha (cajetim desenhado)","hu":"Lapsablon (rajzolt fejléc)","zh":"图纸模板（绘制的标题栏）","ja":"シートテンプレート（作図した表題欄）","hi":"शीट टेम्पलेट (खींचा गया शीर्षक ब्लॉक)","ar":"قالب اللوحة (خانة عنوان مرسومة)"},
+"＋ Nouveau":{"en":"＋ New","es":"＋ Nuevo","it":"＋ Nuovo","de":"＋ Neu","pt":"＋ Novo","hu":"＋ Új","zh":"＋ 新建","ja":"＋ 新規","hi":"＋ नया","ar":"＋ جديد"},
+"✎ Dessiner":{"en":"✎ Draw","es":"✎ Dibujar","it":"✎ Disegna","de":"✎ Zeichnen","pt":"✎ Desenhar","hu":"✎ Rajzol","zh":"✎ 绘制","ja":"✎ 描画","hi":"✎ बनाएँ","ar":"✎ رسم"},
+"💾 Enregistrer":{"en":"💾 Save","es":"💾 Guardar","it":"💾 Salva","de":"💾 Speichern","pt":"💾 Guardar","hu":"💾 Mentés","zh":"💾 保存","ja":"💾 保存","hi":"💾 सहेजें","ar":"💾 حفظ"},
+"🗑 Supprimer":{"en":"🗑 Delete","es":"🗑 Eliminar","it":"🗑 Elimina","de":"🗑 Löschen","pt":"🗑 Excluir","hu":"🗑 Törlés","zh":"🗑 删除","ja":"🗑 削除","hi":"🗑 हटाएँ","ar":"🗑 حذف"},
+"🖨 Imprimer / exporter PDF":{"en":"🖨 Print / export PDF","es":"🖨 Imprimir / exportar PDF","it":"🖨 Stampa / esporta PDF","de":"🖨 Drucken / PDF exportieren","pt":"🖨 Imprimir / exportar PDF","hu":"🖨 Nyomtatás / PDF exportálása","zh":"🖨 打印 / 导出 PDF","ja":"🖨 印刷 / PDF 出力","hi":"🖨 प्रिंट / PDF निर्यात","ar":"🖨 طباعة / تصدير PDF"},
+"Forme":{"en":"Shape","es":"Forma","it":"Forma","de":"Form","pt":"Forma","hu":"Forma","zh":"形状","ja":"形状","hi":"आकृति","ar":"شكل"},
+"📥 Importer DXF / SVG":{"en":"📥 Import DXF / SVG","es":"📥 Importar DXF / SVG","it":"📥 Importa DXF / SVG","de":"📥 DXF / SVG importieren","pt":"📥 Importar DXF / SVG","hu":"📥 DXF / SVG importálása","zh":"📥 导入 DXF / SVG","ja":"📥 DXF / SVG を読み込む","hi":"📥 DXF / SVG आयात करें","ar":"📥 استيراد DXF / SVG"},
+"🖼️ Importer une image / PDF":{"en":"🖼️ Import an image / PDF","es":"🖼️ Importar una imagen / PDF","it":"🖼️ Importa un'immagine / PDF","de":"🖼️ Bild / PDF importieren","pt":"🖼️ Importar uma imagem / PDF","hu":"🖼️ Kép / PDF importálása","zh":"🖼️ 导入图片 / PDF","ja":"🖼️ 画像 / PDF を読み込む","hi":"🖼️ छवि / PDF आयात करें","ar":"🖼️ استيراد صورة / PDF"},
+"Image scannée (JPG / PNG / PDF) à mettre à l'échelle":{"en":"Scanned image (JPG / PNG / PDF) to scale","es":"Imagen escaneada (JPG / PNG / PDF) para escalar","it":"Immagine scansionata (JPG / PNG / PDF) da scalare","de":"Gescanntes Bild (JPG / PNG / PDF) zum Skalieren","pt":"Imagem digitalizada (JPG / PNG / PDF) para escalar","hu":"Beolvasott kép (JPG / PNG / PDF) léptékezéshez","zh":"需缩放的扫描图像（JPG / PNG / PDF）","ja":"縮尺調整するスキャン画像（JPG / PNG / PDF）","hi":"स्केल करने के लिए स्कैन की गई छवि (JPG / PNG / PDF)","ar":"صورة ممسوحة (JPG / PNG / PDF) لضبط المقياس"},
+"Importe une polyligne (DXF, SVG) pour t'en servir de sous-cul : trace par-dessus avec accrochage, ou convertis-la en contour.":{"en":"Import a polyline (DXF, SVG) to use as an underlay: trace over it with snapping, or convert it into an outline.","es":"Importa una polilínea (DXF, SVG) para usarla como plantilla: dibuja encima con ajuste, o conviértela en contorno.","it":"Importa una polilinea (DXF, SVG) da usare come base: traccia sopra con lo snap, o convertila in contorno.","de":"Importieren Sie eine Polylinie (DXF, SVG) als Unterlage: darüber mit Fang zeichnen oder in eine Kontur umwandeln.","pt":"Importe uma polilinha (DXF, SVG) para usar como base: desenhe por cima com ajuste, ou converta-a em contorno.","hu":"Importálj egy vonalláncot (DXF, SVG) alátétként: rajzolj rá illesztéssel, vagy alakítsd körvonallá.","zh":"导入折线（DXF、SVG）作为底图：捕捉描绘，或转换为轮廓。","ja":"ポリライン（DXF、SVG）を下敷きとして読み込み：スナップでなぞる、または輪郭に変換。","hi":"अंडरले के रूप में उपयोग करने के लिए पॉलीलाइन (DXF, SVG) आयात करें: स्नैप के साथ ऊपर ट्रेस करें, या इसे रूपरेखा में बदलें।","ar":"استورد خطًا متعددًا (DXF، SVG) لاستخدامه كطبقة أساس: ارسم فوقه مع الالتقاط، أو حوّله إلى مخطط."},
+": exporte-le en DXF (DXFOUT) — le binaire DWG n'est pas lisible en navigateur.":{"en":": export it to DXF (DXFOUT) — the binary DWG cannot be read in a browser.","es":": expórtalo a DXF (DXFOUT) — el binario DWG no se puede leer en el navegador.","it":": esportalo in DXF (DXFOUT) — il binario DWG non è leggibile nel browser.","de":": als DXF exportieren (DXFOUT) — die DWG-Binärdatei ist im Browser nicht lesbar.","pt":": exporte-o para DXF (DXFOUT) — o binário DWG não é legível no navegador.","hu":": exportáld DXF-be (DXFOUT) — a bináris DWG böngészőben nem olvasható.","zh":"：导出为 DXF（DXFOUT）——DWG 二进制文件无法在浏览器中读取。","ja":"：DXF（DXFOUT）で書き出してください——DWG バイナリはブラウザーで読み込めません。","hi":": इसे DXF (DXFOUT) में निर्यात करें — बाइनरी DWG ब्राउज़र में पढ़ा नहीं जा सकता।","ar":": صدّره إلى DXF (DXFOUT) — ملف DWG الثنائي غير قابل للقراءة في المتصفح."},
+"Vue":{"en":"View","es":"Vista","it":"Vista","de":"Ansicht","pt":"Vista","hu":"Nézet","zh":"视图","ja":"ビュー","hi":"दृश्य","ar":"عرض"},
+"Coupes":{"en":"Sections","es":"Secciones","it":"Sezioni","de":"Schnitte","pt":"Cortes","hu":"Metszetek","zh":"剖面","ja":"断面","hi":"अनुभाग","ar":"مقاطع"},
+"Transversale":{"en":"Cross","es":"Transversal","it":"Trasversale","de":"Quer","pt":"Transversal","hu":"Keresztirányú","zh":"横向","ja":"横断","hi":"अनुप्रस्थ","ar":"عرضي"},
+"Longitudinale":{"en":"Longitudinal","es":"Longitudinal","it":"Longitudinale","de":"Längs","pt":"Longitudinal","hu":"Hosszirányú","zh":"纵向","ja":"縦断","hi":"अनुदैर्ध्य","ar":"طولي"}
+};
+(function(){ for(var fr in I18N_ADD2){ var t=I18N_ADD2[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
+/* Lot 3 : panneau « Mes configurations » (gauche) + panneau Scène (milieu) + export. */
+var I18N_ADD3={
+"Mes configurations":{"en":"My configurations","es":"Mis configuraciones","it":"Le mie configurazioni","de":"Meine Konfigurationen","pt":"As minhas configurações","hu":"Konfigurációim","zh":"我的配置","ja":"マイ設定","hi":"मेरे कॉन्फ़िगरेशन","ar":"تكويناتي"},
+"＋ Enregistrer la config actuelle":{"en":"＋ Save current config","es":"＋ Guardar la config actual","it":"＋ Salva la config attuale","de":"＋ Aktuelle Konfig. speichern","pt":"＋ Guardar config atual","hu":"＋ Aktuális konfig mentése","zh":"＋ 保存当前配置","ja":"＋ 現在の設定を保存","hi":"＋ वर्तमान कॉन्फ़िग सहेजें","ar":"＋ حفظ التكوين الحالي"},
+"📁 Nouveau dossier":{"en":"📁 New folder","es":"📁 Nueva carpeta","it":"📁 Nuova cartella","de":"📁 Neuer Ordner","pt":"📁 Nova pasta","hu":"📁 Új mappa","zh":"📁 新建文件夹","ja":"📁 新規フォルダ","hi":"📁 नया फ़ोल्डर","ar":"📁 مجلد جديد"},
+"glisser pour ranger":{"en":"drag to organize","es":"arrastra para ordenar","it":"trascina per ordinare","de":"zum Ordnen ziehen","pt":"arraste para organizar","hu":"húzd a rendezéshez","zh":"拖动整理","ja":"ドラッグで整理","hi":"व्यवस्थित करने के लिए खींचें","ar":"اسحب للترتيب"},
+"Éditer":{"en":"Edit","es":"Editar","it":"Modifica","de":"Bearbeiten","pt":"Editar","hu":"Szerkesztés","zh":"编辑","ja":"編集","hi":"संपादित करें","ar":"تحرير"},
+"Màj":{"en":"Update","es":"Actualizar","it":"Aggiorna","de":"Aktual.","pt":"Atualizar","hu":"Frissítés","zh":"更新","ja":"更新","hi":"अपडेट","ar":"تحديث"},
+"◱ Scène":{"en":"◱ Scene","es":"◱ Escena","it":"◱ Scena","de":"◱ Szene","pt":"◱ Cena","hu":"◱ Jelenet","zh":"◱ 场景","ja":"◱ シーン","hi":"◱ दृश्य","ar":"◱ مشهد"},
+"Scène (assemblage)":{"en":"Scene (assembly)","es":"Escena (ensamblaje)","it":"Scena (assemblaggio)","de":"Szene (Zusammenstellung)","pt":"Cena (montagem)","hu":"Jelenet (összeállítás)","zh":"场景（组装）","ja":"シーン（組み立て）","hi":"दृश्य (संयोजन)","ar":"مشهد (تجميع)"},
+"Scène — assemblage":{"en":"Scene — assembly","es":"Escena — ensamblaje","it":"Scena — assemblaggio","de":"Szene — Zusammenstellung","pt":"Cena — montagem","hu":"Jelenet — összeállítás","zh":"场景 — 组装","ja":"シーン — 組み立て","hi":"दृश्य — संयोजन","ar":"مشهد — تجميع"},
+"Glissez une configuration dans la vue pour l'ajouter (elle se pose au sol au point visé), ou cliquez « + ». Sélectionnez un élément puis réglez Position / Hauteur / Rotation.":{"en":"Drag a configuration into the view to add it (it lands on the ground at the target point), or click « + ». Select an element then set Position / Height / Rotation.","es":"Arrastra una configuración a la vista para añadirla (se coloca en el suelo en el punto objetivo), o haz clic en « + ». Selecciona un elemento y ajusta Posición / Altura / Rotación.","it":"Trascina una configurazione nella vista per aggiungerla (si posa sul terreno nel punto mirato), o clicca « + ». Seleziona un elemento poi regola Posizione / Altezza / Rotazione.","de":"Ziehen Sie eine Konfiguration in die Ansicht, um sie hinzuzufügen (sie wird am Boden am Zielpunkt platziert), oder klicken Sie « + ». Element auswählen, dann Position / Höhe / Drehung einstellen.","pt":"Arraste uma configuração para a vista para adicioná-la (assenta no chão no ponto visado), ou clique « + ». Selecione um elemento e ajuste Posição / Altura / Rotação.","hu":"Húzz egy konfigurációt a nézetbe a hozzáadáshoz (a célpontnál a talajra kerül), vagy kattints a « + »-ra. Válassz egy elemet, majd állítsd be a Pozíció / Magasság / Forgatás értékeit.","zh":"将配置拖入视图以添加（它会落在目标点的地面上），或点击「+」。选择一个元素，然后调整位置/高度/旋转。","ja":"構成をビューにドラッグして追加（対象点の地面に配置されます）、または「+」をクリック。要素を選択して位置/高さ/回転を調整します。","hi":"जोड़ने के लिए किसी कॉन्फ़िगरेशन को व्यू में खींचें (यह लक्ष्य बिंदु पर ज़मीन पर आ जाती है), या « + » क्लिक करें। एक तत्व चुनें फिर स्थिति / ऊँचाई / घुमाव सेट करें।","ar":"اسحب تكوينًا إلى العرض لإضافته (يستقر على الأرض عند النقطة المستهدفة)، أو انقر « + ». حدد عنصرًا ثم اضبط الموضع / الارتفاع / الدوران."},
+"Configurations disponibles":{"en":"Available configurations","es":"Configuraciones disponibles","it":"Configurazioni disponibili","de":"Verfügbare Konfigurationen","pt":"Configurações disponíveis","hu":"Elérhető konfigurációk","zh":"可用配置","ja":"利用可能な構成","hi":"उपलब्ध कॉन्फ़िगरेशन","ar":"التكوينات المتاحة"},
+"Aucune config. Enregistrez d'abord un objet (murs, toiture, escalier…) via 💾.":{"en":"No config. First save an object (walls, roof, stairs…) via 💾.","es":"Sin config. Primero guarda un objeto (muros, cubierta, escalera…) con 💾.","it":"Nessuna config. Salva prima un oggetto (muri, tetto, scala…) tramite 💾.","de":"Keine Konfig. Speichern Sie zuerst ein Objekt (Wände, Dach, Treppe…) über 💾.","pt":"Sem config. Guarde primeiro um objeto (paredes, telhado, escada…) via 💾.","hu":"Nincs konfig. Előbb ments el egy objektumot (falak, tető, lépcső…) a 💾-vel.","zh":"无配置。请先通过 💾 保存一个对象（墙体、屋顶、楼梯…）。","ja":"構成なし。まず 💾 でオブジェクト（壁、屋根、階段…）を保存してください。","hi":"कोई कॉन्फ़िग नहीं। पहले 💾 से कोई वस्तु (दीवारें, छत, सीढ़ी…) सहेजें।","ar":"لا يوجد تكوين. احفظ أولًا كائنًا (جدران، سقف، درج…) عبر 💾."},
+"Éléments de la scène":{"en":"Scene elements","es":"Elementos de la escena","it":"Elementi della scena","de":"Szenenelemente","pt":"Elementos da cena","hu":"Jelenet elemei","zh":"场景元素","ja":"シーンの要素","hi":"दृश्य तत्व","ar":"عناصر المشهد"},
+"Décor (mode Réaliste)":{"en":"Décor (Realistic mode)","es":"Decorado (modo Realista)","it":"Scenario (modalità Realistica)","de":"Kulisse (Modus Realistisch)","pt":"Cenário (modo Realista)","hu":"Díszlet (Valósághű mód)","zh":"布景（真实模式）","ja":"背景（リアルモード）","hi":"सज्जा (यथार्थवादी मोड)","ar":"الديكور (الوضع الواقعي)"},
+"💾 Enregistrer cette scène":{"en":"💾 Save this scene","es":"💾 Guardar esta escena","it":"💾 Salva questa scena","de":"💾 Diese Szene speichern","pt":"💾 Guardar esta cena","hu":"💾 Jelenet mentése","zh":"💾 保存此场景","ja":"💾 このシーンを保存","hi":"💾 यह दृश्य सहेजें","ar":"💾 حفظ هذا المشهد"},
+"Vide — glissez une config ci-dessus dans la vue.":{"en":"Empty — drag a config above into the view.","es":"Vacío — arrastra una config de arriba a la vista.","it":"Vuoto — trascina una config qui sopra nella vista.","de":"Leer — ziehen Sie eine Konfig von oben in die Ansicht.","pt":"Vazio — arraste uma config acima para a vista.","hu":"Üres — húzz egy fenti konfigot a nézetbe.","zh":"空 — 将上方的配置拖入视图。","ja":"空 — 上の構成をビューにドラッグ。","hi":"खाली — ऊपर की कॉन्फ़िग को व्यू में खींचें।","ar":"فارغ — اسحب تكوينًا من الأعلى إلى العرض."},
+"Eau":{"en":"Water","es":"Agua","it":"Acqua","de":"Wasser","pt":"Água","hu":"Víz","zh":"水","ja":"水","hi":"पानी","ar":"ماء"},
+"Arbres":{"en":"Trees","es":"Árboles","it":"Alberi","de":"Bäume","pt":"Árvores","hu":"Fák","zh":"树木","ja":"樹木","hi":"पेड़","ar":"أشجار"},
+"Exporter votre configuration":{"en":"Export your configuration","es":"Exporta tu configuración","it":"Esporta la tua configurazione","de":"Konfiguration exportieren","pt":"Exporte a sua configuração","hu":"Konfiguráció exportálása","zh":"导出您的配置","ja":"設定をエクスポート","hi":"अपना कॉन्फ़िगरेशन निर्यात करें","ar":"صدّر تكوينك"},
+"OBJ universel · DAE pour SketchUp · IFC4 pour ArchiCAD/Revit · IFC 2x3 pour SketchUp / vieux importeurs (unités m)":{"en":"Universal OBJ · DAE for SketchUp · IFC4 for ArchiCAD/Revit · IFC 2x3 for SketchUp / old importers (units m)","es":"OBJ universal · DAE para SketchUp · IFC4 para ArchiCAD/Revit · IFC 2x3 para SketchUp / importadores antiguos (unidades m)","it":"OBJ universale · DAE per SketchUp · IFC4 per ArchiCAD/Revit · IFC 2x3 per SketchUp / importatori vecchi (unità m)","de":"Universelles OBJ · DAE für SketchUp · IFC4 für ArchiCAD/Revit · IFC 2x3 für SketchUp / alte Importer (Einheiten m)","pt":"OBJ universal · DAE para SketchUp · IFC4 para ArchiCAD/Revit · IFC 2x3 para SketchUp / importadores antigos (unidades m)","hu":"Univerzális OBJ · DAE a SketchUp-hoz · IFC4 az ArchiCAD/Revit-hez · IFC 2x3 a SketchUp / régi importálókhoz (egység m)","zh":"通用 OBJ · 用于 SketchUp 的 DAE · 用于 ArchiCAD/Revit 的 IFC4 · 用于 SketchUp / 旧导入器的 IFC 2x3（单位 m）","ja":"汎用 OBJ · SketchUp 用 DAE · ArchiCAD/Revit 用 IFC4 · SketchUp / 旧インポーター用 IFC 2x3（単位 m）","hi":"यूनिवर्सल OBJ · SketchUp के लिए DAE · ArchiCAD/Revit के लिए IFC4 · SketchUp / पुराने आयातकों के लिए IFC 2x3 (इकाई m)","ar":"OBJ عالمي · DAE لـ SketchUp · IFC4 لـ ArchiCAD/Revit · IFC 2x3 لـ SketchUp / المستوردات القديمة (وحدات م)"},
+"🎨 Rendu IA (Gemini)":{"en":"🎨 AI render (Gemini)","es":"🎨 Renderizado IA (Gemini)","it":"🎨 Render IA (Gemini)","de":"🎨 KI-Rendering (Gemini)","pt":"🎨 Renderização IA (Gemini)","hu":"🎨 MI renderelés (Gemini)","zh":"🎨 AI 渲染 (Gemini)","ja":"🎨 AI レンダリング (Gemini)","hi":"🎨 AI रेंडर (Gemini)","ar":"🎨 عرض بالذكاء الاصطناعي (Gemini)"}
+};
+(function(){ for(var fr in I18N_ADD3){ var t=I18N_ADD3[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
+/* Lot 4 : en-têtes de groupe du menu gauche + Cuisine. */
+var I18N_ADD4={
+"Bâtiment":{"en":"Building","es":"Edificio","it":"Edificio","de":"Gebäude","pt":"Edifício","hu":"Épület","zh":"建筑","ja":"建物","hi":"भवन","ar":"مبنى"},
+"Éléments de construction":{"en":"Construction elements","es":"Elementos de construcción","it":"Elementi di costruzione","de":"Bauelemente","pt":"Elementos de construção","hu":"Építőelemek","zh":"建筑构件","ja":"建築要素","hi":"निर्माण तत्व","ar":"عناصر البناء"},
+"Mobilier":{"en":"Furniture","es":"Mobiliario","it":"Mobili","de":"Möbel","pt":"Mobiliário","hu":"Bútor","zh":"家具","ja":"家具","hi":"फर्नीचर","ar":"الأثاث"},
+"Cuisine":{"en":"Kitchen","es":"Cocina","it":"Cucina","de":"Küche","pt":"Cozinha","hu":"Konyha","zh":"厨房","ja":"キッチン","hi":"रसोई","ar":"مطبخ"}
+};
+(function(){ for(var fr in I18N_ADD4){ var t=I18N_ADD4[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
+/* Lot 5 : panneau Cloisons (plan d'étage) + bouton « À propos » + Annuler. */
+var I18N_ADD5={
+"À propos":{"en":"About","es":"Acerca de","it":"Informazioni","de":"Über","pt":"Sobre","hu":"Névjegy","zh":"关于","ja":"概要","hi":"परिचय","ar":"حول"},
+"Étage":{"en":"Floor","es":"Planta","it":"Piano","de":"Geschoss","pt":"Piso","hu":"Szint","zh":"楼层","ja":"階","hi":"मंज़िल","ar":"طابق"},
+"Annuler":{"en":"Cancel","es":"Cancelar","it":"Annulla","de":"Abbrechen","pt":"Cancelar","hu":"Mégse","zh":"取消","ja":"キャンセル","hi":"रद्द करें","ar":"إلغاء"},
+"Nouvelle cloison — type, épaisseur, matériaux, doublage":{"en":"New partition — type, thickness, materials, lining","es":"Nuevo tabique — tipo, espesor, materiales, trasdosado","it":"Nuovo tramezzo — tipo, spessore, materiali, controparete","de":"Neue Trennwand — Typ, Dicke, Materialien, Vorsatzschale","pt":"Nova divisória — tipo, espessura, materiais, forro","hu":"Új válaszfal — típus, vastagság, anyagok, előtétfal","zh":"新隔墙 — 类型、厚度、材料、贴面","ja":"新規間仕切り — タイプ、厚さ、材料、内貼り","hi":"नई विभाजन दीवार — प्रकार, मोटाई, सामग्री, लाइनिंग","ar":"قاطع جديد — النوع، السماكة، المواد، التبطين"},
+"✏️ Tracer une cloison":{"en":"✏️ Draw a partition","es":"✏️ Dibujar un tabique","it":"✏️ Traccia un tramezzo","de":"✏️ Trennwand zeichnen","pt":"✏️ Desenhar uma divisória","hu":"✏️ Válaszfal rajzolása","zh":"✏️ 绘制隔墙","ja":"✏️ 間仕切りを描く","hi":"✏️ विभाजन बनाएँ","ar":"✏️ ارسم قاطعًا"},
+"■ Terminer le tracé":{"en":"■ Finish drawing","es":"■ Terminar el trazado","it":"■ Termina il tracciato","de":"■ Zeichnen beenden","pt":"■ Terminar o traçado","hu":"■ Rajzolás befejezése","zh":"■ 完成绘制","ja":"■ 作図を終了","hi":"■ रेखांकन समाप्त करें","ar":"■ إنهاء الرسم"},
+"Cloisons tracées":{"en":"Drawn partitions","es":"Tabiques dibujados","it":"Tramezzi tracciati","de":"Gezeichnete Trennwände","pt":"Divisórias desenhadas","hu":"Megrajzolt válaszfalak","zh":"已绘隔墙","ja":"作図した間仕切り","hi":"खींची गई विभाजन दीवारें","ar":"القواطع المرسومة"},
+"Choisis l'étage + le type, puis « Tracer » : clique les points (vue de dessus), double-clic pour terminer.":{"en":"Choose the floor + type, then « Draw »: click the points (top view), double-click to finish.","es":"Elige la planta + el tipo, luego « Dibujar »: haz clic en los puntos (vista superior), doble clic para terminar.","it":"Scegli il piano + il tipo, poi « Traccia »: clicca i punti (vista dall'alto), doppio clic per terminare.","de":"Geschoss + Typ wählen, dann « Zeichnen »: Punkte anklicken (Draufsicht), Doppelklick zum Beenden.","pt":"Escolhe o piso + o tipo, depois « Desenhar »: clica nos pontos (vista de cima), duplo clique para terminar.","hu":"Válaszd ki a szintet + a típust, majd « Rajzolás »: kattints a pontokra (felülnézet), dupla kattintás a befejezéshez.","zh":"选择楼层 + 类型，然后「绘制」：点击各点（俯视图），双击完成。","ja":"階とタイプを選び、「作図」：点をクリック（上面図）、ダブルクリックで終了。","hi":"मंज़िल + प्रकार चुनें, फिर « बनाएँ »: बिंदुओं पर क्लिक करें (शीर्ष दृश्य), समाप्त करने के लिए डबल-क्लिक करें।","ar":"اختر الطابق + النوع، ثم « ارسم »: انقر على النقاط (منظر علوي)، انقر نقرًا مزدوجًا للإنهاء."},
+"Cotes en direct • guides d'alignement sur les points • Maj = angles à 45° • tape un nombre ou R puis une distance (cm) + Entrée • Échap annule.":{"en":"Live dimensions • alignment guides on points • Shift = 45° angles • type a number or R then a distance (cm) + Enter • Esc cancels.","es":"Cotas en directo • guías de alineación en los puntos • Mayús = ángulos de 45° • escribe un número o R y luego una distancia (cm) + Intro • Esc cancela.","it":"Quote in tempo reale • guide di allineamento sui punti • Maiusc = angoli a 45° • digita un numero o R poi una distanza (cm) + Invio • Esc annulla.","de":"Live-Maße • Ausrichtungshilfen an den Punkten • Umschalt = 45°-Winkel • Zahl oder R eingeben, dann Abstand (cm) + Enter • Esc bricht ab.","pt":"Cotas em direto • guias de alinhamento nos pontos • Shift = ângulos de 45° • escreve um número ou R e depois uma distância (cm) + Enter • Esc cancela.","hu":"Élő méretek • illesztővonalak a pontokon • Shift = 45°-os szögek • írj be egy számot vagy R-t, majd egy távolságot (cm) + Enter • Esc megszakít.","zh":"实时尺寸 • 点的对齐参考线 • Shift = 45° 角 • 输入数字或 R 再输入距离（cm）+ 回车 • Esc 取消。","ja":"リアルタイム寸法 • 点の整列ガイド • Shift = 45°角 • 数値または R を入力して距離（cm）+ Enter • Esc で取消。","hi":"लाइव आयाम • बिंदुओं पर संरेखण गाइड • Shift = 45° कोण • कोई संख्या या R टाइप करें फिर दूरी (cm) + Enter • Esc रद्द करता है।","ar":"أبعاد مباشرة • خطوط محاذاة على النقاط • Shift = زوايا 45° • اكتب رقمًا أو R ثم مسافة (سم) + Enter • Esc للإلغاء."}
+};
+(function(){ for(var fr in I18N_ADD5){ var t=I18N_ADD5[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
 function pick(){ try{ var sv=localStorage.getItem('bpo_lang'); if(sv) return sv; }catch(e){}
   var l=(navigator.language||navigator.userLanguage||'en').slice(0,2).toLowerCase();
   return (l==='fr'||I18N[l])?l:'en'; }
@@ -13335,6 +13534,11 @@ function translateDOM(){
 }
 /* Easter egg : hommage à Graphisoft / ArchiCAD quand on passe en hongrois.
    Recouvre le viewer d'une petite animation, puis revient au viewer (clic pour passer). */
+/* Son des animations : joué UNIQUEMENT pendant les écrans d'intro (changement de langue) et « À propos ».
+   Pas de musique d'ambiance. Respecte window.SOUND_ON (bouton haut-parleur). */
+var _ANIM_AU=null;
+function animSoundStart(){ try{ if(window.SOUND_ON===false) return; if(!_ANIM_AU){ _ANIM_AU=new Audio('Logic.mp3'); _ANIM_AU.volume=0.6; } _ANIM_AU.currentTime=0; var p=_ANIM_AU.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} }
+function animSoundStop(){ try{ if(_ANIM_AU) _ANIM_AU.pause(); }catch(e){} }
 function playGraphisoftTribute(){
   var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsTribute')) return;
   if(getComputedStyle(vp).position==='static') vp.style.position='relative';
@@ -13401,8 +13605,9 @@ function playGraphisoftTribute(){
 '</div><div class="skip">◾ kattints a kihagyáshoz · click to skip</div>';
   vp.appendChild(ov);
   requestAnimationFrame(function(){ ov.style.opacity='1'; });
+  animSoundStart();
   var timer=setTimeout(close, 15600);
-  function close(){ clearTimeout(timer); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
+  function close(){ clearTimeout(timer); animSoundStop(); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
   ov.addEventListener('click', close);
 }
 /* Message d'introduction à l'outil (corps en paragraphes ; ligne finale = INTRO_HOP). */
@@ -13415,7 +13620,8 @@ var INTRO_MSG={
  pt:"Esta é a primeira versão do BPO Architectural Parametrics. Esta ferramenta não pretende substituir um software BIM de arquitetura — o ArchiCAD (Graphisoft) faz isso muito bem! Queremos também dedicar esta ferramenta a Bojár Gábor, o seu fundador, o nosso mentor ;)<br><br>Queremos colocar o poder das ferramentas paramétricas ao alcance de todos, para lhe poupar tempo na realização dos seus projetos.<br><br>Não hesite em enviar-nos os seus comentários e desejos.<br><br>Em breve adicionaremos uma secção « Fabricantes »!",
  zh:"这是 BPO Architectural Parametrics 的第一个版本。此工具并非用于取代建筑 BIM 软件——ArchiCAD（Graphisoft）在这方面做得非常出色！我们也想将此工具献给它的创始人、我们的导师 Bojár Gábor ;)<br><br>我们希望让所有人都能使用参数化工具的强大功能，帮助您在项目实现中节省时间。<br><br>欢迎向我们发送意见和建议。<br><br>我们即将添加 « 厂商 » 板块！",
  ja:"これは BPO Architectural Parametrics の最初のバージョンです。このツールは建築 BIM ソフトを置き換えるものではありません——ArchiCAD（Graphisoft）がそれを見事に担っています！また、このツールを創業者であり私たちの師である Bojár Gábor に捧げます ;)<br><br>パラメトリックツールの力をすべての人に届け、プロジェクトの実現にかかる時間を短縮したいと考えています。<br><br>ご意見・ご要望をぜひお寄せください。<br><br>まもなく « メーカー » セクションを追加します！",
- hi:"यह BPO Architectural Parametrics का पहला संस्करण है। यह टूल किसी आर्किटेक्चरल BIM सॉफ़्टवेयर की जगह लेने के लिए नहीं है — ArchiCAD (Graphisoft) यह काम बहुत अच्छे से करता है! हम यह टूल इसके संस्थापक, हमारे गुरु Bojár Gábor को समर्पित करना चाहते हैं ;)<br><br>हम पैरामीट्रिक टूल्स की शक्ति सभी तक पहुँचाना चाहते हैं, ताकि आपके प्रोजेक्ट्स को साकार करने में आपका समय बचे।<br><br>अपनी टिप्पणियाँ और सुझाव हमें ज़रूर भेजें।<br><br>हम जल्द ही « निर्माता » रूब्रिक जोड़ेंगे!"
+ hi:"यह BPO Architectural Parametrics का पहला संस्करण है। यह टूल किसी आर्किटेक्चरल BIM सॉफ़्टवेयर की जगह लेने के लिए नहीं है — ArchiCAD (Graphisoft) यह काम बहुत अच्छे से करता है! हम यह टूल इसके संस्थापक, हमारे गुरु Bojár Gábor को समर्पित करना चाहते हैं ;)<br><br>हम पैरामीट्रिक टूल्स की शक्ति सभी तक पहुँचाना चाहते हैं, ताकि आपके प्रोजेक्ट्स को साकार करने में आपका समय बचे।<br><br>अपनी टिप्पणियाँ और सुझाव हमें ज़रूर भेजें।<br><br>हम जल्द ही « निर्माता » रूब्रिक जोड़ेंगे!",
+ ar:"هذه هي النسخة الأولى من BPO Architectural Parametrics. لا تهدف هذه الأداة إلى استبدال برامج BIM المعمارية — فـ ArchiCAD (Graphisoft) يقوم بذلك على أكمل وجه! كما نودّ إهداء هذه الأداة إلى بويار غابور، مؤسِّسها ومعلِّمنا ;)<br><br>نريد أن نُتيح قوة الأدوات البارامترية للجميع، لتوفير وقتك في إنجاز مشاريعك.<br><br>لا تتردّد في إرسال ملاحظاتك واقتراحاتك إلينا.<br><br>سنضيف قريبًا قسم « المصنّعون »!"
 };
 /* Ligne de clôture, mise en valeur, traduite par langue. */
 var INTRO_HOP={
@@ -13427,7 +13633,8 @@ var INTRO_HOP={
  pt:"Esperamos que goste destas ferramentas.",
  zh:"希望您喜欢这些工具。",
  ja:"これらのツールを楽しんでいただければ幸いです。",
- hi:"हमें आशा है कि आपको ये टूल्स पसंद आएँगे।"
+ hi:"हमें आशा है कि आपको ये टूल्स पसंद आएँगे।",
+ ar:"نأمل أن تستمتع بهذه الأدوات."
 };
 /* Écran d'introduction à l'outil (toutes langues sauf hongrois). Clic pour passer. */
 function playIntro(l){
@@ -13457,7 +13664,7 @@ function playIntro(l){
 '#gsIntro .hop{font-size:16px;font-weight:700;color:var(--am,#ff8a3d);letter-spacing:.02em;}'+
 '#gsIntro .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#7a6551;letter-spacing:.12em;}'+
 '</style>'+
-'<div class="flag"></div><div class="grid"></div>'+
+'<div class="flag" style="background:'+((typeof FLAG_BANDS!=='undefined'&&FLAG_BANDS[l])||'linear-gradient(90deg,var(--am,#ff8a3d),#ffc79a,var(--am,#ff8a3d))')+';"></div><div class="grid"></div>'+
 '<div class="massing">'+
 '<i style="width:152px;animation-delay:0s"></i>'+
 '<i style="width:152px;animation-delay:.28s"></i>'+
@@ -13477,8 +13684,9 @@ function playIntro(l){
 '</div><div class="skip">◾ click to continue</div>';
   vp.appendChild(ov);
   requestAnimationFrame(function(){ ov.style.opacity='1'; });
+  animSoundStart();
   var timer=setTimeout(close, 15600);
-  function close(){ clearTimeout(timer); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
+  function close(){ clearTimeout(timer); animSoundStop(); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
   ov.addEventListener('click', close);
 }
 function setLang(l){ LANG=I18N[l]||l==='fr'?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
@@ -13490,10 +13698,11 @@ function start(){
   if(sel){ sel.value=LANG; sel.addEventListener('change',function(){ setLang(this.value); }); }
   mo=new MutationObserver(function(){ if(pend||LANG==='fr')return; pend=true; setTimeout(function(){pend=false; translateDOM();},40); });
   translateDOM();
+  try{ applyPrefs(); }catch(e){}
 }
 if(document.readyState!=='loading') setTimeout(start,60); else document.addEventListener('DOMContentLoaded',function(){ setTimeout(start,60); });
 window.playAbout=function(){ try{ var l=(document.getElementById('langsel')||{}).value||(typeof LANG!=='undefined'?LANG:'fr'); if(l==='hu'){ if(typeof playGraphisoftTribute==='function') playGraphisoftTribute(); } else if(typeof playIntro==='function'){ playIntro(l); } }catch(e){} };
-(function(){ var b=document.getElementById('soundBtn'); var au=new Audio('Logic.mp3'); au.loop=true; au.volume=0.6; function mark(on){ if(!b)return; if(on){ b.classList.add('on'); b.style.color=''; b.title='Couper la musique'; } else { b.classList.remove('on'); b.title='Musique d ambiance'; } } au.addEventListener('play',function(){ mark(true); }); au.addEventListener('pause',function(){ mark(false); }); au.addEventListener('error',function(){ if(b){ b.style.color='#e05555'; b.title='Logic.mp3 illisible - rends-le disponible hors ligne dans Dropbox'; } }); var armed=false, justArmed=false, EVS=['click','keydown','pointerdown','touchstart']; function cleanup(){ EVS.forEach(function(ev){ document.removeEventListener(ev, firstGesture, true); }); } function firstGesture(){ if(armed)return; armed=true; justArmed=true; au.play().catch(function(){}); cleanup(); setTimeout(function(){ justArmed=false; },0); } au.play().catch(function(){ EVS.forEach(function(ev){ document.addEventListener(ev, firstGesture, true); }); }); if(b) b.onclick=function(){ if(justArmed) return; try{ if(au.paused) au.play().catch(function(err){ b.style.color='#e05555'; b.title='Lecture refusee: '+(err&&err.name||err); }); else au.pause(); }catch(e){} }; })();
+window.SOUND_ON=true;   /* son joué pendant les animations (intro langue / À propos) */
 })();
 </script>
 </body>
