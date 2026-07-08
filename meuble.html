@@ -683,7 +683,9 @@ WGL._look=function(e,c,u){var f=[c[0]-e[0],c[1]-e[1],c[2]-e[2]];var l=Math.hypot
 WGL.render=function(){
   if(!WGL.ready||!WGL.gl) return;
   if(WGL.txActive){ WGL.renderT(); if(typeof gizovShow==='function') gizovShow(false); return; }
-  if(WGL.gActive){ WGL.renderG();
+  if(WGL.gActive){
+    if(typeof MODE!=='undefined' && MODE==='scene' && WGL.renderSceneTex){ WGL.renderSceneTex(); }
+    else WGL.renderG();
     if(typeof gizovShow==='function'){ if(typeof MODE!=='undefined' && MODE==='scene'){ gizovShow(true); if(typeof drawGizov==='function') drawGizov(); } else gizovShow(false); }
     return;
   }
@@ -891,6 +893,111 @@ WGL.renderT=function(){
     gl.uniform1f(ulUR, (g.tex && PROD_TEXROT[M.id] && PROD_TEXROT[M.id][g.tex])||0.0);
     gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4);
   });
+};
+/* ---- SCÈNE TEXTURÉE : un tampon texturé GPU par produit (cache), dessiné par
+   instance avec sa matrice modèle. Fluide (aucune reconstruction au déplacement). ---- */
+WGL.prodTexCache=WGL.prodTexCache||{};
+WGL.prodTexGL=function(pid){
+  var c=WGL.prodTexCache[pid]; if(c&&c.ready) return c; if(c&&c.loading) return null;
+  var D=(typeof TEX_OBJECTS!=='undefined')?TEX_OBJECTS[pid]:null;
+  if(!D){ if(typeof ensureProduct==='function' && isHaworth(pid)) ensureProduct(pid, function(){ DIRTY=true; if(WGL.render)WGL.render(); }); return null; }
+  WGL.prodTexCache[pid]={loading:true,ready:false};
+  WGL.gunzip(WGL.b64ToBytes(D.geo)).then(function(raw){
+    var gl=WGL.gl, mt=D.meta, off=0;
+    var posQ=new Uint16Array(raw.slice(off,off+mt.plen).buffer); off+=mt.plen;
+    var nrm =new Int8Array (raw.slice(off,off+mt.nlen).buffer); off+=mt.nlen;
+    var uv  =new Float32Array(raw.slice(off,off+mt.uvlen).buffer); off+=mt.uvlen;
+    var idx =new Uint32Array(raw.slice(off,off+mt.ilen).buffer); off+=mt.ilen;
+    var bb=mt.bb, nv=mt.nv, pos=new Float32Array(nv*3), nrmf=new Float32Array(nv*3), i;
+    for(i=0;i<nv;i++){ pos[i*3]=bb[0]+(posQ[i*3]/65535)*(bb[3]-bb[0]); pos[i*3+1]=bb[1]+(posQ[i*3+1]/65535)*(bb[4]-bb[1]); pos[i*3+2]=bb[2]+(posQ[i*3+2]/65535)*(bb[5]-bb[2]); }
+    for(i=0;i<nv*3;i++) nrmf[i]=nrm[i]/127;
+    function buf(a){ var b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.bufferData(gl.ARRAY_BUFFER,a,gl.STATIC_DRAW); return b; }
+    var idb=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,idb); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,idx,gl.STATIC_DRAW);
+    var pool=(typeof TEX_POOL!=='undefined')?TEX_POOL:{};
+    (D.groups||[]).forEach(function(g){ if(g.tex && !WGL.txt[g.tex]){ var s=(D.tex&&D.tex[g.tex])||pool[g.tex]; if(s) WGL.makeTex(g.tex,s); } });
+    WGL.prodTexCache[pid]={ready:true,loading:false,pos:buf(pos),nrm:buf(nrmf),uv:buf(uv),idx:idb,groups:D.groups};
+    DIRTY=true; if(WGL.render) WGL.render();
+  }).catch(function(){ WGL.prodTexCache[pid]={ready:true,loading:false,failed:true,groups:[]}; });
+  return null;
+};
+WGL.renderSceneTex=function(){
+  if(!WGL.initGL()||!WGL.initTexGL()) return;
+  var gl=WGL.gl, cv=gl.canvas, cam=WGL.cam, P=WGL.progT, e=WGL.ENVS[WGL.env];
+  var tx=cam.tx||0,tz=cam.tz||0, ex=tx+cam.r*Math.sin(cam.ph)*Math.sin(cam.th), ey=cam.ty+cam.r*Math.cos(cam.ph), ez=tz+cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
+  var mv=WGL._look([ex,ey,ez],[tx,cam.ty,tz],[0,1,0]);
+  var as=cv.width/cv.height, fa=Math.max(100,cam.r*3+60), prj=WGL._persp(0.95,as,0.02,fa), pv=WGL._mul(prj,mv);
+  gl.clearColor(0.102,0.110,0.130,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  var _site=(typeof SITE!=='undefined'&&SITE.on);
+  if(!_site && WGL.progSky){
+    var dW=(typeof DIMS!=='undefined'&&DIMS)?DIMS.w:2.0, dD=(typeof DIMS!=='undefined'&&DIMS)?DIMS.d:2.0, dH=(typeof DIMS!=='undefined'&&DIMS)?DIMS.h:1.0;
+    var L0=e.L[0], hyl=Math.max(0.25,L0[1]), ks=dH*0.45/hyl;
+    gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.useProgram(WGL.progSky);
+    var _pTop=(typeof prefHex01==='function'&&prefHex01(PREFS.skyTop))||[0.40,0.60,0.86], _pHor=(typeof prefHex01==='function'&&prefHex01(PREFS.skyHor))||[0.87,0.91,0.96];
+    gl.uniform3f(gl.getUniformLocation(WGL.progSky,'topC'),_pTop[0],_pTop[1],_pTop[2]);
+    gl.uniform3f(gl.getUniformLocation(WGL.progSky,'horC'),_pHor[0],_pHor[1],_pHor[2]);
+    var spq=gl.getAttribLocation(WGL.progSky,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.skyBuf); gl.enableVertexAttribArray(spq); gl.vertexAttribPointer(spq,2,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,6);
+    gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.useProgram(WGL.progFloor);
+    gl.uniformMatrix4fv(gl.getUniformLocation(WGL.progFloor,'pv'),false,pv);
+    gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'oc'),0,0);
+    gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'oh'),dW*0.5,dD*0.5);
+    gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'sdir'),-L0[0]*ks,-L0[2]*ks);
+    var _pGrd=(typeof prefHex01==='function'&&prefHex01(PREFS.ground))||[0.88,0.89,0.90];
+    gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'floorC'),_pGrd[0],_pGrd[1],_pGrd[2]);
+    gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'horC'),_pHor[0],_pHor[1],_pHor[2]);
+    var fpq=gl.getAttribLocation(WGL.progFloor,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.floorBuf); gl.enableVertexAttribArray(fpq); gl.vertexAttribPointer(fpq,3,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,6);
+  }
+  gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND);
+  gl.useProgram(P);
+  gl.uniformMatrix4fv(gl.getUniformLocation(P,'pv'),false,pv);
+  gl.uniform3f(gl.getUniformLocation(P,'camPos'),ex,ey,ez);
+  gl.uniform3fv(gl.getUniformLocation(P,'lightDirs'),new Float32Array([].concat.apply([],e.L)));
+  gl.uniform3fv(gl.getUniformLocation(P,'lightCols'),new Float32Array([].concat.apply([],e.C)));
+  gl.uniform3fv(gl.getUniformLocation(P,'ambTop'),new Float32Array(e.aT));
+  gl.uniform3fv(gl.getUniformLocation(P,'ambBot'),new Float32Array(e.aB));
+  gl.uniform1f(gl.getUniformLocation(P,'ovOn'),0.0);
+  gl.uniform3f(gl.getUniformLocation(P,'ovCol'),0.7,0.71,0.73);
+  gl.uniform1i(gl.getUniformLocation(P,'tex0'),0);
+  gl.uniform2f(gl.getUniformLocation(P,'mrp'),0.0,0.55);
+  var ulModel=gl.getUniformLocation(P,'model'), ulUse=gl.getUniformLocation(P,'useTex'), ulBase=gl.getUniformLocation(P,'baseCol'), ulUV=gl.getUniformLocation(P,'uvScale'), ulUR=gl.getUniformLocation(P,'uvRot');
+  var lp=gl.getAttribLocation(P,'p'), ln=gl.getAttribLocation(P,'n'), luv=gl.getAttribLocation(P,'uv');
+  var pool=(typeof TEX_POOL!=='undefined')?TEX_POOL:{};
+  (SCENE.instances||[]).forEach(function(inst){
+    if(inst.mode!=='fabprod') return;
+    var pg=WGL.prodTexGL(inst.prod); if(!pg || !pg.pos) return;
+    gl.uniformMatrix4fv(ulModel,false,scnModel(inst));
+    gl.bindBuffer(gl.ARRAY_BUFFER,pg.pos); gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,pg.nrm); gl.enableVertexAttribArray(ln); gl.vertexAttribPointer(ln,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,pg.uv); gl.enableVertexAttribArray(luv); gl.vertexAttribPointer(luv,2,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,pg.idx);
+    (pg.groups||[]).forEach(function(g){
+      var t=g.tex?WGL.txt[g.tex]:null;
+      if(t&&t.ready){ gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,t.tex); gl.uniform1f(ulUse,1.0); }
+      else { gl.uniform1f(ulUse,0.0); var c=g.col||[180,180,180]; gl.uniform3f(ulBase,c[0]/255,c[1]/255,c[2]/255); }
+      gl.uniform1f(ulUV,(g.tex&&PROD_TEXSCALE[inst.prod]&&PROD_TEXSCALE[inst.prod][g.tex])||1.0);
+      gl.uniform1f(ulUR,(g.tex&&PROD_TEXROT[inst.prod]&&PROD_TEXROT[inst.prod][g.tex])||0.0);
+      gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4);
+    });
+  });
+  /* objets non-fabricants (paramétriques) : rendu coloré par instance via progG */
+  var others=(SCENE.instances||[]).filter(function(x){return x.mode!=='fabprod';});
+  if(others.length && WGL.progG){
+    var PG=WGL.progG; gl.useProgram(PG);
+    gl.uniformMatrix4fv(gl.getUniformLocation(PG,'pv'),false,pv);
+    gl.uniform3f(gl.getUniformLocation(PG,'camPos'),ex,ey,ez);
+    gl.uniform3fv(gl.getUniformLocation(PG,'lightDirs'),new Float32Array([].concat.apply([],e.L)));
+    gl.uniform3fv(gl.getUniformLocation(PG,'lightCols'),new Float32Array([].concat.apply([],e.C)));
+    gl.uniform3fv(gl.getUniformLocation(PG,'ambTop'),new Float32Array(e.aT));
+    gl.uniform3fv(gl.getUniformLocation(PG,'ambBot'),new Float32Array(e.aB));
+    var gM=gl.getUniformLocation(PG,'model'), glp=gl.getAttribLocation(PG,'p'), gln=gl.getAttribLocation(PG,'n'), glc=gl.getAttribLocation(PG,'c');
+    others.forEach(function(inst){ var b=scnInstGL(inst); if(!b)return; gl.uniformMatrix4fv(gM,false,scnModel(inst));
+      gl.bindBuffer(gl.ARRAY_BUFFER,b.pos);gl.enableVertexAttribArray(glp);gl.vertexAttribPointer(glp,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,b.nrm);gl.enableVertexAttribArray(gln);gl.vertexAttribPointer(gln,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,b.col);gl.enableVertexAttribArray(glc);gl.vertexAttribPointer(glc,4,gl.FLOAT,false,0,0);
+      gl.drawArrays(gl.TRIANGLES,0,b.count); });
+    gl.uniformMatrix4fv(gM,false,WGL._ident());
+  }
 };
 /* ============================================================================
    PROTOTYPE — RENDU WEBGL DES OBJETS GÉNÉRIQUES (à partir de la liste FC)
@@ -1154,10 +1261,27 @@ WGL.hideGeneric=function(){
 WGL.setEnv=function(env){ WGL.env=env; WGL.render(); };
 
 /* show/hide : bascule entre Canvas 2D et WebGL */
+/* ---- CHARGEMENT À LA DEMANDE d'un produit fabricant (data/haworth/<id>.js) ---- */
+var _prodLoad={};
+function isHaworth(pid){ try{ if(typeof FABRICANTS_DB==='undefined') return false; var h=FABRICANTS_DB.filter(function(f){return f.id==='haworth';})[0]; return !!(h&&h.subs&&h.subs.some(function(s){return s.id===pid;})); }catch(e){ return false; } }
+function ensureProduct(pid, cb){
+  if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[pid]){ if(cb)cb(true); return; }
+  if(_prodLoad[pid]){ if(cb)_prodLoad[pid].push(cb); return; }
+  _prodLoad[pid]=cb?[cb]:[];
+  var s=document.createElement('script'); s.async=true; s.src='data/haworth/'+pid+'.js';
+  s.onload=function(){ var a=_prodLoad[pid]||[]; delete _prodLoad[pid]; a.forEach(function(f){ try{ f&&f(true); }catch(e){} }); };
+  s.onerror=function(){ var a=_prodLoad[pid]||[]; delete _prodLoad[pid]; a.forEach(function(f){ try{ f&&f(false); }catch(e){} }); };
+  document.head.appendChild(s);
+}
 WGL.show=function(objId){
   var msg=document.getElementById('wgl-msg'); if(msg) msg.style.display='none';
   document.getElementById('cv').style.display='none';
   document.getElementById('glcv').style.display='block';
+  if(typeof TEX_OBJECTS!=='undefined' && !TEX_OBJECTS[objId] && typeof ensureProduct==='function' && isHaworth(objId)){
+    if(msg){ msg.textContent='Chargement du meuble…'; msg.style.display='flex'; }
+    ensureProduct(objId, function(){ if(msg)msg.style.display='none'; WGL.show(objId); if(typeof buildProductUI==='function'&&MODE==='quadripod')buildProductUI(); });
+    return;
+  }
   if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[objId]){ WGL.loadTextured(TEX_OBJECTS[objId], objId); }
   else { WGL.txActive=false; WGL.loadObject(objId); }
 };
@@ -9126,7 +9250,8 @@ function scnDecor(mnx,mny,mnz,mxx,mxy,mxz){
     P.forEach(function(p,i){ scnTree(p[0],p[1],gy, 3+(i%3)*0.9); }); }
 }
 function scnLoad(){ try{ return JSON.parse(localStorage.getItem(SCN_KEY))||[]; }catch(e){ return []; } }
-function scnStore(list){ try{ localStorage.setItem(SCN_KEY, JSON.stringify(list)); }catch(e){ alert('Sauvegarde impossible.'); } }
+function _scnRep(k,v){ return (k && k.charAt(0)==='_') ? undefined : v; }   /* ignore les caches (_gl,_xf,_fp…) à la sérialisation */
+function scnStore(list){ try{ localStorage.setItem(SCN_KEY, JSON.stringify(list, _scnRep)); }catch(e){ alert('Sauvegarde impossible.'); } }
 /* ============================================================================
    PRODUITS FABRICANTS DANS LA SCÈNE — décodage d'un mesh texturé (TEX_OBJECTS)
    en faces FC colorées (teinte moyenne par texture), mis en cache, pour être
@@ -9238,6 +9363,17 @@ function instanceFaces(inst, _depth){
   return faces.map(xf);
 }
 function buildScene(){
+  /* En WebGL, la scène est rendue par tampon GPU par produit (renderSceneTex) —
+     on NE construit PAS la liste FC complète (coûteuse en mémoire). On calcule
+     juste des dimensions approx. via les empreintes (métadonnées, sans géométrie). */
+  if(typeof WGL!=='undefined' && WGL.gActive){
+    FC=[]; PRIMS=[]; CUR_POLY=null; POLY_TARGET=null;
+    var Mx=-1e9,Mz=-1e9,mX=1e9,mZ=1e9,My=0;
+    (SCENE.instances||[]).forEach(function(inst){ try{ var b=scnBBox(inst); if(b.x0<mX)mX=b.x0; if(b.z0<mZ)mZ=b.z0; if(b.x1>Mx)Mx=b.x1; if(b.z1>Mz)Mz=b.z1; var yb=scnYbounds(inst), top=yb.mx+(inst.y||0)/100; if(top>My)My=top; }catch(e){} });
+    if(mX>Mx){mX=mZ=-1;Mx=Mz=1;}
+    DIMS={ w:Math.max(0.6,Mx-mX), h:Math.max(0.6,My), d:Math.max(0.6,Mz-mZ), cy:My/2 };
+    return DIMS;
+  }
   var all=[]; (SCENE.instances||[]).forEach(function(inst){ var fs=instanceFaces(inst); for(var i=0;i<fs.length;i++) all.push(fs[i]); });
   FC=all; PRIMS=[]; CUR_POLY=null; POLY_TARGET=null;
   var mnx=1e9,mny=1e9,mnz=1e9,mxx=-1e9,mxy=-1e9,mxz=-1e9;
@@ -9261,7 +9397,8 @@ function scnAddGroup(scene, x, z){
     children:JSON.parse(JSON.stringify(scene.instances)), x:Math.round((x||0)*100), z:Math.round((z||0)*100), y:0, rotY:0 });
   SCENE.sel=SCENE.instances.length-1;
 }
-function scnYbounds(inst){ var fs=instanceFaces(inst), mn=1e9, mx=-1e9; fs.forEach(function(f){ for(var i=0;i<f.verts.length;i++){ var y=f.verts[i][1]; if(y<mn)mn=y; if(y>mx)mx=y; } }); if(mn>mx){mn=0;mx=0;} return {mn:mn,mx:mx}; }
+function scnYbounds(inst){ if(inst.mode==='fabprod'){ if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[inst.prod]){ var _b=TEX_OBJECTS[inst.prod].meta.bb; return {mn:_b[1],mx:_b[4]}; } return {mn:0,mx:0.8}; }
+  var fs=instanceFaces(inst), mn=1e9, mx=-1e9; fs.forEach(function(f){ for(var i=0;i<f.verts.length;i++){ var y=f.verts[i][1]; if(y<mn)mn=y; if(y>mx)mx=y; } }); if(mn>mx){mn=0;mx=0;} return {mn:mn,mx:mx}; }
 function scnSnapY(idx){ var inst=SCENE.instances[idx]; if(!inst) return; var base=scnYbounds(inst).mn;   /* accrochage : pose la base sur le niveau le plus haut des autres (ou le sol) */
   var target=0; SCENE.instances.forEach(function(o,j){ if(j!==idx){ var t=scnYbounds(o).mx; if(t>target) target=t; } });
   inst.y += Math.round((target-base)*100); }
@@ -9270,6 +9407,14 @@ function scnDup(idx){ var s=SCENE.instances[idx]; if(!s) return; var c=JSON.pars
 function scnFootprint(inst){   /* empreinte locale NON tournée, mise en cache par params (pas de recalcul en rotation) */
   var key=inst.group?('grp'+JSON.stringify(inst.children)):(inst.mode==='fabprod'?('fab:'+inst.prod+':'+((FAB_CACHE[inst.prod]&&FAB_CACHE[inst.prod].ready)?1:0)):JSON.stringify(inst.params));
   if(inst._fpk===key && inst._fp) return inst._fp;
+  if(inst.mode==='fabprod'){
+    if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[inst.prod]){
+      var _bb=TEX_OBJECTS[inst.prod].meta.bb;   /* empreinte via métadonnées : pas de géométrie en mémoire */
+      inst._fp={x0:_bb[0],x1:_bb[3],z0:_bb[2],z1:_bb[5]}; inst._fpk=key; return inst._fp;
+    }
+    if(typeof ensureProduct==='function' && isHaworth(inst.prod)) ensureProduct(inst.prod, function(){ if(typeof DIRTY!=='undefined')DIRTY=true; if(typeof WGL!=='undefined'&&WGL.render)WGL.render(); });
+    return {x0:-0.4,x1:0.4,z0:-0.4,z1:0.4};   /* provisoire le temps du chargement */
+  }
   var sr=inst.rotY; inst.rotY=0;
   var fs=instanceFaces(inst), x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
   fs.forEach(function(f){ f.verts.forEach(function(p){ if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[2]<z0)z0=p[2]; if(p[2]>z1)z1=p[2]; }); });
@@ -12261,7 +12406,7 @@ function buildSceneUI(){
         var ub=document.createElement('button'); ub.textContent='⟳'; ub.title='Mettre à jour cette scène avec l\'assemblage actuel'; ub.style.cssText='font-size:11px;';
         ub.onclick=function(){ if(!SCENE.instances.length){ alert('Scène actuelle vide.'); return; }
           var list=scnLoad(), t=list.filter(function(x){return x.id===sc.id;})[0];
-          if(t){ t.instances=JSON.parse(JSON.stringify(SCENE.instances)); t.date=new Date().toLocaleDateString('fr-FR'); scnStore(list); SCN_CUR=sc.id; buildSceneUI(); } };
+          if(t){ t.instances=JSON.parse(JSON.stringify(SCENE.instances, _scnRep)); t.date=new Date().toLocaleDateString('fr-FR'); scnStore(list); SCN_CUR=sc.id; buildSceneUI(); } };
         var xb=document.createElement('button'); xb.textContent='✕'; xb.style.cssText='font-size:10px;'; xb.onclick=function(){ scnStore(scnLoad().filter(function(x){return x.id!==sc.id;})); if(SCN_CUR===sc.id)SCN_CUR=null; buildSceneUI(); };
         row.appendChild(nm); row.appendChild(gb); row.appendChild(ub); row.appendChild(xb); return row; }
     }); } }
@@ -12271,7 +12416,7 @@ function buildSceneUI(){
       b.onclick=function(){ SCENE.decor[o[0]]=on?0:1; buildSceneUI(); scnLive(); }; dr.appendChild(b); }); }
   var sb=document.getElementById('scnSave');
   if(sb) sb.onclick=function(){ if(!SCENE.instances.length){ alert('Scène vide.'); return; } var n=prompt('Nom de la scène :','Ma scène'); if(n===null)return;
-    var nid='s'+Date.now().toString(36); var list=scnLoad(); list.unshift({ id:nid, name:(n.trim()||'Ma scène'), instances:JSON.parse(JSON.stringify(SCENE.instances)), date:new Date().toLocaleDateString('fr-FR') }); scnStore(list); SCN_CUR=nid; buildSceneUI(); };
+    var nid='s'+Date.now().toString(36); var list=scnLoad(); list.unshift({ id:nid, name:(n.trim()||'Ma scène'), instances:JSON.parse(JSON.stringify(SCENE.instances, _scnRep)), date:new Date().toLocaleDateString('fr-FR') }); scnStore(list); SCN_CUR=nid; buildSceneUI(); };
 }
 /* UI de la Porte */
 function buildPorteUI(){
@@ -13239,6 +13384,7 @@ function buildProductUI(){
   var meta=null;
   if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[AL_PRODUCT]) meta=TEX_OBJECTS[AL_PRODUCT].meta;
   else if(typeof WEBGL_OBJECTS!=='undefined' && WEBGL_OBJECTS[AL_PRODUCT]) meta=WEBGL_OBJECTS[AL_PRODUCT].meta;
+  else if(typeof ensureProduct==='function' && isHaworth(AL_PRODUCT)){ ensureProduct(AL_PRODUCT, function(){ if(MODE==='quadripod' && typeof buildProductUI==='function') buildProductUI(); }); }
   /* nom / description / catégorie depuis l'entrée catalogue du produit */
   var prod=null; if(cc.subs){ for(var pi=0;pi<cc.subs.length;pi++){ if(cc.subs[pi].id===AL_PRODUCT){ prod=cc.subs[pi]; break; } } }
   /* descriptions soignées d'origine (repli pour les 3 produits de base) */
