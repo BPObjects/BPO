@@ -528,9 +528,12 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     </div>
   </div>
 </div>
-<script src="data/fabricant-meshes.js"></script>
-<script src="data/fabricants.js"></script>
-<script src="data/textured-objects.js"></script>
+<!-- ?v= : cassage de cache. À incrémenter à CHAQUE publication qui touche data/,
+     sinon le navigateur ressert l'ancien catalogue et les nouveaux meubles
+     n'apparaissent pas (le code retombe alors sur le catalogue de secours). -->
+<script src="data/fabricant-meshes.js?v=20260709"></script>
+<script src="data/fabricants.js?v=20260709"></script>
+<script src="data/textured-objects.js?v=20260709"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
 /* WEBGL_OBJECTS -> data/ */
@@ -3396,7 +3399,11 @@ var CATALOG = {
   },
   fabricants: {
     label: 'Fabricants',
-    cats: (typeof FABRICANTS_DB!=='undefined' ? FABRICANTS_DB : [
+    /* Catalogue de secours. S'il s'affiche, c'est que data/fabricants.js n'a pas été
+       chargé : oublié à la publication, ou servi depuis le cache du navigateur.
+       Symptôme : Architecture-AL Design ne montre que deux produits. */
+    cats: (typeof FABRICANTS_DB!=='undefined' ? FABRICANTS_DB : (
+      console.warn('BPO : data/fabricants.js absent — catalogue de secours (2 produits AL Design au lieu de 24). Vérifiez la publication du dossier data/ et videz le cache.'), [
       {id:'al_design', label:'Architecture-AL Design', status:'ready', subs:[
         {id:'quadripod', label:'Quadripode'},
         {id:'woo',       label:'Desserte à roulettes'}
@@ -3407,7 +3414,7 @@ var CATALOG = {
       {id:'technal', label:'Technal', status:'ready'},
       {id:'velux',   label:'Velux',   status:'ready'},
       {id:'flos',    label:'Flos',    status:'ready'}
-    ])
+    ]))
   }
 };
 
