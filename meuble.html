@@ -22,6 +22,8 @@
   --dm:#8b92a0;    /* texte secondaire    */
   --am:#ff8a3d;    /* accent orange       */
   --cy:#5eb8ff;    /* accent bleu         */
+  --tbH:30px;      /* hauteur commune des boutons de la barre supérieure */
+  --tbT:8px;       /* leur décalage depuis le haut de la rangée          */
 }
 /* Thème CLAIR (bascule via le bouton ◐) — appliqué sur <html> et <body> */
 html.light, body.light{
@@ -34,6 +36,35 @@ html.light .hint, body.light .hint{ color:#8a93a3; }
 html.light .vp-btn, body.light .vp-btn,
 html.light .vp-bar, body.light .vp-bar{ background:rgba(255,255,255,0.92); }
 html.light .sig, body.light .sig{ color:#b98a4a; }
+
+/* ------------------------------------------------------------------
+   Thème KRAFT — papier d'emballage. Posé APRÈS `.light`, qu'il complète :
+   `applyPrefs()` met les deux classes, donc les règles claires (encre
+   sombre, pastilles de viewport) servent de base et sont surchargées ici.
+   Panneaux volontairement TRANSLUCIDES : la texture du <body> les traverse,
+   sinon il faudrait re-peindre chaque conteneur. Aucune image externe :
+   cannelures en dégradé répété + grain feTurbulence en data-URI.
+   ------------------------------------------------------------------ */
+html.kraft, body.kraft{
+  --bg:#c19a6b; --pn:rgba(255,243,222,0.30); --p2:rgba(102,68,26,0.10);
+  --ln:rgba(94,64,28,0.30); --tx:#2e2314; --dm:#6d5636; --am:#a3491b; --cy:#2b6483;
+}
+html.kraft body, body.kraft{
+  background-color:#c19a6b;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.30'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(0deg, rgba(96,64,26,0.10) 0 1px, rgba(255,236,205,0.07) 1px 2px, transparent 2px 5px),
+    radial-gradient(120% 90% at 50% 0%, rgba(255,240,214,0.18), rgba(120,80,34,0.10));
+  background-blend-mode:multiply,normal,normal;
+}
+html.kraft .vp-btn, body.kraft .vp-btn,
+html.kraft .vp-bar, body.kraft .vp-bar{ background:rgba(240,224,196,0.88); }
+html.kraft .cat-ic, body.kraft .cat-ic{ color:#5a3f1e; }
+html.kraft .hint,   body.kraft .hint{ color:#7a6240; }
+html.kraft .sig,    body.kraft .sig{ color:#7d4a16; }
+html.kraft input, html.kraft select, html.kraft textarea,
+body.kraft input, body.kraft select, body.kraft textarea{ background:rgba(255,246,228,0.55); }
+
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--tx);
   font-family:system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent;}
@@ -46,7 +77,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);
 /* ordre portrait : header(1) / viewport(2) / arbo(3) / mes configs(4) / paramètres(5) */
 header{grid-row:1;}
 #savecol{grid-row:4;}
-#langbar{position:absolute;right:14px;top:9px;display:flex;align-items:center;gap:6px;}
+#langbar{position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:8px;}
 #langflag{flex:none;display:inline-block;vertical-align:middle;line-height:0;}
 #langflag svg{display:block;width:100%;height:100%;}
 @keyframes flagpop{0%{transform:scale(.3) rotate(-18deg);opacity:.2}55%{transform:scale(1.3) rotate(8deg);opacity:1}100%{transform:scale(1) rotate(0)}}
@@ -61,8 +92,12 @@ header{position:relative;}
 header{display:flex;align-items:center;justify-content:space-between;
   padding:0 16px;background:var(--pn);border-bottom:1px solid var(--ln);}
 .brand{font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px;}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--am);display:inline-block;}
-.copyr{font-weight:400;font-size:10px;color:var(--am);}
+/* Puce de marque : le favicon lui-même (SVG, repli PNG si le SVG manque). */
+.dot{width:22px;height:22px;display:block;flex:none;border-radius:0;background:none;}
+.copyr{font-weight:400;font-size:9px;color:var(--am);line-height:1.1;white-space:nowrap;}
+#brandCol{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1.15;}
+#acctLink{color:var(--cy);font-size:11px;text-decoration:none;white-space:nowrap;}
+#acctLink:hover{text-decoration:underline;}
 
 /* Viewport 3D */
 #vp{position:relative;overflow:hidden;}
@@ -70,23 +105,29 @@ header{display:flex;align-items:center;justify-content:space-between;
 .hint{position:absolute;top:42px;left:9px;font-family:monospace;font-size:9px;color:var(--dm);pointer-events:none;}
 .sig{position:absolute;bottom:9px;left:9px;font-family:monospace;font-size:9px;color:var(--am);opacity:.55;pointer-events:none;}
 .dims{position:absolute;bottom:9px;right:9px;font-family:monospace;font-size:10px;color:var(--am);pointer-events:none;}
-.vp-btn{position:absolute;top:8px;right:10px;font-family:system-ui,sans-serif;font-size:11px;background:rgba(38,43,52,.9);border:1px solid var(--ln);color:var(--tx);border-radius:6px;padding:6px 10px;cursor:pointer;z-index:6;}
+/* Barre d'outils supérieure : quatre conteneurs distincts (sidebar, viewport,
+   savecol, panel) doivent afficher des boutons sur UN MÊME axe. On fixe donc une
+   hauteur commune `--tbH` et un décalage commun `--tbT` depuis le haut de la
+   rangée, plutôt que de laisser chaque padding décider de sa propre hauteur. */
+.vp-btn{position:absolute;top:var(--tbT);right:10px;height:var(--tbH);display:inline-flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;font-size:11px;background:rgba(38,43,52,.9);border:1px solid var(--ln);color:var(--tx);border-radius:6px;padding:0 10px;line-height:1;cursor:pointer;z-index:6;}
 .vp-btn:hover{border-color:var(--am);color:var(--am);}
-.vp-bar{position:absolute;top:8px;right:128px;z-index:6;display:flex;gap:3px;background:rgba(38,43,52,.9);border:1px solid var(--ln);border-radius:6px;padding:3px;}
-.vp-bar button{font-family:system-ui,sans-serif;font-size:10px;background:transparent;border:1px solid transparent;color:var(--tx);border-radius:4px;padding:5px 8px;cursor:pointer;white-space:nowrap;}
+.vp-bar{position:absolute;top:var(--tbT);right:128px;height:var(--tbH);z-index:6;display:flex;align-items:center;gap:3px;background:rgba(38,43,52,.9);border:1px solid var(--ln);border-radius:6px;padding:0 3px;}
+.vp-bar button{font-family:system-ui,sans-serif;font-size:10px;height:calc(var(--tbH) - 8px);display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;color:var(--tx);border-radius:4px;padding:0 8px;cursor:pointer;white-space:nowrap;}
 .vp-bar button:hover{border-color:var(--am);color:var(--am);}
 .vp-bar button.on{border-color:var(--cy);color:var(--cy);background:rgba(94,184,255,.12);}
 @media(max-width:760px){.vp-bar{display:none;}}
 
 /* Colonne gauche : navigation catalogue.
    Mobile : barre horizontale compacte (scroll latéral). Desktop : colonne. */
-#sidebar{background:var(--pn);border-bottom:1px solid var(--ln);padding:8px 10px;
+#sidebar{background:var(--pn);border-bottom:1px solid var(--ln);padding:var(--tbT) 10px 8px;
   overflow-x:auto;overflow-y:hidden;}
 #sidebar .slbl{display:none;}                 /* libellé masqué sur mobile (gain de place) */
 #sidebar .tabs{margin-bottom:7px;}
+/* onglets Génériques / Fabricants : sur l'axe de la barre supérieure */
+#sidebar .tabs .tab{height:var(--tbH);padding:0 6px;display:inline-flex;align-items:center;justify-content:center;}
 
 /* Panneau de contrôle (paramètres). Mobile : occupe la dernière rangée (40vh). */
-#panel{background:var(--pn);border-top:1px solid var(--ln);padding:12px 14px;
+#panel{background:var(--pn);border-top:1px solid var(--ln);padding:var(--tbT) 14px 12px;
   overflow-y:auto;}
 .slbl{font-family:monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.2px;
   color:var(--am);margin:0 0 8px 1px;}
@@ -243,8 +284,9 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 #app{--savew:40px;}
 #app.save-open{--savew:238px;}
 #savecol{background:var(--pn);border-left:1px solid var(--ln);overflow-y:auto;overflow-x:hidden;}
-#saveToggle{width:100%;background:var(--p2);color:var(--tx);border:0;border-bottom:1px solid var(--ln);
-  padding:10px 0;cursor:pointer;font-size:15px;line-height:1;filter:grayscale(1);}
+/* 💾 : posé sur l'axe commun, d'où la marge haute plutôt qu'un padding vertical */
+#saveToggle{width:100%;height:var(--tbH);margin-top:var(--tbT);background:var(--p2);color:var(--tx);border:0;border-bottom:1px solid var(--ln);
+  padding:0;cursor:pointer;font-size:15px;line-height:1;filter:grayscale(1);}
 #saveToggle:hover{background:var(--ln);}
 #saveBody{padding:10px;}
 #app:not(.save-open) #saveBody{display:none;}
@@ -308,7 +350,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 #ps-tpl select,#ps-tpl input{background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:5px;font-size:11px;padding:4px;}
 /* Onglets du panneau droit : Paramètres / Mise en page */
 #panel-tabs{display:flex;gap:5px;margin-bottom:11px;}
-#panel-tabs button{flex:1;font-size:12px;padding:8px 4px;background:var(--p2);color:var(--dm);border:1px solid var(--ln);border-radius:6px;cursor:pointer;}
+#panel-tabs button{flex:1;height:var(--tbH);font-size:12px;padding:0 4px;background:var(--p2);color:var(--dm);border:1px solid var(--ln);border-radius:6px;cursor:pointer;}
 #panel-tabs button.on{background:var(--am);color:#1a1d23;border-color:var(--am);font-weight:700;}
 #panel.mep-on #obj-controls,#panel.mep-on #shape-sel,#panel.mep-on #todo-msg{display:none!important;}
 #ps-info{color:var(--dm);font-size:11px;flex:1;}
@@ -336,11 +378,15 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script type="module" src="bpo-auth.js"></script>
 <div id="app">
   <header>
-    <div class="brand"><span class="dot"></span>Catalogues et configurateurs d'objets 3D
-      <span class="copyr">© 2026 Antoine Lacronique, architecte</span>
-      <a href="compte.html" style="color:var(--cy);font-size:11px;text-decoration:none;margin-left:10px;">Mon compte</a>
+    <!-- Titre et mention légale en colonne : le copyright se range sous le titre. -->
+    <div class="brand"><img class="dot" src="favicon.svg" alt="" onerror="this.src='assets/favicon-32.png';">
+      <div id="brandCol">
+        <span>Architectural Parametrics</span>
+        <span class="copyr">© 2026 Antoine Lacronique, architecte</span>
+      </div>
     </div>
     <div id="langbar">
+      <a href="compte.html" id="acctLink">Mon compte</a>
       <button id="aboutBtn" title="À propos de BPO" onclick="try{playAbout();}catch(e){}">À propos</button>
       <button id="prefsBtn" title="Préférences" onclick="try{togglePrefs();}catch(e){}" style="background:#ff8a3d;color:#3a3a3a;border:1px solid #ff8a3d;font-size:18px;line-height:1;padding:2px 8px;">⚙&#xFE0E;</button>
       <span id="langflag" style="display:inline-block;width:22px;height:15px;border:1px solid var(--ln);border-radius:2px;overflow:hidden;text-align:center;"></span>
@@ -373,18 +419,18 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     <canvas id="cv"></canvas>
     <canvas id="glcv" style="display:none;position:absolute;inset:0;width:100%;height:100%;touch-action:none;"></canvas>
     <canvas id="gizov" style="display:none;position:absolute;inset:0;width:100%;height:100%;z-index:4;touch-action:none;cursor:default;"></canvas>
-    <div class="hint" id="hint">GLISSER · orbiter | MOLETTE · zoomer</div>
+    <div class="hint" id="hint">GLISSER · orbiter | MOLETTE · zoomer | MILIEU ou ALT+GLISSER · déplacer</div>
     <div class="sig">© 2026 Antoine Lacronique, architecte</div>
     <div class="dims" id="dims">—</div>
-    <button class="vp-btn" id="undoBtn" title="Annuler (Ctrl+Z)" style="left:9px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:16px;line-height:1;">↶</button>
-    <button class="vp-btn" id="redoBtn" title="Refaire (Ctrl+Y)" style="left:48px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:16px;line-height:1;">↷</button>
-    <button class="vp-btn" id="resetBtn" title="Réinitialiser l'objet (valeurs par défaut) — annulable" style="left:87px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:15px;line-height:1;">↺</button>
-    <button class="vp-btn" id="layoutBtn" title="4 vues (Perspective / Dessus / Face / Droite) — double-clic sur une vue pour l'agrandir" style="left:87px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:15px;line-height:1;">⊞</button>
-    <button class="vp-btn" id="themeBtn" title="Thème clair / sombre" style="left:126px;right:auto;top:8px;width:34px;padding:5px 0;text-align:center;font-size:14px;line-height:1;">◐</button>
-    <div id="viewOverlay" style="position:absolute;top:8px;left:165px;z-index:30;display:none;align-items:center;gap:5px;background:rgba(24,28,36,0.88);border:1px solid #33404d;border-radius:6px;padding:2px 7px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
+    <button class="vp-btn" id="undoBtn" title="Annuler (Ctrl+Z)" style="left:9px;right:auto;width:34px;padding:0;font-size:16px;">↶</button>
+    <button class="vp-btn" id="redoBtn" title="Refaire (Ctrl+Y)" style="left:48px;right:auto;width:34px;padding:0;font-size:16px;">↷</button>
+    <button class="vp-btn" id="resetBtn" title="Réinitialiser l'objet (valeurs par défaut) — annulable" style="left:87px;right:auto;width:34px;padding:0;font-size:15px;">↺</button>
+    <button class="vp-btn" id="layoutBtn" title="4 vues (Perspective / Dessus / Face / Droite) — double-clic sur une vue pour l'agrandir" style="left:87px;right:auto;width:34px;padding:0;font-size:15px;">⊞</button>
+    <button class="vp-btn" id="themeBtn" title="Thème clair / sombre / kraft" style="left:126px;right:auto;width:34px;padding:0;font-size:14px;">◐</button>
+    <div id="viewOverlay" style="position:absolute;top:var(--tbT);left:165px;height:var(--tbH);z-index:30;display:none;align-items:center;gap:5px;background:rgba(24,28,36,0.88);border:1px solid #33404d;border-radius:6px;padding:0 7px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
     <div id="floorBar" style="position:absolute;bottom:52px;left:50%;transform:translateX(-50%);z-index:30;display:none;align-items:center;gap:6px;background:rgba(24,28,36,0.9);border:1px solid #33404d;border-radius:7px;padding:4px 10px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
     <button class="vp-btn" id="recenter" title="Recentrer la vue" style="top:auto;right:auto;bottom:14px;left:50%;transform:translateX(-50%);">⊕ Recentrer</button>
-    <button class="vp-btn" id="sceneBtn" title="Scène — assemblage de configurations" style="top:8px;right:10px;background:#1b1b1b;color:#f2f2f2;border-color:#888;filter:grayscale(1);">◱ Scène</button>
+    <button class="vp-btn" id="sceneBtn" title="Scène — assemblage de configurations" style="right:10px;background:#1b1b1b;color:#f2f2f2;border-color:#888;filter:grayscale(1);">◱ Scène</button>
     <div id="prefsPanel" style="position:absolute;top:46px;right:10px;z-index:40;display:none;width:250px;max-height:80%;overflow:auto;background:rgba(22,26,34,0.97);border:1px solid #33404d;border-radius:8px;padding:10px 12px;color:#cdd6e0;box-shadow:0 8px 26px rgba(0,0,0,.55);font-family:system-ui,sans-serif;"></div>
     <div class="vp-bar" id="render-banner" style="right:206px;"></div>
     <div class="vp-bar" id="webgl-bar" style="right:128px;"></div>
@@ -597,6 +643,7 @@ WGL.initGL = function(){
     'vec3 fres(float c,vec3 F0){return F0+(1.0-F0)*pow(1.0-c,5.0);}'+
     'void main(){vec3 N=normalize(vn);vec3 Vd=normalize(camPos-vw);if(dot(N,Vd)<0.0)N=-N;'+
     'float metal=mix(vmr.x,0.0,ovOn);float rough=clamp(mix(vmr.y,0.6,ovOn),0.05,1.0);vec3 alb=mix(vc,ovCol,ovOn);'+
+    'alb=pow(alb,vec3(2.2));'+   /* sRGB -> linéaire : l'éclairage doit se faire en linéaire */
     'vec3 F0=mix(vec3(0.04),alb,metal);vec3 dc=alb*(1.0-metal);float a=rough*rough;'+
     'float NoV=max(dot(N,Vd),0.001);vec3 col=vec3(0.0);'+
     'for(int i=0;i<3;i++){vec3 Ld=normalize(lightDirs[i]);vec3 H=normalize(Vd+Ld);'+
@@ -616,23 +663,93 @@ WGL.initGL = function(){
   return true;
 };
 
+/* Navigation du canevas WebGL.
+     · glisser gauche          → orbite
+     · glisser droit / milieu  → panoramique (Maj + gauche aussi)
+     · molette                 → zoom PROPORTIONNEL à la distance, vers le curseur
+     · double-clic             → recentre sur le point visé
+   Le zoom multiplicatif évite l'à-coup : de loin on avance vite, de près on
+   avance lentement. Le zoom vers le curseur déplace la cible, sinon on n'atteint
+   jamais un objet excentré. */
+WGL.camTarget=function(){ var c=WGL.cam; return [c.tx||0, c.ty||0, c.tz||0]; };
+/* base caméra : droite et haut écran, dans le plan de vue */
+WGL.camBasis=function(){
+  var c=WGL.cam, sp=Math.sin(c.ph), cp=Math.cos(c.ph), st=Math.sin(c.th), ct=Math.cos(c.th);
+  var fwd=[-sp*st, -cp, -sp*ct];                       /* de l'oeil vers la cible */
+  var right=[ct, 0, -st];
+  var up=[ right[1]*fwd[2]-right[2]*fwd[1],
+           right[2]*fwd[0]-right[0]*fwd[2],
+           right[0]*fwd[1]-right[1]*fwd[0] ];
+  return {fwd:fwd, right:right, up:up};
+};
+WGL.pan=function(dx,dy,h){
+  var c=WGL.cam, b=WGL.camBasis();
+  /* 0.95 ≈ tan(fov/2) avec le fov de 0.95 rad utilisé au rendu */
+  var k=2*c.r*Math.tan(0.95/2)/Math.max(1,h);
+  c.tx=(c.tx||0) - b.right[0]*dx*k + b.up[0]*dy*k;
+  c.ty=(c.ty||0) - b.right[1]*dx*k + b.up[1]*dy*k;
+  c.tz=(c.tz||0) - b.right[2]*dx*k + b.up[2]*dy*k;
+};
+/* Zoom molette : pas MULTIPLICATIF (indépendant du pilote de souris) et déplacement
+   de la cible vers le curseur, faute de quoi on ne peut jamais atteindre un objet
+   excentré. `mx`/`my` sont mesurés depuis le CENTRE du canevas. */
+WGL.wheelZoom=function(deltaY, mx, my, h){
+  var c=WGL.cam;
+  var f=Math.exp((deltaY>0?1:-1)*0.12);
+  var nr=Math.max(0.05, Math.min(4000, c.r*f));
+  var b=WGL.camBasis(), k=2*Math.tan(0.95/2)/Math.max(1,h)*(c.r-nr);
+  c.tx=(c.tx||0) + b.right[0]*mx*k - b.up[0]*my*k;
+  c.ty=(c.ty||0) + b.right[1]*mx*k - b.up[1]*my*k;
+  c.tz=(c.tz||0) + b.right[2]*mx*k - b.up[2]*my*k;
+  c.r=nr;
+};
 WGL.bindEvents=function(cv){
-  var drag=false,lx,ly;
-  cv.addEventListener('pointerdown',function(e){drag=true;lx=e.clientX;ly=e.clientY;cv.setPointerCapture&&cv.setPointerCapture(e.pointerId);});
-  cv.addEventListener('pointerup',function(){drag=false;});
-  cv.addEventListener('pointermove',function(e){if(!drag)return;WGL.cam.th-=(e.clientX-lx)*0.01;WGL.cam.ph-=(e.clientY-ly)*0.01;WGL.cam.ph=Math.max(0.15,Math.min(2.9,WGL.cam.ph));lx=e.clientX;ly=e.clientY;WGL.render();});
-  cv.addEventListener('wheel',function(e){e.preventDefault();WGL.cam.r*=(1+e.deltaY*0.001);WGL.render();},{passive:false});
-  // pincement mobile
-  var pd=0;
+  var mode=0, lx=0, ly=0;                              /* 0 rien, 1 orbite, 2 pan */
+  cv.addEventListener('contextmenu',function(e){ e.preventDefault(); });
+  cv.addEventListener('auxclick',function(e){ if(e.button===1) e.preventDefault(); });
+  cv.addEventListener('pointerdown',function(e){
+    mode=(e.button===2||e.button===1||e.shiftKey||e.altKey)?2:1;
+    lx=e.clientX; ly=e.clientY;
+    cv.setPointerCapture&&cv.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cv.addEventListener('pointerup',function(){ mode=0; });
+  cv.addEventListener('pointercancel',function(){ mode=0; });
+  cv.addEventListener('pointermove',function(e){
+    if(!mode) return;
+    var dx=e.clientX-lx, dy=e.clientY-ly;
+    if(mode===1){
+      WGL.cam.th-=dx*0.01; WGL.cam.ph-=dy*0.01;
+      WGL.cam.ph=Math.max(0.15,Math.min(2.9,WGL.cam.ph));
+    } else {
+      WGL.pan(dx,dy,cv.clientHeight||cv.height||600);
+    }
+    lx=e.clientX; ly=e.clientY; WGL.render();
+  });
+  cv.addEventListener('wheel',function(e){
+    e.preventDefault();
+    var rc=cv.getBoundingClientRect();
+    WGL.wheelZoom(e.deltaY, (e.clientX-rc.left)-rc.width/2, (e.clientY-rc.top)-rc.height/2, rc.height||600);
+    WGL.render();
+  },{passive:false});
+  cv.addEventListener('dblclick',function(e){
+    var c=WGL.cam; c.tx=0; c.ty=(WGL.texModel&&WGL.texModel.dim)?WGL.texModel.dim[1]/2:(c.ty||0.5); c.tz=0;
+    WGL.render();
+  });
+  /* mobile : un doigt oriente, deux doigts pincent (zoom) et translatent */
+  var pd=0, pcx=0, pcy=0;
   cv.addEventListener('touchmove',function(e){
     if(e.touches.length===2){
-      var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
-      var d=Math.hypot(dx,dy);
-      if(pd) WGL.cam.r*=(1-(d-pd)*0.004);
-      pd=d; WGL.render(); e.preventDefault();
+      var dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+      var d=Math.hypot(dx,dy), cx=(e.touches[0].clientX+e.touches[1].clientX)/2, cy=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      if(pd){
+        WGL.cam.r=Math.max(0.05,Math.min(4000, WGL.cam.r*(1-(d-pd)*0.004)));
+        WGL.pan(cx-pcx, cy-pcy, cv.clientHeight||cv.height||600);
+      }
+      pd=d; pcx=cx; pcy=cy; WGL.render(); e.preventDefault();
     }
   },{passive:false});
-  cv.addEventListener('touchend',function(){pd=0;});
+  cv.addEventListener('touchend',function(){ pd=0; });
 };
 
 WGL._unsupported=function(){
@@ -757,6 +874,11 @@ WGL.initTexGL=function(){
     'vec3 fres(float c,vec3 F0){return F0+(1.0-F0)*pow(1.0-c,5.0);}'+
     'void main(){vec3 N=normalize(vn);vec3 Vd=normalize(camPos-vw);if(dot(N,Vd)<0.0)N=-N;'+
     'vec3 alb=useTex>0.5?texture2D(tex0,vuv).rgb:baseCol;alb=mix(alb,ovCol,ovOn);'+
+    /* Les couleurs (RAL, matériaux, pixels de texture) sont en sRGB. L'éclairage
+       doit se faire en LINÉAIRE, sinon la correction gamma de sortie s'applique
+       une seconde fois et la teinte ressort délavée : un RAL ne correspond plus
+       à sa pastille. */
+    'alb=pow(alb,vec3(2.2));'+
     'float metal=mix(mrp.x,0.0,ovOn);float rough=clamp(mix(mrp.y,0.6,ovOn),0.05,1.0);'+
     'vec3 F0=mix(vec3(0.04),alb,metal);vec3 dc=alb*(1.0-metal);float a=rough*rough;'+
     'float NoV=max(dot(N,Vd),0.001);vec3 col=vec3(0.0);'+
@@ -792,9 +914,28 @@ WGL.makeTex=function(key,dataURI){
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
     gl.generateMipmap(gl.TEXTURE_2D);
     WGL.txt[key].ready=true;
-    if(WGL.txActive) WGL.render();
+    /* l'image arrive de façon asynchrone : il faut redessiner, y compris en Scène
+       (txActive est faux dans ce mode). */
+    if(typeof DIRTY!=='undefined') DIRTY=true;
+    if(WGL.txActive||WGL.gActive) WGL.render();
   };
   img.src=dataURI;
+};
+/* Résout une clé de texture, d'où qu'elle vienne :
+     - texture fabricant  -> data-URI dans TEX_POOL   -> WGL.txt  (makeTex)
+     - texture de finition -> pixels via getTexImage() -> WGL.txt2 (makeTexCanvas)
+   Renvoie {tex, ready} ou null. C'est ce qui rend TOUT groupe de matériau
+   texturable, y compris ceux qui n'avaient qu'une couleur d'origine. */
+WGL.resolveTex=function(key){
+  if(!key || !WGL.gl) return null;
+  if(WGL.txt[key]) return WGL.txt[key];
+  var pool=(typeof TEX_POOL!=='undefined')?TEX_POOL:{};
+  if(pool[key]){ WGL.makeTex(key, pool[key]); return WGL.txt[key]; }
+  if(typeof getTexImage==='function'){
+    var im=getTexImage(key);
+    if(im && im.data) return WGL.makeTexCanvas(key, im);
+  }
+  return null;
 };
 /* crée/met en cache une texture GL depuis les pixels d'une texture de finition.
    getTexImage(id) renvoie {data:RGBA, w, h} (256² = puissance de 2 -> REPEAT +
@@ -866,8 +1007,37 @@ var SEAT={show:true, rot:0, dist:0};
 var PROD_UVSCALE={};   /* (obsolète) échelle globale par produit */
 var PROD_TEXSCALE={};  /* échelle par texture : PROD_TEXSCALE[produit][clé_texture] = facteur */
 var PROD_TEXROT={};    /* rotation par texture (radians) : PROD_TEXROT[produit][clé] */
-function texAdjSave(){ try{ localStorage.setItem('BPO_TEXADJ_v1', JSON.stringify({s:PROD_TEXSCALE, r:PROD_TEXROT})); }catch(e){} }
-function texAdjLoad(){ try{ var d=JSON.parse(localStorage.getItem('BPO_TEXADJ_v1')); if(d){ if(d.s)PROD_TEXSCALE=d.s; if(d.r)PROD_TEXROT=d.r; } }catch(e){} }
+/* ----------------------------------------------------------------------------
+   FINITION PAR MATÉRIAU des produits fabricants.
+   Un maillage est découpé en groupes (un par matériau du .dae). PROD_FIN garde,
+   pour chaque groupe, une teinte RAL et/ou une texture qui remplacent le
+   matériau d'origine. `null` partout = matériau d'origine.
+       PROD_FIN[produit][indice_groupe] = {col:[r,g,b]|null, tex:'id'|null}
+   Le rendu WebGL (renderT) et le rendu logiciel (fabDecode) lisent tous deux
+   cette table : l'export DAE/OBJ/IFC suit donc automatiquement.
+   ---------------------------------------------------------------------------- */
+var PROD_FIN={};
+function prodFin(pid, gi){ var p=PROD_FIN[pid]; return (p&&p[gi])||null; }
+function prodFinSet(pid, gi, k, v){
+  if(!PROD_FIN[pid]) PROD_FIN[pid]={};
+  if(!PROD_FIN[pid][gi]) PROD_FIN[pid][gi]={col:null, tex:null};
+  PROD_FIN[pid][gi][k]=v;
+  if(!PROD_FIN[pid][gi].col && !PROD_FIN[pid][gi].tex) delete PROD_FIN[pid][gi];
+  if(PROD_FIN[pid] && !Object.keys(PROD_FIN[pid]).length) delete PROD_FIN[pid];
+  prodFinInvalidate(pid);
+}
+function prodFinClear(pid){ delete PROD_FIN[pid]; prodFinInvalidate(pid); }
+/* Le maillage décodé en FACES (rendu logiciel, exports) fige les couleurs : il faut
+   le jeter quand la finition change. Les tampons GPU (WGL.prodTexCache), eux, ne
+   contiennent que positions/normales/UV — la finition est lue à chaque frame, donc
+   inutile de les reconstruire : ce serait une décompression gzip par clic de RAL. */
+function prodFinInvalidate(pid){
+  try{ if(typeof FAB_CACHE!=='undefined') delete FAB_CACHE[pid]; }catch(e){}
+  try{ if(typeof DIRTY!=='undefined') DIRTY=true; }catch(e){}
+  texAdjSave();
+}
+function texAdjSave(){ try{ localStorage.setItem('BPO_TEXADJ_v1', JSON.stringify({s:PROD_TEXSCALE, r:PROD_TEXROT, f:PROD_FIN})); }catch(e){} }
+function texAdjLoad(){ try{ var d=JSON.parse(localStorage.getItem('BPO_TEXADJ_v1')); if(d){ if(d.s)PROD_TEXSCALE=d.s; if(d.r)PROD_TEXROT=d.r; if(d.f)PROD_FIN=d.f; } }catch(e){} }
 try{ texAdjLoad(); }catch(e){}
 var BUREAU_SEAT_GROUPS={4:1,6:1,7:1,8:1,9:1,13:1,14:1,16:1,20:1};
 var BUREAU_SEAT_PIVOT=[-0.046,0,-0.579];
@@ -913,11 +1083,16 @@ WGL.renderT=function(){
     var isChair=isBureau && BUREAU_SEAT_GROUPS[gi];
     if(isChair && !SEAT.show) return;                 /* siege masque */
     gl.uniformMatrix4fv(ulModel,false, isChair?chairM:ident);
-    var t=g.tex?WGL.txt[g.tex]:null;
+    /* Finition par matériau. Dès qu'une surcharge existe, elle remplace ENTIÈREMENT
+       le matériau : sans ça, un RAL posé sur un matériau texturé resterait sans
+       effet, la texture d'origine reprenant le dessus. */
+    var ov=prodFin(M.id, gi);
+    var texKey=ov?(ov.tex||null):(g.tex||null);
+    var t=texKey?WGL.resolveTex(texKey):null;
     if(t&&t.ready){ gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,t.tex); gl.uniform1f(ulUse,1.0); }
-    else { gl.uniform1f(ulUse,0.0); var c=g.col||[180,180,180]; gl.uniform3f(ulBase,c[0]/255,c[1]/255,c[2]/255); }
-    gl.uniform1f(ulUV, (g.tex && PROD_TEXSCALE[M.id] && PROD_TEXSCALE[M.id][g.tex])||1.0);
-    gl.uniform1f(ulUR, (g.tex && PROD_TEXROT[M.id] && PROD_TEXROT[M.id][g.tex])||0.0);
+    else { gl.uniform1f(ulUse,0.0); var c=(ov&&ov.col)||g.col||[180,180,180]; gl.uniform3f(ulBase,c[0]/255,c[1]/255,c[2]/255); }
+    gl.uniform1f(ulUV, (texKey && PROD_TEXSCALE[M.id] && PROD_TEXSCALE[M.id][texKey])||1.0);
+    gl.uniform1f(ulUR, (texKey && PROD_TEXROT[M.id] && PROD_TEXROT[M.id][texKey])||0.0);
     gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4);
   });
 };
@@ -1093,12 +1268,17 @@ WGL.renderSceneTex=function(){
     gl.bindBuffer(gl.ARRAY_BUFFER,pg.nrm); gl.enableVertexAttribArray(ln); gl.vertexAttribPointer(ln,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,pg.uv); gl.enableVertexAttribArray(luv); gl.vertexAttribPointer(luv,2,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,pg.idx);
-    (pg.groups||[]).forEach(function(g){
-      var t=g.tex?WGL.txt[g.tex]:null;
+    (pg.groups||[]).forEach(function(g,gi){
+      /* même règle que renderT() : une surcharge de finition remplace ENTIÈREMENT
+         le matériau d'origine. Sans ça un produit perdait sa finition dès qu'on
+         le posait dans la scène. */
+      var ov=prodFin(inst.prod, gi);
+      var texKey=ov?(ov.tex||null):(g.tex||null);
+      var t=texKey?WGL.resolveTex(texKey):null;
       if(t&&t.ready){ gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,t.tex); gl.uniform1f(ulUse,1.0); }
-      else { gl.uniform1f(ulUse,0.0); var c=g.col||[180,180,180]; gl.uniform3f(ulBase,c[0]/255,c[1]/255,c[2]/255); }
-      gl.uniform1f(ulUV,(g.tex&&PROD_TEXSCALE[inst.prod]&&PROD_TEXSCALE[inst.prod][g.tex])||1.0);
-      gl.uniform1f(ulUR,(g.tex&&PROD_TEXROT[inst.prod]&&PROD_TEXROT[inst.prod][g.tex])||0.0);
+      else { gl.uniform1f(ulUse,0.0); var c=(ov&&ov.col)||g.col||[180,180,180]; gl.uniform3f(ulBase,c[0]/255,c[1]/255,c[2]/255); }
+      gl.uniform1f(ulUV,(texKey&&PROD_TEXSCALE[inst.prod]&&PROD_TEXSCALE[inst.prod][texKey])||1.0);
+      gl.uniform1f(ulUR,(texKey&&PROD_TEXROT[inst.prod]&&PROD_TEXROT[inst.prod][texKey])||0.0);
       gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4);
     });
   });
@@ -1168,7 +1348,7 @@ WGL.initGGL=function(){
     'float G_Smith(float NoV,float NoL,float a){float k=a*0.5;float gv=NoV/(NoV*(1.0-k)+k);float gl2=NoL/(NoL*(1.0-k)+k);return gv*gl2;}'+
     'vec3 fres(float c2,vec3 F0){return F0+(1.0-F0)*pow(1.0-c2,5.0);}'+
     'void main(){vec3 N=normalize(vn);vec3 Vd=normalize(camPos-vw);if(dot(N,Vd)<0.0)N=-N;'+
-    'vec3 alb=vc.rgb;float rough=0.55;vec3 F0=vec3(0.04);float a=rough*rough;'+
+    'vec3 alb=pow(vc.rgb,vec3(2.2));float rough=0.55;vec3 F0=vec3(0.04);float a=rough*rough;'+
     'float NoV=max(dot(N,Vd),0.001);vec3 col=vec3(0.0);'+
     'float shf=shadowF(N,normalize(lightDirs[0]));'+
     'for(int i=0;i<3;i++){vec3 Ld=normalize(lightDirs[i]);vec3 H=normalize(Vd+Ld);'+
@@ -1200,7 +1380,7 @@ WGL.initGGL=function(){
     'float G_Smith(float NoV,float NoL,float a){float k=a*0.5;float gv=NoV/(NoV*(1.0-k)+k);float gl2=NoL/(NoL*(1.0-k)+k);return gv*gl2;}'+
     'vec3 fres(float c2,vec3 F0){return F0+(1.0-F0)*pow(1.0-c2,5.0);}'+
     'void main(){vec3 N=normalize(vn);vec3 Vd=normalize(camPos-vw);if(dot(N,Vd)<0.0)N=-N;'+
-    'vec3 alb=texture2D(uTex,vuv).rgb;float rough=0.6;vec3 F0=vec3(0.04);float a=rough*rough;'+
+    'vec3 alb=pow(texture2D(uTex,vuv).rgb,vec3(2.2));float rough=0.6;vec3 F0=vec3(0.04);float a=rough*rough;'+
     'float NoV=max(dot(N,Vd),0.001);vec3 col=vec3(0.0);'+
     'float shf=shadowF(N,normalize(lightDirs[0]));'+
     'for(int i=0;i<3;i++){vec3 Ld=normalize(lightDirs[i]);vec3 H=normalize(Vd+Ld);'+
@@ -1248,14 +1428,26 @@ WGL.initGGL=function(){
   var fvs='attribute vec3 p;uniform mat4 pv;varying vec3 vw;void main(){vw=p;gl_Position=pv*vec4(p,1.0);}';
   var ffs='precision highp float;varying vec3 vw;uniform vec2 oc;uniform vec2 oh;uniform vec2 sdir;uniform vec3 floorC;uniform vec3 horC;uniform float shAmt;'+
     'uniform sampler2D gtex;uniform float useG;uniform float gScale;'+
+    /* Bruit de valeur INTERPOLÉ. L'ancienne version faisait
+         v = 0.86 + 0.28*fract(sin(dot(floor(vw.xz*0.09), …)))
+       — une valeur CONSTANTE par cellule de 11 m. Le floor() la rend discontinue
+       d'une cellule à l'autre : d'où le damier à arêtes franches sur la pelouse. */
+    'float fh(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}'+
+    'float fvn(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.0-2.0*f);'+
+    'return mix(mix(fh(i),fh(i+vec2(1.0,0.0)),u.x),mix(fh(i+vec2(0.0,1.0)),fh(i+vec2(1.0,1.0)),u.x),u.y);}'+
     'void main(){'+
     'float ex=(vw.x-oc.x-sdir.x)/(oh.x+0.18);float ez=(vw.z-oc.y-sdir.y)/(oh.y+0.18);'+
     'float ed=sqrt(ex*ex+ez*ez);'+
     'float shc=(1.0-smoothstep(0.50,1.9,ed))*0.62*shAmt;'+
     'vec3 base=floorC;'+
     'if(useG>0.5){'+
-    'vec3 g=texture2D(gtex,vw.xz*gScale).rgb;'+
-    'float v=0.86+0.28*fract(sin(dot(floor(vw.xz*0.09),vec2(12.9898,78.233)))*43758.5453);'+   /* taches larges : casse la tuile */
+    /* deux échelles mélangées par un bruit lent : casse la répétition de la tuile
+       sans introduire la moindre arête. */
+    'vec3 g1=texture2D(gtex,vw.xz*gScale).rgb;'+
+    'vec3 g2=texture2D(gtex,vw.xz*gScale*0.31+vec2(0.37,0.11)).rgb;'+
+    'float m=smoothstep(0.35,0.65,fvn(vw.xz*0.055));'+
+    'vec3 g=mix(g1,g2,m);'+
+    'float v=0.90+0.10*fvn(vw.xz*0.09+vec2(3.1,7.7))+0.06*fvn(vw.xz*0.021+vec2(1.7,9.3));'+   /* taches larges, continues */
     'base=g*v;}'+
     'vec3 c=base*(1.0-shc);'+
     'float dist=length(vw.xz-oc);float f=smoothstep(10.0,60.0,dist);'+
@@ -2147,6 +2339,7 @@ var TEXTURE_FAMILIES = [
     tx('crepi','Crépi','plaster',[206,200,188],[180,174,162])
   ]},
   {id:'metal', label:'Métal', items:[
+    tx('chrome','Chrome poli','chrome',[150,153,157],[60,62,66]),
     tx('acier_brosse','Acier brossé','metal',[178,180,184],[150,152,156]),
     tx('inox','Inox','metal',[196,198,202],[168,170,174]),
     tx('alu','Aluminium','metal',[188,190,194],[160,162,166]),
@@ -2418,6 +2611,52 @@ function genTextureCanvas(def){
       g.fillStyle='rgb('+(col[0]|0)+','+(col[1]|0)+','+(col[2]|0)+')';
       g.fillRect(0,y,S,1);
     }
+  } else if(def.gen==='chrome'){
+    /* CHROME POLI — le chrome n'a presque pas de couleur propre : ce qu'on voit,
+       c'est le décor qu'il reflète. On peint donc un décor fictif de studio :
+         · un grand bandeau lumineux (softbox) en haut,
+         · une ligne d'horizon sombre et nette,
+         · un sol gris, plus mat, avec un reflet secondaire,
+         · quelques montants verticaux, deux éclats spéculaires.
+       Le tout est construit à partir de gaussiennes en distance CIRCULAIRE, donc
+       la texture se raccorde d'elle-même dans les deux directions. L'ondulation
+       du décor (trois harmoniques) simule la courbure de la surface. */
+    var im=g.getImageData(0,0,S,S), dd=im.data;
+    var wd=function(a,b){ var d=Math.abs(a-b); return d<0.5?d:1-d; };
+    var GG=function(x,c,w){ var t=wd(x,c)/w; return Math.exp(-t*t); };
+    var prof=function(v){
+      return 0.46 + 0.46*GG(v,0.20,0.115) + 0.15*GG(v,0.63,0.050)
+                  - 0.30*GG(v,0.455,0.030) - 0.15*GG(v,0.87,0.105);
+    };
+    var cols=[[0.11,0.045,0.055],[0.37,0.030,0.038],[0.60,0.050,0.060],[0.84,0.034,0.032]];
+    var spec=[[0.28,0.185,0.033,0.40],[0.72,0.235,0.020,0.26]];
+    var TAU=Math.PI*2;
+    for(var y2=0;y2<S;y2++){
+      var v0=(y2+0.5)/S;
+      for(var x2=0;x2<S;x2++){
+        var u=(x2+0.5)/S;
+        var vv=(v0 + 0.011*Math.sin(TAU*(2*u+0.11))
+                   + 0.006*Math.sin(TAU*(5*u+0.47))
+                   + 0.003*Math.sin(TAU*(9*u+0.83)));
+        vv-=Math.floor(vv);
+        var e=prof(vv), q;
+        for(q=0;q<cols.length;q++) e-=cols[q][2]*GG(u,cols[q][0],cols[q][1]);
+        for(q=0;q<spec.length;q++){
+          var du=wd(u,spec[q][0])/spec[q][2], dv=(vv-spec[q][1])/(spec[q][2]*1.7);
+          e+=spec[q][3]*Math.exp(-(du*du+dv*dv));
+        }
+        e+=0.010*Math.sin(TAU*u*61.0 + y2*1.7);          /* micro-rayures */
+        e=(e-0.5)*1.14+0.5;                              /* contraste du poli */
+        if(e>1)e=1; if(e<0.03)e=0.03;
+        var sky=(vv<0.455);                              /* ciel bleuté / sol neutre */
+        var o=(y2*S+x2)*4;
+        dd[o]  =(e*255*(sky?0.965:0.985))|0;
+        dd[o+1]=(e*255*(sky?0.985:0.988))|0;
+        dd[o+2]=(e*255*(sky?1.000:0.975))|0;
+        dd[o+3]=255;
+      }
+    }
+    g.putImageData(im,0,0);
   } else if(def.gen==='tile'){
     var ts=S/4, jt=3;
     g.fillStyle='rgb(150,154,160)'; g.fillRect(0,0,S,S);
@@ -2602,6 +2841,10 @@ var FINISH = {
    Les objets historiques (meuble, immeuble, porte…) n'ont pas de matériau natif :
    leur finition est TOUJOURS active, ils n'apparaissent donc pas ici. */
 var FINISH_ON = {};
+/* FINISH_SET[clé] : vrai dès que l'utilisateur a choisi lui-même une teinte ou une
+   texture pour cet élément. Permet de garder une teinte native tant qu'il n'a rien
+   demandé — un poteau acier reste acier — sans pour autant ignorer son choix. */
+var FINISH_SET = {};
 /* Modes dont chaque élément porte un interrupteur natif/personnalisé. La Forme
    n'y figure pas : elle n'a pas de matériau natif, sa finition est toujours active. */
 var FINISH_SWITCHABLE = { mur:1, poteau:1, poutre:1, gardecorps:1, escalier:1, ferme:1, toiture:1, route:1, parking:1 };
@@ -2759,6 +3002,27 @@ var RENDER = 'smooth';   /* mode de rendu : smooth | flat | hidden | wire */
 var ENGINE = 'soft';
 var ORTHO = false;   /* projection orthographique (élévations / IGH) */
 var UILIGHT = false;       /* thème clair (UI) — NE PAS confondre avec LIGHT (direction lumière) */
+var UIKRAFT = false;       /* thème kraft : variante CLAIRE (UILIGHT reste vrai) au fond papier */
+
+/* Fond du viewport 2D. En kraft, un motif de canvas remplace l'aplat : cannelures
+   verticales + grain, mêmes teintes que le CSS. Le motif est mis en cache — le
+   reconstruire à chaque image coûterait une passe de bruit par redraw. */
+var _KRAFT_PAT=null;
+function kraftPattern(ctx){
+  if(_KRAFT_PAT) return _KRAFT_PAT;
+  var t=document.createElement('canvas'); t.width=t.height=128; var c=t.getContext('2d');
+  c.fillStyle='#c19a6b'; c.fillRect(0,0,128,128);
+  for(var y=0;y<128;y+=5){                                   /* cannelures horizontales */
+    c.fillStyle='rgba(96,64,26,0.10)';  c.fillRect(0,y,128,1);
+    c.fillStyle='rgba(255,236,205,0.07)'; c.fillRect(0,y+1,128,1);
+  }
+  var im=c.getImageData(0,0,128,128), d=im.data, i;         /* grain de fibres */
+  for(i=0;i<d.length;i+=4){ var n=(Math.random()-0.5)*26; d[i]+=n; d[i+1]+=n*0.9; d[i+2]+=n*0.7; }
+  c.putImageData(im,0,0);
+  _KRAFT_PAT=ctx.createPattern(t,'repeat');
+  return _KRAFT_PAT;
+}
+function uiBgStyle(ctx){ return UIKRAFT ? kraftPattern(ctx) : (UILIGHT?'#e9edf2':'#1a1d23'); }
 
 /* ===== PRÉFÉRENCES DE PRÉSENTATION (persistées) : thème, polices, ciel/sol WebGL, trame ===== */
 var PREFS_KEY='BPO_PREFS_v1';
@@ -2827,7 +3091,14 @@ function buildSunControls(host, rerender){
 function prefHex01(h){ if(!h) return null; h=(''+h).replace('#',''); if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; if(h.length<6) return null; var n=parseInt(h,16); if(isNaN(n)) return null; return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255]; }
 /* applique thème + couleur police, puis redessine */
 function applyPrefs(){
-  if(PREFS.theme){ UILIGHT=(PREFS.theme==='light'); document.documentElement.classList.toggle('light',UILIGHT); if(document.body) document.body.classList.toggle('light',UILIGHT); }
+  /* `kraft` est une variante claire : on pose AUSSI la classe `light`, dont il
+     hérite l'encre sombre, puis les règles `.kraft` surchargent le papier. */
+  if(PREFS.theme){
+    UIKRAFT=(PREFS.theme==='kraft'); UILIGHT=(PREFS.theme!=='dark');
+    [document.documentElement, document.body].forEach(function(el){
+      if(!el) return; el.classList.toggle('light',UILIGHT); el.classList.toggle('kraft',UIKRAFT);
+    });
+  }
   var rs=document.documentElement.style;
   if(PREFS.fontColor) rs.setProperty('--tx',PREFS.fontColor); else rs.removeProperty('--tx');
   DIRTY=true; if(typeof WGL!=='undefined' && WGL.render && (WGL.gActive||WGL.txActive)) WGL.render();
@@ -2842,7 +3113,7 @@ function prefsUI(){
   function colorCtl(val,def,on){ var c=document.createElement('input'); c.type='color'; c.value=val||def; c.style.cssText='width:40px;height:24px;padding:0;border:1px solid #3a4653;border-radius:4px;background:none;cursor:pointer;'; c.oninput=function(){ on(c.value); }; return c; }
   /* Thème */
   var rT=row('Thème'); var wr=document.createElement('div'); wr.style.cssText='display:flex;gap:4px;'; var cur=(PREFS.theme||(UILIGHT?'light':'dark'));
-  [['light','Blanc'],['dark','Noir']].forEach(function(o){ var b=document.createElement('button'); b.textContent=o[1]; var on=(cur===o[0]); b.style.cssText='font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(on?'#ff8a3d':'#232a34')+';color:'+(on?'#141821':'#cdd6e0')+';'; b.onclick=function(){ PREFS.theme=o[0]; prefsSave(); applyPrefs(); prefsUI(); }; wr.appendChild(b); });
+  [['light','Blanc'],['dark','Noir'],['kraft','Kraft']].forEach(function(o){ var b=document.createElement('button'); b.textContent=o[1]; var on=(cur===o[0]); b.style.cssText='font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(on?'#ff8a3d':'#232a34')+';color:'+(on?'#141821':'#cdd6e0')+';'; b.onclick=function(){ PREFS.theme=o[0]; prefsSave(); applyPrefs(); prefsUI(); }; wr.appendChild(b); });
   rT.appendChild(wr); p.appendChild(rT);
   /* Couleur des polices */
   var rF=row('Couleur des polices'); rF.appendChild(colorCtl(PREFS.fontColor,'#e8e9ec',function(v){ PREFS.fontColor=v; prefsSave(); applyPrefs(); })); p.appendChild(rF);
@@ -3204,10 +3475,13 @@ var PIM = {
   facN:'rideau', facS:'rideau', facE:'rideau', facO:'rideau',
   imDoorOn:0, imDoorFac:'S', imDoorW:200, imDoorH:220, imDoorPos:50, imDoorLeaves:2,   /* porte d'entrée dans façade rideau (RDC) : côté, largeur/hauteur cm, position %, nb vantaux */
   vitrTint:'clair', allege:100, winH:150, montEntr:150, travEntr:120,
+  /* mur-rideau : allège opaque puis bande vitrée. rideauH = 0 → pleine hauteur d'étage. */
+  rideauAllege:0, rideauH:0,
   setbackN:0, setbackD:200, coreOn:0, coreW:400, coreD:400, facOffset:0,
   nBasement:0, basementH:280, basementWalls:1, basementSlab:1,
   foundOn:1, foundType:'filante', foundH:60, foundW:60,   /* fondations : filantes (semelles continues) ou massifs (sous poteaux) */
   colType:'beton', colSize:300, colRot:0,   /* poteaux : beton(carré) / profil acier normé (IPE/IPN/HEA/HEB/UPN) / rond / tubeCarre + taille (mm) + orientation */
+  beamType:'beton', beamSize:300, beamRot:0, /* poutres : beton(rectangulaire) / profil acier normé, taille (mm), orientation d'âme */
   acroOut:0   /* débord de l'acrotère vers l'extérieur (cm) — alignement structure et au-delà */
 };
 
@@ -5924,25 +6198,62 @@ function buildImmeuble(){
   var bh  = PIM.structAuto ? cl(span/12,0.25,0.90) : PIM.beamH/100;
   var bw  = PIM.structAuto ? cl(bh*0.5,0.20,0.45)  : PIM.beamW/100;
   var colw= PIM.structAuto ? cl(0.30+0.025*PIM.nFloors+0.03*span,0.30,1.00) : PIM.colSide/100;
+  /* POUTRES ACIER : le profil normé impose la section, il court-circuite le
+     prédimensionnement automatique. bh = hauteur du profil, bw = largeur de semelle. */
+  var bSteel=(typeof STEEL_PROFILES!=='undefined' && !!STEEL_PROFILES[PIM.beamType||'']);
+  var bSd=null;
+  if(bSteel){
+    bSd=steelDims(PIM.beamType, PIM.beamSize);
+    var _bRot=(((PIM.beamRot||0)|0)===90);
+    bh=(_bRot?bSd.dims[1]:bSd.dims[0])/1000;
+    bw=(_bRot?bSd.dims[0]:bSd.dims[1])/1000;
+  }
+  /* Poutre acier : on pose le profil le long du segment a→b, arase supérieure à yTop.
+     `profileRects` donne [décalage latéral, décalage vertical, largeur, hauteur],
+     le décalage vertical étant compté depuis le milieu du profil. */
+  function imBeamSteel(ax,az,bx,bz,yTop,col){
+    var rects=profileRects(bSd.type, bSd.dims), hP=bSd.dims[0]/1000;
+    var rot=(((PIM.beamRot||0)|0)===90);
+    var yCen=yTop-(rot?bSd.dims[1]/1000:hP)/2;
+    var dx=bx-ax, dz=bz-az, L=Math.hypot(dx,dz); if(L<1e-6) return;
+    var nx=-dz/L, nz=dx/L;
+    rects.forEach(function(rc){
+      var ox=rc[0], oy=rc[1], w=rc[2], h=rc[3];
+      if(rot){ var t=ox; ox=oy; oy=t; t=w; w=h; h=t; }
+      beamSeg(ax+nx*ox, az+nz*ox, bx+nx*ox, bz+nz*ox, yCen+oy-h/2, yCen+oy+h/2, w, col, 1);
+    });
+  }
   /* poteau selon le profil choisi (béton carré / IPE-HEA-HEB / rond / tube carré). H = hauteur, cy = centre vertical. */
+  /* `col` vient de FINISH.impoteau : c'est la finition choisie dans le panneau.
+     Elle s'applique à TOUS les profils. Auparavant seul le poteau béton carré la
+     recevait, les profils acier / rond / tube étant peints avec la constante
+     STEEL_COL — la teinte RAL n'avait donc aucun effet visible sur eux. */
   function imDrawColumn(cx,cy,cz,H,col){
-    var ty=(PIM.colType||'beton'), sCol=(typeof STEEL_COL!=='undefined')?STEEL_COL:[120,124,130];
-    if(ty==='rond'){ var d=Math.max(0.05,(PIM.colSize||300)/1000); cylY(cx,cz, d/2, cy-H/2, cy+H/2, sCol, 20); return; }
-    if(ty==='tubeCarre'){ var s=Math.max(0.05,(PIM.colSize||300)/1000); box(cx,cy,cz, s,H,s, sCol,1); return; }
+    var ty=(PIM.colType||'beton');
+    var steel=(ty==='rond'||ty==='tubeCarre'||(typeof STEEL_PROFILES!=='undefined' && STEEL_PROFILES[ty]));
+    /* Tant que l'utilisateur n'a rien choisi pour « Poteaux », un profil métallique
+       garde sa teinte acier. Dès qu'il pose un RAL ou une texture, elle s'applique. */
+    var c = (steel && !FINISH_SET.impoteau && !FINISH_TEX.impoteau)
+              ? ((typeof STEEL_COL!=='undefined')?STEEL_COL:[120,124,130])
+              : col;
+    if(ty==='rond'){ var d=Math.max(0.05,(PIM.colSize||300)/1000); cylY(cx,cz, d/2, cy-H/2, cy+H/2, c, 20); return; }
+    if(ty==='tubeCarre'){ var s=Math.max(0.05,(PIM.colSize||300)/1000); box(cx,cy,cz, s,H,s, c,1); return; }
     if(typeof STEEL_PROFILES!=='undefined' && STEEL_PROFILES[ty]){   /* profil acier normé (I ou U) — réutilise le catalogue existant */
       var sd=steelDims(ty, PIM.colSize), rects=profileRects(sd.type, sd.dims), rot90=(((PIM.colRot||0)|0)===90);
       rects.forEach(function(rc){ var rx=rc[0],rz=rc[1],wx=rc[2],dz=rc[3];
         if(rot90){ var t1=rx;rx=rz;rz=t1; var t2=wx;wx=dz;dz=t2; }
-        box(cx+rx, cy, cz+rz, wx, H, dz, sCol, 1); });
+        box(cx+rx, cy, cz+rz, wx, H, dz, c, 1); });
       return;
     }
-    box(cx,cy,cz, colw,H,colw, col,1);   /* béton carré par défaut */
+    box(cx,cy,cz, colw,H,colw, c,1);   /* béton carré par défaut */
   }
   var N=Math.max(1, PIM.nFloors|0), HS=[];
   for(var i=0;i<N;i++){ HS.push(((PIM.heights&&PIM.heights[i]!=null)?PIM.heights[i]:300)/100); }
   var levelY=[0]; for(var i=0;i<N;i++) levelY.push(levelY[i]+HS[i]);
   IMM_STRUCT={levelY:levelY.slice(), e:e, slabs:[], cols:[], beams:[], cores:[], facades:[], acro:[], parts:[]};
   var slCol=FINISH.imdalle, cCol=FINISH.impoteau, bCol=FINISH.impoutre, coreCol=FINISH.imvoile;
+  /* une poutre acier reste acier tant que l'utilisateur n'a pas choisi sa finition */
+  if(bSteel && !FINISH_SET.impoutre && !FINISH_TEX.impoutre) bCol=(typeof STEEL_COL!=='undefined')?STEEL_COL:[120,124,130];
   var gx=[]; for(var j=0;j<=nbX;j++) gx.push(x0+j*spanX);
   var gz=[]; for(var k=0;k<=nbY;k++) gz.push(z0+k*spanZ);
   var cx=0,cz=0; for(var i=0;i<poly.length;i++){cx+=poly[i][0];cz+=poly[i][1];} cx/=poly.length; cz/=poly.length;
@@ -6040,12 +6351,18 @@ function buildImmeuble(){
         for(var c=0;c<cols.length;c++){ segs.push([st, Math.max(st,cols[c]-dlt)]); st=Math.min(1,cols[c]+dlt); }
         segs.push([st,1]);
         segs.forEach(function(sg){ var t0=sg[0],t1=sg[1]; if(t1-t0<1e-3) return;
-          beamPrism(lerp(oi,oj,t0),lerp(oi,oj,t1),lerp(ij,ii,1-t1),lerp(ij,ii,1-t0), yb, yTop);
-          var ca=lerp(a,b,t0), cb=lerp(a,b,t1); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:ca[0],az:ca[1],bx:cb[0],bz:cb[1],w:bw,h:bh,yTop:levelY[i]-e}); });
+          var ca=lerp(a,b,t0), cb=lerp(a,b,t1);
+          /* les poutres béton sont mitrées aux angles ; les profils acier aboutent,
+             comme sur un chantier — on les pose donc sur l'axe, sans onglet. */
+          if(bSteel) imBeamSteel(ca[0],ca[1],cb[0],cb[1], yTop, bCol);
+          else beamPrism(lerp(oi,oj,t0),lerp(oi,oj,t1),lerp(ij,ii,1-t1),lerp(ij,ii,1-t0), yb, yTop);
+          IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:ca[0],az:ca[1],bx:cb[0],bz:cb[1],w:bw,h:bh,yTop:levelY[i]-e}); });
       }
       /* --- POUTRES INTÉRIEURES : butent sur les faces des poteaux (raccourcies de colw/2 à chaque extrémité) --- */
       function innerBeam(ax,az,bx,bz){ var dx=bx-ax,dz=bz-az,L=Math.hypot(dx,dz)||1,u=cHalf/L; if(2*cHalf>=L) return;
-        beamSeg(ax+dx*u,az+dz*u, bx-dx*u,bz-dz*u, yb, yTop, bw, bCol); IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:ax+dx*u,az:az+dz*u,bx:bx-dx*u,bz:bz-dz*u,w:bw,h:bh,yTop:levelY[i]-e}); }
+        if(bSteel) imBeamSteel(ax+dx*u,az+dz*u, bx-dx*u,bz-dz*u, yTop, bCol);
+        else beamSeg(ax+dx*u,az+dz*u, bx-dx*u,bz-dz*u, yb, yTop, bw, bCol);
+        IMM_STRUCT.beams.push({st:Math.max(0,i-1),ax:ax+dx*u,az:az+dz*u,bx:bx-dx*u,bz:bz-dz*u,w:bw,h:bh,yTop:levelY[i]-e}); }
       for(var k=0;k<=nbY;k++) for(var j=0;j<nbX;j++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j+1],gz[k],plb) && !_onEdge((gx[j]+gx[j+1])/2, gz[k], plb)) innerBeam(gx[j],gz[k],gx[j+1],gz[k]); }
       for(var j=0;j<=nbX;j++) for(var k=0;k<nbY;k++){ if(insideP(gx[j],gz[k],plb)&&insideP(gx[j],gz[k+1],plb) && !_onEdge(gx[j], (gz[k]+gz[k+1])/2, plb)) innerBeam(gx[j],gz[k],gx[j],gz[k+1]); }
     }
@@ -6207,12 +6524,27 @@ function facadeEdge(A0,B0, At,Bt, y0,y1, type, nX,nZ, door){
           [a0[0]+nx,ya,a0[1]+nz],[b0[0]+nx,ya,b0[1]+nz],[b1[0]+nx,yb,b1[1]+nz],[a1[0]+nx,yb,a1[1]+nz]], col, al||1);
   }
   function band(yy, th, w, col, al){ var fr=(yy-y0)/H, a=aP(fr), b=bP(fr); beamSeg(a[0],a[1],b[0],b[1], yy-th, yy+th, w, col, al); }
-  /* montant incliné à la fraction t le long de l'arête */
-  function post(t, hw, hd, col){
-    var pb=[A0[0]+(B0[0]-A0[0])*t, A0[1]+(B0[1]-A0[1])*t], pt=[At[0]+(Bt[0]-At[0])*t, At[1]+(Bt[1]-At[1])*t];
+  /* Altitudes des traverses entre ya et yb, pour des châssis de hauteur EXACTE.
+     L'ancien code faisait `nT = round(hauteur / entraxe)` puis divisait en parts
+     égales : la cote saisie n'était jamais respectée. Ici les panneaux font la
+     hauteur demandée et c'est le dernier, en haut, qui absorbe le reste. */
+  function traverseYs(ya, yb){
+    var hC=Math.max(0.20,(PIM.travEntr||120)/100), out=[ya], y=ya+hC;
+    while(y < yb-0.06){ out.push(y); y+=hC; }
+    out.push(yb);
+    return out;
+  }
+  /* Montant à la fraction t le long de l'arête, entre les altitudes `ya` et `yb`
+     (par défaut de dalle à dalle). Le montant doit descendre avec le châssis :
+     s'il courait toujours de y0 à y1, il traverserait allège et retombée.
+     PT() donne le point du panneau, donc l'inclinaison de façade est suivie. */
+  function post(t, hw, hd, col, ya, yb){
+    ya=(ya==null)?y0:ya; yb=(yb==null)?y1:yb;
+    if(yb-ya < 1e-4) return;
+    var pb=PT(t,(ya-y0)/H), pt=PT(t,(yb-y0)/H);
     var wx=exU*hw, wz=ezU*hw, dnx=nX*hd, dnz=nZ*hd;
-    boxV([[pb[0]-wx-dnx,y0,pb[1]-wz-dnz],[pb[0]+wx-dnx,y0,pb[1]+wz-dnz],[pt[0]+wx-dnx,y1,pt[1]+wz-dnz],[pt[0]-wx-dnx,y1,pt[1]-wz-dnz],
-          [pb[0]-wx+dnx,y0,pb[1]-wz+dnz],[pb[0]+wx+dnx,y0,pb[1]+wz+dnz],[pt[0]+wx+dnx,y1,pt[1]+wz+dnz],[pt[0]-wx+dnx,y1,pt[1]-wz+dnz]], col,1);
+    boxV([[pb[0]-wx-dnx,ya,pb[1]-wz-dnz],[pb[0]+wx-dnx,ya,pb[1]+wz-dnz],[pt[0]+wx-dnx,yb,pt[1]+wz-dnz],[pt[0]-wx-dnx,yb,pt[1]-wz-dnz],
+          [pb[0]-wx+dnx,ya,pb[1]-wz+dnz],[pb[0]+wx+dnx,ya,pb[1]+wz+dnz],[pt[0]+wx+dnx,yb,pt[1]+wz+dnz],[pt[0]-wx+dnx,yb,pt[1]-wz+dnz]], col,1);
   }
   if(type==='rideau'){
     if(door){
@@ -6224,12 +6556,11 @@ function facadeEdge(A0,B0, At,Bt, y0,y1, type, nX,nZ, door){
       slabQ(PT(t0,fh),PT(t1,fh),PT(t0,1),PT(t1,1), y0+fh*H,y1, 0.06, glass, 0.30);              /* imposte au-dessus */
       var stepD=Math.max(0.4,(PIM.montEntr||150)/100), nMD=Math.max(1,Math.round(L/stepD));
       for(var m=0;m<=nMD;m++){ var tm=m/nMD; if(tm>t0+1e-3 && tm<t1-1e-3) continue; post(tm, 0.04, 0.06, frame); }   /* montants sauf dans la baie */
-      var trD=Math.max(0.3,(PIM.travEntr||120)/100), nTD=Math.max(1,Math.round(H/trD));
-      for(var tt=0;tt<=nTD;tt++){ var yy=y0+H*tt/nTD, frr=(yy-y0)/H;
+      traverseYs(y0,y1).forEach(function(yy){ var frr=(yy-y0)/H;
         if(frr>=fh-1e-3){ band(yy, 0.035, 0.10, frame, 1); }                                    /* traverse pleine au-dessus de la porte */
         else { var la=PT(0,frr), lb=PT(t0,frr); beamSeg(la[0],la[1],lb[0],lb[1], yy-0.035,yy+0.035, 0.10, frame, 1);
                var ra=PT(t1,frr), rb=PT(1,frr); beamSeg(ra[0],ra[1],rb[0],rb[1], yy-0.035,yy+0.035, 0.10, frame, 1); }
-      }
+      });
       /* --- ensemble PORTE : cadre + vantaux vitrés, en léger retrait vers l'intérieur --- */
       var di=0.05, inx=-nX*di, inz=-nZ*di, dcol=[92,96,102], yhd=y0+dh;
       function PI(t,fr){ var p=PT(t,fr); return [p[0]+inx, p[1]+inz]; }
@@ -6247,11 +6578,20 @@ function facadeEdge(A0,B0, At,Bt, y0,y1, type, nX,nZ, door){
               [pm[0]-mwx+mdx,y0,pm[1]-mwz+mdz],[pm[0]+mwx+mdx,y0,pm[1]+mwz+mdz],[pm[0]+mwx+mdx,yhd,pm[1]+mwz+mdz],[pm[0]-mwx+mdx,yhd,pm[1]-mwz+mdz]], dcol,1);
       }
     } else {
-      slabQ(A0,B0,At,Bt, y0,y1, 0.06, glass, 0.30);
-      var trStep=Math.max(0.3,(PIM.travEntr||120)/100), nT=Math.max(1,Math.round(H/trStep));
-      for(var tt2=0;tt2<=nT;tt2++){ band(y0+H*tt2/nT, 0.035, 0.10, frame, 1); }
+      /* Allège opaque, puis bande vitrée de hauteur `rideauH` (0 = pleine hauteur
+         d'étage). Le reste au-dessus est une retombée opaque. Montants, traverses
+         et vitrage sont tous bornés à la bande : le châssis descend d'un bloc. */
+      var alR=Math.max(0, Math.min((PIM.rideauAllege||0)/100, H-0.20));
+      var hR=(PIM.rideauH>0) ? Math.min(PIM.rideauH/100, H-alR) : (H-alR);
+      var yg0=y0+alR, yg1=yg0+hR;
+      var f0=(yg0-y0)/H, f1=(yg1-y0)/H;
+      if(alR>0.02) slabQ(A0,B0, aP(f0),bP(f0), y0,yg0, 0.10, pan, 1);            /* allège */
+      slabQ(aP(f0),bP(f0), aP(f1),bP(f1), yg0,yg1, 0.06, glass, 0.30);           /* vitrage */
+      if(yg1<y1-0.02) slabQ(aP(f1),bP(f1), At,Bt, yg1,y1, 0.10, pan, 1);         /* retombée */
+      /* traverses sur la seule bande vitrée, châssis à la hauteur exacte demandée */
+      traverseYs(yg0,yg1).forEach(function(yy){ band(yy, 0.035, 0.10, frame, 1); });
       var step=Math.max(0.4,(PIM.montEntr||150)/100), nM=Math.max(1,Math.round(L/step));
-      for(var m2=0;m2<=nM;m2++){ post(m2/nM, 0.04, 0.06, frame); }
+      for(var m2=0;m2<=nM;m2++){ post(m2/nM, 0.04, 0.06, frame, yg0, yg1); }
     }
   } else if(type==='mur'){
     slabQ(A0,B0,At,Bt, y0,y1, 0.16, wallC, 1);
@@ -11128,7 +11468,17 @@ var FAB_CACHE={}, TEX_AVGCOL={};
 function texAvgCol(key, cb){
   if(TEX_AVGCOL[key]){ cb(TEX_AVGCOL[key]); return; }
   var src=(typeof TEX_POOL!=='undefined')?TEX_POOL[key]:null;
-  if(!src){ cb([175,168,158]); return; }
+  if(!src){
+    /* texture de finition (procédurale) : moyenne des pixels, pas de data-URI */
+    var im=(typeof getTexImage==='function')?getTexImage(key):null;
+    if(im && im.data){
+      var d=im.data, n=(im.w*im.h)||1, r=0,g2=0,b=0;
+      for(var i=0;i<d.length;i+=4){ r+=d[i]; g2+=d[i+1]; b+=d[i+2]; }
+      var c0=[Math.round(r/n),Math.round(g2/n),Math.round(b/n)];
+      TEX_AVGCOL[key]=c0; cb(c0); return;
+    }
+    cb([175,168,158]); return;
+  }
   var img=new Image();
   img.onload=function(){ try{ var cv=document.createElement('canvas'); cv.width=cv.height=1; var g=cv.getContext('2d'); g.drawImage(img,0,0,1,1); var d=g.getImageData(0,0,1,1).data; var c=[d[0],d[1],d[2]]; TEX_AVGCOL[key]=c; cb(c); }catch(e){ cb([175,168,158]); } };
   img.onerror=function(){ cb([175,168,158]); };
@@ -11169,15 +11519,20 @@ function fabDecode(pid, cb){
     function N(k){ return [nrm[k*3]/127,nrm[k*3+1]/127,nrm[k*3+2]/127]; }
     function UV(k){ return [uvA[k*2], uvA[k*2+1]]; }
     var faces=[], pending=0;
-    (D.groups||[]).forEach(function(g){
-      var col=g.col?g.col.slice():[170,162,150], gf=[];
+    (D.groups||[]).forEach(function(g,gi){
+      /* Finition par matériau : dès qu'une surcharge existe, elle remplace
+         ENTIÈREMENT le matériau (voir renderT). */
+      var ov=prodFin(pid, gi), tex=ov?(ov.tex||null):(g.tex||null);
+      var col=(ov&&ov.col)?ov.col.slice():(g.col?g.col.slice():[170,162,150]), gf=[];
       for(var t=g.start;t<g.start+g.count;t+=3){
         var a=idx[t],b=idx[t+1],c2=idx[t+2];
         gf.push({verts:[V(a),V(b),V(c2)], n:N(a), col:col, al:1, vn:[N(a),N(b),N(c2)],
-                 tex:g.tex||null, uv:g.tex?[UV(a),UV(b),UV(c2)]:null});   /* texture + UV conservées → export DAE texturé */
+                 tex:tex, uv:tex?[UV(a),UV(b),UV(c2)]:null});   /* texture + UV conservées → export DAE texturé */
       }
       for(var q=0;q<gf.length;q++) faces.push(gf[q]);
-      if(g.tex){ pending++; texAvgCol(g.tex, function(c){ for(var q2=0;q2<gf.length;q2++) gf[q2].col=c; if(--pending<=0){ _fabDone(pid); } }); }
+      /* la teinte moyenne de la texture sert au rendu filaire/aplati — sauf si une
+         couleur RAL a été choisie explicitement pour ce matériau */
+      if(tex && !(ov&&ov.col)){ pending++; texAvgCol(tex, function(c){ for(var q2=0;q2<gf.length;q2++) gf[q2].col=c; if(--pending<=0){ _fabDone(pid); } }); }
     });
     FAB_CACHE[pid].faces=faces;
     if(pending===0){ _fabDone(pid); }
@@ -11551,7 +11906,13 @@ document.addEventListener('mousedown', function(ev){ if(_edgeMenu && !_edgeMenu.
   try{ captureDefaults(); }catch(e){}
   var rsb=document.getElementById('resetBtn'); if(rsb) rsb.onclick=function(){ resetTool(); };
   var lb=document.getElementById('layoutBtn'); if(lb) lb.onclick=function(){ LAYOUT=(LAYOUT==='quad')?'single':'quad'; if(LAYOUT!=='quad') SINGLEVIEW='persp'; DIRTY=true; };
-  var tb=document.getElementById('themeBtn'); if(tb) tb.onclick=function(){ UILIGHT=!UILIGHT; document.documentElement.classList.toggle('light',UILIGHT); document.body.classList.toggle('light',UILIGHT); PREFS.theme=UILIGHT?'light':'dark'; prefsSave(); DIRTY=true; if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
+  /* ◐ : cycle noir → blanc → kraft. L'application des classes passe par applyPrefs(),
+     seul endroit qui sait que kraft implique aussi `light`. */
+  var tb=document.getElementById('themeBtn'); if(tb) tb.onclick=function(){
+    var seq=['dark','light','kraft'], cur=PREFS.theme||(UILIGHT?'light':'dark');
+    PREFS.theme=seq[(seq.indexOf(cur)+1)%seq.length];
+    prefsSave(); applyPrefs(); if(document.getElementById('prefsPanel') && document.getElementById('prefsPanel').style.display==='block') prefsUI();
+  };
   var cs=document.getElementById('cat-search'); if(cs) cs.addEventListener('input',function(){ SEARCH=cs.value; buildCatList(); });
   _undoBtns();
 })();
@@ -12110,10 +12471,16 @@ function scnDragUpdate(){ scnRenderRAF(); }
 function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==='function')drawGizov(); }
 (function(){
   var gz=document.getElementById('gizov'); if(!gz) return;
-  var orb=null, GB=null;
+  var orb=null, GB=null, pang=null;
+  gz.addEventListener('auxclick', function(e){ if(e.button===1) e.preventDefault(); });   /* pas de défilement auto */
   function rel(e){ var r=gz.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
   gz.addEventListener('mousedown', function(e){
     if(MODE!=='scene'||!WGL.gActive) return;
+    /* PANORAMIQUE : bouton du milieu, ou Alt + gauche. Le clic droit est pris par
+       le menu « placer à l'étage », et Maj/Ctrl par la multi-sélection. */
+    if((e.button||0)===1 || ((e.button||0)===0 && e.altKey)){
+      pang={x:e.clientX, y:e.clientY}; e.preventDefault(); return;
+    }
     var m=rel(e), vpv=wglVP(), multi=(e.ctrlKey||e.metaKey||e.shiftKey);
     if((e.button||0)===0 && SCENE.instances.length){
       /* poignées de gizmo (hauteur / rotation) — teste TOUS les objets sélectionnés ; agit sur toute la sélection */
@@ -12138,6 +12505,10 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
   });
   window.addEventListener('mousemove', function(e){
     if(MODE!=='scene'||!WGL.gActive) return;
+    if(pang){
+      WGL.pan(e.clientX-pang.x, e.clientY-pang.y, gz.clientHeight||600);
+      pang.x=e.clientX; pang.y=e.clientY; scnRenderRAF(); e.preventDefault(); return;
+    }
     if(GB){ var m=rel(e), vpv=wglVP(); if(!scnSel().length){GB=null;return;}
       if(GB==='v'){ var dyv=(SCN_VDRAG.my-e.clientY)/(SCN_VDRAG.ppm||60), dY=Math.round(dyv*100);
         SCN_VDRAG.base.forEach(function(b){ var it=SCENE.instances[b.i]; if(!it)return; var ny=b.y+dY; if(!e.shiftKey)ny=Math.round(ny/5)*5; it.y=ny; }); }
@@ -12150,8 +12521,13 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
     }
     if(orb){ WGL.cam.th-=(e.clientX-orb.x)*0.01; WGL.cam.ph-=(e.clientY-orb.y)*0.01; WGL.cam.ph=Math.max(0.15,Math.min(2.9,WGL.cam.ph)); orb.x=e.clientX; orb.y=e.clientY; scnRenderRAF(); }
   });
-  window.addEventListener('mouseup', function(){ if(GB){ GB=null; SCN_DRAG=SCN_ROT=SCN_VDRAG=null; if(MODE==='scene'){ if(typeof scnDragCommit==='function') scnDragCommit(); if(typeof buildSceneUI==='function') buildSceneUI(); } } orb=null; });
-  gz.addEventListener('wheel', function(e){ if(MODE!=='scene'||!WGL.gActive) return; e.preventDefault(); WGL.cam.r*=(1+e.deltaY*0.001); WGL.cam.r=Math.max(0.4,Math.min(300,WGL.cam.r)); WGL.render(); drawGizov(); }, {passive:false});
+  window.addEventListener('mouseup', function(){ if(GB){ GB=null; SCN_DRAG=SCN_ROT=SCN_VDRAG=null; if(MODE==='scene'){ if(typeof scnDragCommit==='function') scnDragCommit(); if(typeof buildSceneUI==='function') buildSceneUI(); } } orb=null; pang=null; });
+  gz.addEventListener('wheel', function(e){
+    if(MODE!=='scene'||!WGL.gActive) return; e.preventDefault();
+    var r=gz.getBoundingClientRect();
+    WGL.wheelZoom(e.deltaY, (e.clientX-r.left)-r.width/2, (e.clientY-r.top)-r.height/2, r.height||600);
+    WGL.render(); drawGizov();
+  }, {passive:false});
   gz.addEventListener('contextmenu', function(e){ if(MODE!=='scene'||!WGL.gActive) return; e.preventDefault(); if(!SCENE.instances.length) return;
     var m=rel(e), vpv=wglVP(), bst=-1,bdd=40*40;
     for(var si=0;si<SCENE.instances.length;si++){ var it=SCENE.instances[si], sp=wglProjPt(vpv,[it.x/100,(it.y/100)||0,it.z/100]); if(sp){ var dd=(sp.x-m.x)*(sp.x-m.x)+(sp.y-m.y)*(sp.y-m.y); if(dd<bdd){bdd=dd;bst=si;} } }
@@ -12188,7 +12564,7 @@ function frame(){
   IMM_COTE_HITS=[]; COTE_HITS=[];   /* cotes cliquables — accumulées sur toutes les vues */
   var _O=ORTHO;
   if(LAYOUT==='quad'){
-    ctx.fillStyle=UILIGHT?'#e9edf2':'#1a1d23'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=uiBgStyle(ctx); ctx.fillRect(0,0,W,H);
     var hw=Math.round(W/2), hh=Math.round(H/2);
     var quads=[[0,0,hw,hh],[hw,0,W-hw,hh],[0,hh,hw,H-hh],[hw,hh,W-hw,H-hh]];
     QUAD_LABEL_HITS=[];
@@ -12232,7 +12608,7 @@ function renderScene(cam,W,H){
     }
     ctx.fillStyle=_bgGrad; ctx.fillRect(0,0,W,H);
   } else {
-    ctx.fillStyle=UILIGHT?'#e9edf2':'#1a1d23'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=uiBgStyle(ctx); ctx.fillRect(0,0,W,H);
   }
   /* cam fourni en paramètre (rendu mono ou par quadrant) */
 
@@ -13617,6 +13993,33 @@ function buildImmeubleUI(){
     } else if(ct==='rond'){ slider('Diamètre poteau','mm','colSize',80,600,10); }
     else if(ct==='tubeCarre'){ slider('Côté poteau','mm','colSize',80,600,10); }
   })();
+  /* --- Profil des poutres (béton rectangulaire ou profilés acier normés) --- */
+  (function(){
+    var lbl=document.createElement('div'); lbl.className='slbl'; lbl.style.cssText='font-size:10px;margin:8px 0 3px;'; lbl.textContent='Profil des poutres'; target.appendChild(lbl);
+    var grid=document.createElement('div'); grid.className='mat-grid';
+    var opts=[['beton','Béton']].concat((typeof STEEL_SERIES!=='undefined'?STEEL_SERIES:['IPE','IPN','HEA','HEB','UPN']).map(function(s){return [s,s];}));
+    opts.forEach(function(p){
+      var b=document.createElement('button'); b.textContent=p[1]; if(p[0]===(PIM.beamType||'beton')) b.className='on';
+      b.onclick=function(){ PIM.beamType=p[0]; build(); updateDims(); buildImmeubleUI(); }; grid.appendChild(b);
+    });
+    target.appendChild(grid);
+    var bt=PIM.beamType||'beton';
+    if(typeof STEEL_PROFILES!=='undefined' && STEEL_PROFILES[bt]){
+      var keys=steelSizes(bt);
+      if(keys.indexOf(PIM.beamSize)<0) PIM.beamSize=(keys.indexOf(300)>=0?300:keys[Math.floor(keys.length/2)]);
+      var row=document.createElement('div'); row.className='fld';
+      row.innerHTML='<div class="fh"><label>Section normée</label></div><select style="width:100%;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:5px;padding:4px;">'+keys.map(function(k){var d=STEEL_PROFILES[bt].sizes[k]; return '<option value="'+k+'"'+(k===PIM.beamSize?' selected':'')+'>'+bt+' '+k+' ('+d[0]+'×'+d[1]+' mm)</option>';}).join('')+'</select>';
+      row.querySelector('select').onchange=function(){ PIM.beamSize=parseInt(this.value,10); build(); updateDims(); };
+      target.appendChild(row);
+      var b90=((PIM.beamRot||0)|0)===90, brow=document.createElement('div'); brow.className='wall-toggle';
+      brow.innerHTML='<span>Orientation de l\'âme</span><button class="'+(b90?'on':'')+'">'+(b90?'90°':'0°')+'</button>';
+      brow.querySelector('button').onclick=function(){ PIM.beamRot=b90?0:90; build(); updateDims(); buildImmeubleUI(); };
+      target.appendChild(brow);
+      var bn=document.createElement('div'); bn.className='exp-note'; bn.style.marginTop='4px';
+      bn.textContent='Le profil normé impose la section : le prédimensionnement automatique ne s’applique plus aux poutres. Les profils acier aboutent aux angles, ils ne sont pas mitrés.';
+      target.appendChild(bn);
+    }
+  })();
 
 
 
@@ -13843,7 +14246,21 @@ function buildImmeubleUI(){
     target.appendChild(grid);
   })();
   slider('Entraxe montants (rideau)','cm','montEntr',60,400,5);
-  slider('Entraxe traverses (rideau)','cm','travEntr',40,400,5);
+  slider('Hauteur du châssis (rideau)','cm','travEntr',40,400,5);
+  slider('Allège (rideau)','cm','rideauAllege',0,200,5);
+  slider('Hauteur vitrage (rideau)','cm','rideauH',0,600,5);
+  (function(){
+    var n=document.createElement('div'); n.className='exp-note'; n.style.marginTop='2px';
+    var hEt=((PIM.heights&&PIM.heights[0]!=null)?PIM.heights[0]:300)/100;
+    var e0=(PIM.dalleAuto?0.22:(PIM.dalleEp||22)/100);
+    var alR=Math.min((PIM.rideauAllege||0)/100, hEt-0.20);
+    var hR=(PIM.rideauH>0)?Math.min(PIM.rideauH/100, hEt-alR):(hEt-alR);
+    var hC=Math.max(0.20,(PIM.travEntr||120)/100);
+    var nC=Math.max(1,Math.floor((hR-0.06)/hC)+1), rest=hR-(nC-1)*hC;
+    n.textContent='Châssis de '+Math.round(hC*100)+' cm exactement. Sur '+Math.round(hR*100)+' cm de vitrage : '
+      +(nC-1)+' châssis pleins + un dernier de '+Math.round(rest*100)+' cm en haut.';
+    target.appendChild(n);
+  })();
   /* --- Porte d'entrée dans le mur-rideau (RDC) --- */
   toggle('Porte d’entrée (mur-rideau)','imDoorOn');
   if(PIM.imDoorOn){
@@ -14377,6 +14794,17 @@ function enterSceneMode(){ try{
   var tabs=document.querySelectorAll('.tab'); for(var i=0;i<tabs.length;i++) tabs[i].classList.toggle('on', tabs[i].getAttribute('data-branch')==='generiques');
   if(typeof scnResync==='function') scnResync();
   if(typeof selectCat==='function') selectCat('scene');
+  /* La scène est faite pour être regardée en WebGL : ombres, SSAO, ciel, herbe.
+     On y bascule par défaut, sauf en filaire / lignes cachées (que le WebGL ne
+     sait pas rendre) et si le contexte GL n'est pas disponible. */
+  try{
+    if(typeof ENGINE!=='undefined' && ENGINE!=='webgl' && RENDER!=='wire' && RENDER!=='hidden'
+       && typeof WGL!=='undefined' && WGL.initGL && WGL.initGL()){
+      ENGINE='webgl';
+      if(typeof buildRenderRow==='function') buildRenderRow();
+      if(typeof buildRenderBanner==='function') buildRenderBanner();
+    }
+  }catch(_g){}
   if(typeof buildCatList==='function') buildCatList();
   if(typeof refreshView==='function') refreshView();
   var sb=document.getElementById('sceneBtn'); if(sb) sb.style.borderColor='var(--am)';
@@ -15121,24 +15549,47 @@ function buildFinishElems(){
 }
 
 /* Panneau RAL + picker + textures pour l'élément courant */
+/* Indice du matériau en cours d'édition dans le panneau produit. */
+var PROD_MAT = 0;
+/* Onglet actif du panneau produit, par produit : 'auto' | 'mat' | 'global'. */
+var PROD_VIEW = {};
 /* Panneau Finition des produits fabricants (rendu WebGL PBR).
-   Le shader n'echantillonne pas de texture image : on propose donc une TEINTE
-   RAL globale appliquee via l'uniform d'override (ovOn/ovCol), en complement des
-   materiaux d'origine du produit. */
+   Trois modes :
+     - Matériaux d'origine : le produit tel que livré ;
+     - Par matériau        : chaque groupe reçoit sa teinte RAL et/ou sa texture ;
+     - Teinte globale      : un RAL unique sur tout le produit (uniform ovOn/ovCol). */
 function buildProductFinishPanel(host){
+  var pid=AL_PRODUCT;
+  var D=(typeof TEX_OBJECTS!=='undefined')?TEX_OBJECTS[pid]:null;
+  var groups=(D&&D.groups)||[];
+  if(!PROD_VIEW[pid]) PROD_VIEW[pid] = PROD_OVERRIDE ? 'global' : (PROD_FIN[pid] ? 'mat' : 'auto');
+  var mode = PROD_VIEW[pid];
+  PROD_OVERRIDE = (mode==='global');
+
   var tog=document.createElement('div'); tog.className='finish-tabs';
-  [['auto','Matériaux d’origine'],['custom','Teinte perso.']].forEach(function(p){
+  [['auto','Matériaux d’origine'],['mat','Par matériau'],['global','Teinte globale']].forEach(function(p){
     var b=document.createElement('button'); b.textContent=p[1];
-    if((p[0]==='custom')===PROD_OVERRIDE) b.className='on';
-    b.onclick=function(){ PROD_OVERRIDE=(p[0]==='custom'); if(WGL.ready) WGL.render(); buildFinishPanel(); };
+    if(p[0]===mode) b.className='on';
+    b.onclick=function(){
+      PROD_VIEW[pid]=p[0];
+      PROD_OVERRIDE=(p[0]==='global');
+      if(p[0]==='auto') prodFinClear(pid);
+      if(typeof build==='function'){ try{ build(); }catch(e){} }
+      if(WGL.ready) WGL.render(); DIRTY=true; buildFinishPanel();
+    };
     tog.appendChild(b);
   });
   host.appendChild(tog);
-  if(!PROD_OVERRIDE){
+
+  if(mode==='auto'){
     var note=document.createElement('div'); note.className='exp-note';
-    note.textContent='Le produit conserve ses matériaux d’origine (rendu PBR). Passez en « Teinte perso. » pour le recolorer dans une teinte RAL.';
+    note.textContent = groups.length
+      ? ('Le produit conserve ses '+groups.length+' matériau'+(groups.length>1?'x':'')+' d’origine. « Par matériau » pour donner à chacun une teinte RAL ou une texture ; « Teinte globale » pour tout recolorer d’un coup.')
+      : 'Le produit conserve ses matériaux d’origine.';
     host.appendChild(note); return;
   }
+
+  if(mode==='mat'){ buildProductMatPanel(host, pid, groups); return; }
   var current=FINISH.fab;
   /* familles RAL */
   var famRow=document.createElement('div'); famRow.className='ral-fam';
@@ -15181,6 +15632,209 @@ function buildProductFinishPanel(host){
   ci.value='#'+current.map(function(x){var s=x.toString(16);return s.length<2?'0'+s:s;}).join('');
   ci.oninput=function(e){ FINISH.fab=hexToRgb(e.target.value); if(WGL.ready) WGL.render(); };
   host.appendChild(ci);
+}
+/* Panneau « Par matériau » : un onglet par groupe du maillage, puis RAL ou texture.
+   Écrit dans PROD_FIN, que lisent le rendu WebGL et fabDecode (donc les exports). */
+function buildProductMatPanel(host, pid, groups){
+  if(!groups.length){
+    var w=document.createElement('div'); w.className='exp-note';
+    w.textContent='Maillage pas encore chargé. Patientez une seconde puis rouvrez la finition.';
+    host.appendChild(w); return;
+  }
+  if(PROD_MAT>=groups.length) PROD_MAT=0;
+  /* refresh commun à toute modification */
+  function apply(){
+    prodFinInvalidate(pid);
+    if(typeof build==='function'){ try{ build(); }catch(e){} }
+    if(WGL.ready) WGL.render();
+    DIRTY=true; buildFinishPanel();
+  }
+  /* onglets matériaux : pastille de couleur + nom d'origine */
+  var row=document.createElement('div'); row.className='finish-tabs'; row.style.flexWrap='wrap';
+  groups.forEach(function(g,gi){
+    var ov=prodFin(pid,gi);
+    var b=document.createElement('button');
+    var c=(ov&&ov.col)||g.col||[170,162,150];
+    var sw=document.createElement('span');
+    sw.style.cssText='display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle;border:1px solid rgba(0,0,0,.35);background:rgb('+c.join(',')+')';
+    b.appendChild(sw);
+    b.appendChild(document.createTextNode((g.name||('Matériau '+(gi+1)))+(ov?' •':'')));
+    if(gi===PROD_MAT) b.className='on';
+    b.onclick=function(){ PROD_MAT=gi; buildFinishPanel(); };
+    row.appendChild(b);
+  });
+  host.appendChild(row);
+
+  var gi=PROD_MAT, g=groups[gi], ov=prodFin(pid,gi)||{col:null,tex:null};
+  var orig=document.createElement('div'); orig.className='exp-note'; orig.style.marginTop='6px';
+  orig.innerHTML='D’origine : '+(g.tex?'texture <b>'+g.tex+'</b>':'couleur unie')+
+    (ov.col||ov.tex ? ' — remplacé par '+(ov.tex?'la texture <b>'+ov.tex+'</b>':'un RAL') : '');
+  host.appendChild(orig);
+
+  if(ov.col||ov.tex){
+    var rst=document.createElement('button'); rst.className='tex-none';
+    rst.textContent='✕ Rétablir le matériau d’origine';
+    rst.onclick=function(){ if(PROD_FIN[pid]) delete PROD_FIN[pid][gi];
+      if(PROD_FIN[pid] && !Object.keys(PROD_FIN[pid]).length) delete PROD_FIN[pid];
+      apply(); };
+    host.appendChild(rst);
+  }
+
+  /* onglets RAL / Texture */
+  var tabs=document.createElement('div'); tabs.className='finish-tabs';
+  [['ral','RAL'],['tex','Texture']].forEach(function(p){
+    var b=document.createElement('button'); b.textContent=p[1];
+    if(FINISH_VIEW===p[0]) b.className='on';
+    b.onclick=function(){ FINISH_VIEW=p[0]; buildFinishPanel(); };
+    tabs.appendChild(b);
+  });
+  host.appendChild(tabs);
+
+  if(FINISH_VIEW==='ral'){
+    var current=ov.col||g.col||[170,162,150];
+    var famRow=document.createElement('div'); famRow.className='ral-fam';
+    RAL_FAMILIES.forEach(function(fam){
+      var b=document.createElement('button'); b.textContent=fam.label;
+      if(fam.id===RAL_FAM) b.className='on';
+      b.onclick=function(){ RAL_FAM=fam.id; buildFinishPanel(); };
+      famRow.appendChild(b);
+    });
+    host.appendChild(famRow);
+    var search=document.createElement('input'); search.type='text';
+    search.placeholder='Rechercher un code RAL…'; search.className='ral-search'; search.value=RAL_SEARCH;
+    search.oninput=function(){ RAL_SEARCH=search.value; renderGrid(); search.focus(); };
+    host.appendChild(search);
+    var gridHost=document.createElement('div'); host.appendChild(gridHost);
+    function renderGrid(){
+      gridHost.innerHTML='';
+      var list;
+      if(RAL_SEARCH.trim()){ var q=RAL_SEARCH.trim().toLowerCase(); list=RAL.filter(function(r){ return r.c.toLowerCase().indexOf(q)>=0; }); }
+      else { var fam=RAL_FAMILIES.filter(function(f){return f.id===RAL_FAM;})[0]||RAL_FAMILIES[0]; list=fam.teintes; }
+      var grid=document.createElement('div'); grid.className='ral-grid';
+      list.forEach(function(r){
+        var rgb=hexToRgb(r.h);
+        var cell=document.createElement('div'); cell.style.background=r.h; cell.title=r.c;
+        if(current[0]===rgb[0]&&current[1]===rgb[1]&&current[2]===rgb[2]) cell.className='on';
+        /* une couleur RAL retire la texture de ce matériau : les deux s'excluent */
+        cell.onclick=function(){ prodFinSet(pid,gi,'tex',null); prodFinSet(pid,gi,'col',hexToRgb(r.h)); apply(); };
+        grid.appendChild(cell);
+      });
+      gridHost.appendChild(grid);
+      var info=document.createElement('div'); info.className='ral-info';
+      info.textContent=list.length+' teinte'+(list.length>1?'s':'')+' · RAL Classic';
+      gridHost.appendChild(info);
+    }
+    renderGrid();
+    var pickLbl=document.createElement('div'); pickLbl.className='slbl'; pickLbl.style.marginTop='8px';
+    pickLbl.textContent='Couleur libre'; host.appendChild(pickLbl);
+    var ci=document.createElement('input'); ci.type='color'; ci.className='free-pick';
+    ci.value='#'+current.map(function(x){var s=x.toString(16);return s.length<2?'0'+s:s;}).join('');
+    ci.oninput=function(e){ prodFinSet(pid,gi,'tex',null); prodFinSet(pid,gi,'col',hexToRgb(e.target.value));
+      prodFinInvalidate(pid); if(typeof build==='function'){try{build();}catch(err){}} if(WGL.ready) WGL.render(); DIRTY=true; };
+    host.appendChild(ci);
+    return;
+  }
+
+  /* --- textures : celles du produit + toute la bibliothèque de finitions --- */
+  var none=document.createElement('button'); none.className='tex-none';
+  none.textContent = ov.tex ? '✕ Retirer la texture' : 'Aucune texture (couleur unie)';
+  none.onclick=function(){ prodFinSet(pid,gi,'tex',null); apply(); };
+  host.appendChild(none);
+
+  /* aperçu réel d'une texture : image du produit (data-URI) ou pixels procéduraux */
+  function swatch(id){
+    var cvv=document.createElement('canvas'); cvv.width=44; cvv.height=44; cvv.className='sw';
+    var gg=cvv.getContext('2d');
+    var pool=(typeof TEX_POOL!=='undefined')?TEX_POOL[id]:null;
+    if(pool){ var im=new Image(); im.onload=function(){ gg.drawImage(im,0,0,44,44); }; im.src=pool; return cvv; }
+    var img=getTexImage(id);
+    if(img){
+      var tmp=document.createElement('canvas'); tmp.width=img.w; tmp.height=img.h;
+      var idd=tmp.getContext('2d').createImageData(img.w,img.h);
+      idd.data.set(img.data); tmp.getContext('2d').putImageData(idd,0,0);
+      gg.drawImage(tmp,0,0,44,44);
+    }
+    return cvv;
+  }
+  function texCell(id, label, title){
+    var cell=document.createElement('div'); cell.className=(ov.tex===id)?'tex-cell on':'tex-cell';
+    if(title) cell.title=title;
+    var nm=document.createElement('div'); nm.className='nm'; nm.textContent=label;
+    cell.appendChild(swatch(id)); cell.appendChild(nm);
+    cell.onclick=function(){ prodFinSet(pid,gi,'col',null); prodFinSet(pid,gi,'tex',id); apply(); };
+    return cell;
+  }
+  /* textures livrées avec le produit */
+  var own=[]; (groups||[]).forEach(function(gg2){ if(gg2.tex && own.indexOf(gg2.tex)<0) own.push({id:gg2.tex, n:gg2.name||gg2.tex}); });
+  if(own.length){
+    var lb=document.createElement('div'); lb.className='slbl'; lb.style.marginTop='8px';
+    lb.textContent='Textures du produit'; host.appendChild(lb);
+    var g1=document.createElement('div'); g1.className='tex-grid';
+    own.forEach(function(t){ g1.appendChild(texCell(t.id, t.n, 'Texture du produit')); });
+    host.appendChild(g1);
+  }
+  /* bibliothèque de finitions, par famille — mêmes aperçus que le panneau générique */
+  var famRow=document.createElement('div'); famRow.className='ral-fam';
+  TEXTURE_FAMILIES.forEach(function(fam){
+    var b=document.createElement('button'); b.textContent=fam.label;
+    if(fam.id===TEX_FAM) b.className='on';
+    b.onclick=function(){ TEX_FAM=fam.id; buildFinishPanel(); };
+    famRow.appendChild(b);
+  });
+  host.appendChild(famRow);
+  var fam=TEXTURE_FAMILIES.filter(function(f){return f.id===TEX_FAM;})[0]||TEXTURE_FAMILIES[0];
+  var grid=document.createElement('div'); grid.className='tex-grid';
+  fam.items.forEach(function(tx){ grid.appendChild(texCell(tx.id, tx.n)); });
+  host.appendChild(grid);
+
+  /* Échelle et ORIENTATION de la texture posée. Les UV du maillage sont en mètres :
+     l'échelle est donc un nombre de répétitions par mètre. La rotation tourne les UV
+     autour de l'origine — c'est ce que fait déjà le vertex shader (uvRot). */
+  if(ov.tex){
+    var sLbl=document.createElement('div'); sLbl.className='slbl'; sLbl.style.marginTop='8px';
+    var cur=(PROD_TEXSCALE[pid] && PROD_TEXSCALE[pid][ov.tex])||1;
+    sLbl.textContent='Échelle de la texture — '+cur.toFixed(1)+'×'; host.appendChild(sLbl);
+    var rg=document.createElement('input'); rg.type='range'; rg.min='0.2'; rg.max='20'; rg.step='0.1'; rg.value=cur;
+    rg.oninput=function(){
+      if(!PROD_TEXSCALE[pid]) PROD_TEXSCALE[pid]={};
+      PROD_TEXSCALE[pid][ov.tex]=+rg.value;
+      sLbl.textContent='Échelle de la texture — '+(+rg.value).toFixed(1)+'×';
+      texAdjSave(); if(WGL.ready) WGL.render();
+    };
+    host.appendChild(rg);
+
+    function curRot(){ return (PROD_TEXROT[pid] && PROD_TEXROT[pid][ov.tex]) || 0; }
+    function setRot(rad){
+      if(!PROD_TEXROT[pid]) PROD_TEXROT[pid]={};
+      var t=rad % (Math.PI*2); if(t<0) t+=Math.PI*2;
+      PROD_TEXROT[pid][ov.tex]=t;
+      texAdjSave(); if(WGL.ready) WGL.render();
+    }
+    function degTxt(){ return Math.round(curRot()*180/Math.PI)+'°'; }
+    var oLbl=document.createElement('div'); oLbl.className='slbl'; oLbl.style.marginTop='8px';
+    oLbl.textContent='Orientation — '+degTxt(); host.appendChild(oLbl);
+
+    /* quarts de tour : le cas courant (veines d'un bois, sens de brossage d'un métal) */
+    var qr=document.createElement('div'); qr.className='finish-tabs';
+    [0,90,180,270].forEach(function(d){
+      var b=document.createElement('button'); b.textContent=d+'°';
+      if(Math.abs(curRot()*180/Math.PI - d) < 0.5) b.className='on';
+      b.onclick=function(){ setRot(d*Math.PI/180); buildFinishPanel(); };
+      qr.appendChild(b);
+    });
+    host.appendChild(qr);
+
+    /* angle libre */
+    var rr=document.createElement('input'); rr.type='range'; rr.min='0'; rr.max='359'; rr.step='1';
+    rr.value=Math.round(curRot()*180/Math.PI);
+    rr.oninput=function(){ setRot((+rr.value)*Math.PI/180); oLbl.textContent='Orientation — '+rr.value+'°'; };
+    rr.onchange=function(){ buildFinishPanel(); };
+    host.appendChild(rr);
+
+    var rn=document.createElement('div'); rn.className='exp-note'; rn.style.marginTop='4px';
+    rn.textContent='L’orientation n’agit que sur le rendu WebGL. Les exports OBJ / DAE / IFC emportent les UV du maillage, non tournées.';
+    host.appendChild(rn);
+  }
 }
 function buildFinishPanel(){
   var host=document.getElementById('finish-panel');
@@ -15259,7 +15913,7 @@ function buildFinishPanel(){
         var cell=document.createElement('div');
         cell.style.background=r.h; cell.title=r.c;
         if(current[0]===rgb[0]&&current[1]===rgb[1]&&current[2]===rgb[2]) cell.className='on';
-        cell.onclick=function(){ FINISH[key]=rgb; build(); buildFinishPanel(); };
+        cell.onclick=function(){ FINISH[key]=rgb; FINISH_SET[key]=true; build(); buildFinishPanel(); };
         grid.appendChild(cell);
       });
       gridHost.appendChild(grid);
@@ -15275,7 +15929,7 @@ function buildFinishPanel(){
     pickLbl.textContent='Couleur libre'; host.appendChild(pickLbl);
     var ci=document.createElement('input'); ci.type='color'; ci.className='free-pick';
     ci.value='#'+current.map(function(x){var s=x.toString(16);return s.length<2?'0'+s:s;}).join('');
-    ci.oninput=function(e){ FINISH[key]=hexToRgb(e.target.value); build(); };
+    ci.oninput=function(e){ FINISH[key]=hexToRgb(e.target.value); FINISH_SET[key]=true; build(); };
     host.appendChild(ci);
   } else {
     /* bouton "Aucune" (revenir à la couleur unie) */
@@ -15311,7 +15965,7 @@ function buildFinishPanel(){
       }
       var nm=document.createElement('div'); nm.className='nm'; nm.textContent=tx.n;
       cell.appendChild(cvv); cell.appendChild(nm);
-      cell.onclick=function(){ FINISH_TEX[key]=tx.id; build(); buildFinishPanel(); };
+      cell.onclick=function(){ FINISH_TEX[key]=tx.id; FINISH_SET[key]=true; build(); buildFinishPanel(); };
       grid.appendChild(cell);
     });
     host.appendChild(grid);
@@ -15353,7 +16007,7 @@ function importTexture(file, key){
       if(!TEXTURE_DEFS.filter(function(t){return t.id===id;})[0]){
         TEXTURE_DEFS.push({id:id, n:'Image ('+key+')', c:[200,200,200], gen:'import'});
       }
-      FINISH_TEX[key]=id;
+      FINISH_TEX[key]=id; FINISH_SET[key]=true;
       build(); buildFinishPanel();
     };
     im.src=ev.target.result;
@@ -15500,6 +16154,8 @@ function buildCatList(){
         if(p.id===AL_PRODUCT) sb.className='subcat-item on';
         sb.onclick=function(){
           AL_PRODUCT=p.id;
+          PROD_MAT=0;                       /* le matériau édité appartient au produit précédent */
+          PROD_OVERRIDE=(PROD_VIEW[p.id]==='global');
           WGL.show(AL_PRODUCT);
           buildCatList(); buildProductUI(); updateDims();
         };
