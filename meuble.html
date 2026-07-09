@@ -1835,14 +1835,31 @@ WGL.hideGeneric=function(){
 WGL.setEnv=function(env){ WGL.env=env; WGL.render(); };
 
 /* show/hide : bascule entre Canvas 2D et WebGL */
-/* ---- CHARGEMENT À LA DEMANDE d'un produit fabricant (data/haworth/<id>.js) ---- */
+/* ---- CHARGEMENT À LA DEMANDE d'un produit fabricant (data/<dir>/<id>.js) ----
+   Un produit est un MAILLAGE si sa fiche porte `mesh:true` ; son fichier vit dans
+   le dossier `dir` du fabricant. Les produits paramétriques (quadripode, desserte,
+   bureau) n'ont pas de fichier : ils sont construits par du code. */
 var _prodLoad={};
-function isHaworth(pid){ try{ if(typeof FABRICANTS_DB==='undefined') return false; var h=FABRICANTS_DB.filter(function(f){return f.id==='haworth';})[0]; return !!(h&&h.subs&&h.subs.some(function(s){return s.id===pid;})); }catch(e){ return false; } }
+function fabDirOf(pid){
+  try{
+    if(typeof FABRICANTS_DB==='undefined') return null;
+    for(var i=0;i<FABRICANTS_DB.length;i++){
+      var f=FABRICANTS_DB[i]; if(!f.subs || !f.dir) continue;
+      for(var j=0;j<f.subs.length;j++) if(f.subs[j].id===pid && f.subs[j].mesh) return f.dir;
+    }
+  }catch(e){}
+  return null;
+}
+function isFabMesh(pid){ return !!fabDirOf(pid); }
+/* compatibilité : d'anciens appels testent encore isHaworth() */
+function isHaworth(pid){ return isFabMesh(pid); }
 function ensureProduct(pid, cb){
   if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[pid]){ if(cb)cb(true); return; }
+  var dir=fabDirOf(pid);
+  if(!dir){ if(cb)cb(false); return; }
   if(_prodLoad[pid]){ if(cb)_prodLoad[pid].push(cb); return; }
   _prodLoad[pid]=cb?[cb]:[];
-  var s=document.createElement('script'); s.async=true; s.src='data/haworth/'+pid+'.js';
+  var s=document.createElement('script'); s.async=true; s.src='data/'+dir+'/'+pid+'.js';
   s.onload=function(){ var a=_prodLoad[pid]||[]; delete _prodLoad[pid]; a.forEach(function(f){ try{ f&&f(true); }catch(e){} }); };
   s.onerror=function(){ var a=_prodLoad[pid]||[]; delete _prodLoad[pid]; a.forEach(function(f){ try{ f&&f(false); }catch(e){} }); };
   document.head.appendChild(s);
@@ -2825,6 +2842,91 @@ var PROUTE = {
 };
 
 /* ============================================================================
+   PARKING — configurateur de places de stationnement
+   ----------------------------------------------------------------------------
+   Le tracé est celui de l'ALLÉE de circulation (droit / L / U / libre). Les
+   places s'accrochent perpendiculairement de part et d'autre, à un angle
+   réglable (0° = créneau, 90° = bataille, entre les deux = épi).
+   Toute la géométrie est exprimée dans le repère curviligne (s, o) :
+     s = abscisse le long de l'axe de l'allée (m)
+     o = décalage latéral (m), positif à droite
+   Le marquage est plat : des quads posés à quelques millimètres au-dessus de
+   la surface, dont l'altitude suit la pente longitudinale (baseY) et le dévers
+   (roadY). Même principe que le configurateur Route.
+   ============================================================================ */
+var PPARK = {
+  trace:'droit',            /* 'droit' | 'L' | 'U' | 'libre' */
+  length:4000,              /* longueur d'allée (cm) — tracé droit */
+  legA:3000, legB:2000, legC:3000,   /* branches (cm) — tracés L et U */
+  verts:'-2000,0 0,0 2000,0', bulges:[], opens:[], alt:[],   /* centré ; parsePoly() exige 3 sommets */
+  corner:700,               /* rayon d'arrondi des angles (cm) */
+  aisleW:600,               /* largeur d'allée (cm) */
+  sides:'deux',             /* 'gauche' | 'droite' | 'deux' */
+  angle:90,                 /* angle place/allée (°) : 0 = créneau, 90 = bataille */
+  bayW:250, bayL:500,       /* largeur et longueur d'une place (cm) */
+  crenGap:100,              /* dégagement entre places en créneau (cm) */
+  pmrPct:2,                 /* % de places PMR (règle FR : 2 %, mini 1) */
+  pmrW:330,                 /* largeur d'une place PMR (cm) — 250 + 80 de bande d'accès */
+  pmrHatch:true, pmrSymbol:true, pmrFill:true,
+  markStyle:'simple',       /* 'simple' (côtés + fond) | 'ferme' | 'cotes' */
+  markW:12,                 /* largeur du trait de marquage (cm) */
+  /* --- îlots plantés, intercalés toutes les N places --- */
+  islEvery:0,               /* 0 = aucun îlot */
+  islW:250,                 /* largeur le long de l'allée (cm) */
+  islDepth:0,               /* profondeur (cm) ; 0 = toute la travée */
+  islH:15,                  /* hauteur du relevé (cm) */
+  islType:'gazon',          /* 'gazon' | 'beton' | 'pierre' */
+  islCurb:true, islCurbW:15,
+  colIslG:'#4f7d3a', colIslB:'#b4b4ae', colIslP:'#8f8a80', colCurb:'#c9c6bf',
+  islTree:true, islTreeH:450, islTreeD:320, islTrunkD:24,
+  colTrunk:'#6b5138', colLeaf:'#3f6b2e',
+  /* --- structure de chaussée (épaisseurs en cm, de haut en bas) --- */
+  struct:'enrobe',          /* 'enrobe' (goudron sur grave) | 'beton' (dalle) */
+  /* Repères : BBSG 0/10 → mini 4 cm, moyenne d'emploi 5 à 7 cm ; GB3 en couche de
+     base 10 à 16 cm ; GNT 0/31,5 en fondation 20 à 30 cm ; couche de forme en GNT
+     sur géotextile 25 à 40 cm pour atteindre PF2 (catalogue Cerema Île-de-France). */
+  epRoul:6,                 /* couche de roulement — enrobé BBSG 0/10 */
+  epBase:10,                /* couche de base — grave-bitume GB3 (0 = absente) */
+  epDalle:18,               /* dalle béton BC5 (structure 'beton') */
+  epFond:25,                /* couche de fondation — grave non traitée 0/31,5 */
+  epForme:0,                /* couche de forme (0 = absente) */
+  camber:1.5,               /* dévers % (l'axe de l'allée est le point haut) */
+  slope:0,                  /* pente longitudinale % */
+  colAsph:'#3d3f43',        /* roulement */
+  colBase:'#2b2d30',        /* grave-bitume */
+  colDalle:'#b4b4ae',       /* béton */
+  colFond:'#8b8477',        /* grave */
+  colForme:'#6f6a60',       /* couche de forme */
+  colMark:'#ffffff', colPMR:'#1f5fbf'
+};
+/* Couches de la structure, de haut en bas. Les couches d'épaisseur nulle sont
+   omises. C'est aussi ce qui donne les bandes visibles sur les abouts et les
+   joues de la dalle — la coupe se lit comme un profil TP. */
+function parkLayers(){
+  var L=[];
+  function add(t,c,l){ if(t>0) L.push({t:t/100, col:_hexRGB(c), label:l}); }
+  if(PPARK.struct==='beton'){
+    add(PPARK.epDalle, PPARK.colDalle, 'Dalle béton');
+  } else {
+    add(PPARK.epRoul, PPARK.colAsph, 'Roulement (BBSG)');
+    add(PPARK.epBase, PPARK.colBase, 'Base (grave-bitume)');
+  }
+  add(PPARK.epFond, PPARK.colFond, 'Fondation (GNT 0/31,5)');
+  add(PPARK.epForme, PPARK.colForme, 'Couche de forme');
+  if(!L.length) add(10, PPARK.colAsph, 'Roulement');
+  return L;
+}
+function parkTotalThick(){ var t=0; parkLayers().forEach(function(l){ t+=l.t; }); return t; }
+/* Récapitulatif chiffré, recalculé à chaque buildParking(). */
+var PARK_INFO = {total:0, pmr:0, req:0, area:0, dropped:0, isl:0};
+/* Boîte englobante RÉELLE du dernier objet construit, quand il n'est pas centré
+   sur l'origine avec sa base à y = 0 (convention de tous les autres objets).
+   drawCotes() s'y recale ; sinon les cotes flottent à côté de l'élément. */
+var DIMS_BB = null;
+/* Vrai quand un virage est trop serré pour l'emprise : le bord intérieur se replie. */
+var PARK_TIGHT = false;
+
+/* ============================================================================
    MUR MULTICOUCHE (catégorie générique "Mur")
    ----------------------------------------------------------------------------
    Un mur droit composé de couches successives dans l'épaisseur, de l'extérieur
@@ -3218,6 +3320,7 @@ var CATALOG = {
       {id:'ferme',      label:'Ferme',            status:'ready', grp:'construction', icon:'📐'},
       {id:'forme',      label:'Forme',            status:'ready', grp:'construction', icon:'🔷'},
       {id:'route',      label:'Route / chaussée', status:'ready', grp:'construction', icon:'🛣︎'},
+      {id:'parking',    label:'Parking',          status:'ready', grp:'construction', icon:'🅿️'},
       /* --- MOBILIER / AGENCEMENT --- */
       {id:'objets',     label:'Objets',           status:'ready', grp:'mobilier', icon:'🪑'},
       {id:'cuisine',    label:'Cuisine',          status:'ready', grp:'mobilier', icon:'🍳'}
@@ -3263,6 +3366,7 @@ function selectCat(catId){
   if(cat.id==='objet'){ MODE='meuble'; }
   else if(cat.id==='forme'){ MODE='forme'; }
   else if(cat.id==='route'){ MODE='route'; }
+  else if(cat.id==='parking'){ MODE='parking'; }
   else if(cat.id==='mur'){ MODE='mur'; }
   else if(cat.id==='dalle'){ MODE='dalle'; }
   else if(cat.id==='piscine'){ MODE='piscine'; }
@@ -3659,7 +3763,7 @@ function _fillMenu(m, items){
 }
 /* ---------- Annuler / Refaire (historique multi-niveaux) ---------- */
 var UNDO_HIST=[], REDO_HIST=[], _undoBase=null, _undoMode=null, _undoApplying=false, _undoTimer=null, UNDO_MAX=80;
-function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,escalier:PE,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
+function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,parking:PPARK,escalier:PE,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
 /* La Scène (assemblage) a son propre stockage : on l'expose à l'undo mais PAS à
    paramObjFor (donc pas aux « Mes configurations »). SCENE.sel est un index,
    les instances sont sérialisables → snapshot/restore JSON sûr. */
@@ -3679,7 +3783,7 @@ function doRedo(){ clearTimeout(_undoTimer); if(!REDO_HIST.length) return; UNDO_
 /* --- RÉINITIALISATION — valeurs par défaut de l'outil courant (annulable) --- */
 var PARAM_DEFAULTS={};
 function captureDefaults(){
-  ['meuble','forme','route','mur','dalle','piscine','veranda','cheminee','immeuble','poteau','poutre',
+  ['meuble','forme','route','parking','mur','dalle','piscine','veranda','cheminee','immeuble','poteau','poutre',
    'gardecorps','escalier','ferme','toiture','porte','fenetre','murrideau','furn','cuisine','hangar',
    'technal','velux','flos','scene'].forEach(function(m){
     try{ var o=(m==='scene' && typeof SCENE!=='undefined')?SCENE:paramObjFor(m);
@@ -7818,6 +7922,917 @@ function buildRoute(){
   return DIMS;
 }
 
+/* ============================================================================
+   PARKING — géométrie
+   ----------------------------------------------------------------------------
+   parkGeom()       : module de stationnement (pas, profondeur) selon l'angle.
+   parkLayout()     : nombre de places sur une travée + position des PMR.
+   parkCenterline() : axe de l'allée, identique en structure à routeCenterline().
+   buildParking()   : dalle extrudée + marquage plat.
+   ============================================================================ */
+
+/* Module de stationnement.
+   - créneau (angle < 5°)  : places alignées sur l'allée, pas = longueur + dégagement.
+   - épi / bataille        : places en parallélogramme, pas = largeur / sin(angle),
+                             profondeur du module = L·sin + l·cos (le nez du véhicule
+                             déborde du parallélogramme de marquage, comme en pratique). */
+function parkGeom(){
+  var th=PPARK.angle*Math.PI/180, cren=(PPARK.angle<5);
+  var W=PPARK.bayW/100, L=PPARK.bayL/100, Wp=Math.max(PPARK.pmrW,PPARK.bayW)/100;
+  var pmrOn=(PPARK.pmrPct>0);
+  var depth, pitch, pitchP;
+  if(cren){ depth=(pmrOn?Wp:W); pitch=L+PPARK.crenGap/100; pitchP=pitch; }
+  else { var s=Math.sin(th), c=Math.cos(th);
+    depth=L*s+W*c; pitch=W/s; pitchP=Wp/s; }
+  return {th:th, cren:cren, W:W, L:L, Wp:Wp, depth:depth, pitch:pitch, pitchP:pitchP};
+}
+/* Répartition d'une travée : N places, dont nP PMR placées aux deux extrémités
+   (au plus près des sorties), et un îlot planté intercalé toutes les `islEvery`
+   places. On réduit N tant que la file dépasse la longueur d'allée disponible —
+   les places PMR étant plus larges, et les îlots consommant leur propre largeur,
+   N peut perdre plusieurs unités.
+   Renvoie `seq`, la suite ordonnée des éléments : {kind:'bay'|'isl', isP}. */
+function parkLayout(Stot, g){
+  var pct=Math.max(0, PPARK.pmrPct);
+  var every=Math.max(0, PPARK.islEvery|0);
+  var iAdv = g.cren ? (PPARK.islW/100) : (PPARK.islW/100)/Math.max(0.02, Math.sin(g.th));
+  var N=Math.floor((Stot+1e-9)/g.pitch); if(!(N>0)) return {N:0,nP:0,nI:0,seq:[],len:0};
+  var nP = pct>0 ? Math.max(1, Math.ceil(N*pct/100)) : 0;
+  for(var guard=0; guard<800 && N>0; guard++){
+    if(nP>N) nP=N;
+    var types=[], i; for(i=0;i<N;i++) types.push(false);
+    var head=Math.ceil(nP/2), tail=nP-head;
+    for(i=0;i<head;i++) types[i]=true;
+    for(i=0;i<tail;i++) types[N-1-i]=true;
+    var seq=[], tot=0, nI=0;
+    for(i=0;i<N;i++){
+      seq.push({kind:'bay', isP:types[i]});
+      tot += types[i]?g.pitchP:g.pitch;
+      if(every>0 && (i+1)%every===0 && i<N-1){ seq.push({kind:'isl'}); tot+=iAdv; nI++; }
+    }
+    if(tot<=Stot+1e-9) return {N:N, nP:nP, nI:nI, seq:seq, len:tot, iAdv:iAdv};
+    N--;
+  }
+  return {N:0,nP:0,nI:0,seq:[],len:0,iAdv:iAdv};
+}
+/* Congé d'angle par ARC DE CERCLE (et non Bézier quadratique).
+   routeRoundCorners() raccorde par un Bézier dont le rayon de courbure réel au
+   sommet ne vaut que r·cos²(φ/2)/sin(φ/2) — soit 0,707·r pour un angle droit.
+   Avec une emprise de parking (8 m de demi-largeur) le bord intérieur repasse
+   derrière l'axe et la dalle se replie en nœud papillon. Un vrai arc garantit
+   un rayon intérieur = R − demi-emprise, contrôlable.
+   Renvoie {pts, rmin} où rmin est le plus petit rayon effectivement obtenu. */
+function parkFillet(pts, r){
+  if(!pts || pts.length<3 || r<=0) return {pts:pts, rmin:Infinity};
+  var out=[pts[0].slice()], rmin=Infinity, i;
+  for(i=1;i<pts.length-1;i++){
+    var A=pts[i-1], V=pts[i], C=pts[i+1];
+    var ax=A[0]-V[0], az=A[1]-V[1], La=Math.hypot(ax,az);
+    var cx=C[0]-V[0], cz=C[1]-V[1], Lc=Math.hypot(cx,cz);
+    if(La<1e-9 || Lc<1e-9){ continue; }
+    ax/=La; az/=La; cx/=Lc; cz/=Lc;
+    var dot=Math.max(-1,Math.min(1,ax*cx+az*cz));
+    if(dot>0.9999){ out.push(V.slice()); continue; }        /* aligné */
+    if(dot<-0.9999){ out.push(V.slice()); continue; }        /* demi-tour : pas de congé */
+    var phi=Math.acos(dot);                                  /* angle intérieur AVC */
+    var th=Math.tan(phi/2);
+    var rMax=Math.min(La,Lc)*0.5*th;                         /* congé inscriptible */
+    var R=Math.min(r, rMax); if(R<1e-6){ out.push(V.slice()); continue; }
+    if(R<rmin) rmin=R;
+    var T=R/th;                                              /* longueur de tangente */
+    var P1=[V[0]+ax*T, V[1]+az*T], P2=[V[0]+cx*T, V[1]+cz*T];
+    var bx=ax+cx, bz=az+cz, Lb=Math.hypot(bx,bz)||1; bx/=Lb; bz/=Lb;
+    var d=R/Math.sin(phi/2), O=[V[0]+bx*d, V[1]+bz*d];       /* centre du cercle */
+    var a1=Math.atan2(P1[1]-O[1], P1[0]-O[0]), a2=Math.atan2(P2[1]-O[1], P2[0]-O[0]);
+    var da=a2-a1; while(da>Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI;
+    var seg=Math.max(4, Math.ceil(Math.abs(da)*R/0.4)), k;
+    for(k=0;k<=seg;k++){ var t=a1+da*k/seg; out.push([O[0]+Math.cos(t)*R, O[1]+Math.sin(t)*R]); }
+  }
+  out.push(pts[pts.length-1].slice());
+  return {pts:out, rmin:rmin};
+}
+/* Polyligne brute de l'axe (m).
+   Les tracés générés (droit, L, U) sont RECENTRÉS sur l'origine : c'est la
+   convention de tous les objets à polygone libre du catalogue (leurs sommets par
+   défaut sont symétriques, « -250,-175 250,-175 … »). Sans ça le parking naît
+   décalé de la trame. Le tracé libre, lui, garde les coordonnées de l'utilisateur :
+   les poignées d'édition écrivent directement dans `verts`. */
+function _parkCenter(pts){
+  var mnx=1e18,mxx=-1e18,mnz=1e18,mxz=-1e18;
+  pts.forEach(function(p){ if(p[0]<mnx)mnx=p[0]; if(p[0]>mxx)mxx=p[0]; if(p[1]<mnz)mnz=p[1]; if(p[1]>mxz)mxz=p[1]; });
+  var cx=(mnx+mxx)/2, cz=(mnz+mxz)/2;
+  return pts.map(function(p){ return [p[0]-cx, p[1]-cz]; });
+}
+function parkRaw(){
+  var A=PPARK.legA/100, B=PPARK.legB/100, C=PPARK.legC/100;
+  if(PPARK.trace==='L') return _parkCenter([[0,0],[A,0],[A,B]]);
+  if(PPARK.trace==='U') return _parkCenter([[0,0],[A,0],[A,B],[A-C,B]]);
+  if(PPARK.trace==='libre'){ var r=parsePoly(PPARK.verts); if(r&&r.length>=2) return r;
+    PPARK.verts='-2000,0 0,0 2000,0'; return [[-20,0],[0,0],[20,0]]; }
+  var L=Math.max(1,PPARK.length/100)/2;
+  return [[-L,0],[L,0]];
+}
+/* Axe de l'allée : points, abscisse curviligne, altitude de base, normale mitrée
+   et facteur d'élargissement en virage. Même contrat que routeCenterline(). */
+function parkCenterline(){
+  var g=parkGeom(), a=PPARK.aisleW/200, i;
+  var dR=(PPARK.sides==='gauche')?0:g.depth, dL=(PPARK.sides==='droite')?0:g.depth;
+  var outerHalf=a+Math.max(dL,dR);
+  var raw=parkRaw(), cp;
+  if(PPARK.trace==='libre'){ CUR_POLY=raw; POLY_TARGET=PPARK; cp=arcCurve(raw, PPARK); }
+  else cp=raw;
+  PARK_TIGHT=false;
+  var sharp = ((PPARK.corner||0) <= 0);
+  var vertIdx = null;   /* indices des sommets vifs dans le rééchantillonnage */
+  /* corner = 0 → ANGLE VIF : pas de raccord, le sommet est conservé et la dalle
+     se referme en onglet (bissectrice + facteur sc).
+     Attention : l'onglet du bord CONCAVE se referme en un point situé à
+     « demi-emprise » EN ARRIÈRE du sommet le long de la branche. Tout point d'axe
+     échantillonné plus près que cette distance produit un quad en nœud papillon.
+     On dégage donc une zone franche de rayon `clear` autour de chaque sommet :
+     la travée y est interrompue, ce qui est de toute façon la bonne réponse
+     métier (le carrefour reste en circulation). */
+  var clear = outerHalf + 0.30;
+  if(cp.length>2 && !sharp){
+    /* rayon minimum = demi-emprise majorée, sinon le bord intérieur se replie. */
+    var effR=Math.max(PPARK.corner/100, outerHalf*1.12);
+    var fl=parkFillet(cp, effR);
+    cp=fl.pts;
+    /* Si la longueur des branches ne permet pas d'inscrire un congé assez large,
+       le bord intérieur se replie : on le signale plutôt que de mentir. */
+    if(fl.rmin<outerHalf) PARK_TIGHT=true;
+  } else if(cp.length>2){
+    /* branches trop courtes pour dégager l'onglet ? on prévient. */
+    for(i=1;i<cp.length-1;i++){
+      var lA=Math.hypot(cp[i][0]-cp[i-1][0], cp[i][1]-cp[i-1][1]);
+      var lB=Math.hypot(cp[i+1][0]-cp[i][0], cp[i+1][1]-cp[i][1]);
+      if(Math.min(lA,lB) < clear*1.05) PARK_TIGHT=true;
+    }
+  }
+  /* Dédoublonnage OBLIGATOIRE. Deux congés consécutifs partagent leur point de
+     tangence (branche courte d'un U), et routeResample() recopie le sommet d'un
+     segment de longueur nulle. Deux points confondus donnent une tangente nulle,
+     donc cosd = 0, donc sc = 4 : l'offset est multiplié par quatre et la dalle
+     projette une pointe. */
+  var pts0=routeResample(cp, 0.5), pts=[pts0[0]], i0;
+  for(i0=1;i0<pts0.length;i0++){
+    if(Math.hypot(pts0[i0][0]-pts[pts.length-1][0], pts0[i0][1]-pts[pts.length-1][1])>1e-4) pts.push(pts0[i0]);
+  }
+  if(pts.length<2) pts=[[0,0],[1,0]];
+
+  if(sharp && cp.length>2){
+    /* repérer les sommets vifs, puis évacuer les points d'axe trop proches */
+    var S0=[0], q; for(q=1;q<pts.length;q++) S0[q]=S0[q-1]+Math.hypot(pts[q][0]-pts[q-1][0], pts[q][1]-pts[q-1][1]);
+    var vs=[];
+    for(i=1;i<cp.length-1;i++){
+      var best=-1, bd=1e9;
+      for(q=0;q<pts.length;q++){ var dd=Math.hypot(pts[q][0]-cp[i][0], pts[q][1]-cp[i][1]); if(dd<bd){ bd=dd; best=q; } }
+      if(best>0 && best<pts.length-1) vs.push(best);
+    }
+    if(vs.length){
+      var keep=pts.map(function(_,q){
+        if(q===0 || q===pts.length-1) return true;
+        for(var v=0;v<vs.length;v++){ if(q===vs[v]) return true;
+          if(Math.abs(S0[q]-S0[vs[v]]) < clear) return false; }
+        return true;
+      });
+      var np=[], nv=[];
+      for(q=0;q<pts.length;q++){ if(keep[q]){ if(vs.indexOf(q)>=0) nv.push(np.length); np.push(pts[q]); } }
+      if(np.length>=3){ pts=np; vertIdx=nv; }
+    }
+  }
+  var n=pts.length, S=[0];
+  for(i=1;i<n;i++) S[i]=S[i-1]+Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
+  var baseY=[], slope=PPARK.slope/100, alt=PPARK.alt;
+  var useAlt=(PPARK.trace==='libre' && alt && alt.length>=2 && alt.some(function(v){return v;}));
+  if(useAlt){
+    var raw2=parsePoly(PPARK.verts)||[[0,0],[20,0],[40,0]], Dc=[0];
+    for(i=1;i<raw2.length;i++) Dc[i]=Dc[i-1]+Math.hypot(raw2[i][0]-raw2[i-1][0], raw2[i][1]-raw2[i-1][1]);
+    var Dtot=Dc[Dc.length-1]||1, Stot0=S[n-1]||1;
+    var altAt=function(d){ for(var k=0;k<Dc.length-1;k++){ if(d<=Dc[k+1]){ var t=(d-Dc[k])/((Dc[k+1]-Dc[k])||1); return ((alt[k]||0)+((alt[k+1]||0)-(alt[k]||0))*t)/100; } } return (alt[Math.min(alt.length,raw2.length)-1]||0)/100; };
+    for(i=0;i<n;i++) baseY[i]=altAt(S[i]/Stot0*Dtot);
+  } else { for(i=0;i<n;i++) baseY[i]=S[i]*slope; }
+  var rp=[], sc=[];
+  for(i=0;i<n;i++){
+    var pa=pts[Math.max(0,i-1)], pb=pts[i], pc=pts[Math.min(n-1,i+1)];
+    var inx=pb[0]-pa[0], inz=pb[1]-pa[1], Li=Math.hypot(inx,inz)||1; inx/=Li; inz/=Li;
+    var oux=pc[0]-pb[0], ouz=pc[1]-pb[1], Lo=Math.hypot(oux,ouz)||1; oux/=Lo; ouz/=Lo;
+    if(i===0){ inx=oux; inz=ouz; } if(i===n-1){ oux=inx; ouz=inz; }
+    /* Normale « à droite » du sens de parcours : avant × haut = (-tz, tx).
+       Attention : routeCenterline() utilise (tz, -tx), donc l'inverse — d'où,
+       dans buildRoute(), un dessus de chaussée dont les normales pointent vers
+       le bas. Ici on prend la convention correcte : o > 0 est bien la droite,
+       et l'enroulement des faces du profil donne des normales sortantes. */
+    var nIx=-inz, nIz=inx, nOx=-ouz, nOz=oux;
+    var mx=nIx+nOx, mz=nIz+nOz, Lm=Math.hypot(mx,mz);
+    if(Lm<1e-6){ mx=nIx; mz=nIz; Lm=1; }
+    mx/=Lm; mz/=Lm;
+    var cosd=mx*nIx+mz*nIz, s=1/Math.max(0.25,cosd); if(s>4)s=4;
+    rp.push([mx,mz]); sc.push(s);
+  }
+  /* Limite d'offset : dans un virage de rayon R, un point décalé de o vers le
+     centre a pour rayon R − o. Si o ≥ R, il traverse le centre et la dalle se
+     replie. On calcule donc, par échantillon, la distance signée du centre de
+     courbure le long de rp ; tout offset est ensuite bridé un peu en deçà.
+     C'est le cas d'un demi-tour dont le rayon d'axe égale la demi-emprise. */
+  var cLim=[];
+  for(i=0;i<n;i++){
+    var A=pts[Math.max(0,i-1)], B=pts[i], C2=pts[Math.min(n-1,i+1)];
+    var d1=2*(A[0]*(B[1]-C2[1]) + B[0]*(C2[1]-A[1]) + C2[0]*(A[1]-B[1]));
+    if(Math.abs(d1)<1e-9){ cLim.push(Infinity); continue; }   /* alignés : rayon infini */
+    var uA=A[0]*A[0]+A[1]*A[1], uB=B[0]*B[0]+B[1]*B[1], uC=C2[0]*C2[0]+C2[1]*C2[1];
+    var ox=(uA*(B[1]-C2[1]) + uB*(C2[1]-A[1]) + uC*(A[1]-B[1]))/d1;
+    var oz=(uA*(C2[0]-B[0]) + uB*(A[0]-C2[0]) + uC*(B[0]-A[0]))/d1;
+    cLim.push((ox-B[0])*rp[i][0] + (oz-B[1])*rp[i][1]);       /* distance signée le long de rp */
+  }
+  /* Un sommet VIF n'est pas un arc : son cercle circonscrit est un artefact du
+     triplet de points, et le brider raboterait l'onglet. Le repli concave y est
+     déjà écarté par la zone franche `clear`. */
+  if(vertIdx) vertIdx.forEach(function(vi){ cLim[vi]=Infinity; });
+
+  /* Subdivision de la nappe. La dalle entre deux sections est le lieu
+       Q(t,o) = (1−t)·(c_i + o·u_i) + t·(c_{i+1} + o·u_{i+1}),   u = rp·sc
+     — bilinéaire, donc NON plane. Autour d'un sommet vif, la zone franche laisse
+     des sections distantes de 8 m : les quads font alors 8 × 17 m et l'écart
+     entre la nappe et sa triangulation atteint plusieurs décimètres, sous
+     lesquels le marquage disparaît. On réinsère des sections intermédiaires en
+     interpolant (c, u) — ce qui laisse la nappe RIGOUREUSEMENT identique, seule
+     sa tesselation change. */
+  var u=[]; for(i=0;i<n;i++) u.push([rp[i][0]*sc[i], rp[i][1]*sc[i]]);
+  var np=[], nu=[], nb=[], nl=[], nvi=[], iv, q2;
+  var isV=function(k){ return vertIdx && vertIdx.indexOf(k)>=0; };
+  for(i=0;i<n-1;i++){
+    var segL=Math.hypot(pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1]);
+    var kk2=Math.max(1, Math.ceil(segL/0.5));
+    for(q2=0;q2<kk2;q2++){
+      var tt=q2/kk2;
+      if(q2===0 && isV(i)) nvi.push(np.length);
+      np.push([pts[i][0]+(pts[i+1][0]-pts[i][0])*tt, pts[i][1]+(pts[i+1][1]-pts[i][1])*tt]);
+      nu.push([u[i][0]+(u[i+1][0]-u[i][0])*tt, u[i][1]+(u[i+1][1]-u[i][1])*tt]);
+      nb.push(baseY[i]+(baseY[i+1]-baseY[i])*tt);
+      nl.push((isFinite(cLim[i])&&isFinite(cLim[i+1])) ? (cLim[i]+(cLim[i+1]-cLim[i])*tt) : Infinity);
+    }
+  }
+  if(isV(n-1)) nvi.push(np.length);
+  np.push(pts[n-1].slice()); nu.push(u[n-1].slice()); nb.push(baseY[n-1]); nl.push(cLim[n-1]);
+
+  pts=np; baseY=nb; cLim=nl; vertIdx=nvi.length?nvi:null; n=pts.length;
+  rp=[]; sc=[]; S=[0];
+  for(i=0;i<n;i++){ var lu=Math.hypot(nu[i][0],nu[i][1])||1; rp.push([nu[i][0]/lu, nu[i][1]/lu]); sc.push(lu); }
+  for(i=1;i<n;i++) S[i]=S[i-1]+Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
+
+  return {pts:pts, S:S, baseY:baseY, rp:rp, sc:sc, u:nu, n:n, vertIdx:vertIdx, cLim:cLim};
+}
+
+function buildParking(){
+  var fs=FC.length, cl=parkCenterline(), g=parkGeom();
+  var n=cl.n, Stot=cl.S[n-1]||0, i, k;
+  var a=PPARK.aisleW/200;
+  var dR=(PPARK.sides==='gauche')?0:g.depth, dL=(PPARK.sides==='droite')?0:g.depth;
+  var camb=PPARK.camber/100, LAY=parkLayers(), thick=parkTotalThick();
+  var asph=LAY[0].col, mkc=_hexRGB(PPARK.colMark), pmc=_hexRGB(PPARK.colPMR);
+  /* dévers : point haut sur l'axe de l'allée, descente linéaire vers les bords */
+  function roadY(o){ return -Math.abs(o)*camb; }
+
+  /* --- profil transversal de la dalle --- */
+  /* Profil transversal, subdivisé. La nappe est bilinéaire : sa triangulation
+     s'écarte de la surface exacte proportionnellement à la taille des quads.
+     Le marquage, lui, est calé sur la nappe exacte — il faut donc que la dalle
+     dessinée en soit proche, sinon il s'enfonce dedans dans les carrefours. */
+  var P=[], _os=[-(a+dL)], _st=Math.max(1, Math.ceil((a+dL)/1.2)), _q;
+  for(_q=_st-1;_q>=0;_q--) _os.push(-(a+dL)*_q/_st);
+  _st=Math.max(1, Math.ceil((a+dR)/1.2));
+  for(_q=1;_q<=_st;_q++) _os.push((a+dR)*_q/_st);
+  _os.forEach(function(o){ P.push([o, roadY(o)]); });
+  var leftO=P[0][0], rightO=P[P.length-1][0];
+
+  /* Bride l'offset pour qu'il ne franchisse pas le centre de courbure local. */
+  var MARGIN=0.15, clamped=false;
+  function clampO(oo, lim){
+    if(!isFinite(lim)) return oo;
+    if(lim>0 && oo> lim-MARGIN){ clamped=true; return lim-MARGIN; }
+    if(lim<0 && oo< lim+MARGIN){ clamped=true; return lim+MARGIN; }
+    return oo;
+  }
+  function W(i,o,y){ var rp=cl.rp[i], c=cl.pts[i], oo=clampO(o*cl.sc[i], cl.cLim[i]); return [c[0]+rp[0]*oo, cl.baseY[i]+y, c[1]+rp[1]*oo]; }
+  function quad(A,B,C,D,col){
+    var ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2], vx=D[0]-A[0],vy=D[1]-A[1],vz=D[2]-A[2];
+    var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx, L=Math.hypot(nx,ny,nz);
+    if(L<1e-12) return;                       /* face dégénérée : Lumion refuse le fichier */
+    face([A,B,C,D],[nx/L,ny/L,nz/L],col);
+  }
+  function quadArea(A,B,C,D){
+    var ux=C[0]-A[0],uy=C[1]-A[1],uz=C[2]-A[2], vx=D[0]-B[0],vy=D[1]-B[1],vz=D[2]-B[2];
+    var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    return 0.5*Math.hypot(nx,ny,nz);
+  }
+
+  /* --- structure : le dessus, puis une bande par couche sur les joues et les
+     abouts, enfin la sous-face. Les couches sont parallèles au dessus : leur
+     épaisseur est constante et la coupe se lit comme un profil TP. --- */
+  var area=0, cum=[0], l2;
+  LAY.forEach(function(ly,kk){ cum.push(cum[kk]+ly.t); });
+  for(i=0;i<n-1;i++) for(k=0;k<P.length-1;k++){
+    var A=W(i,P[k][0],P[k][1]), B=W(i,P[k+1][0],P[k+1][1]), C=W(i+1,P[k+1][0],P[k+1][1]), D=W(i+1,P[k][0],P[k][1]);
+    quad(A,B,C,D,asph); area+=quadArea(A,B,C,D);
+  }
+  for(l2=0;l2<LAY.length;l2++){
+    var hi=-cum[l2], lo=-cum[l2+1], cL=LAY[l2].col;
+    for(i=0;i<n-1;i++){
+      quad(W(i,leftO,P[0][1]+lo), W(i,leftO,P[0][1]+hi), W(i+1,leftO,P[0][1]+hi), W(i+1,leftO,P[0][1]+lo), cL);
+      var yr=P[P.length-1][1];
+      quad(W(i,rightO,yr+hi), W(i,rightO,yr+lo), W(i+1,rightO,yr+lo), W(i+1,rightO,yr+hi), cL);
+    }
+  }
+  for(i=0;i<n-1;i++) for(k=0;k<P.length-1;k++){
+    quad(W(i,P[k+1][0],P[k+1][1]-thick), W(i,P[k][0],P[k][1]-thick),
+         W(i+1,P[k][0],P[k][1]-thick), W(i+1,P[k+1][0],P[k+1][1]-thick), LAY[LAY.length-1].col);
+  }
+  function cap(idx){
+    var sgn=(idx===0?-1:1), p0=cl.pts[Math.max(0,idx-1)], p1=cl.pts[Math.min(n-1,idx+1)];
+    var tx=sgn*(p1[0]-p0[0]), tz=sgn*(p1[1]-p0[1]), L=Math.hypot(tx,tz)||1, t=[tx/L,0,tz/L];
+    for(var l3=0;l3<LAY.length;l3++){
+      var hi2=-cum[l3], lo2=-cum[l3+1];
+      for(var k3=0;k3<P.length-1;k3++){
+        var vs=[ W(idx,P[k3][0],P[k3][1]+hi2), W(idx,P[k3+1][0],P[k3+1][1]+hi2),
+                 W(idx,P[k3+1][0],P[k3+1][1]+lo2), W(idx,P[k3][0],P[k3][1]+lo2) ];
+        var ux=vs[1][0]-vs[0][0], uy=vs[1][1]-vs[0][1], uz=vs[1][2]-vs[0][2];
+        var vx=vs[3][0]-vs[0][0], vy=vs[3][1]-vs[0][1], vz=vs[3][2]-vs[0][2];
+        var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+        if(Math.hypot(nx,ny,nz)<1e-12) continue;
+        if(nx*t[0]+nz*t[2] < 0) vs.reverse();
+        face(vs, t, LAY[l3].col);
+      }
+    }
+  }
+  if(n>1){ cap(0); cap(n-1); }
+
+  /* ---------------------------------------------------------------------------
+     Marquage — géométrie PLATE posée sur la surface.
+     PT(s,o,eps) transforme une coordonnée curviligne en point 3D en suivant la
+     pente longitudinale et le dévers. Tout le marquage passe par cette fonction :
+     il épouse donc automatiquement le relief de la dalle.
+     --------------------------------------------------------------------------- */
+  var EPS_FILL=0.004, EPS_SYM=0.008, EPS_LINE=0.012;
+  /* Face de marquage : toujours orientée vers le haut. La travée de gauche est
+     l'image miroir de celle de droite, son enroulement s'inverse donc — sans ce
+     redressement les marquages de gauche seraient éclairés par en dessous.
+     On teste l'aire signée du polygone entier (projeté en XZ) et non le produit
+     vectoriel d'un seul sommet : dans les virages serrés un quad peut se replier
+     en nœud papillon, dont un coin reste « direct » alors que la face est nulle. */
+  function _signedXZ(v){ var a=0; for(var i=0;i<v.length;i++){ var p=v[i], q=v[(i+1)%v.length]; a+=p[2]*q[0]-q[2]*p[0]; } return a/2; }
+  function flatPoly(v,col){
+    var a=_signedXZ(v);
+    if(Math.abs(a)<1e-9) return;                   /* sliver ou nœud papillon : écartée */
+    if(a<0) v=v.slice().reverse();
+    face(v,[0,1,0],col);
+  }
+  function flatQuad(A,B,C,D,col){ flatPoly([A,B,C,D],col); }
+  function flatTri(A,B,C,col){ flatPoly([A,B,C],col); }
+  function PT(s,o,eps){
+    if(s<0)s=0; if(s>Stot)s=Stot;
+    var lo=0, hi=n-1;
+    while(lo<hi-1){ var mid=(lo+hi)>>1; if(cl.S[mid]<=s) lo=mid; else hi=mid; }
+    var seg=(cl.S[lo+1]-cl.S[lo])||1, t=(s-cl.S[lo])/seg; if(t<0)t=0; if(t>1)t=1;
+    var p0=cl.pts[lo], p1=cl.pts[lo+1], u0=cl.u[lo], u1=cl.u[lo+1];
+    var px=p0[0]+(p1[0]-p0[0])*t, pz=p0[1]+(p1[1]-p0[1])*t;
+    /* on interpole le VECTEUR d'offset u = rp·sc, comme le fait la dalle ; en
+       interpolant séparément la direction rp et le facteur sc, le marquage
+       quitterait la nappe dès que les deux sections ne sont pas parallèles. */
+    var rx=u0[0]+(u1[0]-u0[0])*t, rz=u0[1]+(u1[1]-u0[1])*t;
+    var sc=Math.hypot(rx,rz)||1; rx/=sc; rz/=sc;
+    var by=cl.baseY[lo]+(cl.baseY[lo+1]-cl.baseY[lo])*t;
+    var l0=cl.cLim[lo], l1=cl.cLim[lo+1];
+    var lim=(isFinite(l0)&&isFinite(l1)) ? (l0+(l1-l0)*t) : (isFinite(l0)?l0:l1);
+    var oo=clampO(o*sc, (lim===undefined?Infinity:lim));
+    return [px+rx*oo, by+roadY(o)+eps, pz+rz*oo];
+  }
+  /* surfPT() : hauteur EXACTE de la surface en un point (x, z) du monde.
+     La nappe entre deux sections i et i+1 est bilinéaire ; on inverse donc
+     p = (1−t)·W(i,o) + t·W(i+1,o) — une quadratique en t, puis o par projection.
+     Nécessaire pour marquer le carrefour, dont les places ne sont pas des
+     rectangles du repère curviligne. */
+  function _cr(ax,az,bx,bz){ return ax*bz-az*bx; }
+  function surfPT(x,z,eps){
+    for(var i=0;i<n-1;i++){
+      var Ax=cl.pts[i][0], Az=cl.pts[i][1];
+      var Ux=cl.u[i][0], Uz=cl.u[i][1];
+      var Vx=cl.u[i+1][0]-Ux, Vz=cl.u[i+1][1]-Uz;
+      var Dx=cl.pts[i+1][0]-Ax, Dz=cl.pts[i+1][1]-Az, Rx=x-Ax, Rz=z-Az;
+      var A2=-_cr(Dx,Dz,Vx,Vz), B2=_cr(Rx,Rz,Vx,Vz)-_cr(Dx,Dz,Ux,Uz), C2=_cr(Rx,Rz,Ux,Uz);
+      var ts=[];
+      if(Math.abs(A2)<1e-12){ if(Math.abs(B2)>1e-12) ts.push(-C2/B2); }
+      else { var dsc=B2*B2-4*A2*C2; if(dsc<0) continue; var sq=Math.sqrt(dsc);
+             ts.push((-B2+sq)/(2*A2)); ts.push((-B2-sq)/(2*A2)); }
+      for(var q=0;q<ts.length;q++){
+        var t=ts[q]; if(t<-1e-6||t>1+1e-6) continue; if(t<0)t=0; if(t>1)t=1;
+        var Wx=Ux+t*Vx, Wz=Uz+t*Vz, den=Wx*Wx+Wz*Wz; if(den<1e-12) continue;
+        var o=((Rx-t*Dx)*Wx+(Rz-t*Dz)*Wz)/den;
+        if(o<leftO-0.06 || o>rightO+0.06) continue;
+        var by=cl.baseY[i]+(cl.baseY[i+1]-cl.baseY[i])*t;
+        return [x, by+roadY(o)+eps, z];
+      }
+    }
+    return [x, cl.baseY[0]+roadY(rightO)+eps, z];     /* hors nappe : repli prudent */
+  }
+  /* Repère de travail des primitives de marquage. Par défaut le repère curviligne
+     (s, o) ; les places de carrefour passent le repère cartésien de leur branche.
+     Les deux sont métriques, les largeurs restent donc justes. */
+  var MP = function(u,v,eps){ return PT(u,v,eps); };
+  /* bande de largeur w entre deux points du repère courant — suit la surface */
+  function stripe(A,B,w,col,eps){
+    var ds=B[0]-A[0], doo=B[1]-A[1], Ln=Math.hypot(ds,doo); if(Ln<1e-6) return;
+    var px=-doo/Ln*(w/2), pz=ds/Ln*(w/2);                 /* perpendiculaire dans le repère */
+    var m=Math.max(1, Math.ceil(Ln/0.6)), prevL=null, prevR=null;
+    for(var q=0;q<=m;q++){
+      var t=q/m, s=A[0]+ds*t, o=A[1]+doo*t;
+      var Lp=MP(s+px, o+pz, eps), Rp=MP(s-px, o-pz, eps);
+      if(prevL) flatQuad(prevL, prevR, Rp, Lp, col);
+      prevL=Lp; prevR=Rp;
+    }
+  }
+  /* remplissage d'un quadrilatère (s,o) — subdivisé pour épouser pente et dévers */
+  function fillSO(cs,col,eps,nu,nv){
+    nu=nu||4; nv=nv||4;
+    function bl(u,v){ /* bilinéaire A(0,0) B(1,0) C(1,1) D(0,1) */
+      var s=(1-u)*(1-v)*cs[0][0] + u*(1-v)*cs[1][0] + u*v*cs[2][0] + (1-u)*v*cs[3][0];
+      var o=(1-u)*(1-v)*cs[0][1] + u*(1-v)*cs[1][1] + u*v*cs[2][1] + (1-u)*v*cs[3][1];
+      return MP(s,o,eps);
+    }
+    for(var iu=0;iu<nu;iu++) for(var iv=0;iv<nv;iv++)
+      flatQuad(bl(iu/nu,iv/nv), bl((iu+1)/nu,iv/nv), bl((iu+1)/nu,(iv+1)/nv), bl(iu/nu,(iv+1)/nv), col);
+  }
+  function discSO(c,ex,ey,r,col,eps,seg){
+    seg=seg||14; var C=MP(c[0],c[1],eps), prev=null;
+    for(var q=0;q<=seg;q++){ var an=q/seg*2*Math.PI, cx=Math.cos(an)*r, cy=Math.sin(an)*r;
+      var p=MP(c[0]+ex[0]*cx+ey[0]*cy, c[1]+ex[1]*cx+ey[1]*cy, eps);
+      if(prev) flatTri(C,prev,p,col);
+      prev=p; }
+  }
+  /* Hachures à 45° dans un parallélogramme donné par 4 coins (s,o).
+     La bande d'accès PMR est cisaillée en épi : ses côtés ne sont pas
+     perpendiculaires. On travaille donc dans le repère ORTHONORMÉ (û, n̂) porté
+     par le grand côté, sinon les traits sortent obliques et se resserrent. */
+  function hatchSO(hc, step, w, col, eps){
+    var E1=[hc[1][0]-hc[0][0], hc[1][1]-hc[0][1]], L1=Math.hypot(E1[0],E1[1]);
+    var E2=[hc[3][0]-hc[0][0], hc[3][1]-hc[0][1]], L2=Math.hypot(E2[0],E2[1]);
+    if(L1<1e-3||L2<1e-3) return;
+    if(L1>L2){ var t=E1; E1=E2; E2=t; t=L1; L1=L2; L2=t; }   /* E2 = grand côté */
+    var ux=E2[0]/L2, uy=E2[1]/L2;                            /* û */
+    var nx=-uy, ny=ux; if(E1[0]*nx+E1[1]*ny<0){ nx=-nx; ny=-ny; }   /* n̂ vers E1 */
+    var a1=E1[0]*nx+E1[1]*ny;        /* largeur perpendiculaire de la bande */
+    var a2=E1[0]*ux+E1[1]*uy;        /* cisaillement */
+    if(Math.abs(a1)<1e-4) return;
+    var k=a2-a1, P=function(al,be){ return [hc[0][0]+al*E1[0]+be*E2[0], hc[0][1]+al*E1[1]+be*E2[1]]; };
+    var cMin=Math.min(0,k), cMax=Math.max(0,k)+L2;
+    for(var c=cMin+step*0.5; c<cMax; c+=step){
+      var pts=[], b0=c/L2, b1=(c-k)/L2;
+      if(b0>=-1e-9&&b0<=1+1e-9) pts.push([0, Math.min(1,Math.max(0,b0))]);
+      if(b1>=-1e-9&&b1<=1+1e-9) pts.push([1, Math.min(1,Math.max(0,b1))]);
+      if(Math.abs(k)>1e-9){
+        var a0=c/k, aa1=(c-L2)/k;
+        if(a0>=-1e-9&&a0<=1+1e-9) pts.push([Math.min(1,Math.max(0,a0)), 0]);
+        if(aa1>=-1e-9&&aa1<=1+1e-9) pts.push([Math.min(1,Math.max(0,aa1)), 1]);
+      }
+      if(pts.length<2) continue;
+      var p0=P(pts[0][0],pts[0][1]), p1=P(pts[1][0],pts[1][1]);
+      if(Math.hypot(p1[0]-p0[0],p1[1]-p0[1])<0.06) continue;   /* coin rasant */
+      stripe(p0,p1,w,col,eps);
+    }
+  }
+  function ringSO(c,ex,ey,rO,rI,col,eps,seg){
+    seg=seg||20; var pO=null,pI=null;
+    for(var q=0;q<=seg;q++){ var an=q/seg*2*Math.PI, ca=Math.cos(an), sa=Math.sin(an);
+      var o1=MP(c[0]+ex[0]*ca*rO+ey[0]*sa*rO, c[1]+ex[1]*ca*rO+ey[1]*sa*rO, eps);
+      var i1=MP(c[0]+ex[0]*ca*rI+ey[0]*sa*rI, c[1]+ex[1]*ca*rI+ey[1]*sa*rI, eps);
+      if(pO) flatQuad(pO,o1,i1,pI,col);
+      pO=o1; pI=i1; }
+  }
+
+  /* --- places ---
+     En épi, la place « penche » de L·cos(angle) le long de l'allée : on ampute
+     d'autant la longueur exploitable, sinon les dernières places débordent de
+     la dalle (leur fond serait rabattu sur l'about par PT()). */
+  var mW=PPARK.markW/100, cs=Math.cos(g.th), sn=Math.sin(g.th);
+  var lean=g.cren?0:g.L*cs, Su=Math.max(0, Stot-lean);
+  var lay=parkLayout(Su, g);
+  var sides=[]; if(PPARK.sides!=='gauche') sides.push(1); if(PPARK.sides!=='droite') sides.push(-1);
+  var s0=(Su-lay.len)/2; if(s0<0) s0=0;
+  var totalBays=0, totalPmr=0, dropped=0, totalIsl=0;
+
+  /* ---- validation géométrique d'une place, en coordonnées MONDE --------------
+     Aux carrefours, la section transversale pivote : les places s'y déforment en
+     éventail, mordent l'allée ou se recouvrent d'une branche à l'autre. Plutôt
+     que d'interdire une zone en bloc — ce qui laissait le coin désert — on teste
+     chaque place sur son emprise réelle :
+       1. elle ne mord pas l'allée de circulation ;
+       2. elle ne recouvre aucune place ni aucun îlot déjà acceptés ;
+       3. elle n'est pas trop déformée (longueur des deux flancs).
+     Les places du coin qui satisfont ces trois règles sont conservées. */
+  function distToAxis(x,z){
+    var best=1e18, q;
+    for(q=0;q<n-1;q++){
+      var ax=cl.pts[q][0], az=cl.pts[q][1], bx=cl.pts[q+1][0], bz=cl.pts[q+1][1];
+      var dx=bx-ax, dz=bz-az, L2=dx*dx+dz*dz;
+      var t=(L2>1e-12)?((x-ax)*dx+(z-az)*dz)/L2:0; if(t<0)t=0; if(t>1)t=1;
+      var d=Math.hypot(x-(ax+dx*t), z-(az+dz*t)); if(d<best) best=d;
+    }
+    return best;
+  }
+  /* rétrécit un quad vers son centre : les places voisines partagent un bord */
+  function shrink(P, m2){
+    var cx=0, cz=0; P.forEach(function(p){ cx+=p[0]; cz+=p[1]; }); cx/=P.length; cz/=P.length;
+    return P.map(function(p){ var dx=cx-p[0], dz=cz-p[1], L=Math.hypot(dx,dz)||1, t=Math.min(0.4,m2/L);
+      return [p[0]+dx*t, p[1]+dz*t]; });
+  }
+  /* théorème de l'axe séparateur, quads convexes (XZ) */
+  function overlaps(P, Q){
+    var polys=[P,Q], k, i2;
+    for(k=0;k<2;k++){ var R=polys[k];
+      for(i2=0;i2<R.length;i2++){
+        var a2=R[i2], b2=R[(i2+1)%R.length], ax2=-(b2[1]-a2[1]), az2=(b2[0]-a2[0]);
+        var L=Math.hypot(ax2,az2); if(L<1e-9) continue; ax2/=L; az2/=L;
+        var p0=1e18,p1=-1e18,q0=1e18,q1=-1e18, j2;
+        for(j2=0;j2<P.length;j2++){ var v=P[j2][0]*ax2+P[j2][1]*az2; if(v<p0)p0=v; if(v>p1)p1=v; }
+        for(j2=0;j2<Q.length;j2++){ var w=Q[j2][0]*ax2+Q[j2][1]*az2; if(w<q0)q0=w; if(w>q1)q1=w; }
+        if(p1<q0+1e-9 || q1<p0+1e-9) return false;      /* axe séparateur trouvé */
+      }
+    }
+    return true;
+  }
+  var placed=[];   /* emprises acceptées, en XZ */
+  /* contour de la dalle en XZ, pour vérifier qu'une place de carrefour y tient */
+  var slabPoly=[]; (function(){ var q;
+    for(q=0;q<n;q++){ var w=W(q,leftO,0); slabPoly.push([w[0],w[2]]); }
+    for(q=n-1;q>=0;q--){ var w2=W(q,rightO,0); slabPoly.push([w2[0],w2[2]]); }
+  })();
+  function inSlab(x,z){
+    var c=false, j2=slabPoly.length-1;
+    for(var i2=0;i2<slabPoly.length;i2++){
+      var a2=slabPoly[i2], b2=slabPoly[j2];
+      if((a2[1]>z)!==(b2[1]>z) && x < (b2[0]-a2[0])*(z-a2[1])/((b2[1]-a2[1])||1e-12)+a2[0]) c=!c;
+      j2=i2;
+    }
+    return c;
+  }
+
+  /* ---- îlot planté : volume relevé + bordure + arbre ------------------------
+     L'îlot est ancré au FOND de la travée et remonte vers l'allée sur `islDepth`.
+     Ses faces épousent la surface (pente + dévers) ; seul l'arbre est vertical. */
+  var islH=Math.max(0.02, PPARK.islH/100), curbW=PPARK.islCurb?Math.max(0.02,PPARK.islCurbW/100):0;
+  var colTop=_hexRGB(PPARK.islType==='gazon'?PPARK.colIslG:(PPARK.islType==='beton'?PPARK.colIslB:PPARK.colIslP));
+  var colCurb=_hexRGB(PPARK.colCurb), colTrunk=_hexRGB(PPARK.colTrunk), colLeaf=_hexRGB(PPARK.colLeaf);
+  function upQuad(A,B,C,D,col){                         /* face relevée, normale vers le haut */
+    var ny=(B[2]-A[2])*(D[0]-A[0]) - (B[0]-A[0])*(D[2]-A[2]);
+    if(Math.abs(ny)<1e-10) return;
+    if(ny<0){ var t=B; B=D; D=t; }
+    quad(A,B,C,D,col);
+  }
+  function islandTop(cs4, y, col, nu, nv){
+    var bl=function(u,v){
+      var s=(1-u)*(1-v)*cs4[0][0]+u*(1-v)*cs4[1][0]+u*v*cs4[2][0]+(1-u)*v*cs4[3][0];
+      var o=(1-u)*(1-v)*cs4[0][1]+u*(1-v)*cs4[1][1]+u*v*cs4[2][1]+(1-u)*v*cs4[3][1];
+      return PT(s,o,y);
+    };
+    for(var iu=0;iu<nu;iu++) for(var iv=0;iv<nv;iv++)
+      upQuad(bl(iu/nu,iv/nv), bl((iu+1)/nu,iv/nv), bl((iu+1)/nu,(iv+1)/nv), bl(iu/nu,(iv+1)/nv), col);
+  }
+  function islandWall(A,B,y,col,ctr){                   /* joue verticale A→B, sortante */
+    var m=Math.max(1, Math.ceil(Math.hypot(B[0]-A[0],B[1]-A[1])/0.8)), k, prev0=null, prev1=null;
+    for(k=0;k<=m;k++){
+      var t=k/m, s=A[0]+(B[0]-A[0])*t, o=A[1]+(B[1]-A[1])*t;
+      var p0=PT(s,o,0.001), p1=PT(s,o,y);
+      if(prev0){
+        /* normale sortante : on l'oriente à l'opposé du centre de l'îlot */
+        var ux=p0[0]-prev0[0], uz=p0[2]-prev0[2];
+        var nx=-uz, nz=ux, mx=(p0[0]+prev0[0])/2-ctr[0], mz=(p0[2]+prev0[2])/2-ctr[2];
+        if(nx*mx+nz*mz < 0) quad(prev0,prev1,p1,p0,col); else quad(prev0,p0,p1,prev1,col);
+      }
+      prev0=p0; prev1=p1;
+    }
+  }
+  function buildIsland(cor, sg){
+    var dep = (PPARK.islDepth>0) ? Math.min(PPARK.islDepth/100, g.depth) : g.depth;
+    /* cor = parallélogramme d'emprise (comme une place). On le rogne côté allée. */
+    var f=1-dep/Math.max(0.01,g.depth);
+    var lerp=function(P0,P1,t){ return [P0[0]+(P1[0]-P0[0])*t, P0[1]+(P1[1]-P0[1])*t]; };
+    var A=lerp(cor[0],cor[3],f), B=lerp(cor[1],cor[2],f), C=cor[2], D=cor[3];
+    var box=[A,B,C,D];
+    var ctrSO=[(A[0]+C[0])/2, (A[1]+C[1])/2], ctr=PT(ctrSO[0],ctrSO[1],0);
+    /* dessus : anneau de bordure + cœur */
+    if(curbW>0){
+      var ins=function(p){                                /* rentre p de curbW vers le centre */
+        var dx=ctrSO[0]-p[0], dz=ctrSO[1]-p[1], L=Math.hypot(dx,dz)||1;
+        var t=Math.min(0.45, curbW*1.414/L);
+        return [p[0]+dx*t, p[1]+dz*t];
+      };
+      var Ai=ins(A), Bi=ins(B), Ci=ins(C), Di=ins(D);
+      islandTop([A,B,Bi,Ai], islH, colCurb, 3,1);
+      islandTop([B,C,Ci,Bi], islH, colCurb, 3,1);
+      islandTop([C,D,Di,Ci], islH, colCurb, 3,1);
+      islandTop([D,A,Ai,Di], islH, colCurb, 3,1);
+      islandTop([Ai,Bi,Ci,Di], islH, colTop, 4,4);
+    } else islandTop(box, islH, colTop, 5,5);
+    /* joues + fond (coque fermée pour l'export) */
+    islandWall(A,B,islH,colCurb,ctr); islandWall(B,C,islH,colCurb,ctr);
+    islandWall(C,D,islH,colCurb,ctr); islandWall(D,A,islH,colCurb,ctr);
+    var b0=PT(A[0],A[1],0.001), b1=PT(B[0],B[1],0.001), b2=PT(C[0],C[1],0.001), b3=PT(D[0],D[1],0.001);
+    var ny=(b1[2]-b0[2])*(b3[0]-b0[0]) - (b1[0]-b0[0])*(b3[2]-b0[2]);
+    if(ny>0) quad(b0,b3,b2,b1,colCurb); else quad(b0,b1,b2,b3,colCurb);
+    /* arbre : tronc + houppier, verticaux (ils ne suivent pas le dévers) */
+    if(PPARK.islTree){
+      var base=PT(ctrSO[0], ctrSO[1], islH);
+      var th=PPARK.islTreeH/100, td=PPARK.islTreeD/100, tr=PPARK.islTrunkD/200;
+      var trunkH=Math.max(0.4, th*0.42);
+      cylY(base[0], base[2], tr, base[1], base[1]+trunkH, colTrunk, 10);
+      var cy=base[1]+trunkH+td*0.42, rr=td/2, cen=[base[0],cy,base[2]];
+      var rings=6, segs=12, u, v2;
+      /* normale sortante : à l'opposé du centre du houppier */
+      var outF=function(vs){
+        var A=vs[0], B=vs[1], C=vs[2];
+        var ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2], vx=C[0]-A[0],vy=C[1]-A[1],vz=C[2]-A[2];
+        var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx, L=Math.hypot(nx,ny,nz);
+        if(L<1e-10) return;
+        nx/=L; ny/=L; nz/=L;
+        var mx=0,my=0,mz=0; vs.forEach(function(p){ mx+=p[0]; my+=p[1]; mz+=p[2]; });
+        mx=mx/vs.length-cen[0]; my=my/vs.length-cen[1]; mz=mz/vs.length-cen[2];
+        if(nx*mx+ny*my+nz*mz < 0){ vs=vs.slice().reverse(); nx=-nx; ny=-ny; nz=-nz; }
+        face(vs,[nx,ny,nz],colLeaf);
+      };
+      for(u=0;u<rings;u++){
+        var la0=Math.PI*(u/rings-0.5), la1=Math.PI*((u+1)/rings-0.5);
+        var y0=cy+Math.sin(la0)*rr*1.05, y1=cy+Math.sin(la1)*rr*1.05;
+        var r0=Math.cos(la0)*rr, r1=Math.cos(la1)*rr;
+        for(v2=0;v2<segs;v2++){
+          var a0=2*Math.PI*v2/segs, a1=2*Math.PI*(v2+1)/segs;
+          var P0=[base[0]+r0*Math.cos(a0), y0, base[2]+r0*Math.sin(a0)];
+          var P1=[base[0]+r0*Math.cos(a1), y0, base[2]+r0*Math.sin(a1)];
+          var P2=[base[0]+r1*Math.cos(a1), y1, base[2]+r1*Math.sin(a1)];
+          var P3=[base[0]+r1*Math.cos(a0), y1, base[2]+r1*Math.sin(a0)];
+          if(r0<1e-4) outF([[base[0],y0,base[2]], P2, P3]);
+          else if(r1<1e-4) outF([P0, P1, [base[0],y1,base[2]]]);
+          else outF([P0,P1,P2,P3]);
+        }
+      }
+    }
+    totalIsl++;
+  }
+
+  sides.forEach(function(sg){
+    /* Passe 1 : positions et validité. Dans un virage, la travée intérieure voit
+       ses places converger : leur fond devient plus étroit qu'un véhicule. Le
+       critère est donc la LARGEUR RÉELLE, mesurée perpendiculairement à l'axe de
+       la place, en entrée comme au fond — et non un simple rapport. Une place qui
+       n'offre pas ses cotes sur toute sa profondeur n'est pas marquée : la zone
+       reste en circulation. (Une place qui s'évase vers l'extérieur reste valide.) */
+    var bays=[], s=s0, j;
+    for(j=0;j<lay.seq.length;j++){
+      var it=lay.seq[j], isI=(it.kind==='isl'), isP=(!isI && it.isP), adv, cor;
+      if(g.cren){
+        var wUse=isI?g.depth:(isP?g.Wp:g.W), ln=isI?lay.iAdv:g.L;
+        cor=[[s,sg*a],[s+ln,sg*a],[s+ln,sg*(a+wUse)],[s,sg*(a+wUse)]];
+        adv=isI?lay.iAdv:(g.L+PPARK.crenGap/100);
+      } else {
+        var p=isI?lay.iAdv:(isP?g.pitchP:g.pitch), du=g.L*cs, dv=g.L*sn;
+        if(isI){ du=g.depth*cs/Math.max(0.02,sn); dv=g.depth; }   /* l'îlot va jusqu'au bord de dalle */
+        cor=[[s,sg*a],[s+p,sg*a],[s+p+du,sg*(a+dv)],[s+du,sg*(a+dv)]];
+        adv=p;
+      }
+      /* Largeur utile : en épi/bataille, la place est un parallélogramme dont les
+         côtés A→B et D→C sont portés par l'allée ; la largeur perpendiculaire vaut
+         donc leur longueur × sin(angle). On l'échantillonne aussi à mi-profondeur,
+         car un virage peut pincer la place sans pincer son fond. */
+      /* Une place doit rester RECTANGULAIRE et aux cotes normalisées : ni pincée,
+         ni évasée en éventail. On mesure sa largeur sur cinq niveaux de profondeur
+         et la longueur de ses deux flancs ; tout écart de plus de quelques pour
+         cent la disqualifie. Conséquence assumée : dans une courbe ou un carrefour
+         il n'y a pas de places — la zone reste en circulation. */
+      var need = isI ? (PPARK.islW/100) : (g.cren ? g.L : (isP?g.Wp:g.W));
+      var wmin=1e9, wmax=-1e9, kk;
+      for(kk=0; kk<=4; kk++){
+        var t=kk/4;
+        var q0=[cor[0][0]+(cor[3][0]-cor[0][0])*t, cor[0][1]+(cor[3][1]-cor[0][1])*t];
+        var q1=[cor[1][0]+(cor[2][0]-cor[1][0])*t, cor[1][1]+(cor[2][1]-cor[1][1])*t];
+        var w0=PT(q0[0],q0[1],0), w1=PT(q1[0],q1[1],0);
+        var d=Math.hypot(w1[0]-w0[0], w1[2]-w0[2]) * ((g.cren||isI)?1:sn);
+        if(d<wmin) wmin=d; if(d>wmax) wmax=d;
+      }
+      var LO=0.97, HI=1.05;
+      var okB = (wmin >= need*LO) && (wmax <= need*HI);
+      /* emprise réelle */
+      var fp=cor.map(function(p){ var w=PT(p[0],p[1],0); return [w[0],w[2]]; });
+      /* flancs : la profondeur doit être tenue des deux côtés, sans déformation */
+      if(okB){
+        var flankL=Math.hypot(fp[3][0]-fp[0][0], fp[3][1]-fp[0][1]);
+        var flankR=Math.hypot(fp[2][0]-fp[1][0], fp[2][1]-fp[1][1]);
+        var refL=isI ? g.depth/Math.max(0.02,(g.cren?1:sn)) : (g.cren?(isP?g.Wp:g.W):g.L);
+        if(flankL < refL*LO || flankR < refL*LO || flankL > refL*HI || flankR > refL*HI) okB=false;
+      }
+      /* l'allée doit rester libre */
+      if(okB){
+        for(kk=0; kk<4 && okB; kk++){
+          var e0=fp[kk], e1=fp[(kk+1)%4];
+          if(distToAxis(e0[0],e0[1]) < a-0.03) okB=false;
+          if(distToAxis((e0[0]+e1[0])/2,(e0[1]+e1[1])/2) < a-0.03) okB=false;
+        }
+      }
+      /* pas de recouvrement avec ce qui est déjà posé (l'autre branche du coin) */
+      var sh=okB?shrink(fp,0.04):null;
+      if(okB){ for(kk=0;kk<placed.length;kk++){ if(overlaps(sh,placed[kk])){ okB=false; break; } } }
+      if(okB) placed.push(sh);
+      bays.push({isI:isI, isP:isP, cor:cor, ok:okB, s:s, sMid:(cor[0][0]+cor[2][0])/2, map:null});
+      s+=adv;
+    }
+
+    var VI=cl.vertIdx;
+    for(j=0;j<bays.length;j++) if(!bays[j].ok && !bays[j].isI) dropped++;
+
+    for(j=0;j<bays.length;j++){
+      if(!bays[j].ok) continue;
+      if(bays[j].isI){ buildIsland(bays[j].cor, sg); continue; }
+      MP = bays[j].map || function(u,v,eps){ return PT(u,v,eps); };
+      var isP=bays[j].isP, cor=bays[j].cor;
+      /* le côté B→C n'est pas mutualisé si le voisin n'est pas une place */
+      var nx=bays[j+1];
+      var lastOfRun = !nx || !nx.ok || nx.isI;
+      var A=cor[0], B=cor[1], C=cor[2], D=cor[3];
+      /* Garde-fou : rien de plat ne doit déborder du bord de dalle. Les traits
+         diagonaux (hachures) s'élargissent aussi dans la direction o, d'où la
+         demi-largeur de trait retranchée. */
+      var oMax=(a+g.depth)-mW/2;
+      var IN=function(p){ var o=p[1]; if(Math.abs(o)>oMax) o=(o<0?-oMax:oMax); return [p[0],o]; };
+
+      if(isP && PPARK.pmrFill) fillSO(cor, pmc, EPS_FILL, 5, 5);
+
+      /* bande d'accès hachurée : la sur-largeur PMR, côté fond de file */
+      if(isP && PPARK.pmrHatch){
+        var hc;
+        if(g.cren){ /* la sur-profondeur */
+          hc=[[A[0],sg*(a+g.W)],[B[0],sg*(a+g.W)],[B[0],sg*(a+g.Wp)],[A[0],sg*(a+g.Wp)]];
+        } else {    /* la sur-longueur, en fin de place */
+          var sb=A[0], sp=sb+g.pitch;
+          hc=[[sp,sg*a],[sb+g.pitchP,sg*a],[sb+g.pitchP+g.L*cs,sg*(a+g.L*sn)],[sp+g.L*cs,sg*(a+g.L*sn)]];
+        }
+        hatchSO(hc.map(IN), 0.50*Math.SQRT2, 0.08, mkc, EPS_SYM);
+      }
+
+      /* pictogramme fauteuil, aligné sur l'axe de la place */
+      if(isP && PPARK.pmrSymbol){
+        /* centre de la partie utile (hors bande d'accès) */
+        var cx,cy;
+        if(g.cren){ cx=(A[0]+B[0])/2; cy=sg*(a+g.W/2); }
+        else { var pm=g.pitch; cx=(A[0]+pm/2)+g.L*cs/2; cy=sg*(a+g.L*sn/2); }
+        /* axes locaux : ey = vers le fond de la place, ex = en travers */
+        var ux=g.cren?0:cs, uy=g.cren?sg:sg*sn, un=Math.hypot(ux,uy)||1; ux/=un; uy/=un;
+        var vx=-uy, vy=ux;
+        var ey=[ux,uy], ex=[vx,vy];
+        /* Pictogramme inscrit dans ~0,95 × 1,45 m, réduit si la place est étroite.
+           ey pointe vers le fond de la place : le fauteuil se lit depuis l'allée. */
+        var SC=Math.min(1.0, (g.W-0.30)/0.95, (g.cren?g.L:g.L)/1.60); if(SC<0.35) SC=0.35;
+        var L2=function(x,y){ return [cx+ex[0]*x*SC+ey[0]*y*SC, cy+ex[1]*x*SC+ey[1]*y*SC]; };
+        ringSO(L2(0.08,-0.32), ex, ey, 0.42*SC, 0.32*SC, mkc, EPS_SYM, 24);   /* roue */
+        discSO(L2(-0.30,0.56), ex, ey, 0.17*SC, mkc, EPS_SYM, 14);            /* tête */
+        stripe(L2(-0.30,0.38), L2(-0.21,0.06), 0.15*SC, mkc, EPS_SYM);        /* dos */
+        stripe(L2(-0.25,0.06), L2(0.24,0.16), 0.15*SC, mkc, EPS_SYM);         /* assise */
+        stripe(L2(0.24,0.16), L2(0.48,-0.06), 0.12*SC, mkc, EPS_SYM);         /* repose-pied */
+      }
+
+      /* traits de délimitation. Les côtés sont mutualisés entre places voisines :
+         on trace A→D pour chaque place, et B→C seulement pour la dernière.
+         En bataille (90°) le fond de place tombe pile sur le bord de dalle : on
+         rentre le trait d'une demi-largeur pour qu'il ne flotte pas dans le vide. */
+      var Ai=IN(A), Bi=IN(B), Ci=IN(C), Di=IN(D);
+      if(PPARK.markStyle==='ferme' || g.cren) stripe(Ai,Bi,mW,mkc,EPS_LINE);
+      stripe(Ai,Di,mW,mkc,EPS_LINE);
+      if(lastOfRun || PPARK.markStyle==='ferme' || g.cren) stripe(Bi,Ci,mW,mkc,EPS_LINE);
+      if(PPARK.markStyle!=='cotes') stripe(Di,Ci,mW,mkc,EPS_LINE);
+
+      totalBays++; if(isP) totalPmr++;
+    }
+    MP = function(u,v,eps){ return PT(u,v,eps); };
+
+    /* --- Places de tête de travée, calées sur le carrefour ---------------------
+       La trame globale part du milieu de l'axe : elle ne tombe jamais pile sur un
+       sommet, et il reste au bout de chaque travée une bande trop courte pour une
+       place de la trame — mais assez large pour une vraie place. On repart donc
+       du sommet, dans le repère de chaque branche, et on pose des places
+       standard tant qu'elles tiennent. Chaque branche reste de son côté de la
+       section du sommet : les deux travées se rejoignent sans s'engrener. */
+    if(VI && VI.length && lay.N>0){
+      VI.forEach(function(vi){
+        if(vi<1 || vi>=n-1) return;
+        [-1,1].forEach(function(dirSign){
+          var V=cl.pts[vi], dx, dz;
+          if(dirSign<0){ dx=V[0]-cl.pts[vi-1][0]; dz=V[1]-cl.pts[vi-1][1]; }
+          else { dx=cl.pts[vi+1][0]-V[0]; dz=cl.pts[vi+1][1]-V[1]; }
+          var Ld=Math.hypot(dx,dz)||1; dx/=Ld; dz/=Ld;
+          var nx3=-dz, nz3=dx;
+          var toXZ=function(u,v){ return [V[0]+u*dx+v*nx3, V[1]+u*dz+v*nz3]; };
+          var mapL=function(u,v,eps){ var q=toXZ(u,v); return surfPT(q[0],q[1],eps); };
+          var pit=g.cren?(g.L+PPARK.crenGap/100):g.pitch, outCnt=0, k4;
+          /* Le carré d'onglet appartient à UNE branche : la sortante. Elle seule
+             a le droit de remonter en deçà du sommet (jusqu'à la demi-emprise),
+             ce qui garnit le quadrant extérieur ; la branche entrante s'arrête net
+             à la section du sommet. Sans cette dissymétrie, soit le quadrant reste
+             désert, soit les deux travées viennent s'engrener en peigne. */
+          /* et seulement du côté EXTÉRIEUR du virage : à l'intérieur, remonter en
+             deçà du sommet reviendrait à poser des places en travers de la travée
+             de la branche entrante. */
+          var d1x=cl.pts[vi][0]-cl.pts[vi-1][0], d1z=cl.pts[vi][1]-cl.pts[vi-1][1];
+          var d2x=cl.pts[vi+1][0]-cl.pts[vi][0], d2z=cl.pts[vi+1][1]-cl.pts[vi][1];
+          var turn=d1x*d2z-d1z*d2x;                 /* > 0 : le tracé tourne à droite */
+          var outSide=(turn>0)? -1 : 1;
+          var mayBack=(dirSign>0 && sg===outSide);
+          /* la passe reste DANS SA BRANCHE : sans cette borne, la travée de la
+             traverse d'un U remonte au-delà du sommet précédent et vient poser
+             des places en travers de la branche d'avant. */
+          var Sv2=cl.S[vi], legLen;
+          if(dirSign<0){ var pS=0; VI.forEach(function(w){ if(cl.S[w]<Sv2-1e-6 && cl.S[w]>pS) pS=cl.S[w]; }); legLen=Sv2-pS; }
+          else { var nS=Stot; VI.forEach(function(w){ if(cl.S[w]>Sv2+1e-6 && cl.S[w]<nS) nS=cl.S[w]; }); legLen=nS-Sv2; }
+          var uMin=mayBack ? -(a+g.depth)-0.02 : (dirSign>0 ? -0.02 : -legLen-0.02);
+          var uMax=(dirSign>0) ? legLen+0.02 : 0.02;
+          var K0=mayBack ? Math.ceil((a+g.depth)/pit) : 0;
+          /* On balaie toute la branche : une place peut être refusée au passage
+             (elle mord l'allée transversale, elle recouvre la trame) sans que la
+             suivante le soit. On ne s'arrête qu'en sortant de la dalle. */
+          for(k4=0; k4<200 && outCnt<2; k4++){
+            var u0=(dirSign>0)? (k4-K0)*pit : -(k4+1)*pit, cor4;
+            if(g.cren) cor4=[[u0,sg*a],[u0+g.L,sg*a],[u0+g.L,sg*(a+g.W)],[u0,sg*(a+g.W)]];
+            else cor4=[[u0,sg*a],[u0+g.pitch,sg*a],[u0+g.pitch+g.L*cs,sg*(a+g.L*sn)],[u0+g.L*cs,sg*(a+g.L*sn)]];
+            var ctr4=toXZ((cor4[0][0]+cor4[2][0])/2, (cor4[0][1]+cor4[2][1])/2);
+            if(!inSlab(ctr4[0],ctr4[1])){ if(k4>=K0) outCnt++; continue; }
+            outCnt=0;
+            var cross=false, kk4;
+            for(kk4=0;kk4<4;kk4++){ if(cor4[kk4][0] < uMin || cor4[kk4][0] > uMax) cross=true; }
+            if(cross) continue;
+            var fp4=cor4.map(function(p){ return toXZ(p[0],p[1]); });
+            var ok4=true, s4=shrink(fp4,0.06);
+            for(kk4=0; kk4<4 && ok4; kk4++){
+              if(!inSlab(s4[kk4][0], s4[kk4][1])) ok4=false;
+              var mm=[(s4[kk4][0]+s4[(kk4+1)%4][0])/2, (s4[kk4][1]+s4[(kk4+1)%4][1])/2];
+              if(ok4 && !inSlab(mm[0],mm[1])) ok4=false;
+              var f0=fp4[kk4], f1=fp4[(kk4+1)%4];
+              if(ok4 && distToAxis(f0[0],f0[1]) < a-0.03) ok4=false;
+              if(ok4 && distToAxis((f0[0]+f1[0])/2,(f0[1]+f1[1])/2) < a-0.03) ok4=false;
+            }
+            var s5=ok4?shrink(fp4,0.04):null;
+            if(ok4){ for(kk4=0;kk4<placed.length;kk4++){ if(overlaps(s5,placed[kk4])){ ok4=false; break; } } }
+            if(!ok4) continue;
+            placed.push(s5);
+            MP=mapL;
+            var A4=cor4[0], B4=cor4[1], C4=cor4[2], D4=cor4[3];
+            var oM=(a+g.depth)-mW/2, IN4=function(p){ var o=p[1]; if(Math.abs(o)>oM) o=(o<0?-oM:oM); return [p[0],o]; };
+            var a4=IN4(A4), b4=IN4(B4), c4=IN4(C4), d4=IN4(D4);
+            if(PPARK.markStyle==='ferme' || g.cren) stripe(a4,b4,mW,mkc,EPS_LINE);
+            stripe(a4,d4,mW,mkc,EPS_LINE);
+            stripe(b4,c4,mW,mkc,EPS_LINE);
+            if(PPARK.markStyle!=='cotes') stripe(d4,c4,mW,mkc,EPS_LINE);
+            MP = function(u,v,eps){ return PT(u,v,eps); };
+            totalBays++;
+          }
+        });
+      });
+    }
+  });
+
+  if(clamped) PARK_TIGHT=true;   /* un virage a rogné l'emprise : on le dit */
+  PARK_INFO={ total:totalBays, pmr:totalPmr, dropped:dropped, isl:totalIsl,
+              req:(PPARK.pmrPct>0 && totalBays>0)?Math.max(1,Math.ceil(totalBays*PPARK.pmrPct/100)):0,
+              area:area };
+  if(typeof document!=='undefined'){
+    var el=document.getElementById('park-recap'); if(el) el.innerHTML=parkRecapHTML();
+    var em=document.getElementById('park-mod');  if(em) em.innerHTML=parkModHTML();
+    var es=document.getElementById('park-struct'); if(es) es.innerHTML=parkStructHTML();
+  }
+
+  var bb=_facesBBox(FC,fs);
+  DIMS={ w:Math.max(0.1,bb.mx[0]-bb.mn[0]), h:Math.max(0.1,bb.mx[1]-bb.mn[1]), d:Math.max(0.1,bb.mx[2]-bb.mn[2]) };
+  /* le parking n'est ni centré sur l'origine ni posé à y = 0 : on donne son
+     emprise réelle aux cotes, qui sinon supposent la convention des meubles */
+  DIMS_BB=bb;
+  return DIMS;
+}
+function parkModHTML(){
+  var g=parkGeom();
+  var warn=(PPARK.angle>=5 && PPARK.angle<30)
+    ? ' <span style="color:#e08a2e">Épi très fermé : en pratique on descend rarement sous 30°.</span>' : '';
+  return 'Module : pas de <b>'+g.pitch.toFixed(2)+' m</b> par place, profondeur de travée <b>'+g.depth.toFixed(2)+' m</b>.'+warn;
+}
+function parkStructHTML(){
+  var L=parkLayers(), tot=0, rows='';
+  L.forEach(function(l){ tot+=l.t; rows+='<div>'+l.label+' — <b>'+Math.round(l.t*100)+' cm</b></div>'; });
+  return rows+'<div style="margin-top:3px;">Épaisseur totale : <b>'+Math.round(tot*100)+' cm</b></div>';
+}
+function parkRecapHTML(){
+  var I=PARK_INFO, per=(I.total>0)?(I.area/I.total):0;
+  var warn=(I.req>0 && I.pmr<I.req) ? '<div style="color:#e08a2e;margin-top:3px;">⚠ '+I.req+' place(s) PMR exigée(s)</div>' : '';
+  if(PARK_TIGHT) warn+='<div style="color:#e08a2e;margin-top:3px;">⚠ Virage trop serré pour l’emprise : allongez les branches ou réduisez la profondeur des travées.</div>';
+  if(I.dropped) warn+='<div style="opacity:.7;margin-top:3px;">'+I.dropped+' place'+(I.dropped>1?'s':'')+' non marquée'+(I.dropped>1?'s':'')+' dans les virages (zone de circulation).</div>';
+  var isl=I.isl?('<br>'+I.isl+' îlot'+(I.isl>1?'s':'')+' planté'+(I.isl>1?'s':'')+(PPARK.islTree?(' · '+I.isl+' arbre'+(I.isl>1?'s':'')):'')):'';
+  return '<b>'+I.total+'</b> place'+(I.total>1?'s':'')+', dont <b>'+I.pmr+'</b> PMR'+isl+'<br>'+
+         'Surface : <b>'+I.area.toFixed(1)+'</b> m² &nbsp;·&nbsp; <b>'+per.toFixed(1)+'</b> m²/place'+warn;
+}
+
 /* build() : reconstruit l'objet courant selon le mode actif (meuble ou forme).
    C'est LE point d'entrée unique appelé à chaque changement de paramètre. */
 /* ============================================================================
@@ -10034,7 +11049,15 @@ function fabDecode(pid, cb){
     if(pending===0){ _fabDone(pid); }
   }).catch(function(){ var e=FAB_CACHE[pid]||{}; FAB_CACHE[pid]={ready:false, loading:true, faces:[], _cbs:e._cbs||[]}; _fabDone(pid); });
 }
-function fabLabel(pid){ try{ var h=(typeof FABRICANTS_DB!=='undefined')?FABRICANTS_DB.filter(function(f){return f.id==='haworth';})[0]:null; if(h&&h.subs){ var s=h.subs.filter(function(x){return x.id===pid;})[0]; if(s) return s.label; } }catch(e){} return pid; }
+function fabLabel(pid){
+  try{
+    if(typeof FABRICANTS_DB!=='undefined') for(var i=0;i<FABRICANTS_DB.length;i++){
+      var f=FABRICANTS_DB[i]; if(!f.subs) continue;
+      for(var j=0;j<f.subs.length;j++) if(f.subs[j].id===pid) return f.subs[j].label;
+    }
+  }catch(e){}
+  return pid;
+}
 function scnAddFab(pid, x, z){
   SCENE.instances.push({ mode:'fabprod', prod:pid, name:fabLabel(pid), label:fabLabel(pid),
     x:Math.round((x||0)*100), z:Math.round((z||0)*100), y:0, rotY:0 });
@@ -10238,7 +11261,7 @@ function scnResync(){ var cfgs=cfgLoad(); function res(list){ (list||[]).forEach
   res(SCENE.instances); }
 
 function build(){
-  FC=[]; PRIMS=[]; CUR_POLY=null; _IFCTAG=null;
+  FC=[]; PRIMS=[]; CUR_POLY=null; _IFCTAG=null; DIMS_BB=null;
   /* texture courante par défaut = celle de l'élément "forme" (objets simples).
      buildMeuble la repositionne par élément (corps/étagère). */
   _CURTEX = FINISH_TEX.forme;
@@ -10276,6 +11299,7 @@ function build(){
   else if(MODE==='furn'){ r=buildFurniture(); }
   else if(MODE==='cuisine'){ r=buildCuisine(); }
   else if(MODE==='route'){ r=buildRoute(); }
+  else if(MODE==='parking'){ r=buildParking(); }
   else if(MODE==='hangar'){ r=buildHangar(); }
   else if(MODE==='quadripod'){
     if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[AL_PRODUCT]){
@@ -11603,8 +12627,14 @@ function drawCotes(cam,W,H){
   var d=DIMS, gap=coteOff(0.05), zf=d.d/2+gap, F=coteFont();
   if(MODE==='immeuble'){ drawImmLevels(cam,W,H); drawSiteGizmo(cam,W,H); if(CUR_POLY && !WGL.gActive && !WGL.txActive) drawPolyCotes(cam,W,H); return; }
   if(CUR_POLY && !WGL.gActive && !WGL.txActive){ drawPolyCotes(cam,W,H); return; }
+  /* Les cotes ci-dessous supposent un objet centré sur l'origine, base à y = 0.
+     Un objet qui ne suit pas cette convention (le parking, dont l'axe part de
+     l'origine) publie sa boîte réelle dans DIMS_BB : on décale d'autant. */
+  var _ox=0, _oy=0, _oz=0;
+  if(DIMS_BB){ _ox=(DIMS_BB.mn[0]+DIMS_BB.mx[0])/2; _oy=DIMS_BB.mn[1]; _oz=(DIMS_BB.mn[2]+DIMS_BB.mx[2])/2; }
+  function PJ(p){ return proj(cam,[p[0]+_ox,p[1]+_oy,p[2]+_oz],W,H); }
   /* COTE LARGEUR */
-  var la=proj(cam,[-d.w/2,0,zf],W,H), lb=proj(cam,[d.w/2,0,zf],W,H);
+  var la=PJ([-d.w/2,0,zf]), lb=PJ([d.w/2,0,zf]);
   if(la&&lb){
     ctx.strokeStyle=coteInk('#ff8a3d'); ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.moveTo(la.x,la.y); ctx.lineTo(lb.x,lb.y); ctx.stroke();
@@ -11614,7 +12644,7 @@ function drawCotes(cam,W,H){
     COTE_HITS.push({key:'w', x:lx, y:ly, color:'#ff8a3d'});
   }
   /* COTE HAUTEUR */
-  var ha=proj(cam,[-d.w/2-gap,0,zf],W,H), hb=proj(cam,[-d.w/2-gap,d.h,zf],W,H);
+  var ha=PJ([-d.w/2-gap,0,zf]), hb=PJ([-d.w/2-gap,d.h,zf]);
   if(ha&&hb){
     ctx.strokeStyle=coteInk('#5eb8ff'); ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.moveTo(ha.x,ha.y); ctx.lineTo(hb.x,hb.y); ctx.stroke();
@@ -11625,7 +12655,7 @@ function drawCotes(cam,W,H){
   }
   /* COTE PROFONDEUR */
   var xf=d.w/2+gap;
-  var pa=proj(cam,[xf,0,d.d/2],W,H), pb=proj(cam,[xf,0,-d.d/2],W,H);
+  var pa=PJ([xf,0,d.d/2]), pb=PJ([xf,0,-d.d/2]);
   if(pa&&pb){
     ctx.strokeStyle=coteInk('#6ee7a0'); ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke();
@@ -13553,6 +14583,136 @@ function routeAltEditor(){
   host.appendChild(wrap);
 }
 
+function buildParkingUI(){
+  var P=PPARK;
+  var groups=[
+    {title:'Allée', fields:[
+      {type:'choice',key:'trace',options:[{id:'droit',l:'Droit'},{id:'L',l:'En L'},{id:'U',l:'En U'},{id:'libre',l:'Libre'}]}
+    ].concat(
+      P.trace==='droit'?[{type:'slider',label:'Longueur',unit:'cm',key:'length',min:500,max:30000,step:50}]:
+      P.trace==='L'?[{type:'slider',label:'Branche 1',unit:'cm',key:'legA',min:500,max:20000,step:50},
+                     {type:'slider',label:'Branche 2',unit:'cm',key:'legB',min:500,max:20000,step:50}]:
+      P.trace==='U'?[{type:'slider',label:'Branche 1',unit:'cm',key:'legA',min:500,max:20000,step:50},
+                     {type:'slider',label:'Traverse',unit:'cm',key:'legB',min:500,max:20000,step:50},
+                     {type:'slider',label:'Branche 2',unit:'cm',key:'legC',min:500,max:20000,step:50}]:
+      [{type:'verts',key:'verts',label:'Axe de l’allée (sommets)',hint:'Vue Dessus : glissez les poignées, ajoutez/courbez des points. « x,z » en cm.'}]
+    ).concat(
+      P.trace==='droit'?[]:[
+        {type:'preset',label:'Angle du tracé',options:[{l:'Vif (90°)',set:{corner:0}},{l:'Congé',set:{corner:700}}]},
+        {type:'slider',label:'Rayon d’angle',unit:'cm',key:'corner',min:0,max:3000,step:50,
+         suffix:function(v){ return (v<=0)?'angle vif':''; }},
+        {type:'note',text:(P.corner<=0
+          ? 'Angle vif : la dalle se referme en onglet. Le carrefour reste en circulation, aucune place n’y est marquée.'
+          : 'Congé circulaire. Le rayon est relevé d’office à la demi-emprise si vous descendez en dessous.')}
+      ]
+    ).concat([
+      {type:'slider',label:'Largeur d’allée',unit:'cm',key:'aisleW',min:300,max:1000,step:10},
+      {type:'choice',label:'Places de part et d’autre',key:'sides',options:[{id:'deux',l:'Deux côtés'},{id:'droite',l:'À droite'},{id:'gauche',l:'À gauche'}]}
+    ])},
+    {title:'Places', fields:[
+      {type:'preset',label:'Disposition',key:'angle',options:[
+        {l:'Créneau',set:{angle:0}},{l:'Épi 45°',set:{angle:45}},{l:'Épi 60°',set:{angle:60}},{l:'Bataille',set:{angle:90}}]},
+      {type:'slider',label:'Angle',unit:'°',key:'angle',min:0,max:90,step:1,
+       suffix:function(v){ return (v<5)?'créneau':(v>=88?'bataille':'épi'); }},
+      {type:'slider',label:'Largeur place',unit:'cm',key:'bayW',min:200,max:350,step:5},
+      {type:'slider',label:'Longueur place',unit:'cm',key:'bayL',min:400,max:700,step:5}
+    ].concat(P.angle<5?[{type:'slider',label:'Dégagement créneau',unit:'cm',key:'crenGap',min:0,max:250,step:5}]:[])
+     .concat([{type:'note',text:'<span id="park-mod">'+parkModHTML()+'</span>'}])},
+    {title:'Places PMR', fields:[
+      {type:'slider',label:'Proportion',unit:'%',key:'pmrPct',min:0,max:20,step:1},
+      {type:'slider',label:'Largeur PMR',unit:'cm',key:'pmrW',min:250,max:400,step:5},
+      {type:'choice',label:'Fond bleu',key:'pmrFill',options:[{id:true,l:'Oui'},{id:false,l:'Non'}]},
+      {type:'choice',label:'Bande d’accès hachurée',key:'pmrHatch',options:[{id:true,l:'Oui'},{id:false,l:'Non'}]},
+      {type:'choice',label:'Pictogramme',key:'pmrSymbol',options:[{id:true,l:'Oui'},{id:false,l:'Non'}]},
+      {type:'color',key:'colPMR',label:'Couleur PMR'},
+      {type:'note',text:'Règle FR : 2 % des places, arrondi à l’unité supérieure, minimum 1. Les PMR sont placées en tête et en pied de chaque travée.'}
+    ]},
+    {title:'Marquage', fields:[
+      {type:'choice',label:'Style',key:'markStyle',options:[{id:'simple',l:'Côtés + fond'},{id:'ferme',l:'Rectangle fermé'},{id:'cotes',l:'Côtés seuls'}]},
+      {type:'slider',label:'Largeur du trait',unit:'cm',key:'markW',min:5,max:25,step:1},
+      {type:'color',key:'colMark',label:'Couleur marquage'}
+    ]},
+    {title:'Îlots plantés', fields:[
+      {type:'slider',label:'Un îlot toutes les',unit:'places',key:'islEvery',min:0,max:20,step:1,
+       suffix:function(v){ return (v<=0)?'aucun':''; }}
+    ].concat(P.islEvery>0?[
+      {type:'slider',label:'Largeur',unit:'cm',key:'islW',min:80,max:600,step:10},
+      {type:'slider',label:'Profondeur',unit:'cm',key:'islDepth',min:0,max:800,step:10,
+       suffix:function(v){ return (v<=0)?'toute la travée':''; }},
+      {type:'slider',label:'Hauteur',unit:'cm',key:'islH',min:2,max:60,step:1},
+      {type:'choice',label:'Surface',key:'islType',options:[{id:'gazon',l:'Gazon'},{id:'beton',l:'Béton'},{id:'pierre',l:'Pierre'}]},
+      {type:'color',key:(P.islType==='gazon'?'colIslG':(P.islType==='beton'?'colIslB':'colIslP')),label:'Couleur surface'},
+      {type:'choice',label:'Pierre de rive',key:'islCurb',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}
+    ].concat(P.islCurb?[
+      {type:'slider',label:'Largeur bordure',unit:'cm',key:'islCurbW',min:5,max:40,step:1},
+      {type:'color',key:'colCurb',label:'Couleur bordure'}
+    ]:[]).concat([
+      {type:'choice',label:'Arbre',key:'islTree',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}
+    ]).concat(P.islTree?[
+      {type:'slider',label:'Hauteur arbre',unit:'cm',key:'islTreeH',min:150,max:1200,step:10},
+      {type:'slider',label:'Ø houppier',unit:'cm',key:'islTreeD',min:80,max:900,step:10},
+      {type:'slider',label:'Ø tronc',unit:'cm',key:'islTrunkD',min:8,max:80,step:2},
+      {type:'color',key:'colLeaf',label:'Feuillage'},
+      {type:'color',key:'colTrunk',label:'Tronc'}
+    ]:[]):[])},
+    {title:'Structure de chaussée', fields:[
+      {type:'choice',label:'Type',key:'struct',options:[{id:'enrobe',l:'Enrobé sur grave'},{id:'beton',l:'Dalle béton'}]},
+      {type:'preset',label:'Dimensionnement',options:
+        (P.struct==='beton'
+          ? [{l:'VL',set:{epDalle:15,epFond:15,epForme:0}},
+             {l:'PL',set:{epDalle:20,epFond:15,epForme:0}},
+             {l:'PL / sol PF1',set:{epDalle:20,epFond:15,epForme:40}}]
+          : [{l:'VL (TC0)',set:{epRoul:5,epBase:0,epFond:25,epForme:0}},
+             {l:'VL + livraisons',set:{epRoul:6,epBase:10,epFond:25,epForme:0}},
+             {l:'PL (TC3)',set:{epRoul:6,epBase:16,epFond:25,epForme:0}},
+             {l:'PL / sol PF1',set:{epRoul:6,epBase:16,epFond:25,epForme:40}}])},
+      {type:'note',text:'Repères (catalogue des structures de chaussées, Cerema Île-de-France) : BBSG 0/10, épaisseur mini <b>4 cm</b>, moyenne d’emploi <b>5 à 7 cm</b> ; BBM type A mini 2,5 cm, moyenne 3 à 4 cm. Exemple de structure type 1 pour le couple <b>TC3 / PF2</b> : 2,5 BBTM + 4 BBM + <b>16 cm de grave-bitume GB3</b>. Couche de forme en GNT sur géotextile : <b>25 à 40 cm</b> pour atteindre PF2.<br><span style="color:#e08a2e;">Ces valeurs sont des ordres de grandeur. Le dimensionnement réel dépend du trafic PL et de la portance de la plateforme, et relève d’une étude géotechnique.</span>'}
+    ].concat(P.struct==='beton'?[
+      {type:'slider',label:'Dalle béton',unit:'cm',key:'epDalle',min:10,max:35,step:1},
+      {type:'color',key:'colDalle',label:'Béton'}
+    ]:[
+      {type:'slider',label:'Roulement (BBSG)',unit:'cm',key:'epRoul',min:3,max:12,step:1},
+      {type:'slider',label:'Base (grave-bitume)',unit:'cm',key:'epBase',min:0,max:20,step:1,
+       suffix:function(v){ return (v<=0)?'sans':''; }},
+      {type:'color',key:'colAsph',label:'Enrobé'},
+      {type:'color',key:'colBase',label:'Grave-bitume'}
+    ]).concat([
+      {type:'slider',label:'Fondation (GNT 0/31,5)',unit:'cm',key:'epFond',min:0,max:60,step:1,
+       suffix:function(v){ return (v<=0)?'sans':''; }},
+      {type:'slider',label:'Couche de forme',unit:'cm',key:'epForme',min:0,max:80,step:5,
+       suffix:function(v){ return (v<=0)?'sans':''; }},
+      {type:'color',key:'colFond',label:'Grave'},
+      {type:'color',key:'colForme',label:'Forme'},
+      {type:'note',text:'<span id="park-struct">'+parkStructHTML()+'</span>'}
+    ])},
+    {title:'Profil', fields:[
+      {type:'slider',label:'Dévers',unit:'%',key:'camber',min:0,max:5,step:0.5},
+      {type:'slider',label:'Pente',unit:'%',key:'slope',min:-15,max:15,step:0.5}
+    ].concat(P.trace==='libre'?[{type:'note',text:'Réglez une altitude par sommet ci-dessous pour varier la pente par tronçon.'}]:[])},
+    {title:'Récapitulatif', fields:[
+      {type:'note',text:'<span id="park-recap">'+parkRecapHTML()+'</span>'}
+    ]}
+  ];
+  buildObjUI(P, groups, buildParkingUI);
+  if(P.trace==='libre') parkAltEditor();
+}
+function parkAltEditor(){
+  var host=document.getElementById('params'); if(!host) return;
+  var pts=parsePoly(PPARK.verts)||[]; if(pts.length<2) return;
+  if(!PPARK.alt) PPARK.alt=[];
+  var wrap=document.createElement('div'); wrap.className='fld';
+  wrap.innerHTML='<div class="slbl" style="margin-top:6px;">Altitude par sommet (cm)</div>';
+  for(var i=0;i<pts.length;i++){ (function(i){
+    var row=document.createElement('div'); row.className='fh'; row.style.marginTop='4px';
+    row.innerHTML='<label>Point '+(i+1)+'</label>';
+    var inp=document.createElement('input'); inp.type='number'; inp.step='10'; inp.value=(PPARK.alt[i]||0);
+    inp.style.cssText='width:84px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:3px;';
+    inp.oninput=function(){ PPARK.alt[i]=parseFloat(inp.value)||0; build(); DIRTY=true; if(typeof updateDims==='function')updateDims(); };
+    row.appendChild(inp); wrap.appendChild(row);
+  })(i); }
+  host.appendChild(wrap);
+}
+
 function buildShapeGrid(){
   var host=document.getElementById('shape-grid');
   host.innerHTML='';
@@ -14259,7 +15419,7 @@ function refreshView(){
   var finLbl=finElems ? finElems.previousElementSibling : null;
   /* Le bloc Finition (RAL + matieres) est desormais disponible pour TOUS les objets
      parametriques. Seuls les produits fabricants (rendu WebGL) n'en ont pas. */
-  var showFinish = ready && cat.id!=='scene' && cat.id!=='route';   /* Finition pour tous les objets prets, sauf la Scène et la Route (couleurs propres) */
+  var showFinish = ready && cat.id!=='scene' && cat.id!=='route' && cat.id!=='parking';   /* Finition pour tous les objets prets, sauf la Scène, la Route et le Parking (couleurs propres) */
   [finElems, finPanel, finLbl].forEach(function(el){ if(el) el.style.display = showFinish ? '' : 'none'; });
 
   /* message placeholder pour les catégories à venir */
@@ -14306,6 +15466,7 @@ function refreshView(){
       else if(cat.id==='veranda'){ buildVerandaUI(); }
       else if(cat.id==='cheminee'){ buildChemineeUI(); }
       else if(cat.id==='route'){ buildRouteUI(); }
+      else if(cat.id==='parking'){ buildParkingUI(); }
       else { buildUI(); }
       buildFinishUI();   /* panneau Finition pour tous les objets parametriques */
       updateDims();
@@ -14461,7 +15622,7 @@ function dlFile(name, text, mime){
 /* Nom de fichier selon l'objet courant */
 function curName(){
   if(MODE==='forme') return SHAPE;
-  var N={piscine:'Piscine BPO',veranda:'Veranda BPO',cheminee:'Cheminee BPO',hangar:'Hangar BPO',mur:'Mur BPO',dalle:'Dalle BPO',poteau:'Poteau BPO',poutre:'Poutre BPO',gardecorps:'Garde-corps BPO',porte:'Porte BPO',fenetre:'Fenetre BPO',murrideau:'Mur-rideau BPO',immeuble:'Immeuble BPO',furn:'Mobilier BPO'};
+  var N={parking:'Parking BPO',route:'Route BPO',piscine:'Piscine BPO',veranda:'Veranda BPO',cheminee:'Cheminee BPO',hangar:'Hangar BPO',mur:'Mur BPO',dalle:'Dalle BPO',poteau:'Poteau BPO',poutre:'Poutre BPO',gardecorps:'Garde-corps BPO',porte:'Porte BPO',fenetre:'Fenetre BPO',murrideau:'Mur-rideau BPO',immeuble:'Immeuble BPO',furn:'Mobilier BPO'};
   return N[MODE]||'meuble';
 }
 
@@ -14645,7 +15806,19 @@ function zipStore(files){
 function dlBytes(name, bytes, mime){ var blob=new Blob([bytes],{type:mime||'application/octet-stream'}), url=URL.createObjectURL(blob), a=document.createElement('a');
   a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },120); }
 function _b64Bytes(b64){ var bin=atob(b64), n=bin.length, a=new Uint8Array(n); for(var i=0;i<n;i++) a[i]=bin.charCodeAt(i); return a; }
-/* cuit une texture (id) en octets PNG, ou null si indisponible */
+/* Extension de fichier d'une texture fabricant, d'après le type MIME de sa
+   data-URI. Les meubles Haworth sont en PNG, ceux d'Architecture-AL Design en
+   JPEG (le béton fait 2000², un PNG pèserait des mégaoctets). Sans ça l'export
+   écrivait des octets JPEG dans un fichier nommé « .png ». */
+function texExt(id){
+  if(typeof TEX_POOL!=='undefined' && TEX_POOL[id]){
+    var s=TEX_POOL[id];
+    if(/^data:image\/jpe?g/i.test(s)) return 'jpg';
+    if(/^data:image\/webp/i.test(s)) return 'webp';
+  }
+  return 'png';
+}
+/* cuit une texture (id) en octets image, ou null si indisponible */
 function texToPNG(id){
   /* 1) texture procédurale de finition (bois, béton…) → rendue sur canvas */
   var img=getTexImage(id);
@@ -14654,7 +15827,7 @@ function texToPNG(id){
     var g=c.getContext('2d'), im=g.createImageData(img.w,img.h); im.data.set(img.data); g.putImageData(im,0,0);
     try{ return _b64Bytes(c.toDataURL('image/png').split(',')[1]); }catch(e){ return null; }
   }
-  /* 2) texture fabricant (Haworth) : déjà un PNG en data-URI dans TEX_POOL → octets directs */
+  /* 2) texture fabricant : déjà une image en data-URI dans TEX_POOL → octets directs */
   if(typeof TEX_POOL!=='undefined' && TEX_POOL[id]){
     var s=TEX_POOL[id], k=s.indexOf(',');
     if(k>0){ try{ return _b64Bytes(s.slice(k+1)); }catch(e){ return null; } }
@@ -14672,9 +15845,9 @@ function _exportDAEnow(){
     var g=byKey[key]; if(!g){ g={ name:(tex?('tex_'+tex.replace(/[^A-Za-z0-9_]/g,'_')):('col_'+(++cN))), tex:tex, rgb:f.col, al:f.al, faces:[] }; byKey[key]=g; groups.push(g); }
     g.faces.push(i);
   }
-  /* textures utilisées → PNG dans le zip ; sinon le groupe repasse en couleur */
+  /* textures utilisées → image dans le zip ; sinon le groupe repasse en couleur */
   var files=[], imgOf={};
-  groups.forEach(function(g){ if(g.tex && !(g.tex in imgOf)){ var png=texToPNG(g.tex); if(png){ var fn='textures/'+g.name.replace(/^tex_/,'')+'.png'; imgOf[g.tex]=fn; files.push({name:fn, bytes:png}); } else { imgOf[g.tex]=null; } } });
+  groups.forEach(function(g){ if(g.tex && !(g.tex in imgOf)){ var png=texToPNG(g.tex); if(png){ var fn='textures/'+g.name.replace(/^tex_/,'')+'.'+texExt(g.tex); imgOf[g.tex]=fn; files.push({name:fn, bytes:png}); } else { imgOf[g.tex]=null; } } });
   /* positions + normales + UV (planaire, comme le moteur) par sommet de face */
   var pos=[], nor=[], uvs=[], idx=0, faceStart=[];
   function uvExport(f,v){
@@ -15085,12 +16258,31 @@ function exportIFC(schema){
   else if(MODE==='technal'){ ent='IFCWINDOW'; tail=',$,$,$,.WINDOW.,.NOTDEFINED.,$'; dsc='Fenetre aluminium Technal'; }
   else if(MODE==='velux'){ ent='IFCWINDOW'; tail=',$,$,$,.WINDOW.,.NOTDEFINED.,$'; dsc='Fenetre de toit Velux'; }
   else if(MODE==='flos'){ ent='IFCLIGHTFIXTURE'; tail=',$,.NOTDEFINED.'; dsc='Luminaire Flos'; }
+  else if(MODE==='parking'){ ent='IFCBUILDINGELEMENTPROXY'; tail=',$,.ELEMENT.'; dsc='Parking parametrique - '+PARK_INFO.total+' places dont '+PARK_INFO.pmr+' PMR'; }
   else if(MODE==='forme'){ ent='IFCBUILDINGELEMENTPROXY'; tail=',$,.ELEMENT.'; dsc='Element parametrique'; }
   else { ent='IFCFURNISHINGELEMENT'; tail=',$'; dsc='Meuble parametrique'; }
   var furn=E(fixEnt(ent)+"('"+guid()+"',"+owner+",'"+stepEsc(nm)+"','"+dsc+" - (c) 2026 Antoine Lacronique, architecte',$,"+objPl+","+prodShape+fixTail(ent,tail)+")");
 
   /* rattache l'objet à l'étage */
   E("IFCRELCONTAINEDINSPATIALSTRUCTURE('"+guid()+"',"+owner+",$,$,("+furn+"),"+storey+")");
+
+  /* Parking : jeu de propriétés exploitable en nomenclature BIM */
+  if(MODE==='parking'){
+    var pv=[];
+    pv.push(E("IFCPROPERTYSINGLEVALUE('NombreDePlaces',$,IFCCOUNTMEASURE("+PARK_INFO.total+"),$)"));
+    pv.push(E("IFCPROPERTYSINGLEVALUE('NombreDePlacesPMR',$,IFCCOUNTMEASURE("+PARK_INFO.pmr+"),$)"));
+    pv.push(E("IFCPROPERTYSINGLEVALUE('PlacesPMRExigees',$,IFCCOUNTMEASURE("+PARK_INFO.req+"),$)"));
+    pv.push(E("IFCPROPERTYSINGLEVALUE('SurfaceDalle',$,IFCAREAMEASURE("+num(PARK_INFO.area)+"),$)"));
+    pv.push(E("IFCPROPERTYSINGLEVALUE('AngleStationnement',$,IFCPLANEANGLEMEASURE("+num(PPARK.angle*Math.PI/180)+"),$)"));
+    pv.push(E("IFCPROPERTYSINGLEVALUE('LargeurAllee',$,IFCLENGTHMEASURE("+num(PPARK.aisleW/100)+"),$)"));
+    pv.push(E("IFCPROPERTYSINGLEVALUE('DimensionPlace',$,IFCTEXT('"+stepEsc((PPARK.bayW/100).toFixed(2)+' x '+(PPARK.bayL/100).toFixed(2)+' m')+"'),$)"));
+    pv.push(E("IFCPROPERTYSINGLEVALUE('NombreIlots',$,IFCCOUNTMEASURE("+(PARK_INFO.isl||0)+"),$)"));
+    var _lay=parkLayers().map(function(l){ return l.label+' '+Math.round(l.t*100)+' cm'; }).join(' / ');
+    pv.push(E("IFCPROPERTYSINGLEVALUE('StructureChaussee',$,IFCTEXT('"+stepEsc(_lay)+"'),$)"));
+    pv.push(E("IFCPROPERTYSINGLEVALUE('EpaisseurTotale',$,IFCLENGTHMEASURE("+num(parkTotalThick())+"),$)"));
+    var pset=E("IFCPROPERTYSET('"+guid()+"',"+owner+",'BPO_Parking',$,("+pv.join(',')+"))");
+    E("IFCRELDEFINESBYPROPERTIES('"+guid()+"',"+owner+",$,$,("+furn+"),"+pset+")");
+  }
   } else {
     /* === IMMEUBLE STRUCTURÉ : solides extrudés natifs, un étage par niveau === */
     E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+proj+",("+site+"))");
