@@ -2599,8 +2599,9 @@ var FINISH = {
    Les objets historiques (meuble, immeuble, porte…) n'ont pas de matériau natif :
    leur finition est TOUJOURS active, ils n'apparaissent donc pas ici. */
 var FINISH_ON = {};
-/* Modes dont chaque élément porte un interrupteur natif/personnalisé. */
-var FINISH_SWITCHABLE = { mur:1, poteau:1, poutre:1, gardecorps:1, escalier:1, ferme:1, toiture:1, forme:1, route:1, parking:1 };
+/* Modes dont chaque élément porte un interrupteur natif/personnalisé. La Forme
+   n'y figure pas : elle n'a pas de matériau natif, sa finition est toujours active. */
+var FINISH_SWITCHABLE = { mur:1, poteau:1, poutre:1, gardecorps:1, escalier:1, ferme:1, toiture:1, route:1, parking:1 };
 function finSwitch(){ return !!FINISH_SWITCHABLE[MODE]; }
 /* Couleur effective d'un élément : le natif tant que l'interrupteur est ouvert. */
 function fcol(key, native){ return FINISH_ON[key] ? FINISH[key] : native; }
@@ -2968,16 +2969,19 @@ var PPARK = {
    joues de la dalle — la coupe se lit comme un profil TP. */
 function parkLayers(){
   var L=[];
-  function add(t,c,l){ if(t>0) L.push({t:t/100, col:_hexRGB(c), label:l}); }
+  /* Chaque couche porte sa clé de finition : le sélecteur de couleur du
+     configurateur donne la teinte native, la finition RAL / texture la remplace
+     dès que son interrupteur est fermé. */
+  function add(t,c,l,k){ if(t>0) L.push({t:t/100, col:fcol(k,_hexRGB(c)), tex:ftex(k,null), label:l}); }
   if(PPARK.struct==='beton'){
-    add(PPARK.epDalle, PPARK.colDalle, 'Dalle béton');
+    add(PPARK.epDalle, PPARK.colDalle, 'Dalle béton', 'pdalle');
   } else {
-    add(PPARK.epRoul, PPARK.colAsph, 'Roulement (BBSG)');
-    add(PPARK.epBase, PPARK.colBase, 'Base (grave-bitume)');
+    add(PPARK.epRoul, PPARK.colAsph, 'Roulement (BBSG)', 'proul');
+    add(PPARK.epBase, PPARK.colBase, 'Base (grave-bitume)', 'pbase');
   }
-  add(PPARK.epFond, PPARK.colFond, 'Fondation (GNT 0/31,5)');
-  add(PPARK.epForme, PPARK.colForme, 'Couche de forme');
-  if(!L.length) add(10, PPARK.colAsph, 'Roulement');
+  add(PPARK.epFond, PPARK.colFond, 'Fondation (GNT 0/31,5)', 'pfond');
+  add(PPARK.epForme, PPARK.colForme, 'Couche de forme', 'pforme');
+  if(!L.length) add(10, PPARK.colAsph, 'Roulement', 'proul');
   return L;
 }
 function parkTotalThick(){ var t=0; parkLayers().forEach(function(l){ t+=l.t; }); return t; }
@@ -6397,7 +6401,8 @@ function steelDims(serie, taille){
 function buildPoteau(){
   var a=PP.sa/100, b=(PP.forme==='carre'?PP.sa:PP.sb)/100, h=PP.h/100;
   var mat=POST_MATS.filter(function(m){return m.id===PP.mat;})[0]||POST_MATS[0];
-  var c=mat.c;
+  var c=fcol('potcorps', mat.c);
+  _CURTEX=ftex('potcorps', null);
   var aT=PP.coupeTete||0;   /* angle de coupe en tête */
   /* ACIER + profil normalisé : on assemble le vrai profil (I ou U) en vertical */
   if(PP.mat==='acier' && PP.profilSerie){
@@ -6405,7 +6410,7 @@ function buildPoteau(){
     var rects=profileRects(sd.type, sd.dims);
     rects.forEach(function(rc){
       /* chaque rectangle : section dans XZ (x=rc[0] large rc[2], z=rc[1] épais rc[3]) */
-      buildPostRectCut(rc[0], rc[1], rc[2], rc[3], h, aT, STEEL_COL);
+      buildPostRectCut(rc[0], rc[1], rc[2], rc[3], h, aT, fcol('potcorps', STEEL_COL));
     });
     DIMS={ w:sd.dims[1]/1000, h:h, d:sd.dims[0]/1000 };
     return DIMS;
@@ -6455,6 +6460,7 @@ function buildPoutre(){
   var L=PB.len/100, b=PB.b/100, hs=PB.hs/100;
   var mat=BEAM_MATS.filter(function(m){return m.id===PB.mat;})[0]||BEAM_MATS[0];
   var type=PB.coupeType, aG=PB.angG, aD=PB.angD;
+  _CURTEX=ftex('poucorps', null);
   /* ACIER + profil normalisé : on assemble le vrai profil le long de X, coupé */
   if(PB.mat==='acier' && PB.profilSerie){
     var sd=steelDims(PB.profilSerie, PB.profilTaille);
@@ -6463,15 +6469,16 @@ function buildPoutre(){
     /* plan de coupe global : référence = milieu de la hauteur du profil.
        Tous les rectangles utilisent le MÊME yRef pour être coupés au même plan. */
     var yRef=hProfil/2;
+    var sCol=fcol('poucorps', STEEL_COL);
     rects.forEach(function(rc){
       var cz=rc[0], cyBase=rc[1]+hProfil/2 - rc[3]/2, w=rc[2], hgt=rc[3];
-      boxCutBeam(L, cz, w, hgt, cyBase, type, aG, aD, STEEL_COL, 1, yRef);
+      boxCutBeam(L, cz, w, hgt, cyBase, type, aG, aD, sCol, 1, yRef);
     });
     DIMS={ w:L, h:hProfil, d:sd.dims[1]/1000 };
     return DIMS;
   }
   /* poutre béton/bois : section rectangulaire pleine, coupée (réf = milieu hauteur) */
-  boxCutBeam(L, 0, b, hs, 0, type, aG, aD, mat.c, 1, hs/2);
+  boxCutBeam(L, 0, b, hs, 0, type, aG, aD, fcol('poucorps', mat.c), 1, hs/2);
   DIMS={w:L, h:hs, d:b};
   return DIMS;
 }
@@ -6558,15 +6565,25 @@ function buildBureau(){
 }
 
 /* railEdge() : garde-corps le long d'un segment (repère tourné -> suit tout contour). */
+/* Trois finitions distinctes pour le garde-corps. `c` reste la teinte native du
+   matériau ; chacune la remplace si son interrupteur est fermé. */
+function gcPostCol(c){ return fcol('gcpost', c); }
+function gcFillCol(c){ return fcol('gcfill', c); }
 function railEdge(x0,z0,x1,z1, H, c, noPosts, noVBars){
   var sec=0.04, hc=Math.max(0.02,(PG.railH||5)/100), ps=Math.max(0.01,(PG.postSize||4)/100);
   var dx=x1-x0, dz=z1-z0, len=Math.hypot(dx,dz); if(len<0.05) return;
   var a=Math.atan2(dz,dx), mx=(x0+x1)/2, mz=(z0+z1)/2, ca=Math.cos(a), sa=Math.sin(a);
-  function place(uc,yc,lu,ly,lw){
+  var cPost=gcPostCol(c), cFill=gcFillCol(c);
+  var txPost=ftex('gcpost',null), txFill=ftex('gcfill',null);
+  /* place() : par défaut les montants ; `col`/`tx` pour le remplissage */
+  function place(uc,yc,lu,ly,lw,col,tx){
     function P(du,dy,dw){ var u=uc+du; return [mx+u*ca-dw*sa, yc+dy, mz+u*sa+dw*ca]; }
+    var keep=_CURTEX; _CURTEX=(tx===undefined?txPost:tx)||null;
     boxV([P(-lu/2,-ly/2,-lw/2),P(lu/2,-ly/2,-lw/2),P(lu/2,ly/2,-lw/2),P(-lu/2,ly/2,-lw/2),
-          P(-lu/2,-ly/2,lw/2),P(lu/2,-ly/2,lw/2),P(lu/2,ly/2,lw/2),P(-lu/2,ly/2,lw/2)],c,1);
+          P(-lu/2,-ly/2,lw/2),P(lu/2,-ly/2,lw/2),P(lu/2,ly/2,lw/2),P(-lu/2,ly/2,lw/2)],(col||cPost),1);
+    _CURTEX=keep;
   }
+  function fill(uc,yc,lu,ly,lw){ place(uc,yc,lu,ly,lw,cFill,txFill); }
   /* railBar() : main courante — largeur w (horizontale) × hauteur h (verticale) ;
      profil rectangulaire (carré) ou ovale/rond (ellipse), matériau propre (bois, etc.) */
   function railBar(uc,yc,L,w,h,shape,col,tex){
@@ -6593,23 +6610,24 @@ function railEdge(x0,z0,x1,z1, H, c, noPosts, noVBars){
       panel(uc-W/2+m/2,yc,m,ih,0.012,fc,1); panel(uc+W/2-m/2,yc,m,ih,0.012,fc,1); }
   }
   /* main courante : profil + matériau propres */
-  var rm=RAIL_MATS.filter(function(m){return m.id===(PG.railMat||PG.mat);})[0], rcol=rm?rm.c:c, rtex=(PG.railMat==='bois')?'chene_clair':null;
+  var rm=RAIL_MATS.filter(function(m){return m.id===(PG.railMat||PG.mat);})[0], rcolNat=rm?rm.c:c, rtexNat=(PG.railMat==='bois')?'chene_clair':null;
+  var rcol=fcol('gcmain', rcolNat), rtex=ftex('gcmain', rtexNat);
   if(!noPosts) railBar(0, H-hc/2, len, Math.max(0.01,(PG.railW||5)/100), hc, PG.railShape||'carre', rcol, rtex);  /* contour : courante balayée en continu (onglet) */
   if(!noPosts){ var nM=Math.max(2, PG.nMontants);
     for(var i=0;i<nM;i++){ var u=-len/2+ps/2+(len-ps)*(i/(nM-1));
-      if((PG.postSection||'carre')==='rond') cylY(mx+u*ca, mz+u*sa, ps/2, 0, H-hc, c, 12);
+      if((PG.postSection||'carre')==='rond'){ var kp=_CURTEX; _CURTEX=txPost||null; cylY(mx+u*ca, mz+u*sa, ps/2, 0, H-hc, cPost, 12); _CURTEX=kp; }
       else place(u,(H-hc)/2, ps, H-hc, ps); } }
   var fH=H-hc-0.04, fYc=0.04+fH/2, rem=PG.remplissage;
   if(rem==='barreaux'){ var lbY=0.06;
-    if(!noPosts){ place(0, lbY, len-sec, 0.03, sec*1.1);                      /* lisse basse (mode droit ; contour = balayage continu) */
+    if(!noPosts){ fill(0, lbY, len-sec, 0.03, sec*1.1);                      /* lisse basse (mode droit ; contour = balayage continu) */
       var nB=Math.max(2,PG.nBarreaux), bw=0.018, bh=(H-hc)-lbY;
-      for(var i=0;i<nB;i++){ var u=-len/2+sec+(len-2*sec)*(i/(nB-1)); place(u, lbY+bh/2, bw, bh, bw); } } }
+      for(var i=0;i<nB;i++){ var u=-len/2+sec+(len-2*sec)*(i/(nB-1)); fill(u, lbY+bh/2, bw, bh, bw); } } }
   else if(rem==='cables'){ if(!noPosts){ var nC=Math.max(3,PG.nBarreaux), cw=0.006;
-    for(var i=0;i<nC;i++){ var y=0.06+(H-hc-0.1)*(i/(nC-1)); place(0,y,len-sec,cw,cw); } } }
-  else if(rem==='verre'){ panel(0,fYc, len-sec, fH, 0.012, [150,200,235], 0.34); }
-  else if(rem==='plein'){ panel(0,fYc, len-sec, fH, 0.03, c, 1); }
+    for(var i=0;i<nC;i++){ var y=0.06+(H-hc-0.1)*(i/(nC-1)); fill(0,y,len-sec,cw,cw); } } }
+  else if(rem==='verre'){ var kv=_CURTEX; _CURTEX=txFill||null; panel(0,fYc, len-sec, fH, 0.012, fcol('gcfill',[150,200,235]), FINISH_ON.gcfill?1:0.34); _CURTEX=kv; }
+  else if(rem==='plein'){ var kf=_CURTEX; _CURTEX=txFill||null; panel(0,fYc, len-sec, fH, 0.03, cFill, 1); _CURTEX=kf; }
   else if(rem==='toleperf'){
-    var ppat=PG.perfPattern||'rond', ppitch=Math.max(0.8,PG.perfScale||12), m=Math.max(0,(PG.perfMargin||0)/100), frCol=[188,191,196];
+    var ppat=PG.perfPattern||'rond', ppitch=Math.max(0.8,PG.perfScale||12), m=Math.max(0,(PG.perfMargin||0)/100), frCol=fcol('gcfill',[188,191,196]);
     /* une plaque perforée PAR TRAVÉE (entre montants) → cadre plein tout autour,
        chaque montant a donc une marge de part et d'autre. */
     function perfBay(uc, W){
@@ -6628,18 +6646,18 @@ function railEdge(x0,z0,x1,z1, H, c, noPosts, noVBars){
   else if(rem==='mixte'){
     var mbH=Math.max(0.1, Math.min((PG.mixBasH||60)/100, H-hc-0.15));
     var by0=0.04, by1=by0+mbH, bH=by1-by0, byc=(by0+by1)/2, mm=Math.max(0,(PG.perfMargin||0)/100), Wm=len-sec;
-    if(PG.mixBas==='verre'){ framed(0,byc, Wm, bH, 0.012, [150,200,235], 0.34, mm, null); }
-    else if(PG.mixBas==='toleperf'){ framed(0,byc, Wm, bH, 0.012, [176,180,186], 1, mm, ensurePerfTex(PG.perfPattern||'rond', Math.max(0.8,PG.perfScale||3))); }
-    else { panel(0,byc, Wm, bH, 0.03, c, 1); }
-    place(0, by1, len-sec, 0.04, sec*1.2);                          /* lisse intermédiaire */
+    if(PG.mixBas==='verre'){ framed(0,byc, Wm, bH, 0.012, fcol('gcfill',[150,200,235]), FINISH_ON.gcfill?1:0.34, mm, txFill); }
+    else if(PG.mixBas==='toleperf'){ framed(0,byc, Wm, bH, 0.012, fcol('gcfill',[176,180,186]), 1, mm, txFill||ensurePerfTex(PG.perfPattern||'rond', Math.max(0.8,PG.perfScale||3))); }
+    else { var km=_CURTEX; _CURTEX=txFill||null; panel(0,byc, Wm, bH, 0.03, cFill, 1); _CURTEX=km; }
+    fill(0, by1, len-sec, 0.04, sec*1.2);                           /* lisse intermédiaire */
     var ty0=by1+0.03, ty1=H-hc, tH=ty1-ty0, tyc=(ty0+ty1)/2;
     if(tH>0.05){
-      if(PG.mixHaut==='lisses'){ var nL=Math.max(2,PG.nBarreaux); for(var i=0;i<nL;i++){ var y=ty0+tH*(i/(nL-1)); place(0,y,len-sec,0.02,0.02); } }
-      else { var nB=Math.max(2,PG.nBarreaux), bw=0.018; for(var i=0;i<nB;i++){ var u=-len/2+sec+(len-2*sec)*(i/(nB-1)); place(u, tyc, bw, tH, bw); } }
+      if(PG.mixHaut==='lisses'){ var nL=Math.max(2,PG.nBarreaux); for(var i=0;i<nL;i++){ var y=ty0+tH*(i/(nL-1)); fill(0,y,len-sec,0.02,0.02); } }
+      else { var nB=Math.max(2,PG.nBarreaux), bw=0.018; for(var i=0;i<nB;i++){ var u=-len/2+sec+(len-2*sec)*(i/(nB-1)); fill(u, tyc, bw, tH, bw); } }
     }
   }
   else { if(!noPosts){ var nL=Math.max(2,PG.nBarreaux), lh=0.02;
-    for(var i=0;i<nL;i++){ var y=0.04+(H-hc-0.04)*(i/(nL-1)); place(0,y,len-sec,lh,lh); } } }
+    for(var i=0;i<nL;i++){ var y=0.04+(H-hc-0.04)*(i/(nL-1)); fill(0,y,len-sec,lh,lh); } } }
 }
 /* faceN() : ajoute une face en calculant sa normale à partir de 3 premiers sommets. */
 function faceN(v, col){ var a=v[0],b=v[1],c2=v[2],
@@ -6694,13 +6712,15 @@ function buildLibreChains(ctrl, opens, P){
    dessinés en CONTINU le long de chaque chaîne (droites + arcs), avec onglet. */
 function sweepRailAndFills(chains, H, c){
   var hc=Math.max(0.02,(PG.railH||5)/100), rw=Math.max(0.01,(PG.railW||5)/100);
-  var rm=RAIL_MATS.filter(function(m){return m.id===(PG.railMat||PG.mat);})[0], rcol=rm?rm.c:c, rtex=(PG.railMat==='bois')?'chene_clair':null;
+  var rm=RAIL_MATS.filter(function(m){return m.id===(PG.railMat||PG.mat);})[0];
+  var rcol=fcol('gcmain', rm?rm.c:c), rtex=ftex('gcmain',(PG.railMat==='bois')?'chene_clair':null);
+  var fc2=gcFillCol(c), ftx=ftex('gcfill',null);
   var rem=PG.remplissage, shape=PG.railShape||'carre';
   chains.forEach(function(ch){
     sweepProfile(ch.pts, H-hc/2, rw, hc, shape, rcol, rtex, ch.closed);                 /* main courante */
-    if(rem==='barreaux'){ sweepProfile(ch.pts, 0.06, 0.035, 0.03, 'carre', c, null, ch.closed); }   /* lisse basse */
-    else if(rem==='cables'){ var nC=Math.max(3,PG.nBarreaux); for(var i=0;i<nC;i++){ var y=0.06+(H-hc-0.1)*(i/(nC-1)); sweepProfile(ch.pts, y, 0.008,0.008,'rond', c,null, ch.closed); } }
-    else if(rem==='lisses'){ var nL=Math.max(2,PG.nBarreaux); for(var i=0;i<nL;i++){ var y=0.04+(H-hc-0.04)*(i/(nL-1)); sweepProfile(ch.pts, y, 0.02,0.02,'carre', c,null, ch.closed); } }
+    if(rem==='barreaux'){ sweepProfile(ch.pts, 0.06, 0.035, 0.03, 'carre', fc2, ftx, ch.closed); }   /* lisse basse */
+    else if(rem==='cables'){ var nC=Math.max(3,PG.nBarreaux); for(var i=0;i<nC;i++){ var y=0.06+(H-hc-0.1)*(i/(nC-1)); sweepProfile(ch.pts, y, 0.008,0.008,'rond', fc2,ftx, ch.closed); } }
+    else if(rem==='lisses'){ var nL=Math.max(2,PG.nBarreaux); for(var i=0;i<nL;i++){ var y=0.04+(H-hc-0.04)*(i/(nL-1)); sweepProfile(ch.pts, y, 0.02,0.02,'carre', fc2,ftx, ch.closed); } }
   });
 }
 function buildGardeCorps(){
@@ -6731,6 +6751,7 @@ function buildGardeCorps(){
 /* gcPostsFree() : montants pour contour LIBRE (potentiellement ouvert) :
    un montant à chaque sommet touché par un pan dessiné + entraxe le long des pans. */
 function gcPostsFree(ctrl, opens, H, c){
+  c=gcPostCol(c); var _k=_CURTEX; _CURTEX=ftex('gcpost',null);
   var n=ctrl.length, sp=Math.max(0.4,(PG.postSpacing||120)/100), placed=[];
   function put(x,z,tx,tz){ for(var k=0;k<placed.length;k++){ if(Math.hypot(placed[k][0]-x,placed[k][1]-z)<sp*0.4) return; } placed.push([x,z]); gcPost(x,z,H,c,tx,tz); }
   for(var i=0;i<n;i++){ var pd=!opens[(i-1+n)%n], nd=!opens[i]; if(!pd&&!nd) continue;   /* sommet touché par ≥1 pan */
@@ -6741,13 +6762,16 @@ function gcPostsFree(ctrl, opens, H, c){
   for(var i=0;i<n;i++){ if(opens[i]) continue; var pts=expandEdge(ctrl[i], ctrl[(i+1)%n], (PG.bulges&&PG.bulges[i])||0), acc=0;
     for(var s=0;s<pts.length-1;s++){ var a=pts[s],b=pts[s+1],dx=b[0]-a[0],dz=b[1]-a[1],Ls=Math.hypot(dx,dz); if(Ls<1e-4) continue;
       var d=(sp-(acc%sp))%sp; while(d<Ls-1e-6){ var t=d/Ls; put(a[0]+dx*t,a[1]+dz*t,dx,dz); d+=sp; } acc+=Ls; } }
+  _CURTEX=_k;
 }
 /* gcBarsFree() : barreaux verticaux à entraxe constant le long des pans dessinés. */
 function gcBarsFree(ctrl, opens, H, c){
+  c=gcFillCol(c); var _k=_CURTEX; _CURTEX=ftex('gcfill',null);
   var n=ctrl.length, hc=Math.max(0.02,(PG.railH||5)/100), lbY=0.06, bh=(H-hc)-lbY, bw=0.018, bp=Math.max(0.05,(PG.barSpacing||11)/100), acc=0;
   for(var i=0;i<n;i++){ if(opens[i]) continue; var pts=expandEdge(ctrl[i], ctrl[(i+1)%n], (PG.bulges&&PG.bulges[i])||0);
     for(var s=0;s<pts.length-1;s++){ var a=pts[s],b=pts[s+1],dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz); if(L<1e-4) continue;
       var d=(bp-(acc%bp))%bp; while(d<L-1e-6){ var t=d/L; box(a[0]+dx*t, lbY+bh/2, a[1]+dz*t, bw, bh, bw, c, 1); d+=bp; } acc+=L; } }
+  _CURTEX=_k;
 }
 /* ===================== ESCALIER : droit / L / U ===================== */
 /* slopedBeam() : poutre inclinée (limon/paillasse) de A(yA) à B(yB), profondeur h
@@ -7003,8 +7027,13 @@ function fermeSizing(){
           Achord:Achord,Aweb:Aweb,chordSugg:chordSugg,webSugg:webSugg,Anow:Anow,slender:L/H};
 }
 function buildFerme(){
-  var cCol=(RAIL_MATS.filter(function(m){return m.id===PFERME.matChord;})[0]||RAIL_MATS[0]).c;
-  var wCol=(RAIL_MATS.filter(function(m){return m.id===PFERME.matWeb;})[0]||RAIL_MATS[0]).c;
+  var cNat=(RAIL_MATS.filter(function(m){return m.id===PFERME.matChord;})[0]||RAIL_MATS[0]).c;
+  var wNat=(RAIL_MATS.filter(function(m){return m.id===PFERME.matWeb;})[0]||RAIL_MATS[0]).c;
+  /* buildFerme() sert aussi de brique à la toiture : la finition « ferme » ne
+     doit s'appliquer que lorsque l'utilisateur édite une ferme. */
+  var own=(MODE==='ferme');
+  var cCol=own?fcol('fmembrure',cNat):cNat, wCol=own?fcol('ftreillis',wNat):wNat;
+  if(own && FINISH_ON.fmembrure) _CURTEX=ftex('fmembrure', null);
   var S=Math.max(0.5,PFERME.span/100), H=Math.max(0.2,PFERME.height/100);
   var secH=Math.max(0.02,PFERME.secH/100), secW=Math.max(0.02,PFERME.secW/100);
   var chH=(PFERME.chordH>0? PFERME.chordH/100 : secH*1.4);
@@ -7095,7 +7124,8 @@ function buildFerme(){
    buildRoofRect() : toit 2 pans rectangulaire centré à l'origine (faîtage le long de X),
    selon PTOIT.length × PTOIT.width. Réutilisé comme « aile » pour les formes L / T. */
 function buildRoofRect(){
-  var mat=(RAIL_MATS.filter(function(m){return m.id===PTOIT.mat;})[0]||RAIL_MATS.filter(function(m){return m.id==='bois';})[0]||RAIL_MATS[0]).c;
+  var mat=fcol('toitcharp',(RAIL_MATS.filter(function(m){return m.id===PTOIT.mat;})[0]||RAIL_MATS.filter(function(m){return m.id==='bois';})[0]||RAIL_MATS[0]).c);
+  _CURTEX=ftex('toitcharp', null);
   var chevCol=[mat[0]*0.92|0, mat[1]*0.92|0, mat[2]*0.92|0];
   var L=Math.max(1,PTOIT.length/100), W=Math.max(1,PTOIT.width/100);
   var pit=Math.max(5,Math.min(70,PTOIT.pente))*Math.PI/180, H=(W/2)*Math.tan(pit);
@@ -7348,7 +7378,8 @@ function buildToiture(){
   if(forme==='rect') return buildRoofRect();
   var W=Math.max(1,PTOIT.width/100), La=Math.max(1,PTOIT.length/100), Lb=Math.max(1,(PTOIT.length2||PTOIT.length)/100);
   var pit=Math.max(5,Math.min(70,PTOIT.pente))*Math.PI/180, H=(W/2)*Math.tan(pit);
-  var col=(RAIL_MATS.filter(function(m){return m.id===PTOIT.mat;})[0]||RAIL_MATS.filter(function(m){return m.id==='bois';})[0]||RAIL_MATS[0]).c;
+  var col=fcol('toitcharp',(RAIL_MATS.filter(function(m){return m.id===PTOIT.mat;})[0]||RAIL_MATS.filter(function(m){return m.id==='bois';})[0]||RAIL_MATS[0]).c);
+  _CURTEX=ftex('toitcharp', null);
   var tx=(forme==='L')?(La/2 - W/2):0, tz=Lb/2;                            /* aile secondaire : faîtage Z à X=tx, va vers +Z */
   var mCov=captureRoofPart(PTOIT.length, PTOIT.width,'cover'),   mStr=captureRoofPart(PTOIT.length, PTOIT.width,'struct');
   var mClip=captureRoofPart(PTOIT.length, PTOIT.width,'clip');
@@ -7385,7 +7416,10 @@ function buildEscalier(){
   var mat=RAIL_MATS.filter(function(m){return m.id===PE.mat;})[0]||RAIL_MATS[0];
   var stt={plateau:0.05,massive:0.14,bois:0.06,metal:0.035}[PE.stepType]||0.05;
   var stc={plateau:[196,194,190],massive:[190,190,185],bois:[188,150,100],metal:mat.c}[PE.stepType]||[196,194,190];
-  var O={ tc:escColor(PE.matStep)||stc, tt:stt, nose:Math.max(0,(PE.nosing||0)/100), crc:escColor(PE.matRiser)||[178,178,174], sc:escColor(PE.matStruct)||mat.c, rc:escColor(PE.matRail)||mat.c, bc:escColor(PE.matStruct)||[176,176,172], pc:escColor(PE.matStep)||[200,198,192] };
+  /* trois clés de finition : marches (tc, pc), contremarches (crc), structure (sc, bc).
+     La main courante (rc) suit la structure tant qu'aucune finition ne la couvre. */
+  var _mS=function(c){ return fcol('escmarche', c); }, _mC=function(c){ return fcol('esccontre', c); }, _mT=function(c){ return fcol('escstruct', c); };
+  var O={ tc:_mS(escColor(PE.matStep)||stc), tt:stt, nose:Math.max(0,(PE.nosing||0)/100), crc:_mC(escColor(PE.matRiser)||[178,178,174]), sc:_mT(escColor(PE.matStruct)||mat.c), rc:escColor(PE.matRail)||mat.c, bc:_mT(escColor(PE.matStruct)||[176,176,172]), pc:_mS(escColor(PE.matStep)||[200,198,192]) };
   var totalH=Math.max(0.3,PE.totalH/100), sd=Math.max(0.15,PE.stepD/100), w=Math.max(0.4,PE.width/100);
   var n=Math.max(2,Math.round(totalH/Math.max(0.12,PE.stepH/100))), sh=totalH/n, tt=0.05, gap=Math.max(0,PE.gap/100);
   var shape=PE.shape||'droit', run=n*sd;
@@ -7467,6 +7501,7 @@ function gcPost(x,z,H,c,tx,tz){
         P(-a,-hy,b),P(a,-hy,b),P(a,hy,b),P(-a,hy,b)],c,1);
 }
 function gcPosts(poly,H,c){
+  c=gcPostCol(c); var _k=_CURTEX; _CURTEX=ftex('gcpost',null);
   var n=poly.length, sp=Math.max(0.4,(PG.postSpacing||120)/100), placed=[];
   function put(x,z,tx,tz){ for(var k=0;k<placed.length;k++){ if(Math.hypot(placed[k][0]-x,placed[k][1]-z)<sp*0.4) return; } placed.push([x,z]); gcPost(x,z,H,c,tx,tz); }
   for(var i=0;i<n;i++){ var p=poly[i], a=poly[(i-1+n)%n], b=poly[(i+1)%n];
@@ -7476,15 +7511,18 @@ function gcPosts(poly,H,c){
   var acc=0;
   for(var i=0;i<n;i++){ var a=poly[i], b=poly[(i+1)%n], dx=b[0]-a[0],dz=b[1]-a[1], L=Math.hypot(dx,dz); if(L<1e-4) continue;
     var d=(sp-(acc%sp))%sp; while(d<L-1e-6){ var t=d/L; put(a[0]+dx*t, a[1]+dz*t, dx, dz); d+=sp; } acc+=L; }
+  _CURTEX=_k;
 }
 /* gcBars() : barreaux verticaux répartis à entraxe CONSTANT le long de tout le
    contour (droites ET arcs) — évite l'entassement quand un arc est découpé en
    dizaines de segments. Chaque barreau = petit pavé vertical, orientation neutre. */
 function gcBars(poly,H,c){
+  c=gcFillCol(c); var _k=_CURTEX; _CURTEX=ftex('gcfill',null);
   var n=poly.length, hc=Math.max(0.02,(PG.railH||5)/100), lbY=0.06, bh=(H-hc)-lbY, bw=0.018;
   var bp=Math.max(0.05,(PG.barSpacing||11)/100), acc=0;
   for(var i=0;i<n;i++){ var a=poly[i], b=poly[(i+1)%n], dx=b[0]-a[0],dz=b[1]-a[1], L=Math.hypot(dx,dz); if(L<1e-4) continue;
     var d=(bp-(acc%bp))%bp; while(d<L-1e-6){ var t=d/L; box(a[0]+dx*t, lbY+bh/2, a[1]+dz*t, bw, bh, bw, c, 1); d+=bp; } acc+=L; }
+  _CURTEX=_k;
 }
 /* Recettes de motifs de tôle perforée (proportions figées, fidèles aux tôles
    réelles). Utilisées par la texture perforée (ensurePerfTex).
@@ -7906,9 +7944,9 @@ function routeCenterline(){
 }
 function routeProfile(){
   var laneW=PROUTE.laneW/100, half=PROUTE.lanes*laneW/2, crown=half*PROUTE.camber/100;
-  var asph=_hexRGB(PROUTE.colAsph), conc=_hexRGB(PROUTE.colConc);
+  var asph=fcol('renrobe',_hexRGB(PROUTE.colAsph)), conc=fcol('rbeton',_hexRGB(PROUTE.colConc));
   var tpcOn=!!PROUTE.tpc, tpcHalf=tpcOn?(PROUTE.tpcW/200):0, tpcTopY=tpcOn?(PROUTE.tpcH/100):0;
-  var medCol=(PROUTE.tpcType==='gazon')?_hexRGB(PROUTE.colMed):conc;
+  var medCol=fcol('rtpc',(PROUTE.tpcType==='gazon')?_hexRGB(PROUTE.colMed):conc);
   /* dévers : le point haut est l'axe (sans TPC) ou le bord côté TPC (avec TPC),
      et la chaussée descend vers l'extérieur. */
   function roadY(o){ var oo=Math.abs(o)-tpcHalf; if(oo<=0) return tpcTopY; if(oo>half)oo=half; return -oo/(half||1)*crown; }
@@ -7930,27 +7968,31 @@ function routeProfile(){
     Rp.push([o+faceRun+curbTop+sw, edgeY+ch - sw*cross]);
   }
   var Lp=[], i; for(i=Rp.length-1;i>=1;i--) Lp.push([-Rp[i][0], Rp[i][1]]);
-  var P=Lp.concat(Rp), C=[];
+  var P=Lp.concat(Rp), C=[], T=[];
+  /* chaque segment du profil porte aussi sa texture de finition */
+  var txAsph=ftex('renrobe',null), txConc=ftex('rbeton',null), txMed=ftex('rtpc',null);
   for(i=0;i<P.length-1;i++){
-    var o0=P[i][0], o1=P[i+1][0], mo=(o0+o1)/2, col;
-    if(Math.abs(o0-o1)<1e-6) col=conc;                          /* face verticale (bordure/TPC) */
-    else if(tpcOn && Math.abs(mo)<tpcHalf-1e-3) col=medCol;     /* dessus du terre-plein */
-    else if(Math.abs(mo)<=tpcHalf+half+1e-3) col=asph;          /* chaussée */
-    else col=conc;                                              /* caniveau / trottoir */
-    C.push(col);
+    var o0=P[i][0], o1=P[i+1][0], mo=(o0+o1)/2, col, tx;
+    if(Math.abs(o0-o1)<1e-6){ col=conc; tx=txConc; }                     /* face verticale (bordure/TPC) */
+    else if(tpcOn && Math.abs(mo)<tpcHalf-1e-3){ col=medCol; tx=txMed; } /* dessus du terre-plein */
+    else if(Math.abs(mo)<=tpcHalf+half+1e-3){ col=asph; tx=txAsph; }     /* chaussée */
+    else { col=conc; tx=txConc; }                                        /* caniveau / trottoir */
+    C.push(col); T.push(tx||null);
   }
-  return {P:P, col:C, half:half, crown:crown, roadY:roadY, tpc:tpcOn, tpcHalf:tpcHalf};
+  return {P:P, col:C, tex:T, half:half, crown:crown, roadY:roadY, tpc:tpcOn, tpcHalf:tpcHalf};
 }
 function buildRoute(){
   var fs=FC.length, cl=routeCenterline(), pr=routeProfile();
-  var P=pr.P, segCol=pr.col, n=cl.n, thick=PROUTE.thick/100, i, k;
+  var P=pr.P, segCol=pr.col, segTex=pr.tex||[], n=cl.n, thick=PROUTE.thick/100, i, k;
   var minY=1e9; P.forEach(function(p){ if(p[1]<minY)minY=p[1]; });
-  var yBot=minY-thick, leftO=P[0][0], rightO=P[P.length-1][0], conc=_hexRGB(PROUTE.colConc);
+  var yBot=minY-thick, leftO=P[0][0], rightO=P[P.length-1][0], conc=fcol('rbeton',_hexRGB(PROUTE.colConc));
   function W(i,o,y){ var rp=cl.rp[i], c=cl.pts[i], oo=o*(cl.sc?cl.sc[i]:1); return [ c[0]+rp[0]*oo, cl.baseY[i]+y, c[1]+rp[1]*oo ]; }
   function quad(A,B,C,D,col){ var ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2], vx=D[0]-A[0],vy=D[1]-A[1],vz=D[2]-A[2];
     var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx, L=Math.hypot(nx,ny,nz)||1; face([A,B,C,D],[nx/L,ny/L,nz/L],col); }
   for(i=0;i<n-1;i++){ for(k=0;k<P.length-1;k++){
+    _CURTEX = segTex[k] || null;
     quad(W(i,P[k][0],P[k][1]), W(i,P[k+1][0],P[k+1][1]), W(i+1,P[k+1][0],P[k+1][1]), W(i+1,P[k][0],P[k][1]), segCol[k]); } }
+  _CURTEX = null;
   for(i=0;i<n-1;i++) quad(W(i,rightO,yBot),W(i,leftO,yBot),W(i+1,leftO,yBot),W(i+1,rightO,yBot),conc);
   for(i=0;i<n-1;i++){
     quad(W(i,leftO,yBot),W(i,leftO,P[0][1]),W(i+1,leftO,P[0][1]),W(i+1,leftO,yBot),conc);
@@ -7973,18 +8015,18 @@ function buildRoute(){
       face([W(i,oL,yL),W(i,oR,yR),W(i+1,oR,yR),W(i+1,oL,yL)],[0,1,0],col); }
   }
   if(!pr.tpc){
-    var ax=_hexRGB(PROUTE.axisColor);
+    var ax=fcol('rmarquage',_hexRGB(PROUTE.axisColor));
     if(PROUTE.axis==='continue') drawMark(0,ax,false);
     else if(PROUTE.axis==='tirets') drawMark(0,ax,true);
     else if(PROUTE.axis==='double'){ drawMark(-mW*1.2,ax,false); drawMark(mW*1.2,ax,false); }
     else if(PROUTE.axis==='mixte'){ drawMark(-mW*1.2,ax,false); drawMark(mW*1.2,ax,true); }
   } else {                                    /* TPC : ligne de rive interne de chaque chaussée */
-    var ic=_hexRGB(PROUTE.edgeColor);
+    var ic=fcol('rmarquage',_hexRGB(PROUTE.edgeColor));
     drawMark(-(tpcHalf+mW), ic, false); drawMark(tpcHalf+mW, ic, false);
   }
-  if(PROUTE.edge!=='aucune'){ var ec=_hexRGB(PROUTE.edgeColor), eo=Math.max(0.01,tpcHalf+half-mW); drawMark(-eo,ec,PROUTE.edge==='tirets'); drawMark(eo,ec,PROUTE.edge==='tirets'); }
+  if(PROUTE.edge!=='aucune'){ var ec=fcol('rmarquage',_hexRGB(PROUTE.edgeColor)), eo=Math.max(0.01,tpcHalf+half-mW); drawMark(-eo,ec,PROUTE.edge==='tirets'); drawMark(eo,ec,PROUTE.edge==='tirets'); }
   if(PROUTE.laneSep!=='aucune'){
-    var lc=_hexRGB(PROUTE.laneSepColor), laneW=PROUTE.laneW/100, dsh=(PROUTE.laneSep==='tirets');
+    var lc=fcol('rmarquage',_hexRGB(PROUTE.laneSepColor)), laneW=PROUTE.laneW/100, dsh=(PROUTE.laneSep==='tirets');
     if(!pr.tpc){ if(PROUTE.lanes>2) for(k=1;k<PROUTE.lanes;k++){ var ob=-half+k*laneW; if(Math.abs(ob)<1e-3) continue; drawMark(ob,lc,dsh); } }
     else { for(var jj=1; jj*laneW<half-1e-3; jj++){ drawMark(tpcHalf+jj*laneW,lc,dsh); drawMark(-(tpcHalf+jj*laneW),lc,dsh); } }
   }
@@ -8261,7 +8303,7 @@ function buildParking(){
   var a=PPARK.aisleW/200;
   var dR=(PPARK.sides==='gauche')?0:g.depth, dL=(PPARK.sides==='droite')?0:g.depth;
   var camb=PPARK.camber/100, LAY=parkLayers(), thick=parkTotalThick();
-  var asph=LAY[0].col, mkc=_hexRGB(PPARK.colMark), pmc=_hexRGB(PPARK.colPMR);
+  var asph=LAY[0].col, mkc=fcol('pmarquage',_hexRGB(PPARK.colMark)), pmc=fcol('ppmr',_hexRGB(PPARK.colPMR));
   /* dévers : point haut sur l'axe de l'allée, descente linéaire vers les bords */
   function roadY(o){ return -Math.abs(o)*camb; }
 
@@ -8303,22 +8345,27 @@ function buildParking(){
      épaisseur est constante et la coupe se lit comme un profil TP. --- */
   var area=0, cum=[0], l2;
   LAY.forEach(function(ly,kk){ cum.push(cum[kk]+ly.t); });
+  _CURTEX = LAY[0].tex || null;                     /* texture de la couche de roulement */
   for(i=0;i<n-1;i++) for(k=0;k<P.length-1;k++){
     var A=W(i,P[k][0],P[k][1]), B=W(i,P[k+1][0],P[k+1][1]), C=W(i+1,P[k+1][0],P[k+1][1]), D=W(i+1,P[k][0],P[k][1]);
     quad(A,B,C,D,asph); area+=quadArea(A,B,C,D);
   }
+  _CURTEX = null;
   for(l2=0;l2<LAY.length;l2++){
     var hi=-cum[l2], lo=-cum[l2+1], cL=LAY[l2].col;
+    _CURTEX = LAY[l2].tex || null;
     for(i=0;i<n-1;i++){
       quad(W(i,leftO,P[0][1]+lo), W(i,leftO,P[0][1]+hi), W(i+1,leftO,P[0][1]+hi), W(i+1,leftO,P[0][1]+lo), cL);
       var yr=P[P.length-1][1];
       quad(W(i,rightO,yr+hi), W(i,rightO,yr+lo), W(i+1,rightO,yr+lo), W(i+1,rightO,yr+hi), cL);
     }
   }
+  _CURTEX = LAY[LAY.length-1].tex || null;
   for(i=0;i<n-1;i++) for(k=0;k<P.length-1;k++){
     quad(W(i,P[k+1][0],P[k+1][1]-thick), W(i,P[k][0],P[k][1]-thick),
          W(i+1,P[k][0],P[k][1]-thick), W(i+1,P[k+1][0],P[k+1][1]-thick), LAY[LAY.length-1].col);
   }
+  _CURTEX = null;
   function cap(idx){
     var sgn=(idx===0?-1:1), p0=cl.pts[Math.max(0,idx-1)], p1=cl.pts[Math.min(n-1,idx+1)];
     var tx=sgn*(p1[0]-p0[0]), tz=sgn*(p1[1]-p0[1]), L=Math.hypot(tx,tz)||1, t=[tx/L,0,tz/L];
@@ -8332,7 +8379,9 @@ function buildParking(){
         var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
         if(Math.hypot(nx,ny,nz)<1e-12) continue;
         if(nx*t[0]+nz*t[2] < 0) vs.reverse();
+        _CURTEX = LAY[l3].tex || null;
         face(vs, t, LAY[l3].col);
+        _CURTEX = null;
       }
     }
   }
@@ -8551,8 +8600,10 @@ function buildParking(){
      L'îlot est ancré au FOND de la travée et remonte vers l'allée sur `islDepth`.
      Ses faces épousent la surface (pente + dévers) ; seul l'arbre est vertical. */
   var islH=Math.max(0.02, PPARK.islH/100), curbW=PPARK.islCurb?Math.max(0.02,PPARK.islCurbW/100):0;
-  var colTop=_hexRGB(PPARK.islType==='gazon'?PPARK.colIslG:(PPARK.islType==='beton'?PPARK.colIslB:PPARK.colIslP));
-  var colCurb=_hexRGB(PPARK.colCurb), colTrunk=_hexRGB(PPARK.colTrunk), colLeaf=_hexRGB(PPARK.colLeaf);
+  var colTop=fcol('pislot',_hexRGB(PPARK.islType==='gazon'?PPARK.colIslG:(PPARK.islType==='beton'?PPARK.colIslB:PPARK.colIslP)));
+  var texTop=ftex('pislot',null), texCurb=ftex('pbordure',null);
+  var colCurb=fcol('pbordure',_hexRGB(PPARK.colCurb));
+  var colTrunk=fcol('ptronc',_hexRGB(PPARK.colTrunk)), colLeaf=fcol('parbre',_hexRGB(PPARK.colLeaf));
   function upQuad(A,B,C,D,col){                         /* face relevée, normale vers le haut */
     var ny=(B[2]-A[2])*(D[0]-A[0]) - (B[0]-A[0])*(D[2]-A[2]);
     if(Math.abs(ny)<1e-10) return;
@@ -8598,15 +8649,20 @@ function buildParking(){
         return [p[0]+dx*t, p[1]+dz*t];
       };
       var Ai=ins(A), Bi=ins(B), Ci=ins(C), Di=ins(D);
+      _CURTEX=texCurb||null;
       islandTop([A,B,Bi,Ai], islH, colCurb, 3,1);
       islandTop([B,C,Ci,Bi], islH, colCurb, 3,1);
       islandTop([C,D,Di,Ci], islH, colCurb, 3,1);
       islandTop([D,A,Ai,Di], islH, colCurb, 3,1);
+      _CURTEX=texTop||null;
       islandTop([Ai,Bi,Ci,Di], islH, colTop, 4,4);
-    } else islandTop(box, islH, colTop, 5,5);
+      _CURTEX=null;
+    } else { _CURTEX=texTop||null; islandTop(box, islH, colTop, 5,5); _CURTEX=null; }
     /* joues + fond (coque fermée pour l'export) */
+    _CURTEX=texCurb||null;
     islandWall(A,B,islH,colCurb,ctr); islandWall(B,C,islH,colCurb,ctr);
     islandWall(C,D,islH,colCurb,ctr); islandWall(D,A,islH,colCurb,ctr);
+    _CURTEX=null;
     var b0=PT(A[0],A[1],0.001), b1=PT(B[0],B[1],0.001), b2=PT(C[0],C[1],0.001), b3=PT(D[0],D[1],0.001);
     var ny=(b1[2]-b0[2])*(b3[0]-b0[0]) - (b1[0]-b0[0])*(b3[2]-b0[2]);
     if(ny>0) quad(b0,b3,b2,b1,colCurb); else quad(b0,b1,b2,b3,colCurb);
@@ -15547,7 +15603,7 @@ function refreshView(){
   var finLbl=finElems ? finElems.previousElementSibling : null;
   /* Le bloc Finition (RAL + matieres) est desormais disponible pour TOUS les objets
      parametriques. Seuls les produits fabricants (rendu WebGL) n'en ont pas. */
-  var showFinish = ready && cat.id!=='scene' && cat.id!=='route' && cat.id!=='parking';   /* Finition pour tous les objets prets, sauf la Scène, la Route et le Parking (couleurs propres) */
+  var showFinish = ready && cat.id!=='scene';   /* Finition pour tous les objets prêts, Scène exceptée */
   [finElems, finPanel, finLbl].forEach(function(el){ if(el) el.style.display = showFinish ? '' : 'none'; });
 
   /* message placeholder pour les catégories à venir */
