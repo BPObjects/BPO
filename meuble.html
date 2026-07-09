@@ -550,6 +550,22 @@ var WGL = {
   gActive:false, progG:null, gbuf:null
 };
 
+/* --- Extraits GLSL de l'ombre portée (shadow map), partagés par progG/progT/progGT.
+   shOn=0 → shadowF() renvoie 1.0 : rendu strictement identique à avant. --- */
+var GLSL_SH_VS = 'uniform mat4 lvp;varying vec4 vsp;';
+var GLSL_SH_FS =
+  'uniform sampler2D shMap;uniform float shOn;varying vec4 vsp;'+
+  'float _unpackD(vec4 c){return dot(c,vec4(1.0,1.0/255.0,1.0/65025.0,1.0/16581375.0));}'+
+  'float shadowF(vec3 N,vec3 Ld){'+
+  'if(shOn<0.5) return 1.0;'+
+  'vec3 sc=vsp.xyz/vsp.w*0.5+0.5;'+
+  'if(sc.x<0.0||sc.x>1.0||sc.y<0.0||sc.y>1.0||sc.z>1.0) return 1.0;'+
+  'float bias=max(0.0040*(1.0-dot(N,Ld)),0.0010);'+
+  'float s=0.0;float o=1.0/2048.0;'+
+  'for(int i=-1;i<=1;i++){for(int j=-1;j<=1;j++){'+
+  'float dd=_unpackD(texture2D(shMap,sc.xy+vec2(float(i),float(j))*o));'+
+  's+=(sc.z-bias>dd)?0.0:1.0;}}'+
+  'return mix(1.0,s/9.0,0.85);}';
 WGL.ENVS = {
   studio:{L:[[0.4,0.8,0.5],[-0.5,0.3,-0.4],[0.1,-0.6,0.3]],C:[[1.0,1.0,1.0],[0.4,0.45,0.55],[0.25,0.22,0.2]],aT:[0.55,0.6,0.7],aB:[0.18,0.17,0.16]},
   warm:{L:[[0.5,0.7,0.4],[-0.4,0.4,-0.5],[0.0,-0.5,0.4]],C:[[1.0,0.92,0.78],[0.5,0.42,0.35],[0.3,0.25,0.2]],aT:[0.6,0.55,0.48],aB:[0.2,0.16,0.13]},
@@ -725,11 +741,13 @@ WGL.initTexGL=function(){
   if(WGL.progT) return true;
   var gl=WGL.gl; if(!gl) return false;
   var vs='attribute vec3 p;attribute vec3 n;attribute vec2 uv;uniform mat4 pv;uniform mat4 model;uniform float uvScale;uniform float uvRot;'+
+    GLSL_SH_VS+
     'varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
-    'void main(){vec4 wp=model*vec4(p,1.0);gl_Position=pv*wp;vn=mat3(model)*n;vw=wp.xyz;vec2 su=uv*uvScale;float cr=cos(uvRot),sr=sin(uvRot);vuv=vec2(su.x*cr-su.y*sr,su.x*sr+su.y*cr);}';
+    'void main(){vec4 wp=model*vec4(p,1.0);gl_Position=pv*wp;vn=mat3(model)*n;vw=wp.xyz;vsp=lvp*wp;vec2 su=uv*uvScale;float cr=cos(uvRot),sr=sin(uvRot);vuv=vec2(su.x*cr-su.y*sr,su.x*sr+su.y*cr);}';
   var fs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
     'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;'+
     'uniform float ovOn;uniform vec3 ovCol;uniform sampler2D tex0;uniform float useTex;uniform vec3 baseCol;uniform vec2 mrp;'+
+    GLSL_SH_FS+
     'const float PI=3.14159265;'+
     'float D_GGX(float NoH,float a){float a2=a*a;float d=NoH*NoH*(a2-1.0)+1.0;return a2/(PI*d*d);}'+
     'float G_Smith(float NoV,float NoL,float a){float k=a*0.5;float gv=NoV/(NoV*(1.0-k)+k);float gll=NoL/(NoL*(1.0-k)+k);return gv*gll;}'+
@@ -739,11 +757,12 @@ WGL.initTexGL=function(){
     'float metal=mix(mrp.x,0.0,ovOn);float rough=clamp(mix(mrp.y,0.6,ovOn),0.05,1.0);'+
     'vec3 F0=mix(vec3(0.04),alb,metal);vec3 dc=alb*(1.0-metal);float a=rough*rough;'+
     'float NoV=max(dot(N,Vd),0.001);vec3 col=vec3(0.0);'+
+    'float shf=shadowF(N,normalize(lightDirs[0]));'+
     'for(int i=0;i<3;i++){vec3 Ld=normalize(lightDirs[i]);vec3 H=normalize(Vd+Ld);'+
     'float NoL=max(dot(N,Ld),0.0);float NoH=max(dot(N,H),0.0);float VoH=max(dot(Vd,H),0.0);'+
     'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
     'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);vec3 kd=(1.0-F)*(1.0-metal);'+
-    'col+=(kd*dc/PI+spec)*lightCols[i]*NoL;}'+
+    'col+=(kd*dc/PI+spec)*lightCols[i]*NoL*((i==0)?shf:1.0);}'+
     'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*(0.6+0.4*(1.0-metal));'+
     'vec3 R=reflect(-Vd,N);float rh=R.y*0.5+0.5;vec3 er=mix(ambBot,ambTop,rh)*1.4;'+
     'vec3 Fe=fres(NoV,F0)*(1.0-rough);col+=er*Fe;'+
@@ -931,30 +950,108 @@ WGL.renderSceneTex=function(){
   var tx=cam.tx||0,tz=cam.tz||0, ex=tx+cam.r*Math.sin(cam.ph)*Math.sin(cam.th), ey=cam.ty+cam.r*Math.cos(cam.ph), ez=tz+cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
   var mv=WGL._look([ex,ey,ez],[tx,cam.ty,tz],[0,1,0]);
   var as=cv.width/cv.height, fa=Math.max(100,cam.r*3+60), prj=WGL._persp(0.95,as,0.02,fa), pv=WGL._mul(prj,mv);
-  gl.clearColor(0.102,0.110,0.130,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   var _site=(typeof SITE!=='undefined'&&SITE.on);
+  /* --- CARTE D'OMBRE (soleil) : rendue avant tout, dans son propre framebuffer --- */
+  var _sunL=WGL.sunVec(e.L[0]);
+  var _shOK=(!_site) && WGL.renderShadowMap(_sunL, function(ulM, lp0){
+    (SCENE.instances||[]).forEach(function(inst){
+      gl.uniformMatrix4fv(ulM,false,scnModel(inst));
+      if(inst.mode==='fabprod'){
+        var pg=WGL.prodTexCache[inst.prod];
+        if(pg && pg.ready && pg.pos && pg.idx){
+          gl.bindBuffer(gl.ARRAY_BUFFER,pg.pos); gl.enableVertexAttribArray(lp0); gl.vertexAttribPointer(lp0,3,gl.FLOAT,false,0,0);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,pg.idx);
+          (pg.groups||[]).forEach(function(g){ gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4); });
+        }
+      } else {
+        var ss=null; try{ ss=scnInstSplitGL(inst); }catch(_e){}
+        if(ss){   /* le verre ne bloque pas la lumière */
+          if(ss.col){ gl.bindBuffer(gl.ARRAY_BUFFER,ss.col.pos); gl.enableVertexAttribArray(lp0); gl.vertexAttribPointer(lp0,3,gl.FLOAT,false,0,0); gl.drawArrays(gl.TRIANGLES,0,ss.col.count); }
+          (ss.tex||[]).forEach(function(t){ gl.bindBuffer(gl.ARRAY_BUFFER,t.pos); gl.enableVertexAttribArray(lp0); gl.vertexAttribPointer(lp0,3,gl.FLOAT,false,0,0); gl.drawArrays(gl.TRIANGLES,0,t.count); });
+        }
+      }
+    });
+  });
+  /* --- SSAO : profondeur+normales, occlusion, flou (composé en fin de rendu) --- */
+  var _aoOK=WGL.renderAO(mv, prj, fa, Math.tan(0.95/2), as, function(ulMv,aP,aN,view){
+    (SCENE.instances||[]).forEach(function(inst){
+      gl.uniformMatrix4fv(ulMv,false,WGL._mul(view, scnModel(inst)));
+      function bindPN(pb,nb){ gl.bindBuffer(gl.ARRAY_BUFFER,pb); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+        gl.bindBuffer(gl.ARRAY_BUFFER,nb); gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN,3,gl.FLOAT,false,0,0); }
+      if(inst.mode==='fabprod'){
+        var pg=WGL.prodTexCache[inst.prod];
+        if(pg && pg.ready && pg.pos && pg.nrm && pg.idx){
+          bindPN(pg.pos,pg.nrm); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,pg.idx);
+          (pg.groups||[]).forEach(function(g){ gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4); });
+        }
+      } else {
+        var ss=null; try{ ss=scnInstSplitGL(inst); }catch(_e){}
+        if(ss){   /* le verre n'occlut pas */
+          if(ss.col){ bindPN(ss.col.pos,ss.col.nrm); gl.drawArrays(gl.TRIANGLES,0,ss.col.count); }
+          (ss.tex||[]).forEach(function(t){ bindPN(t.pos,t.nrm); gl.drawArrays(gl.TRIANGLES,0,t.count); });
+        }
+      }
+    });
+  });
+  gl.clearColor(0.102,0.110,0.130,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   if(!_site && WGL.progSky){
     var dW=(typeof DIMS!=='undefined'&&DIMS)?DIMS.w:2.0, dD=(typeof DIMS!=='undefined'&&DIMS)?DIMS.d:2.0, dH=(typeof DIMS!=='undefined'&&DIMS)?DIMS.h:1.0;
     var L0=e.L[0], hyl=Math.max(0.25,L0[1]), ks=dH*0.45/hyl;
     gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.useProgram(WGL.progSky);
+    WGL.bindSkyU(WGL.progSky,[ex,ey,ez],[tx,cam.ty,tz],cv.width/cv.height,_sunL);
     var _pTop=(typeof prefHex01==='function'&&prefHex01(PREFS.skyTop))||[0.40,0.60,0.86], _pHor=(typeof prefHex01==='function'&&prefHex01(PREFS.skyHor))||[0.87,0.91,0.96];
     gl.uniform3f(gl.getUniformLocation(WGL.progSky,'topC'),_pTop[0],_pTop[1],_pTop[2]);
     gl.uniform3f(gl.getUniformLocation(WGL.progSky,'horC'),_pHor[0],_pHor[1],_pHor[2]);
     var spq=gl.getAttribLocation(WGL.progSky,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.skyBuf); gl.enableVertexAttribArray(spq); gl.vertexAttribPointer(spq,2,gl.FLOAT,false,0,0);
     gl.drawArrays(gl.TRIANGLES,0,6);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.useProgram(WGL.progFloor);
+    WGL.bindFloorU(WGL.progFloor);
     gl.uniformMatrix4fv(gl.getUniformLocation(WGL.progFloor,'pv'),false,pv);
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'oc'),0,0);
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'oh'),dW*0.5,dD*0.5);
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'sdir'),-L0[0]*ks,-L0[2]*ks);
+    gl.uniform1f(gl.getUniformLocation(WGL.progFloor,'shAmt'), WGL.shadowsEnabled()?1.0:0.0);
     var _pGrd=(typeof prefHex01==='function'&&prefHex01(PREFS.ground))||[0.88,0.89,0.90];
     gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'floorC'),_pGrd[0],_pGrd[1],_pGrd[2]);
     gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'horC'),_pHor[0],_pHor[1],_pHor[2]);
     var fpq=gl.getAttribLocation(WGL.progFloor,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.floorBuf); gl.enableVertexAttribArray(fpq); gl.vertexAttribPointer(fpq,3,gl.FLOAT,false,0,0);
     gl.drawArrays(gl.TRIANGLES,0,6);
   }
-  /* --- OMBRES PORTÉES : une tache de contact au sol par meuble (avant les objets) --- */
-  if(!_site && WGL.progBlob){
+  /* --- OMBRES PORTÉES DU SOLEIL : silhouette exacte projetée sur le sol (y=0),
+     par instance, avec stencil pour ne pas cumuler les recouvrements. --- */
+  if(!_site && WGL.progShadow && WGL.shadowsEnabled() && (SCENE.instances||[]).length){
+    var L0s=_sunL, Lys=Math.max(0.25,L0s[1]);
+    var Sh=new Float32Array([1,0,0,0, -L0s[0]/Lys,0,-L0s[2]/Lys,0, 0,0,1,0, 0,0.006,0,1]);
+    var pvsh=WGL._mul(pv,Sh), PS=WGL.progShadow;
+    gl.useProgram(PS);
+    gl.uniformMatrix4fv(gl.getUniformLocation(PS,'pv'),false,pvsh);
+    gl.uniform4f(gl.getUniformLocation(PS,'col'),0.0,0.0,0.0,0.30);
+    var ulSM=gl.getUniformLocation(PS,'model'), lps=gl.getAttribLocation(PS,'p');
+    gl.enable(gl.STENCIL_TEST); gl.clearStencil(0); gl.clear(gl.STENCIL_BUFFER_BIT);
+    gl.stencilFunc(gl.EQUAL,0,0xFF); gl.stencilOp(gl.KEEP,gl.KEEP,gl.INCR);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+    (SCENE.instances||[]).forEach(function(inst){
+      gl.uniformMatrix4fv(ulSM,false,scnModel(inst));
+      if(inst.mode==='fabprod'){
+        var pgs=WGL.prodTexCache[inst.prod];
+        if(pgs && pgs.ready && pgs.pos && pgs.idx){
+          gl.bindBuffer(gl.ARRAY_BUFFER,pgs.pos); gl.enableVertexAttribArray(lps); gl.vertexAttribPointer(lps,3,gl.FLOAT,false,0,0);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,pgs.idx);
+          (pgs.groups||[]).forEach(function(g){ gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4); });
+        }
+      } else {
+        var ss=null; try{ ss=scnInstSplitGL(inst); }catch(_e){}
+        if(ss){   /* seules les faces OPAQUES projettent une ombre (pas le verre) */
+          if(ss.col){ gl.bindBuffer(gl.ARRAY_BUFFER,ss.col.pos); gl.enableVertexAttribArray(lps); gl.vertexAttribPointer(lps,3,gl.FLOAT,false,0,0); gl.drawArrays(gl.TRIANGLES,0,ss.col.count); }
+          (ss.tex||[]).forEach(function(t){ gl.bindBuffer(gl.ARRAY_BUFFER,t.pos); gl.enableVertexAttribArray(lps); gl.vertexAttribPointer(lps,3,gl.FLOAT,false,0,0); gl.drawArrays(gl.TRIANGLES,0,t.count); });
+        }
+      }
+    });
+    gl.disable(gl.STENCIL_TEST); gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+  }
+  /* --- OCCLUSION DE CONTACT : tache douce sous chaque meuble (complète l'ombre solaire) --- */
+  if(!_site && WGL.progBlob && WGL.shadowsEnabled()){
     var PB=WGL.progBlob; gl.useProgram(PB);
     gl.uniformMatrix4fv(gl.getUniformLocation(PB,'pv'),false,pv);
     var _bq=gl.getAttribLocation(PB,'q'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.skyBuf); gl.enableVertexAttribArray(_bq); gl.vertexAttribPointer(_bq,2,gl.FLOAT,false,0,0);
@@ -964,7 +1061,7 @@ WGL.renderSceneTex=function(){
       var fp; try{ fp=scnFootprint(inst); }catch(_e){ return; } if(!fp) return;   /* empreinte en cache : aucun rebuild par frame */
       var cx=(fp.x0+fp.x1)/2, cz=(fp.z0+fp.z1)/2, hx=(fp.x1-fp.x0)/2*1.16+0.05, hz=(fp.z1-fp.z0)/2*1.16+0.05;
       gl.uniformMatrix4fv(_bM,false,scnModel(inst));
-      gl.uniform2f(_bC,cx,cz); gl.uniform2f(_bH,hx,hz); gl.uniform1f(_bY,(fp.y0||0)+0.004); gl.uniform1f(_bS,0.32);
+      gl.uniform2f(_bC,cx,cz); gl.uniform2f(_bH,hx,hz); gl.uniform1f(_bY,(fp.y0||0)+0.004); gl.uniform1f(_bS,0.16);
       gl.drawArrays(gl.TRIANGLES,0,6);
     });
     gl.depthMask(true); gl.disable(gl.BLEND);
@@ -981,6 +1078,7 @@ WGL.renderSceneTex=function(){
   gl.uniform3f(gl.getUniformLocation(P,'ovCol'),0.7,0.71,0.73);
   gl.uniform1i(gl.getUniformLocation(P,'tex0'),0);
   gl.uniform2f(gl.getUniformLocation(P,'mrp'),0.0,0.55);
+  WGL.bindShadowU(P,_shOK);   /* ombres portées du soleil */
   var ulModel=gl.getUniformLocation(P,'model'), ulUse=gl.getUniformLocation(P,'useTex'), ulBase=gl.getUniformLocation(P,'baseCol'), ulUV=gl.getUniformLocation(P,'uvScale'), ulUR=gl.getUniformLocation(P,'uvRot');
   var lp=gl.getAttribLocation(P,'p'), ln=gl.getAttribLocation(P,'n'), luv=gl.getAttribLocation(P,'uv');
   var pool=(typeof TEX_POOL!=='undefined')?TEX_POOL:{};
@@ -1026,6 +1124,8 @@ WGL.renderSceneTex=function(){
     gl.uniform3fv(gl.getUniformLocation(PG,'lightCols'),new Float32Array([].concat.apply([],e.C)));
     gl.uniform3fv(gl.getUniformLocation(PG,'ambTop'),new Float32Array(e.aT));
     gl.uniform3fv(gl.getUniformLocation(PG,'ambBot'),new Float32Array(e.aB));
+    WGL.bindShadowU(PG,_shOK);
+    WGL.bindEnvColors(PG);   /* ciel/sol réels → reflets du verre */
     var gM=gl.getUniformLocation(PG,'model'), glp=gl.getAttribLocation(PG,'p'), gln=gl.getAttribLocation(PG,'n'), glc=gl.getAttribLocation(PG,'c');
     others.forEach(function(inst,oi){ var s=splits[oi], b=s&&s.col; if(!b)return; gl.uniformMatrix4fv(gM,false,scnModel(inst));
       gl.bindBuffer(gl.ARRAY_BUFFER,b.pos);gl.enableVertexAttribArray(glp);gl.vertexAttribPointer(glp,3,gl.FLOAT,false,0,0);
@@ -1042,6 +1142,7 @@ WGL.renderSceneTex=function(){
     gl.depthMask(true); gl.disable(gl.BLEND);
     gl.uniformMatrix4fv(gM,false,WGL._ident());
   }
+  WGL.compositeAO(_aoOK);   /* occlusion ambiante : couleur *= AO */
 };
 /* ============================================================================
    PROTOTYPE — RENDU WEBGL DES OBJETS GÉNÉRIQUES (à partir de la liste FC)
@@ -1052,10 +1153,13 @@ WGL.renderSceneTex=function(){
 WGL.initGGL=function(){
   if(WGL.progG) return true; var gl=WGL.gl; if(!gl) return false;
   var vs='attribute vec3 p;attribute vec3 n;attribute vec4 c;uniform mat4 pv;uniform mat4 model;'+
+    GLSL_SH_VS+
     'varying vec3 vn;varying vec3 vw;varying vec4 vc;'+
-    'void main(){vec4 wp=model*vec4(p,1.0);gl_Position=pv*wp;vn=mat3(model)*n;vw=wp.xyz;vc=c;}';
+    'void main(){vec4 wp=model*vec4(p,1.0);gl_Position=pv*wp;vn=mat3(model)*n;vw=wp.xyz;vc=c;vsp=lvp*wp;}';
   var fs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec4 vc;'+
     'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;'+
+    'uniform vec3 skyTopC;uniform vec3 skyHorC;uniform vec3 gndC;'+
+    GLSL_SH_FS+
     'const float PI=3.14159265;'+
     'float D_GGX(float NoH,float a){float a2=a*a;float d=NoH*NoH*(a2-1.0)+1.0;return a2/(PI*d*d);}'+
     'float G_Smith(float NoV,float NoL,float a){float k=a*0.5;float gv=NoV/(NoV*(1.0-k)+k);float gl2=NoL/(NoL*(1.0-k)+k);return gv*gl2;}'+
@@ -1063,26 +1167,31 @@ WGL.initGGL=function(){
     'void main(){vec3 N=normalize(vn);vec3 Vd=normalize(camPos-vw);if(dot(N,Vd)<0.0)N=-N;'+
     'vec3 alb=vc.rgb;float rough=0.55;vec3 F0=vec3(0.04);float a=rough*rough;'+
     'float NoV=max(dot(N,Vd),0.001);vec3 col=vec3(0.0);'+
+    'float shf=shadowF(N,normalize(lightDirs[0]));'+
     'for(int i=0;i<3;i++){vec3 Ld=normalize(lightDirs[i]);vec3 H=normalize(Vd+Ld);'+
     'float NoL=max(dot(N,Ld),0.0);float NoH=max(dot(N,H),0.0);float VoH=max(dot(Vd,H),0.0);'+
     'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
-    'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);col+=(alb/PI+spec)*lightCols[i]*NoL;}'+
+    'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);col+=(alb/PI+spec)*lightCols[i]*NoL*((i==0)?shf:1.0);}'+
     'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*0.9;'+
     'float isG=step(vc.a,0.95);'+
-    'vec3 Rr=reflect(-Vd,N);float ry=clamp(Rr.y*0.5+0.5,0.0,1.0);'+
-    'vec3 skyR=mix(vec3(0.87,0.91,0.96),vec3(0.40,0.60,0.86),ry);'+
+    /* VERRE : réflexion du vrai ciel au-dessus de l'horizon, du sol en dessous, + éclat solaire */
+    'vec3 Rr=reflect(-Vd,N);'+
+    'vec3 skyR=(Rr.y>=0.0)?mix(skyHorC,skyTopC,pow(clamp(Rr.y,0.0,1.0),0.75))'+
+    ':mix(skyHorC,gndC,clamp(-Rr.y*2.2,0.0,1.0));'+
     'float fre=pow(1.0-NoV,4.0);'+
-    'col=mix(col, mix(col,skyR,0.62)+skyR*fre*0.95, isG*0.92);'+
+    'float glint=pow(max(dot(Rr,normalize(lightDirs[0])),0.0),64.0)*shf;'+
+    'col=mix(col, mix(col,skyR,0.62)+skyR*fre*0.95+vec3(glint*0.55), isG*0.92);'+
     'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));'+
     'gl_FragColor=vec4(col, mix(vc.a, clamp(vc.a+fre*0.5,0.0,0.85), isG));}';
   function sh(t,src){var o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
   var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(pr));
   /* shader objets TEXTURÉS (mêmes lumières que progG, albédo échantillonné) */
-  var tvs='attribute vec3 p;attribute vec3 n;attribute vec2 uv;uniform mat4 pv;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
-    'void main(){gl_Position=pv*vec4(p,1.0);vn=n;vw=p;vuv=uv;}';
+  var tvs='attribute vec3 p;attribute vec3 n;attribute vec2 uv;uniform mat4 pv;'+GLSL_SH_VS+'varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
+    'void main(){gl_Position=pv*vec4(p,1.0);vn=n;vw=p;vuv=uv;vsp=lvp*vec4(p,1.0);}';
   var tfs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
     'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform sampler2D uTex;'+
+    GLSL_SH_FS+
     'const float PI=3.14159265;'+
     'float D_GGX(float NoH,float a){float a2=a*a;float d=NoH*NoH*(a2-1.0)+1.0;return a2/(PI*d*d);}'+
     'float G_Smith(float NoV,float NoL,float a){float k=a*0.5;float gv=NoV/(NoV*(1.0-k)+k);float gl2=NoL/(NoL*(1.0-k)+k);return gv*gl2;}'+
@@ -1090,10 +1199,11 @@ WGL.initGGL=function(){
     'void main(){vec3 N=normalize(vn);vec3 Vd=normalize(camPos-vw);if(dot(N,Vd)<0.0)N=-N;'+
     'vec3 alb=texture2D(uTex,vuv).rgb;float rough=0.6;vec3 F0=vec3(0.04);float a=rough*rough;'+
     'float NoV=max(dot(N,Vd),0.001);vec3 col=vec3(0.0);'+
+    'float shf=shadowF(N,normalize(lightDirs[0]));'+
     'for(int i=0;i<3;i++){vec3 Ld=normalize(lightDirs[i]);vec3 H=normalize(Vd+Ld);'+
     'float NoL=max(dot(N,Ld),0.0);float NoH=max(dot(N,H),0.0);float VoH=max(dot(Vd,H),0.0);'+
     'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
-    'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);col+=(alb/PI+spec)*lightCols[i]*NoL;}'+
+    'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);col+=(alb/PI+spec)*lightCols[i]*NoL*((i==0)?shf:1.0);}'+
     'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*0.9;'+
     'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));gl_FragColor=vec4(col,1.0);}';
   var prt=gl.createProgram();gl.attachShader(prt,sh(gl.VERTEX_SHADER,tvs));gl.attachShader(prt,sh(gl.FRAGMENT_SHADER,tfs));gl.linkProgram(prt);
@@ -1104,23 +1214,54 @@ WGL.initGGL=function(){
   var gfs='precision highp float;varying vec2 vuv;uniform sampler2D map;void main(){gl_FragColor=texture2D(map,vuv);}';
   var pg=gl.createProgram();gl.attachShader(pg,sh(gl.VERTEX_SHADER,gvs));gl.attachShader(pg,sh(gl.FRAGMENT_SHADER,gfs));gl.linkProgram(pg);WGL.progGround=pg;
   /* --- fond ciel + sol + ombre de contact (vue produit, sans carte SITE) --- */
-  var svs='attribute vec2 p;varying float vy;void main(){vy=p.y*0.5+0.5;gl_Position=vec4(p,0.999,1.0);}';
-  var sfs='precision highp float;varying float vy;uniform vec3 topC;uniform vec3 horC;void main(){float t=clamp(vy,0.0,1.0);vec3 sky=mix(horC,topC,pow(t,1.42));sky+=horC*0.10*exp(-t*7.0);gl_FragColor=vec4(sky,1.0);}';
+  /* CIEL : rayon de vue reconstruit par pixel → dégradé zénithal, voile d'horizon,
+     nuages fBm sur un plan projeté, halo et disque solaires suivant la course du soleil. */
+  var svs='attribute vec2 p;uniform vec3 cf;uniform vec3 cr;uniform vec3 cu;uniform float tanH;uniform float aspect;'+
+    'varying vec3 vdir;varying float vy;'+
+    'void main(){vy=p.y*0.5+0.5;vdir=cf+cr*(p.x*tanH*aspect)+cu*(p.y*tanH);gl_Position=vec4(p,0.999,1.0);}';
+  var sfs='precision highp float;varying vec3 vdir;varying float vy;'+
+    'uniform vec3 topC;uniform vec3 horC;uniform vec3 sunDir;uniform float cloudAmt;'+
+    'float h21(vec2 q){return fract(sin(dot(q,vec2(127.1,311.7)))*43758.5453);}'+
+    'float vnz(vec2 q){vec2 i=floor(q),f=fract(q);f=f*f*(3.0-2.0*f);'+
+    'float a=h21(i),b=h21(i+vec2(1.0,0.0)),c=h21(i+vec2(0.0,1.0)),d=h21(i+vec2(1.0,1.0));'+
+    'return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);}'+
+    'float fbm(vec2 q){float s=0.0,a=0.5;for(int i=0;i<5;i++){s+=a*vnz(q);q*=2.03;a*=0.5;}return s;}'+
+    'void main(){vec3 d=normalize(vdir);float t=clamp(d.y,0.0,1.0);'+
+    'vec3 sky=mix(horC,topC,pow(t,0.42));'+
+    'sky+=horC*0.12*exp(-t*7.0);'+                                        /* voile d horizon */
+    'float sd=max(dot(d,normalize(sunDir)),0.0);'+
+    'sky+=vec3(1.0,0.96,0.88)*pow(sd,8.0)*0.20;'+                          /* halo large */
+    'sky+=vec3(1.0,0.98,0.92)*smoothstep(0.9992,0.9999,sd)*2.4;'+          /* disque solaire */
+    'if(d.y>0.02&&cloudAmt>0.01){'+
+    'vec2 cp=d.xz/max(d.y,0.02)*0.30;'+
+    'float n1=fbm(cp*1.5);float n2=fbm(cp*4.0+vec2(n1,n1));'+
+    'float cov=smoothstep(0.46,0.86,n1*0.65+n2*0.35);'+
+    'cov*=smoothstep(0.02,0.30,d.y)*cloudAmt;'+                            /* pas de nuages collés a l horizon */
+    'float lit=0.55+0.45*pow(sd,2.0);'+
+    'vec3 cc=mix(vec3(0.70,0.72,0.77),vec3(1.0,0.99,0.96),lit);'+
+    'sky=mix(sky,cc,cov);}'+
+    'gl_FragColor=vec4(clamp(sky,0.0,1.0),1.0);}';
   var ps=gl.createProgram();gl.attachShader(ps,sh(gl.VERTEX_SHADER,svs));gl.attachShader(ps,sh(gl.FRAGMENT_SHADER,sfs));gl.linkProgram(ps);WGL.progSky=ps;
   var fvs='attribute vec3 p;uniform mat4 pv;varying vec3 vw;void main(){vw=p;gl_Position=pv*vec4(p,1.0);}';
-  var ffs='precision highp float;varying vec3 vw;uniform vec2 oc;uniform vec2 oh;uniform vec2 sdir;uniform vec3 floorC;uniform vec3 horC;'+
+  var ffs='precision highp float;varying vec3 vw;uniform vec2 oc;uniform vec2 oh;uniform vec2 sdir;uniform vec3 floorC;uniform vec3 horC;uniform float shAmt;'+
+    'uniform sampler2D gtex;uniform float useG;uniform float gScale;'+
     'void main(){'+
     'float ex=(vw.x-oc.x-sdir.x)/(oh.x+0.18);float ez=(vw.z-oc.y-sdir.y)/(oh.y+0.18);'+
     'float ed=sqrt(ex*ex+ez*ez);'+
-    'float shc=(1.0-smoothstep(0.50,1.9,ed))*0.62;'+
-    'vec3 c=floorC*(1.0-shc);'+
-    'float dist=length(vw.xz-oc);float f=smoothstep(8.0,42.0,dist);'+
-    'c=mix(c, horC*0.97, f*0.9);'+
+    'float shc=(1.0-smoothstep(0.50,1.9,ed))*0.62*shAmt;'+
+    'vec3 base=floorC;'+
+    'if(useG>0.5){'+
+    'vec3 g=texture2D(gtex,vw.xz*gScale).rgb;'+
+    'float v=0.86+0.28*fract(sin(dot(floor(vw.xz*0.09),vec2(12.9898,78.233)))*43758.5453);'+   /* taches larges : casse la tuile */
+    'base=g*v;}'+
+    'vec3 c=base*(1.0-shc);'+
+    'float dist=length(vw.xz-oc);float f=smoothstep(10.0,60.0,dist);'+
+    'c=mix(c, horC*0.97, f*0.92);'+                                                            /* fondu atmospherique vers l horizon */
     'gl_FragColor=vec4(c,1.0);}';
   var pf=gl.createProgram();gl.attachShader(pf,sh(gl.VERTEX_SHADER,fvs));gl.attachShader(pf,sh(gl.FRAGMENT_SHADER,ffs));gl.linkProgram(pf);WGL.progFloor=pf;
   WGL.skyBuf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,WGL.skyBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
-  var FSZ=120;WGL.floorBuf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,WGL.floorBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-FSZ,0,-FSZ, FSZ,0,-FSZ, -FSZ,0,FSZ, -FSZ,0,FSZ, FSZ,0,-FSZ, FSZ,0,FSZ]),gl.STATIC_DRAW);
-  var hvs='attribute vec3 p;uniform mat4 pv;void main(){gl_Position=pv*vec4(p,1.0);}';
+  var FSZ=600;WGL.floorBuf=gl.createBuffer();   /* sol large : l horizon doit se fondre dans le ciel */gl.bindBuffer(gl.ARRAY_BUFFER,WGL.floorBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-FSZ,0,-FSZ, FSZ,0,-FSZ, -FSZ,0,FSZ, -FSZ,0,FSZ, FSZ,0,-FSZ, FSZ,0,FSZ]),gl.STATIC_DRAW);
+  var hvs='attribute vec3 p;uniform mat4 pv;uniform mat4 model;void main(){gl_Position=pv*model*vec4(p,1.0);}';
   var hfs='precision mediump float;uniform vec4 col;void main(){gl_FragColor=col;}';
   var ph=gl.createProgram();gl.attachShader(ph,sh(gl.VERTEX_SHADER,hvs));gl.attachShader(ph,sh(gl.FRAGMENT_SHADER,hfs));gl.linkProgram(ph);WGL.progShadow=ph;
   /* ombre de contact « blob » pour la scène : quad au sol par meuble, alpha en dégradé radial */
@@ -1130,6 +1271,363 @@ WGL.initGGL=function(){
     'void main(){float d=length(vp);float a=(1.0-smoothstep(0.30,1.0,d))*str;gl_FragColor=vec4(0.0,0.0,0.0,a);}';
   var pb=gl.createProgram();gl.attachShader(pb,sh(gl.VERTEX_SHADER,bvs));gl.attachShader(pb,sh(gl.FRAGMENT_SHADER,bfs));gl.linkProgram(pb);WGL.progBlob=pb;
   WGL.progG=pr; return true;
+};
+/* ============================================================================
+   SHADOW MAP — ombres portées du soleil (objets entre eux, sur eux-mêmes, au sol)
+   Profondeur encodée sur RGBA8 (portable WebGL1/2, sans extension depth-texture).
+   Si l'initialisation échoue, WGL.shInit=false → shOn=0 → rendu identique à avant.
+   ============================================================================ */
+WGL.SHSZ=2048;
+WGL.shadowsEnabled=function(){ return (typeof PREFS==='undefined' || PREFS.shadows!==0); };
+/* direction VERS le soleil ; reprend la course solaire (SUN/SITE.north) si active */
+WGL.sunVec=function(fallback){
+  try{
+    if(typeof SUN!=='undefined' && SUN.on){
+      if(typeof computeSun==='function') computeSun();
+      if(SUN.elev>2){
+        var elr=SUN.elev*Math.PI/180, azr=SUN.az*Math.PI/180;
+        var tsx=Math.sin(azr), tsz=-Math.cos(azr);
+        var rad=((typeof SITE!=='undefined'&&SITE.north)||0)*Math.PI/180, rc=Math.cos(rad), rs=Math.sin(rad);
+        var wx=tsx*rc-tsz*rs, wz=tsx*rs+tsz*rc, ch=Math.cos(elr);
+        return [wx*ch, Math.sin(elr), wz*ch];
+      }
+    }
+  }catch(e){}
+  return fallback;
+};
+WGL.initShadowMap=function(){
+  if(WGL.shInit!==undefined) return WGL.shInit;
+  var gl=WGL.gl; if(!gl){ WGL.shInit=false; return false; }
+  try{
+    var SZ=WGL.SHSZ;
+    var t=gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,SZ,SZ,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    var rb=gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER,rb);
+    gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,SZ,SZ);
+    var fb=gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,rb);
+    var ok=(gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    if(!ok){ console.warn('Shadow map : framebuffer incomplet, ombres désactivées.'); WGL.shInit=false; return false; }
+    var dvs='attribute vec3 p;uniform mat4 lvp;uniform mat4 model;void main(){gl_Position=lvp*model*vec4(p,1.0);}';
+    var dfs='precision highp float;'+
+      'vec4 packD(float v){vec4 e=vec4(1.0,255.0,65025.0,16581375.0)*v;e=fract(e);e-=e.yzww*vec4(1.0/255.0,1.0/255.0,1.0/255.0,0.0);return e;}'+
+      'void main(){gl_FragColor=packD(gl_FragCoord.z);}';
+    function csh(ty,src){ var o=gl.createShader(ty); gl.shaderSource(o,src); gl.compileShader(o);
+      if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)){ console.error(gl.getShaderInfoLog(o)); return null; } return o; }
+    var a=csh(gl.VERTEX_SHADER,dvs), b=csh(gl.FRAGMENT_SHADER,dfs);
+    if(!a||!b){ WGL.shInit=false; return false; }
+    var pr=gl.createProgram(); gl.attachShader(pr,a); gl.attachShader(pr,b); gl.linkProgram(pr);
+    if(!gl.getProgramParameter(pr,gl.LINK_STATUS)){ console.error(gl.getProgramInfoLog(pr)); WGL.shInit=false; return false; }
+    WGL.progDepth=pr; WGL.shTex=t; WGL.shFBO=fb; WGL.shInit=true; return true;
+  }catch(e){ console.warn('Shadow map indisponible :',e); WGL.shInit=false; return false; }
+};
+/* Rend la carte de profondeur depuis le soleil. drawFn(ulModel, attribP) dessine
+   la géométrie OPAQUE. Renvoie true si la carte est utilisable. */
+WGL.renderShadowMap=function(L, drawFn){
+  if(!WGL.shadowsEnabled() || !WGL.initShadowMap()) return false;
+  var gl=WGL.gl, SZ=WGL.SHSZ;
+  var d=(typeof DIMS!=='undefined'&&DIMS)?DIMS:{w:4,h:3,d:4,cy:1.5};
+  var R=0.5*Math.sqrt(d.w*d.w+d.h*d.h+d.d*d.d)*1.3+1.0;
+  var C=[0,(d.cy!=null?d.cy:d.h/2),0];
+  var Ln=Math.sqrt(L[0]*L[0]+L[1]*L[1]+L[2]*L[2])||1, l=[L[0]/Ln,L[1]/Ln,L[2]/Ln];
+  if(l[1]<0.12){ l[1]=0.12; }                                   /* soleil trop rasant → ombres démesurées */
+  var eye=[C[0]+l[0]*R*2.2, C[1]+l[1]*R*2.2, C[2]+l[2]*R*2.2];
+  var up=(Math.abs(l[1])>0.98)?[0,0,1]:[0,1,0];
+  WGL.lightVP=WGL._mul(WGL._ortho(R,1,0.05,R*4.8+10), WGL._look(eye,C,up));
+  gl.bindFramebuffer(gl.FRAMEBUFFER,WGL.shFBO);
+  gl.viewport(0,0,SZ,SZ);
+  gl.clearColor(1,1,1,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND); gl.disable(gl.STENCIL_TEST);
+  var P=WGL.progDepth; gl.useProgram(P);
+  gl.uniformMatrix4fv(gl.getUniformLocation(P,'lvp'),false,WGL.lightVP);
+  try{ drawFn(gl.getUniformLocation(P,'model'), gl.getAttribLocation(P,'p')); }
+  catch(e){ console.warn('Shadow map : dessin échoué',e); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  var cv=gl.canvas; gl.viewport(0,0,cv.width,cv.height);
+  return true;
+};
+/* Couleurs réelles du ciel/sol → utilisées par progG pour les reflets du verre. */
+WGL.bindEnvColors=function(P){
+  var gl=WGL.gl;
+  var pT=(typeof prefHex01==='function'&&prefHex01(PREFS.skyTop))||[0.40,0.60,0.86];
+  var pH=(typeof prefHex01==='function'&&prefHex01(PREFS.skyHor))||[0.87,0.91,0.96];
+  var pG=(typeof prefHex01==='function'&&prefHex01(PREFS.ground))||[0.88,0.89,0.90];
+  gl.uniform3f(gl.getUniformLocation(P,'skyTopC'),pT[0],pT[1],pT[2]);
+  gl.uniform3f(gl.getUniformLocation(P,'skyHorC'),pH[0],pH[1],pH[2]);
+  gl.uniform3f(gl.getUniformLocation(P,'gndC'),pG[0],pG[1],pG[2]);
+};
+/* Branche la carte d'ombre sur un programme (unité de texture 1). */
+WGL.bindShadowU=function(P, on){
+  var gl=WGL.gl;
+  gl.uniform1f(gl.getUniformLocation(P,'shOn'), on?1.0:0.0);
+  if(!on) return;
+  gl.uniformMatrix4fv(gl.getUniformLocation(P,'lvp'),false,WGL.lightVP);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,WGL.shTex);
+  gl.uniform1i(gl.getUniformLocation(P,'shMap'),1);
+  gl.activeTexture(gl.TEXTURE0);
+};
+/* ============================================================================
+   SSAO — occlusion ambiante en espace écran.
+   1) passe géométrique : profondeur vue linéaire (RG, ~16 bits) + normale vue
+      (BA, octaédrique) dans une seule cible RGBA8 ;
+   2) occlusion : hémisphère de 12 échantillons orienté par la normale ;
+   3) flou 4×4 ; 4) composition en MULTIPLICATION sur l'image déjà rendue.
+   Aucun shader d'éclairage n'est modifié : si l'init échoue, on ne compose pas.
+   ============================================================================ */
+WGL.aoEnabled=function(){ return (typeof PREFS!=='undefined' && PREFS.ssao===1); };
+WGL._fsQuad=function(){
+  var gl=WGL.gl;
+  if(!WGL.quadBuf){ WGL.quadBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.quadBuf);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW); }
+  return WGL.quadBuf;
+};
+/* linear=false pour le gbuffer : la profondeur empaquetée (floor/fract) et la
+   normale octaédrique NE DOIVENT PAS être interpolées → NEAREST obligatoire. */
+WGL._mkRT=function(w,h,linear){
+  var gl=WGL.gl, t=gl.createTexture(), F=linear?gl.LINEAR:gl.NEAREST;
+  gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,F);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,F);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  var fb=gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  return {tex:t, fb:fb, w:w, h:h};
+};
+WGL.initAO=function(){
+  if(WGL.aoInit===false) return false;
+  var gl=WGL.gl; if(!gl){ WGL.aoInit=false; return false; }
+  var cv=gl.canvas, W=Math.max(2,cv.width|0), H=Math.max(2,cv.height|0);
+  if(WGL.aoInit===true && WGL.aoG && WGL.aoG.w===W && WGL.aoG.h===H) return true;   /* déjà prêt, bonne taille */
+  try{
+    if(WGL.aoG){ [WGL.aoG,WGL.aoA,WGL.aoB].forEach(function(r){ if(r){ gl.deleteTexture(r.tex); gl.deleteFramebuffer(r.fb); } });
+      if(WGL.aoRB) gl.deleteRenderbuffer(WGL.aoRB); }
+    var G=WGL._mkRT(W,H,false);   /* gbuffer : NEAREST */
+    var rb=gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER,rb);
+    gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,W,H);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,G.fb);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,rb);
+    var okG=(gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE);
+    var A=WGL._mkRT(W,H,false), okA=(gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE);   /* AO brute : NEAREST (flou aligné) */
+    var B=WGL._mkRT(W,H,true),  okB=(gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE);   /* AO floutée : LINEAR */
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    if(!okG||!okA||!okB){ console.warn('SSAO : framebuffer incomplet, désactivé.'); WGL.aoInit=false; return false; }
+    WGL.aoG=G; WGL.aoA=A; WGL.aoB=B; WGL.aoRB=rb;
+    if(WGL.progAOg){ WGL.aoInit=true; return true; }   /* shaders déjà compilés */
+    function csh(ty,src){ var o=gl.createShader(ty); gl.shaderSource(o,src); gl.compileShader(o);
+      if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)){ console.error(gl.getShaderInfoLog(o)); return null; } return o; }
+    function link(vs,fs){ var a=csh(gl.VERTEX_SHADER,vs), b=csh(gl.FRAGMENT_SHADER,fs); if(!a||!b) return null;
+      var p=gl.createProgram(); gl.attachShader(p,a); gl.attachShader(p,b); gl.linkProgram(p);
+      if(!gl.getProgramParameter(p,gl.LINK_STATUS)){ console.error(gl.getProgramInfoLog(p)); return null; } return p; }
+    var PACK='vec2 packD(float v){float e=v*255.0;return vec2(floor(e)/255.0,fract(e));}'+
+             'float unpackD(vec2 c){return c.x+c.y/255.0;}'+
+             'vec2 octE(vec3 n){n/=(abs(n.x)+abs(n.y)+abs(n.z));vec2 e=(n.z>=0.0)?n.xy:((1.0-abs(n.yx))*vec2(n.x>=0.0?1.0:-1.0,n.y>=0.0?1.0:-1.0));return e*0.5+0.5;}'+
+             'vec3 octD(vec2 f){f=f*2.0-1.0;vec3 n=vec3(f.x,f.y,1.0-abs(f.x)-abs(f.y));float t=clamp(-n.z,0.0,1.0);'+
+             'n.x+=(n.x>=0.0)?-t:t;n.y+=(n.y>=0.0)?-t:t;return normalize(n);}';
+    /* 1) passe géométrique */
+    var gvs='attribute vec3 p;attribute vec3 n;uniform mat4 proj;uniform mat4 mv;varying vec3 vp;varying vec3 vnn;'+
+      'void main(){vec4 v=mv*vec4(p,1.0);vp=v.xyz;vnn=mat3(mv)*n;gl_Position=proj*v;}';
+    var gfs='precision highp float;varying vec3 vp;varying vec3 vnn;uniform float far;'+PACK+
+      'void main(){float d=clamp(-vp.z/far,0.0,1.0);vec3 N=normalize(vnn);'+
+      'gl_FragColor=vec4(packD(d),octE(N));}';
+    WGL.progAOg=link(gvs,gfs);
+    /* 2) occlusion */
+    var qvs='attribute vec2 q;varying vec2 uv;void main(){uv=q*0.5+0.5;gl_Position=vec4(q,0.0,1.0);}';
+    var afs='precision highp float;varying vec2 uv;uniform sampler2D gbuf;uniform mat4 proj;'+
+      'uniform float far;uniform float tanH;uniform float aspect;uniform float radius;uniform float strength;'+PACK+
+      'void main(){vec4 g=texture2D(gbuf,uv);float d=unpackD(g.rg);'+
+      'if(d>=0.999){gl_FragColor=vec4(1.0);return;}'+                      /* fond : pas d occlusion */
+      'vec3 N=octD(g.ba);'+
+      'vec3 ray=vec3((uv.x*2.0-1.0)*tanH*aspect,(uv.y*2.0-1.0)*tanH,-1.0);'+
+      'vec3 vp=ray*(d*far);'+
+      'vec3 up=(abs(N.z)<0.9)?vec3(0.0,0.0,1.0):vec3(1.0,0.0,0.0);'+
+      'vec3 T=normalize(cross(up,N));vec3 B=cross(N,T);'+
+      'vec2 nz=mod(gl_FragCoord.xy,4.0);'+                                 /* bruit tuilé 4x4 : effacé exactement par le flou 4x4 */
+      'float rnd=fract(sin(dot(nz,vec2(12.9898,78.233)))*43758.5453);'+
+      'float bias=0.025+0.0025*(-vp.z);'+                                  /* biais croissant avec la distance (quantification) */
+      'float occ=0.0;'+
+      'for(int i=0;i<12;i++){float fi=float(i);float u1=(fi+0.5)/12.0;'+
+      'float ang=fi*2.399963+rnd*6.2831853;'+
+      'float sr=sqrt(u1);float cz=sqrt(1.0-u1);'+
+      'vec3 dir=T*(cos(ang)*sr)+B*(sin(ang)*sr)+N*cz;'+
+      'float sc=radius*mix(0.15,1.0,u1*u1);'+
+      'vec3 sp=vp+dir*sc;'+
+      'vec4 cp=proj*vec4(sp,1.0);'+
+      'if(cp.w<=0.0) continue;'+
+      'vec2 suv=cp.xy/cp.w*0.5+0.5;'+
+      'if(suv.x<0.0||suv.x>1.0||suv.y<0.0||suv.y>1.0) continue;'+
+      'float sd=unpackD(texture2D(gbuf,suv).rg)*far;'+
+      'float spd=-sp.z;'+
+      'float rc=smoothstep(0.0,1.0,radius/max(abs((-vp.z)-sd),0.0001));'+   /* comparaison au fragment central, pas à l échantillon */
+      'occ+=((sd<spd-bias)?1.0:0.0)*rc;}'+
+      'float ao=1.0-clamp(occ/12.0*strength,0.0,1.0);'+
+      'ao=mix(1.0,ao,0.75);'+                                              /* plancher : jamais totalement noir */
+      'ao=mix(ao,1.0,smoothstep(0.35,0.75,d));'+                           /* estompe au loin : pas de salissure sur l arriere-plan */
+      'gl_FragColor=vec4(ao,ao,ao,1.0);}';
+    WGL.progAOa=link(qvs,afs);
+    /* 3) flou 4x4 */
+    /* flou BILATÉRAL : 4x4 aligné (moyenne les 16 phases du bruit) mais pondéré par
+       l'écart de profondeur → ne franchit pas les silhouettes, donc pas de liseré. */
+    var bfs='precision highp float;varying vec2 uv;uniform sampler2D src;uniform sampler2D gbuf;uniform vec2 texel;'+PACK+
+      'void main(){float d0=unpackD(texture2D(gbuf,uv).rg);'+
+      'float s=0.0,wsum=0.0;'+
+      'for(int i=-1;i<=2;i++){for(int j=-1;j<=2;j++){'+
+      'vec2 o=uv+vec2(float(i),float(j))*texel;'+
+      'float d=unpackD(texture2D(gbuf,o).rg);'+
+      'float w=exp(-abs(d-d0)*900.0);'+
+      's+=texture2D(src,o).r*w;wsum+=w;}}'+
+      's=(wsum>0.0001)?(s/wsum):texture2D(src,uv).r;'+
+      'gl_FragColor=vec4(s,s,s,1.0);}';
+    WGL.progAOb=link(qvs,bfs);
+    /* 4) composition (multiplication) */
+    var cfs='precision highp float;varying vec2 uv;uniform sampler2D src;'+
+      'void main(){float a=texture2D(src,uv).r;gl_FragColor=vec4(a,a,a,1.0);}';
+    WGL.progAOc=link(qvs,cfs);
+    if(!WGL.progAOg||!WGL.progAOa||!WGL.progAOb||!WGL.progAOc){ WGL.aoInit=false; return false; }
+    WGL.aoInit=true; return true;
+  }catch(e){ console.warn('SSAO indisponible :',e); WGL.aoInit=false; return false; }
+};
+/* Calcule la carte d'occlusion. drawFn(ulMv, attribP, attribN) dessine l'opaque. */
+WGL.renderAO=function(view, proj, far, tanH, aspect, drawFn){
+  if(!WGL.aoEnabled() || !WGL.initAO()) return false;
+  var gl=WGL.gl, G=WGL.aoG, A=WGL.aoA, B=WGL.aoB;
+  /* 1) géométrie */
+  gl.bindFramebuffer(gl.FRAMEBUFFER,G.fb); gl.viewport(0,0,G.w,G.h);
+  gl.clearColor(1,1,1,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND); gl.disable(gl.STENCIL_TEST);
+  var Pg=WGL.progAOg; gl.useProgram(Pg);
+  gl.uniformMatrix4fv(gl.getUniformLocation(Pg,'proj'),false,proj);
+  gl.uniform1f(gl.getUniformLocation(Pg,'far'),far);
+  var ulMv=gl.getUniformLocation(Pg,'mv'), aP=gl.getAttribLocation(Pg,'p'), aN=gl.getAttribLocation(Pg,'n');
+  try{ drawFn(ulMv, aP, aN, view); }catch(e){ console.warn('SSAO : dessin échoué',e); gl.bindFramebuffer(gl.FRAMEBUFFER,null); return false; }
+  /* 2) occlusion */
+  function quad(P){ var lq=gl.getAttribLocation(P,'q'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL._fsQuad());
+    gl.enableVertexAttribArray(lq); gl.vertexAttribPointer(lq,2,gl.FLOAT,false,0,0); gl.drawArrays(gl.TRIANGLES,0,6); }
+  gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,A.fb); gl.viewport(0,0,A.w,A.h);
+  var Pa=WGL.progAOa; gl.useProgram(Pa);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,G.tex); gl.uniform1i(gl.getUniformLocation(Pa,'gbuf'),0);
+  gl.uniformMatrix4fv(gl.getUniformLocation(Pa,'proj'),false,proj);
+  gl.uniform1f(gl.getUniformLocation(Pa,'far'),far);
+  gl.uniform1f(gl.getUniformLocation(Pa,'tanH'),tanH);
+  gl.uniform1f(gl.getUniformLocation(Pa,'aspect'),aspect);
+  var d=(typeof DIMS!=='undefined'&&DIMS)?Math.max(0.5,Math.sqrt(DIMS.w*DIMS.w+DIMS.d*DIMS.d)):4;
+  gl.uniform1f(gl.getUniformLocation(Pa,'radius'), Math.max(0.08, Math.min(0.35, d*0.012)));
+  var _ss=(typeof PREFS!=='undefined' && PREFS.ssaoStrength!=null)?PREFS.ssaoStrength:0.70;
+  gl.uniform1f(gl.getUniformLocation(Pa,'strength'), Math.max(0, Math.min(2.0, _ss)));
+  quad(Pa);
+  /* 3) flou */
+  gl.bindFramebuffer(gl.FRAMEBUFFER,B.fb); gl.viewport(0,0,B.w,B.h);
+  var Pb=WGL.progAOb; gl.useProgram(Pb);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,A.tex); gl.uniform1i(gl.getUniformLocation(Pb,'src'),0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,G.tex); gl.uniform1i(gl.getUniformLocation(Pb,'gbuf'),1);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.uniform2f(gl.getUniformLocation(Pb,'texel'),1/B.w,1/B.h);
+  quad(Pb);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  var cv=gl.canvas; gl.viewport(0,0,cv.width,cv.height);
+  gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+  return true;
+};
+/* Applique l'occlusion sur l'image finale : couleur *= AO. */
+WGL.compositeAO=function(ok){
+  if(!ok) return;
+  var gl=WGL.gl, P=WGL.progAOc;
+  gl.useProgram(P);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,WGL.aoB.tex); gl.uniform1i(gl.getUniformLocation(P,'src'),0);
+  gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.DST_COLOR, gl.ZERO);          /* multiplication */
+  var lq=gl.getAttribLocation(P,'q'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL._fsQuad());
+  gl.enableVertexAttribArray(lq); gl.vertexAttribPointer(lq,2,gl.FLOAT,false,0,0);
+  gl.drawArrays(gl.TRIANGLES,0,6);
+  gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+};
+/* ============================================================================
+   HERBE PROCÉDURALE TUILABLE — bruit de valeur PÉRIODIQUE (la période suit la
+   fréquence), donc les bords se raccordent exactement. Aucun fichier externe.
+   ============================================================================ */
+function genGrassTexture(S){
+  S=S||512;
+  var BASE=8;                                        /* cellules de bruit sur la tuile */
+  var out=new Uint8Array(S*S*4);
+  function h2(x,y,s){ var n=Math.sin(x*127.1+y*311.7+s*74.7)*43758.5453; return n-Math.floor(n); }
+  /* période INDÉPENDANTE par axe : sans ça, dès que les fréquences X et Y
+     diffèrent (les brins), le raccord de la tuile n'est plus exact. */
+  function vn(x,y,perX,perY,s){
+    var xi=Math.floor(x), yi=Math.floor(y), xf=x-xi, yf=y-yi;
+    function H(a,b){ return h2(((a%perX)+perX)%perX, ((b%perY)+perY)%perY, s); }
+    var u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+    var a=H(xi,yi), b=H(xi+1,yi), c=H(xi,yi+1), d=H(xi+1,yi+1);
+    return (a*(1-u)+b*u)*(1-v)+(c*(1-u)+d*u)*v;
+  }
+  function fbm(x,y,per,s){ var t=0,a=0.5,f=1;
+    for(var o=0;o<4;o++){ t+=a*vn(x*f,y*f,per*f,per*f,s+o); a*=0.5; f*=2; } return t; }
+  function cl(v){ return v<0?0:(v>1?1:v); }
+  var dark=[46,72,36], light=[128,158,74], dry=[156,152,90];
+  for(var py=0;py<S;py++){
+    for(var px=0;px<S;px++){
+      var u=px/S*BASE, v=py/S*BASE;
+      var m=fbm(u,v,BASE,1);                          /* variation macro (touffes) */
+      var c2=fbm(u*3,v*3,BASE*3,3);                   /* variation moyenne */
+      var t=cl(m*0.75+c2*0.45-0.20);
+      var r=dark[0]+(light[0]-dark[0])*t, g=dark[1]+(light[1]-dark[1])*t, b=dark[2]+(light[2]-dark[2])*t;
+      var blade=vn(u*10,v*34,BASE*10,BASE*34,7);      /* brins : bruit étiré verticalement (périodes X≠Y) */
+      var k=0.80+0.42*blade;
+      r*=k; g*=k; b*=k;
+      if(vn(u*36,v*36,BASE*36,BASE*36,11)>0.88){      /* brins secs épars */
+        r=r*0.5+dry[0]*0.5; g=g*0.5+dry[1]*0.5; b=b*0.5+dry[2]*0.5;
+      }
+      var i=(py*S+px)*4;
+      out[i]=cl(r/255)*255; out[i+1]=cl(g/255)*255; out[i+2]=cl(b/255)*255; out[i+3]=255;
+    }
+  }
+  return {data:out, w:S, h:S};
+}
+WGL.grassTex=function(){
+  if(WGL._grass!==undefined) return WGL._grass;
+  try{
+    var img=genGrassTexture(512);
+    var t=WGL.makeTexCanvas('__grass__', img);       /* 512 = puissance de 2 → REPEAT + mipmaps */
+    WGL._grass=(t&&t.tex)?t.tex:null;
+  }catch(e){ console.warn('Herbe procédurale indisponible :',e); WGL._grass=null; }
+  return WGL._grass;
+};
+/* Uniformes du ciel : rayon de vue par pixel (base caméra) + soleil + nuages. */
+WGL.bindSkyU=function(P, eye, tgt, aspect, sunL){
+  var gl=WGL.gl;
+  var fx=tgt[0]-eye[0], fy=tgt[1]-eye[1], fz=tgt[2]-eye[2];
+  var fl=Math.sqrt(fx*fx+fy*fy+fz*fz)||1; fx/=fl; fy/=fl; fz/=fl;
+  var rx=-fz, rz=fx, rl=Math.sqrt(rx*rx+rz*rz)||1; rx/=rl; rz/=rl;   /* droite = fwd × (0,1,0) */
+  var ux=-rz*fy, uy=rz*fx-rx*fz, uz=rx*fy;                            /* haut = droite × fwd */
+  gl.uniform3f(gl.getUniformLocation(P,'cf'),fx,fy,fz);
+  gl.uniform3f(gl.getUniformLocation(P,'cr'),rx,0,rz);
+  gl.uniform3f(gl.getUniformLocation(P,'cu'),ux,uy,uz);
+  gl.uniform1f(gl.getUniformLocation(P,'tanH'),Math.tan(0.95/2));
+  gl.uniform1f(gl.getUniformLocation(P,'aspect'),aspect);
+  var sl=sunL||[0.4,0.8,0.5], sn=Math.sqrt(sl[0]*sl[0]+sl[1]*sl[1]+sl[2]*sl[2])||1;
+  gl.uniform3f(gl.getUniformLocation(P,'sunDir'),sl[0]/sn,sl[1]/sn,sl[2]/sn);
+  gl.uniform1f(gl.getUniformLocation(P,'cloudAmt'), (typeof PREFS!=='undefined' && PREFS.clouds===0)?0.0:1.0);
+};
+/* Uniformes du sol : texture d'herbe + échelle. */
+WGL.bindFloorU=function(P){
+  var gl=WGL.gl;
+  var useG=(typeof PREFS==='undefined' || PREFS.grass!==0);
+  var t=useG?WGL.grassTex():null;
+  gl.uniform1f(gl.getUniformLocation(P,'useG'), t?1.0:0.0);
+  gl.uniform1f(gl.getUniformLocation(P,'gScale'), 0.45);   /* la tuile couvre ~2,2 m */
+  if(t){ gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.uniform1i(gl.getUniformLocation(P,'gtex'),2); gl.activeTexture(gl.TEXTURE0); }
 };
 WGL.makeMapTex=function(){ var gl=WGL.gl; if(!gl||typeof SITE==='undefined'||!SITE.mapCanvas) return;
   if(!WGL.mapTex) WGL.mapTex=gl.createTexture();
@@ -1196,22 +1694,43 @@ WGL.renderG=function(){
   var _as=cv.width/cv.height, _fa=Math.max(100,cam.r*3+60);
   var prj=ORTHO?WGL._ortho(cam.r*Math.tan(0.95/2),_as,0.02,_fa):WGL._persp(0.95,_as,0.02,_fa), pv=WGL._mul(prj,mv);
   var e=WGL.ENVS[WGL.env];
-  gl.clearColor(0.102,0.110,0.130,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   var _site=(typeof SITE!=='undefined'&&SITE.on);
+  /* --- CARTE D'OMBRE (soleil) : toute la géométrie opaque, matrice modèle identité --- */
+  var _sunL=WGL.sunVec(e.L[0]);
+  var _isScn=(typeof MODE!=='undefined' && MODE==='scene');
+  var _shOK=(!_site && !_isScn) && WGL.renderShadowMap(_sunL, function(ulM, lp0){
+    var pb=G.pAll||G.pO, pc=(G.countAll!=null?G.countAll:G.countO);
+    if(!pb || !pc) return;
+    gl.uniformMatrix4fv(ulM,false,WGL._ident());
+    gl.bindBuffer(gl.ARRAY_BUFFER,pb); gl.enableVertexAttribArray(lp0); gl.vertexAttribPointer(lp0,3,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,pc);
+  });
+  /* --- SSAO (hors mode scène : renderSceneTex a la sienne) --- */
+  var _aoOK=(!_isScn) && WGL.renderAO(mv, prj, _fa, Math.tan(0.95/2), _as, function(ulMv,aP,aN,view){
+    gl.uniformMatrix4fv(ulMv,false,view);   /* modèle = identité */
+    function bindPN(pb,nb){ gl.bindBuffer(gl.ARRAY_BUFFER,pb); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,nb); gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN,3,gl.FLOAT,false,0,0); }
+    if(G.countO){ bindPN(G.pO,G.nO); gl.drawArrays(gl.TRIANGLES,0,G.countO); }
+    (G.texBatches||[]).forEach(function(t){ if(t.count){ bindPN(t.p,t.n); gl.drawArrays(gl.TRIANGLES,0,t.count); } });
+  });
+  gl.clearColor(0.102,0.110,0.130,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   if(!_site && WGL.progSky){
     var dW=(typeof DIMS!=='undefined'&&DIMS)?DIMS.w:1.0, dD=(typeof DIMS!=='undefined'&&DIMS)?DIMS.d:1.0, dH=(typeof DIMS!=='undefined'&&DIMS)?DIMS.h:1.0;
     var L0=e.L[0], hyl=Math.max(0.25,L0[1]), ks=dH*0.45/hyl;
     gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.useProgram(WGL.progSky);
+    WGL.bindSkyU(WGL.progSky,[ex,ey,ez],[tx,cam.ty,tz],cv.width/cv.height,_sunL);
     var _pTop=(typeof prefHex01==='function'&&prefHex01(PREFS.skyTop))||[0.40,0.60,0.86], _pHor=(typeof prefHex01==='function'&&prefHex01(PREFS.skyHor))||[0.87,0.91,0.96];
     gl.uniform3f(gl.getUniformLocation(WGL.progSky,'topC'),_pTop[0],_pTop[1],_pTop[2]);
     gl.uniform3f(gl.getUniformLocation(WGL.progSky,'horC'),_pHor[0],_pHor[1],_pHor[2]);
     var spq=gl.getAttribLocation(WGL.progSky,'p'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL.skyBuf); gl.enableVertexAttribArray(spq); gl.vertexAttribPointer(spq,2,gl.FLOAT,false,0,0);
     gl.drawArrays(gl.TRIANGLES,0,6);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.useProgram(WGL.progFloor);
+    WGL.bindFloorU(WGL.progFloor);
     gl.uniformMatrix4fv(gl.getUniformLocation(WGL.progFloor,'pv'),false,pv);
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'oc'),0,0);
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'oh'),dW*0.5,dD*0.5);
     gl.uniform2f(gl.getUniformLocation(WGL.progFloor,'sdir'),-L0[0]*ks,-L0[2]*ks);
+    gl.uniform1f(gl.getUniformLocation(WGL.progFloor,'shAmt'), WGL.shadowsEnabled()?1.0:0.0);
     var _pGrd=(typeof prefHex01==='function'&&prefHex01(PREFS.ground))||[0.88,0.89,0.90];
     gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'floorC'),_pGrd[0],_pGrd[1],_pGrd[2]);
     gl.uniform3f(gl.getUniformLocation(WGL.progFloor,'horC'),_pHor[0],_pHor[1],_pHor[2]);
@@ -1226,6 +1745,7 @@ WGL.renderG=function(){
   gl.uniform3fv(gl.getUniformLocation(P,'lightCols'),new Float32Array([].concat.apply([],e.C)));
   gl.uniform3fv(gl.getUniformLocation(P,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(P,'ambBot'),new Float32Array(e.aB));
+  WGL.bindShadowU(P,_shOK); WGL.bindEnvColors(P);   /* ombres + reflets de verre */
   var lp=gl.getAttribLocation(P,'p'), ln=gl.getAttribLocation(P,'n'), lc=gl.getAttribLocation(P,'c');
   function draw(pb,nb,cb,count){
     if(!count) return;
@@ -1241,13 +1761,14 @@ WGL.renderG=function(){
     gl.uniformMatrix4fv(_ulM,false,WGL._ident());
     return;
   }
-  if(!_site && WGL.progShadow){
+  if(!_site && WGL.progShadow && WGL.shadowsEnabled()){
     /* ombre portee directionnelle : projection planaire sur y=0 selon le soleil */
-    var Ly=Math.max(0.25,e.L[0][1]);
-    var Sh=new Float32Array([1,0,0,0, -e.L[0][0]/Ly,0,-e.L[0][2]/Ly,0, 0,0,1,0, 0,0.005,0,1]);
+    var Ly=Math.max(0.25,_sunL[1]);
+    var Sh=new Float32Array([1,0,0,0, -_sunL[0]/Ly,0,-_sunL[2]/Ly,0, 0,0,1,0, 0,0.005,0,1]);
     var pvsh=WGL._mul(pv,Sh);
     gl.useProgram(WGL.progShadow);
     gl.uniformMatrix4fv(gl.getUniformLocation(WGL.progShadow,'pv'),false,pvsh);
+    gl.uniformMatrix4fv(gl.getUniformLocation(WGL.progShadow,'model'),false,WGL._ident());
     gl.uniform4f(gl.getUniformLocation(WGL.progShadow,'col'),0.0,0.0,0.0,0.26);
     gl.enable(gl.STENCIL_TEST); gl.clearStencil(0); gl.clear(gl.STENCIL_BUFFER_BIT);
     gl.stencilFunc(gl.EQUAL,0,0xFF); gl.stencilOp(gl.KEEP,gl.KEEP,gl.INCR);
@@ -1270,6 +1791,7 @@ WGL.renderG=function(){
     gl.uniform3fv(gl.getUniformLocation(PT2,'ambTop'),new Float32Array(e.aT));
     gl.uniform3fv(gl.getUniformLocation(PT2,'ambBot'),new Float32Array(e.aB));
     gl.uniform1i(gl.getUniformLocation(PT2,'uTex'),0);
+    WGL.bindShadowU(PT2,_shOK);
     var tlp=gl.getAttribLocation(PT2,'p'), tln=gl.getAttribLocation(PT2,'n'), tlu=gl.getAttribLocation(PT2,'uv');
     for(var tb=0;tb<G.texBatches.length;tb++){ var Bt=G.texBatches[tb]; if(!Bt.count||!Bt.tex) continue;
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,Bt.tex);
@@ -1292,6 +1814,7 @@ WGL.renderG=function(){
   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
   draw(G.pT,G.nT,G.cT,G.countT);
   gl.depthMask(true); gl.disable(gl.BLEND);
+  WGL.compositeAO(_aoOK);   /* occlusion ambiante : couleur *= AO */
 };
 WGL.showGeneric=function(dims){
   if(!WGL.initGL()){ ENGINE='soft'; DIRTY=true; return; }
@@ -2157,6 +2680,64 @@ var PREFS_KEY='BPO_PREFS_v1';
 var PREFS=(function(){ var d={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0,coteColor:'',coteSize:0,coteFont:''};
   try{ var s=JSON.parse(localStorage.getItem(PREFS_KEY)); if(s) for(var k in s){ if(k in d) d[k]=s[k]; } }catch(e){} return d; })();
 function prefsSave(){ try{ localStorage.setItem(PREFS_KEY, JSON.stringify(PREFS)); }catch(e){} }
+/* ---- Contrôles Ombres / Soleil, réutilisables (Préférences ET panneau Scène).
+   Grisés et inertes hors moteur WebGL : ombres portées et course solaire n'y
+   sont pas rendues. rerender() reconstruit le panneau appelant. ---- */
+function buildSunControls(host, rerender){
+  if(!host) return;
+  /* La Scène et les produits fabricants rendent TOUJOURS en WebGL (activé par
+     showGeneric/WGL.show, souvent après la construction du panneau : on ne peut
+     donc pas se fier à WGL.gActive ici). ENGINE ne pilote que les objets. */
+  var glOn=(typeof MODE!=='undefined' && (MODE==='scene' || MODE==='quadripod')) ||
+           (typeof ENGINE!=='undefined' && ENGINE==='webgl') ||
+           (typeof WGL!=='undefined' && (WGL.gActive || WGL.txActive));
+  var wrap=document.createElement('div');
+  wrap.style.cssText='margin:6px 0;'+(glOn?'':'opacity:.45;');
+  function line(label){ var d=document.createElement('div');
+    d.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;font-size:11.5px;';
+    var s=document.createElement('span'); s.textContent=label; d.appendChild(s); wrap.appendChild(d); return d; }
+  function tog(label,on,fn){ var d=line(label), b=document.createElement('button');
+    b.textContent=on?'Activé':'Désactivé'; b.disabled=!glOn;
+    b.style.cssText='font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid var(--ln);cursor:'+(glOn?'pointer':'not-allowed')+
+      ';background:'+((on&&glOn)?'#ff8a3d':'var(--p2)')+';color:'+((on&&glOn)?'#141821':'var(--tx)')+';';
+    if(glOn) b.onclick=fn; d.appendChild(b); }
+  function redraw(){ try{ build(); }catch(e){} DIRTY=true; if(typeof WGL!=='undefined'&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); }
+  if(!glOn){ var n=document.createElement('div'); n.style.cssText='font-size:10px;color:var(--dm);margin-bottom:4px;';
+    n.textContent='Ombres et soleil : moteur WebGL requis (bouton « WebGL »).'; wrap.appendChild(n); }
+  tog('Ombres portées du soleil', PREFS.shadows!==0, function(){ PREFS.shadows=(PREFS.shadows!==0)?0:1; prefsSave(); redraw(); rerender&&rerender(); });
+  tog('Occlusion ambiante (SSAO)', PREFS.ssao===1, function(){ PREFS.ssao=(PREFS.ssao===1)?0:1; prefsSave(); redraw(); rerender&&rerender(); });
+  if(PREFS.ssao===1 && glOn){
+    var rS=line('Intensité SSAO'), wS=document.createElement('div'); wS.style.cssText='display:flex;align-items:center;gap:6px;';
+    var si=document.createElement('input'); si.type='range'; si.min=0; si.max=2; si.step=0.05;
+    si.value=(PREFS.ssaoStrength!=null?PREFS.ssaoStrength:0.70); si.style.width='110px';
+    var sl2=document.createElement('span'); sl2.style.cssText='font-size:10px;color:var(--dm);min-width:34px;text-align:right;';
+    sl2.textContent=(+si.value).toFixed(2);
+    si.oninput=function(){ PREFS.ssaoStrength=parseFloat(si.value); sl2.textContent=PREFS.ssaoStrength.toFixed(2); prefsSave(); DIRTY=true; if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
+    wS.appendChild(si); wS.appendChild(sl2); rS.appendChild(wS);
+  }
+  tog('Ciel avec nuages', PREFS.clouds!==0, function(){ PREFS.clouds=(PREFS.clouds!==0)?0:1; prefsSave(); redraw(); rerender&&rerender(); });
+  tog('Sol herbe (procédural)', PREFS.grass!==0, function(){ PREFS.grass=(PREFS.grass!==0)?0:1; prefsSave(); redraw(); rerender&&rerender(); });
+  if(typeof SUN!=='undefined'){
+    var sOn=!!SUN.on;
+    tog('Soleil — course réelle', sOn, function(){ SUN.on=sOn?0:1; redraw(); rerender&&rerender(); });
+    if(sOn && glOn){
+      try{ computeSun(); }catch(e){}
+      var rD=line('Date'); var di=document.createElement('input'); di.type='date'; di.value=SUN.date||'2025-06-21';
+      di.style.cssText='background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:2px 4px;font-size:11px;';
+      di.onchange=function(){ SUN.date=this.value; try{computeSun();}catch(e){} redraw(); rerender&&rerender(); }; rD.appendChild(di);
+      var rH=line('Heure'); var w2=document.createElement('div'); w2.style.cssText='display:flex;align-items:center;gap:6px;';
+      var hi=document.createElement('input'); hi.type='range'; hi.min=4; hi.max=22; hi.step=0.5; hi.value=SUN.hour; hi.style.width='110px';
+      var lab=document.createElement('span'); lab.style.cssText='font-size:10px;color:var(--dm);min-width:120px;text-align:right;';
+      function refl(){ lab.textContent=SUN.hour+'h · az '+Math.round(SUN.az)+'° / élév '+Math.round(SUN.elev)+'°'; }
+      refl();
+      hi.oninput=function(){ SUN.hour=parseFloat(this.value); try{computeSun();}catch(e){} refl(); redraw(); };
+      w2.appendChild(hi); w2.appendChild(lab); rH.appendChild(w2);
+      if(SUN.elev<=2){ var wn=document.createElement('div'); wn.style.cssText='font-size:10px;color:#c9a37e;';
+        wn.textContent='Soleil sous l\'horizon : lumière d\'ambiance utilisée.'; wrap.appendChild(wn); }
+    }
+  }
+  host.appendChild(wrap);
+}
 /* hex '#rrggbb' -> [r,g,b] en 0..1, ou null */
 function prefHex01(h){ if(!h) return null; h=(''+h).replace('#',''); if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; if(h.length<6) return null; var n=parseInt(h,16); if(isNaN(n)) return null; return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255]; }
 /* applique thème + couleur police, puis redessine */
@@ -2185,6 +2766,7 @@ function prefsUI(){
   var rSh=row('Ciel — horizon (WebGL)'); rSh.appendChild(colorCtl(PREFS.skyHor,'#deeaf5',function(v){ PREFS.skyHor=v; prefsSave(); applyPrefs(); })); p.appendChild(rSh);
   /* Sol WebGL */
   var rG=row('Sol (WebGL)'); rG.appendChild(colorCtl(PREFS.ground,'#e0e3e6',function(v){ PREFS.ground=v; prefsSave(); applyPrefs(); })); p.appendChild(rG);
+  buildSunControls(p, prefsUI);   /* Ombres + Soleil (grisés hors WebGL) */
   /* Trame : couleur + taille */
   var rGc=row('Couleur de la trame'); rGc.appendChild(colorCtl(PREFS.gridColor,'#8c94a0',function(v){ PREFS.gridColor=v; prefsSave(); DIRTY=true; })); p.appendChild(rGc);
   var rGs=row('Taille de la trame'); var sel=document.createElement('select'); sel.style.cssText='font-size:11px;padding:3px 5px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;';
@@ -12701,8 +13283,8 @@ function buildSceneUI(){
     '<div class="slbl" style="font-size:10px;margin:6px 0 3px;">Éléments de la scène <span>('+SCENE.instances.length+')</span> <span style="color:var(--dm);">— Ctrl/⌘+clic : multi · Ctrl/⌘+A : tout · Échap : rien</span></div>'+
     '<div id="scnSelBar" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>'+
     '<div id="scnList"></div>'+
-    '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Décor (mode Réaliste)</div>'+
-    '<div id="scnDecorRow" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;"></div>'+
+    '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Ombres &amp; soleil</div>'+
+    '<div id="scnSunRow"></div>'+
     '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Scènes enregistrées</div><div id="scnSaved"></div>'+
     '<button id="scnSave" style="width:100%;margin-top:6px;font-size:11px;padding:6px;">💾 Enregistrer cette scène</button>';
   host.appendChild(wrap);
@@ -12770,10 +13352,8 @@ function buildSceneUI(){
         var xb=document.createElement('button'); xb.textContent='✕'; xb.style.cssText='font-size:10px;'; xb.onclick=function(){ scnStore(scnLoad().filter(function(x){return x.id!==sc.id;})); if(SCN_CUR===sc.id)SCN_CUR=null; buildSceneUI(); };
         row.appendChild(nm); row.appendChild(gb); row.appendChild(ub); row.appendChild(xb); return row; }
     }); } }
-  var dr=document.getElementById('scnDecorRow');
-  if(dr){ [['sol','Sol'],['eau','Eau'],['arbres','Arbres']].forEach(function(o){ var on=SCENE.decor[o[0]]!==0;
-    var b=document.createElement('button'); b.textContent=(on?'✓ ':'')+o[1]; b.style.cssText='font-size:10px;padding:3px 9px;border-radius:5px;border:1px solid '+(on?'var(--am)':'var(--ln)')+';background:'+(on?'rgba(255,138,61,.12)':'var(--p2)')+';color:var(--tx);cursor:pointer;';
-      b.onclick=function(){ SCENE.decor[o[0]]=on?0:1; buildSceneUI(); scnLive(); }; dr.appendChild(b); }); }
+  /* (section « Décor » retirée pour le moment — SCENE.decor est conservé dans les données) */
+  buildSunControls(document.getElementById('scnSunRow'), buildSceneUI);   /* ombres + soleil, aussi depuis la Scène */
   var sb=document.getElementById('scnSave');
   if(sb) sb.onclick=function(){ if(!SCENE.instances.length){ alert('Scène vide.'); return; } var n=prompt('Nom de la scène :','Ma scène'); if(n===null)return;
     var nid='s'+Date.now().toString(36); var list=scnLoad(); list.unshift({ id:nid, name:(n.trim()||'Ma scène'), instances:JSON.parse(JSON.stringify(SCENE.instances, _scnRep)), date:new Date().toLocaleDateString('fr-FR') }); scnStore(list); SCN_CUR=nid; buildSceneUI(); };
