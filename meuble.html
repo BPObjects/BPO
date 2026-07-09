@@ -2579,8 +2579,33 @@ var FINISH = {
   fauxplaf: [238, 238, 236],   /* dalle : faux plafond BA13 */
   imdalle:[176,176,172], impoteau:[164,164,162], impoutre:[150,150,148], imvoile:[158,158,156],
   tcadre:[64,67,71], touvrant:[64,67,71], tpoignee:[120,124,130], vcadre:[210,200,180], vouvrant:[210,200,180],
-  kcaisson:[232,231,227], kfacade:[244,244,240], kplan:[58,60,64], kmetal:[176,180,186]
+  kcaisson:[232,231,227], kfacade:[244,244,240], kplan:[58,60,64], kmetal:[176,180,186],
+  /* --- objets génériques : une finition par élément, cf. FINISH_ON --- */
+  mfinExt:[214,210,200], misoExt:[240,232,180], mcore:[170,170,165], misoInt:[240,232,180], mfinInt:[238,238,234],
+  potcorps:[164,164,162], poucorps:[150,150,148],
+  gcmain:[176,180,186], gcpost:[176,180,186], gcfill:[176,180,186],
+  escmarche:[196,194,190], esccontre:[178,178,174], escstruct:[150,150,148],
+  fmembrure:[188,150,100], ftreillis:[188,150,100],
+  toitcharp:[188,150,100],
+  /* route */
+  renrobe:[61,63,67], rbeton:[180,180,174], rtpc:[79,125,58], rmarquage:[255,255,255],
+  /* parking */
+  proul:[61,63,67], pbase:[43,45,48], pdalle:[180,180,174], pfond:[139,132,119], pforme:[111,106,96],
+  pmarquage:[255,255,255], ppmr:[31,95,191],
+  pislot:[79,125,58], pbordure:[201,198,191], parbre:[63,107,46], ptronc:[107,81,56]
 };
+/* FINISH_ON : par élément, false = matériau natif de l'objet (presets, couches,
+   nuanciers du configurateur) ; true = la finition RAL / texture prend le dessus.
+   Les objets historiques (meuble, immeuble, porte…) n'ont pas de matériau natif :
+   leur finition est TOUJOURS active, ils n'apparaissent donc pas ici. */
+var FINISH_ON = {};
+/* Modes dont chaque élément porte un interrupteur natif/personnalisé. */
+var FINISH_SWITCHABLE = { mur:1, poteau:1, poutre:1, gardecorps:1, escalier:1, ferme:1, toiture:1, forme:1, route:1, parking:1 };
+function finSwitch(){ return !!FINISH_SWITCHABLE[MODE]; }
+/* Couleur effective d'un élément : le natif tant que l'interrupteur est ouvert. */
+function fcol(key, native){ return FINISH_ON[key] ? FINISH[key] : native; }
+/* Texture effective. Idem ; null = couleur unie. */
+function ftex(key, native){ return FINISH_ON[key] ? (FINISH_TEX[key]||null) : (native||null); }
 
 /* FINISH_TEX : texture appliquée à chaque élément (id de texture, ou null = couleur unie).
    Quand une texture est active, les faces de l'élément sont rendues texturées. */
@@ -2589,18 +2614,15 @@ var FINISH_TEX = {
   imdalle:null, impoteau:null, impoutre:null, imvoile:null, chtub:null,
   tcadre:null, touvrant:null, tpoignee:null, vcadre:null, vouvrant:null,
   corps:null, etagere:null, porte:null, forme:null, objet:null, bati:null, panneau:null, poignee:null, fcadre:null, fouvrant:null, fpoignee:null, cwframe:null, cwspandrel:null, cwvent:null, fstruct:null, fgarn:null, hossature:null, hbardage:null, hcorner:null, hbeton:null, sol:'dallage_blanc', fauxplaf:null,
-  kcaisson:null, kfacade:null, kplan:null, kmetal:null
+  kcaisson:null, kfacade:null, kplan:null, kmetal:null,
+  mfinExt:null, misoExt:null, mcore:null, misoInt:null, mfinInt:null,
+  potcorps:null, poucorps:null, gcmain:null, gcpost:null, gcfill:null,
+  escmarche:null, esccontre:null, escstruct:null, fmembrure:null, ftreillis:null, toitcharp:null,
+  renrobe:null, rbeton:null, rtpc:null, rmarquage:null,
+  proul:null, pbase:null, pdalle:null, pfond:null, pforme:null, pmarquage:null, ppmr:null,
+  pislot:null, pbordure:null, parbre:null, ptronc:null
 };
-/* Objets a corps unique ou multicouche pouvant recevoir une matiere globale,
-   en plus de leurs presets/couches. 'objet' = cle de finition partagee. */
-var GENERIC_FINISH_MODES = { mur:1, poteau:1, poutre:1, gardecorps:1 };
-var OBJ_OVERRIDE = false;   /* false = matiere native ; true = matiere personnalisee globale */
 var PROD_OVERRIDE = false;  /* produits fabricants : false = materiaux PBR d'origine ; true = teinte RAL globale */
-function applyObjectFinish(){
-  if(!(GENERIC_FINISH_MODES[MODE] && OBJ_OVERRIDE)) return;
-  var col=FINISH.objet, tex=FINISH_TEX.objet||null;
-  for(var i=0;i<FC.length;i++){ if(FC[i].al>=1){ FC[i].col=col; FC[i].tex=tex; } }
-}
 /* échelle de répétition de la texture (nombre de répétitions sur ~1 m) */
 var TEX_SCALE = 1.0;
 
@@ -2658,6 +2680,48 @@ var FINISH_ELEMS_HANGAR = [
   {id:'hbardage',  l:'Bardage'},
   {id:'hcorner',   l:'Cornière'},
   {id:'hbeton',    l:'Maçonnerie'}
+];
+/* --- objets génériques : un élément = une pièce du configurateur --- */
+var FINISH_ELEMS_MUR = [
+  {id:'mfinExt', l:'Finition ext.'},
+  {id:'misoExt', l:'Isolant ext.'},
+  {id:'mcore',   l:'Mur porteur'},
+  {id:'misoInt', l:'Isolant int.'},
+  {id:'mfinInt', l:'Finition int.'}
+];
+var FINISH_ELEMS_POTEAU = [ {id:'potcorps', l:'Poteau'} ];
+var FINISH_ELEMS_POUTRE = [ {id:'poucorps', l:'Poutre'} ];
+var FINISH_ELEMS_GARDECORPS = [
+  {id:'gcmain', l:'Main courante'},
+  {id:'gcpost', l:'Montants'},
+  {id:'gcfill', l:'Remplissage'}
+];
+var FINISH_ELEMS_ESCALIER = [
+  {id:'escmarche', l:'Marches'},
+  {id:'esccontre', l:'Contremarches'},
+  {id:'escstruct', l:'Limon / structure'}
+];
+var FINISH_ELEMS_FERME = [ {id:'fmembrure', l:'Membrures'}, {id:'ftreillis', l:'Treillis'} ];
+var FINISH_ELEMS_TOITURE = [ {id:'toitcharp', l:'Charpente'} ];
+var FINISH_ELEMS_FORME = [ {id:'forme', l:'Forme'} ];
+var FINISH_ELEMS_ROUTE = [
+  {id:'renrobe',   l:'Enrobé'},
+  {id:'rbeton',    l:'Bordure / trottoir'},
+  {id:'rtpc',      l:'Terre-plein'},
+  {id:'rmarquage', l:'Marquage'}
+];
+var FINISH_ELEMS_PARKING = [
+  {id:'proul',     l:'Roulement'},
+  {id:'pbase',     l:'Base'},
+  {id:'pdalle',    l:'Dalle béton'},
+  {id:'pfond',     l:'Fondation'},
+  {id:'pforme',    l:'Couche de forme'},
+  {id:'pmarquage', l:'Marquage'},
+  {id:'ppmr',      l:'Places PMR'},
+  {id:'pislot',    l:'Îlots'},
+  {id:'pbordure',  l:'Pierre de rive'},
+  {id:'parbre',    l:'Feuillage'},
+  {id:'ptronc',    l:'Tronc'}
 ];
 var FINISH_ELEMS_IMMEUBLE = [
   {id:'imdalle',  l:'Dalles'},
@@ -4714,11 +4778,13 @@ function perimeterWalls(poly, layers, total, H, mask){
   var n=poly.length, i, ccw=polyArea(poly)>=0?1:-1, o=0;
   layers.forEach(function(ly){
     var outer=offsetPoly(poly,o,ccw), inner=offsetPoly(poly,o+ly.t,ccw);
+    _CURTEX = ly.tex || null;
     for(i=0;i<n;i++){ if(mask&&mask[i]) continue;                          /* pan supprimé → mur ouvert */
       var j=(i+1)%n, q0=outer[i],q1=outer[j],q2=inner[j],q3=inner[i];
       boxV([[q0[0],0,q0[1]],[q1[0],0,q1[1]],[q2[0],0,q2[1]],[q3[0],0,q3[1]],
             [q0[0],H,q0[1]],[q1[0],H,q1[1]],[q2[0],H,q2[1]],[q3[0],H,q3[1]]], ly.col, 1);
     }
+    _CURTEX = null;
     o += ly.t;
   });
   if(mask){                                                                /* embouts aux extrémités libres */
@@ -4789,16 +4855,19 @@ function buildMur(){
   /* couche porteuse : couleur selon le matériau choisi */
   var coreMat = WALL_CORE_MATS.filter(function(m){return m.id===PM.coreMat;})[0] || WALL_CORE_MATS[0];
 
-  /* liste ordonnée des couches actives (extérieur -> intérieur) avec épaisseur(m) */
+  /* liste ordonnée des couches actives (extérieur -> intérieur) avec épaisseur(m).
+     Chaque couche a sa clé de finition : tant que FINISH_ON est ouvert, elle garde
+     la teinte de son matériau. */
   var layers=[];
-  function add(id, label, thicknessCm, col){
-    if(thicknessCm>0) layers.push({id:id, label:label, t:thicknessCm/100, col:col});
+  function add(id, label, thicknessCm, col, fkey){
+    if(thicknessCm>0) layers.push({id:id, label:label, t:thicknessCm/100,
+                                   col:fcol(fkey,col), tex:ftex(fkey,null)});
   }
-  add('finExt', 'Finition ext.',  PM.finExt,                       WALL_COL.finExt);
-  if(PM.isoExtOn) add('isoExt', 'Isolation ext.', PM.isoExt,       WALL_COL.isoExt);
-  add('core',   coreMat.l,        PM.core,                          coreMat.c);
-  if(PM.isoIntOn) add('isoInt', 'Isolation int.', PM.isoInt,       WALL_COL.isoInt);
-  add('finInt', 'Finition int.',  PM.finInt,                        WALL_COL.finInt);
+  add('finExt', 'Finition ext.',  PM.finExt,                       WALL_COL.finExt, 'mfinExt');
+  if(PM.isoExtOn) add('isoExt', 'Isolation ext.', PM.isoExt,       WALL_COL.isoExt, 'misoExt');
+  add('core',   coreMat.l,        PM.core,                          coreMat.c,      'mcore');
+  if(PM.isoIntOn) add('isoInt', 'Isolation int.', PM.isoInt,       WALL_COL.isoInt, 'misoInt');
+  add('finInt', 'Finition int.',  PM.finInt,                        WALL_COL.finInt,'mfinInt');
 
   /* épaisseur totale -> pour centrer le mur en Z */
   var total=0; layers.forEach(function(ly){ total+=ly.t; });
@@ -4809,7 +4878,9 @@ function buildMur(){
     var z = total/2;
     layers.forEach(function(ly){
       var zc = z - ly.t/2;
+      _CURTEX = ly.tex || null;
       box(0, H/2, zc, L, H, ly.t, ly.col, 1);
+      _CURTEX = null;
       ly.zCenter = zc; ly.zFront = z; z -= ly.t;
     });
     WALL_LAYERS = layers;
@@ -11313,7 +11384,8 @@ function build(){
   }
   else { r=buildMeuble(); }
   _CURTEX = null;   /* reset après construction */
-  applyObjectFinish();   /* matiere personnalisee globale (objets non-meuble) */
+  /* La finition des objets génériques est désormais appliquée PAR ÉLÉMENT dans
+     chaque constructeur (fcol/ftex), et non plus en écrasant FC après coup. */
   if(typeof SITE!=='undefined' && SITE.on) addSiteGround();
   if(typeof IMG_UL!=='undefined' && IMG_UL.on) addImgGround();
   if(typeof CTX!=='undefined' && CTX.on) addContext();
@@ -14909,22 +14981,76 @@ function finishKey(){
   if(MODE==='hangar') return FINISH_TARGET;    /* hossature | hbardage | hbeton */
   if(MODE==='dalle') return FINISH_TARGET;     /* sol | fauxplaf */
   if(MODE==='immeuble') return FINISH_TARGET;  /* imdalle | impoteau | impoutre | imvoile */
-  if(GENERIC_FINISH_MODES[MODE]) return 'objet';
-  return FINISH_TARGET;   /* corps | etagere | porte */
+  return FINISH_TARGET;   /* corps | etagere | porte, et tous les objets génériques */
+}
+/* Liste des éléments de finition du mode courant, ou null si l'objet n'en a pas. */
+function finishElemsFor(){
+  switch(MODE){
+    case 'immeuble':  return FINISH_ELEMS_IMMEUBLE;
+    case 'meuble':    return FINISH_ELEMS_MEUBLE;
+    case 'porte':     return FINISH_ELEMS_PORTE;
+    case 'fenetre':   return FINISH_ELEMS_FENETRE;
+    case 'murrideau': return FINISH_ELEMS_MURRIDEAU;
+    case 'furn':      return (FURN.type==='meuble')?FINISH_ELEMS_MEUBLE:FINISH_ELEMS_FURN;
+    case 'cuisine':   return FINISH_ELEMS_CUISINE;
+    case 'hangar':    return FINISH_ELEMS_HANGAR;
+    case 'piscine':   return FINISH_ELEMS_PISCINE;
+    case 'veranda':   return FINISH_ELEMS_VERANDA;
+    case 'cheminee':  return FINISH_ELEMS_CHEMINEE;
+    case 'dalle':     return FINISH_ELEMS_DALLE;
+    case 'technal':   return FINISH_ELEMS_TECHNAL;
+    case 'mur':       return murFinishElems();
+    case 'poteau':    return FINISH_ELEMS_POTEAU;
+    case 'poutre':    return FINISH_ELEMS_POUTRE;
+    case 'gardecorps':return FINISH_ELEMS_GARDECORPS;
+    case 'escalier':  return FINISH_ELEMS_ESCALIER;
+    case 'ferme':     return FINISH_ELEMS_FERME;
+    case 'toiture':   return FINISH_ELEMS_TOITURE;
+    case 'forme':     return FINISH_ELEMS_FORME;
+    case 'route':     return FINISH_ELEMS_ROUTE;
+    case 'parking':   return parkFinishElems();
+  }
+  return null;
+}
+/* Le mur n'expose que ses couches actives : inutile de proposer un isolant absent. */
+function murFinishElems(){
+  return FINISH_ELEMS_MUR.filter(function(e){
+    if(e.id==='misoExt') return !!PM.isoExtOn && PM.isoExt>0;
+    if(e.id==='misoInt') return !!PM.isoIntOn && PM.isoInt>0;
+    if(e.id==='mfinExt') return PM.finExt>0;
+    if(e.id==='mfinInt') return PM.finInt>0;
+    return true;
+  });
+}
+/* Idem pour le parking : la structure choisie décide des couches visibles. */
+function parkFinishElems(){
+  var beton=(PPARK.struct==='beton');
+  return FINISH_ELEMS_PARKING.filter(function(e){
+    if(e.id==='proul')  return !beton && PPARK.epRoul>0;
+    if(e.id==='pbase')  return !beton && PPARK.epBase>0;
+    if(e.id==='pdalle') return beton && PPARK.epDalle>0;
+    if(e.id==='pfond')  return PPARK.epFond>0;
+    if(e.id==='pforme') return PPARK.epForme>0;
+    if(e.id==='ppmr')   return PPARK.pmrPct>0;
+    if(e.id==='pislot' || e.id==='pbordure') return PPARK.islEvery>0;
+    if(e.id==='parbre' || e.id==='ptronc')   return PPARK.islEvery>0 && PPARK.islTree;
+    return true;
+  });
 }
 
 /* Onglets de sélection d'élément (corps / étagères / portes) — meuble seulement */
 function buildFinishElems(){
   var host=document.getElementById('finish-elems');
   host.innerHTML='';
-  var elems = (MODE==='immeuble')?FINISH_ELEMS_IMMEUBLE : (MODE==='meuble')?FINISH_ELEMS_MEUBLE : (MODE==='porte')?FINISH_ELEMS_PORTE : (MODE==='fenetre')?FINISH_ELEMS_FENETRE : (MODE==='murrideau')?FINISH_ELEMS_MURRIDEAU : (MODE==='furn')?(FURN.type==='meuble'?FINISH_ELEMS_MEUBLE:FINISH_ELEMS_FURN) : (MODE==='cuisine')?FINISH_ELEMS_CUISINE : (MODE==='hangar')?FINISH_ELEMS_HANGAR : (MODE==='piscine')?FINISH_ELEMS_PISCINE : (MODE==='veranda')?FINISH_ELEMS_VERANDA : (MODE==='cheminee')?FINISH_ELEMS_CHEMINEE : (MODE==='dalle')?FINISH_ELEMS_DALLE : (MODE==='technal')?FINISH_ELEMS_TECHNAL : null;
-  if(!elems){ host.style.display='none'; return; }
+  var elems = finishElemsFor();
+  if(!elems || !elems.length){ host.style.display='none'; return; }
   /* recale la cible si elle n'appartient pas a l'objet courant */
   if(!elems.some(function(e){return e.id===FINISH_TARGET;})) FINISH_TARGET=elems[0].id;
   host.style.display='flex';
   elems.forEach(function(el){
     var b=document.createElement('button');
-    b.textContent=el.l;
+    /* une pastille marque les éléments dont la finition écrase le matériau natif */
+    b.textContent=el.l + ((finSwitch() && FINISH_ON[el.id]) ? ' •' : '');
     if(el.id===FINISH_TARGET) b.className='on';
     b.onclick=function(){ FINISH_TARGET=el.id; buildFinishElems(); buildFinishPanel(); };
     host.appendChild(b);
@@ -15000,19 +15126,21 @@ function buildFinishPanel(){
   if(MODE==='quadripod'){ buildProductFinishPanel(host); return; }
   if(MODE==='velux'){ var vn=document.createElement('div'); vn.className='exp-note'; vn.textContent='Finition Velux choisie ci-dessus (pin naturel / blanc peint / blanc PU).'; host.appendChild(vn); return; }
   if(MODE==='flos'){ var fn=document.createElement('div'); fn.className='exp-note'; fn.textContent='Finition Flos choisie ci-dessus (modèle / variante / métal).'; host.appendChild(fn); return; }
-  /* Objets generiques : bascule matiere native (presets/couches) <-> matiere personnalisee */
-  if(GENERIC_FINISH_MODES[MODE]){
+  /* Objets génériques : interrupteur PAR ÉLÉMENT — matériau natif (presets, couches,
+     nuanciers du configurateur) ou finition RAL / texture qui prend le dessus. */
+  if(finSwitch()){
+    var lblEl=(finishElemsFor()||[]).filter(function(e){return e.id===key;})[0];
     var tog=document.createElement('div'); tog.className='finish-tabs';
-    [['auto','Matériau natif'],['custom','Matière perso.']].forEach(function(p){
+    [['auto','Matériau natif'],['custom','Finition perso.']].forEach(function(p){
       var b=document.createElement('button'); b.textContent=p[1];
-      if((p[0]==='custom')===OBJ_OVERRIDE) b.className='on';
-      b.onclick=function(){ OBJ_OVERRIDE=(p[0]==='custom'); build(); buildFinishPanel(); };
+      if((p[0]==='custom')===!!FINISH_ON[key]) b.className='on';
+      b.onclick=function(){ FINISH_ON[key]=(p[0]==='custom'); build(); buildFinishElems(); buildFinishPanel(); };
       tog.appendChild(b);
     });
     host.appendChild(tog);
-    if(!OBJ_OVERRIDE){
+    if(!FINISH_ON[key]){
       var note=document.createElement('div'); note.className='exp-note';
-      note.textContent='L’objet utilise son matériau natif (presets / couches ci-dessus). Passez en « Matière perso. » pour appliquer une teinte RAL ou une texture à tout l’objet.';
+      note.textContent='« '+(lblEl?lblEl.l:key)+' » garde le matériau défini dans le configurateur ci-dessus. Passez en « Finition perso. » pour lui appliquer une teinte RAL ou une texture.';
       host.appendChild(note);
       return;
     }
