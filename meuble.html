@@ -3813,7 +3813,8 @@ var CATALOG = {
       {id:'cheminee',   label:'Cheminée',         status:'ready', grp:'construction', icon:'🔥'},
       {id:'toiture',    label:'Charpente / toiture',status:'ready', grp:'construction', icon:'🔺'},
       {id:'escalier',   label:'Escalier',         status:'ready', grp:'construction', icon:'🪜'},
-      {id:'ferme',      label:'Ferme',            status:'ready', grp:'construction', icon:'📐'},
+      /* VS15 : présentation TEXTE, sinon le navigateur rend l'équerre en emoji coloré. */
+      {id:'ferme',      label:'Ferme',            status:'ready', grp:'construction', icon:'📐︎'},
       {id:'forme',      label:'Forme',            status:'ready', grp:'construction', icon:'🔷'},
       {id:'route',      label:'Route / chaussée', status:'ready', grp:'construction', icon:'🛣︎'},
       /* 🅿 en présentation TEXTE (VS15) : sinon le navigateur le rend en emoji bleu,
@@ -19423,11 +19424,15 @@ var INTRO_HOP={
  hi:"हमें आशा है कि आपको ये टूल्स पसंद आएँगे।",
  ar:"نأمل أن تستمتع بهذه الأدوات.",
  ru:"Надеемся, вам понравятся эти инструменты.",
- uk:"Сподіваємося, вам сподобаються ці інструменти.",
- sv:"Vi hoppas att du kommer att gilla dessa verktyg.",
- da:"Vi håber, du får glæde af disse værktøjer.",
- fi:"Toivomme, että pidät näistä työkaluista."
+ uk:"Сподіваємося, вам сподобаються ці інструменти."
 };
+/* Intros des langues sorties du monolithe. Fusionnées ici, donc après INTRO_MSG et
+   INTRO_HOP : les treize langues d'origine restent maîtresses de leur texte. */
+(function(){
+  var M=window.BPO_I18N_EXT_META; if(!M) return;
+  if(M.msg) for(var a in M.msg){ if(INTRO_MSG[a]===undefined) INTRO_MSG[a]=M.msg[a]; }
+  if(M.hop) for(var b in M.hop){ if(INTRO_HOP[b]===undefined) INTRO_HOP[b]=M.hop[b]; }
+})();
 /* Écran d'introduction à l'outil (toutes langues sauf hongrois). Clic pour passer. */
 function playIntro(l){
   var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsIntro') || document.getElementById('gsTribute')) return;
