@@ -1493,6 +1493,10 @@ WGL.initGGL=function(){
   var fvs='attribute vec3 p;uniform mat4 pv;varying vec3 vw;void main(){vw=p;gl_Position=pv*vec4(p,1.0);}';
   var ffs='precision highp float;varying vec3 vw;uniform vec2 oc;uniform vec2 oh;uniform vec2 sdir;uniform vec3 floorC;uniform vec3 horC;uniform float shAmt;'+
     'uniform sampler2D gtex;uniform float useG;uniform float gScale;'+
+    /* Percement du sol : masque du contour d'excavation, projeté dans sa boîte
+       englobante `hbb`. Un simple test de polygone ne suffirait pas — les bassins
+       de forme libre sont concaves. Le masque est rasterisé sur le CPU. */
+    'uniform sampler2D hmask;uniform float useH;uniform vec4 hbb;'+
     /* Bruit de valeur INTERPOLÉ. L'ancienne version faisait
          v = 0.86 + 0.28*fract(sin(dot(floor(vw.xz*0.09), …)))
        — une valeur CONSTANTE par cellule de 11 m. Le floor() la rend discontinue
@@ -1501,6 +1505,8 @@ WGL.initGGL=function(){
     'float fvn(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.0-2.0*f);'+
     'return mix(mix(fh(i),fh(i+vec2(1.0,0.0)),u.x),mix(fh(i+vec2(0.0,1.0)),fh(i+vec2(1.0,1.0)),u.x),u.y);}'+
     'void main(){'+
+    'if(useH>0.5){vec2 ht=(vw.xz-hbb.xy)/(hbb.zw-hbb.xy);'+
+    'if(ht.x>0.0&&ht.x<1.0&&ht.y>0.0&&ht.y<1.0&&texture2D(hmask,ht).r>0.5) discard;}'+
     'float ex=(vw.x-oc.x-sdir.x)/(oh.x+0.18);float ez=(vw.z-oc.y-sdir.y)/(oh.y+0.18);'+
     'float ed=sqrt(ex*ex+ez*ez);'+
     'float shc=(1.0-smoothstep(0.50,1.9,ed))*0.62*shAmt;'+
@@ -1880,6 +1886,35 @@ WGL.bindSkyU=function(P, eye, tgt, aspect, sunL){
   gl.uniform1f(gl.getUniformLocation(P,'cloudAmt'), (typeof PREFS!=='undefined' && PREFS.clouds===0)?0.0:1.0);
 };
 /* Uniformes du sol : texture d'herbe + échelle. */
+/* GROUND_HOLE : contour (en mètres, repère objet) au droit duquel le sol WebGL
+   doit être percé. Posé par buildPiscine, remis à zéro par build(). */
+var GROUND_HOLE = null;
+/* Rasterise le contour dans un masque, une seule fois par contour. */
+WGL.holeTex=function(poly){
+  var gl=WGL.gl; if(!gl||!poly||poly.length<3) return null;
+  var sig=poly.length+':'+poly.map(function(p){return p[0].toFixed(3)+','+p[1].toFixed(3);}).join(' ');
+  if(WGL._holeSig===sig && WGL._holeTex) return WGL._holeTex;
+  var x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+  poly.forEach(function(p){ x0=Math.min(x0,p[0]); x1=Math.max(x1,p[0]); z0=Math.min(z0,p[1]); z1=Math.max(z1,p[1]); });
+  var S=512, cv=document.createElement('canvas'); cv.width=cv.height=S;
+  var c=cv.getContext('2d');
+  c.fillStyle='#000'; c.fillRect(0,0,S,S);
+  c.fillStyle='#fff'; c.beginPath();
+  poly.forEach(function(p,i){
+    var u=(p[0]-x0)/Math.max(1e-6,x1-x0)*S, v=(p[1]-z0)/Math.max(1e-6,z1-z0)*S;
+    i?c.lineTo(u,v):c.moveTo(u,v);
+  });
+  c.closePath(); c.fill('evenodd');
+  if(!WGL._holeTex) WGL._holeTex=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,WGL._holeTex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,cv);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  WGL._holeSig=sig; WGL._holeBB=[x0,z0,x1,z1];
+  return WGL._holeTex;
+};
 WGL.bindFloorU=function(P){
   var gl=WGL.gl;
   var useG=(typeof PREFS==='undefined' || PREFS.grass!==0);
@@ -1888,6 +1923,15 @@ WGL.bindFloorU=function(P){
   gl.uniform1f(gl.getUniformLocation(P,'gScale'), 0.45);   /* la tuile couvre ~2,2 m */
   if(t){ gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D,t);
     gl.uniform1i(gl.getUniformLocation(P,'gtex'),2); gl.activeTexture(gl.TEXTURE0); }
+  /* percement */
+  var ht=(typeof GROUND_HOLE!=='undefined' && GROUND_HOLE)?WGL.holeTex(GROUND_HOLE):null;
+  gl.uniform1f(gl.getUniformLocation(P,'useH'), ht?1.0:0.0);
+  if(ht){
+    var b=WGL._holeBB;
+    gl.uniform4f(gl.getUniformLocation(P,'hbb'), b[0],b[1],b[2],b[3]);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,ht);
+    gl.uniform1i(gl.getUniformLocation(P,'hmask'),3); gl.activeTexture(gl.TEXTURE0);
+  }
 };
 WGL.makeMapTex=function(){ var gl=WGL.gl; if(!gl||typeof SITE==='undefined'||!SITE.mapCanvas) return;
   if(!WGL.mapTex) WGL.mapTex=gl.createTexture();
@@ -2395,6 +2439,7 @@ var TEXTURE_FAMILIES = [
     tx('beton_brut','Béton brut','concrete',[144,144,140],[116,116,112]),
     tx('beton_cire','Béton ciré','concrete',[176,174,168],[150,148,142]),
     tx('beton_banche','Béton banché','concrete',[152,152,148],[124,124,120]),
+    tx('parpaing','Parpaing','brick',[176,176,170],[146,146,140]),
     tx('enduit_blanc','Enduit blanc','plaster',[224,220,210],[202,198,188]),
     tx('enduit_creme','Enduit crème','plaster',[222,212,190],[200,190,168]),
     tx('enduit_gris','Enduit gris','plaster',[190,190,184],[166,166,160]),
@@ -2863,6 +2908,7 @@ function getTexImage(id){
    - forme    : couleur des formes géométriques */
 var FINISH = {
   pmargelle:[210,206,196], pplage:[200,196,186],
+  pbassin:[150,180,196], pstruct:[176,176,170],   /* piscine : revêtement intérieur (mosaïque) / structure */
   vstruct:[80,84,90], vsoub:[180,178,172], vsoubExt:[180,178,172], vsoubInt:[198,194,187], chab:[205,198,182], chtub:[120,124,130],
   corps:   [176, 140, 98],
   etagere: [176, 140, 98],
@@ -2941,6 +2987,8 @@ function ftex(key, native){ return FINISH_ON[key] ? (FINISH_TEX[key]||null) : (n
 /* FINISH_TEX : texture appliquée à chaque élément (id de texture, ou null = couleur unie).
    Quand une texture est active, les faces de l'élément sont rendues texturées. */
 var FINISH_TEX = {
+  pbassin:'mosaique',              /* revêtement intérieur du bassin : mosaïque par défaut */
+  pstruct:null,                    /* structure : parpaing / béton banché (posé selon le type) */
   pmargelle:null, pplage:null, vstruct:null, vsoub:null, vsoubExt:null, vsoubInt:null, chab:null,
   imdalle:null, impoteau:null, impoutre:null, imvoile:null, chtub:null,
   tcadre:null, touvrant:null, tpoignee:null, vcadre:null, vouvrant:null,
@@ -3001,6 +3049,8 @@ var FINISH_ELEMS_DALLE = [
   {id:'fauxplaf', l:'Faux plafond'}
 ];
 var FINISH_ELEMS_PISCINE = [
+  {id:'pbassin',   l:'Revêtement intérieur'},
+  {id:'pstruct',   l:'Structure'},
   {id:'pmargelle', l:'Margelle'},
   {id:'pplage',    l:'Plage'}
 ];
@@ -3578,7 +3628,14 @@ var POOL_LINERS = [
   {id:'bleu',  l:'Bleu',           c:[90,150,200]},
   {id:'lagon', l:'Vert lagon',     c:[90,185,180]}
 ];
-var POOL_CONSTR = [ {id:'beton', l:'Béton'}, {id:'coque', l:'Coque polyester'} ];
+/* Structure du pourtour. `th` = épaisseur par défaut (cm), `tex` = texture posée
+   d'office sur l'élément « Structure » tant que l'utilisateur ne la surcharge pas. */
+var POOL_CONSTR = [
+  {id:'banche',   l:'Béton banché',     th:20, tex:'beton_banche', c:[152,152,148]},
+  {id:'parpaing', l:'Parpaing',         th:20, tex:'parpaing',     c:[176,176,170]},
+  {id:'coque',    l:'Coque polyester',  th:8,  tex:null,           c:[210,212,210]}
+];
+function poolConstr(){ return POOL_CONSTR.filter(function(c){return c.id===PPISCINE.constr;})[0] || POOL_CONSTR[0]; }
 var VER_GLASS = [ {id:'clair',l:'Clair',c:[200,225,235]}, {id:'bleu',l:'Bleuté',c:[150,195,215]}, {id:'fume',l:'Fumé',c:[120,130,140]} ];
 var PVERANDA = {
   shape:'rect', len:500, wid:350, hgt:250,
@@ -3647,10 +3704,19 @@ var PCHEM = { type:'foyer', width:120, height:110, depth:45, condH:200, mat:'pie
   roofH:280, roofPitch:35, showRoof:1, depassement:50, bride:1, brideSize:64, chapeau:'chinois' };
 var PPISCINE = {
   shape:'rect', len:800, wid:400, prof:150,
-  constr:'beton', liner:'bleu',
+  constr:'banche', wallTh:20, liner:'bleu',
+  /* PROFIL EN COUPE — profOn=0 : fond plat à `prof`.
+     profOn=1 : le fond suit `profPts`, liste [abscisse %, profondeur cm] le long
+     de l'axe `profAxis`. Entre deux points la pente est constante ; deux points de
+     même profondeur donnent un plan horizontal. Toujours trié par abscisse. */
+  profOn:0, profAxis:'len',
+  profPts:[[0,120],[45,120],[70,180],[100,180]],
   margelleOn:1, margelle:40,
   plageOn:1, plage:120,
-  escPos:'angle-tl',
+  /* ESCALIER — escType : aucun / droit / angle / roman. escPos : angle-** ou cote-*. */
+  escType:'angle', escPos:'angle-tl',
+  escNb:4, escGiron:30, escContre:22, escW:160,
+  banqOn:0, banqW:120, banqProf:25, banqCote:'cote-s',
   lx:300, lz:300, ux:300, uz:300, lcorner:'tr', tb:200, tw:300,
   verts:'-400,-200 400,-200 400,200 -400,200'
 };
@@ -5512,22 +5578,285 @@ function buildDalle(){
   return DIMS;
 }
 /* ============================ PISCINE ============================ */
-/* escalier : nesting de blocs pleins descendant vers l'angle ou le cote choisi */
-function poolStairs(bb, pos, prof, col){
-  var ns=4, step=prof/(ns+1), x0=bb.cx-bb.w/2, x1=bb.cx+bb.w/2, z0=bb.cz-bb.d/2, z1=bb.cz+bb.d/2, k, ytop, fw, fd;
-  if(pos.indexOf('angle')===0){
-    var sw=Math.min(1.6,bb.w*0.5), sd=Math.min(1.6,bb.d*0.5);
-    var left=(pos.charAt(pos.length-1)==='l'), top=(pos.indexOf('t')>=0);
-    var cx=left?x0:x1, sgx=left?1:-1, cz=top?z0:z1, sgz=top?1:-1;
-    for(k=0;k<ns;k++){ ytop=-(k+1)*step; fw=sw*(ns-k)/ns; fd=sd*(ns-k)/ns;
-      box(cx+sgx*fw/2, (-prof+ytop)/2, cz+sgz*fd/2, fw, ytop+prof, fd, col, 1); }
-  } else {
-    var hor=(pos==='cote-n'||pos==='cote-s');
-    if(hor){ var w0=Math.min(bb.w*0.7,bb.w-0.4), sdp=Math.min(1.6,bb.d*0.45), cz2=(pos==='cote-n')?z0:z1, sg=(pos==='cote-n')?1:-1;
-      for(k=0;k<ns;k++){ ytop=-(k+1)*step; fd=sdp*(ns-k)/ns; box(bb.cx, (-prof+ytop)/2, cz2+sg*fd/2, w0, ytop+prof, fd, col,1); } }
-    else { var d0=Math.min(bb.d*0.7,bb.d-0.4), swp=Math.min(1.6,bb.w*0.45), cx2=(pos==='cote-o')?x0:x1, sg2=(pos==='cote-o')?1:-1;
-      for(k=0;k<ns;k++){ ytop=-(k+1)*step; fw=swp*(ns-k)/ns; box(cx2+sg2*fw/2, (-prof+ytop)/2, bb.cz, fw, ytop+prof, d0, col,1); } }
+/* ---------------------------------------------------------------------------
+   PROFIL EN COUPE
+   Le fond n'est plus un plan horizontal : sa cote suit une polyligne
+   [abscisse %, profondeur cm] le long d'un axe (longueur ou largeur).
+   Entre deux points la pente est constante, donc chaque « bande » comprise
+   entre deux ruptures de pente est un morceau de PLAN — c'est ce qui permet
+   de trianguler proprement et d'avoir des normales exactes.
+   --------------------------------------------------------------------------- */
+function poolProfile(bb){
+  var P=PPISCINE, ax=(P.profAxis==='wid')?'z':'x';
+  var u0=(ax==='x')?(bb.cx-bb.w/2):(bb.cz-bb.d/2);
+  var u1=(ax==='x')?(bb.cx+bb.w/2):(bb.cz+bb.d/2);
+  var span=Math.max(1e-6,u1-u0), pts;
+  if(!P.profOn){ pts=[[0,P.prof],[100,P.prof]]; }
+  else{
+    pts=(P.profPts||[]).filter(function(q){return q&&q.length>=2&&isFinite(q[0])&&isFinite(q[1]);})
+        .map(function(q){ return [Math.max(0,Math.min(100,+q[0])), Math.max(20,Math.min(400,+q[1]))]; })
+        .sort(function(a,b){ return a[0]-b[0]; });
+    if(pts.length<2) pts=[[0,P.prof],[100,P.prof]];
+    if(pts[0][0]>0)   pts.unshift([0,   pts[0][1]]);
+    if(pts[pts.length-1][0]<100) pts.push([100, pts[pts.length-1][1]]);
   }
+  var us=pts.map(function(q){ return u0+span*q[0]/100; });
+  var ds=pts.map(function(q){ return q[1]/100; });
+  function d(u){
+    if(u<=us[0]) return ds[0];
+    for(var i=1;i<us.length;i++){
+      if(u<=us[i]){ var t=(u-us[i-1])/Math.max(1e-9,us[i]-us[i-1]); return ds[i-1]+t*(ds[i]-ds[i-1]); }
+    }
+    return ds[ds.length-1];
+  }
+  var br=[us[0]];
+  for(var i=1;i<us.length;i++) if(us[i]-br[br.length-1]>1e-4) br.push(us[i]);
+  if(br.length<2) br=[u0,u1];
+  return { axis:ax, u0:u0, u1:u1, d:d, breaks:br,
+           dmax:Math.max.apply(null,ds), dmin:Math.min.apply(null,ds),
+           uOf:function(p){ return (ax==='x')?p[0]:p[1]; },
+           dAt:function(p){ return d((ax==='x')?p[0]:p[1]); } };
+}
+/* Offset de contour robuste aux sommets ALIGNÉS.
+   `offsetPoly` intersecte les droites portant deux arêtes consécutives ; sur des
+   arêtes colinéaires elles sont parallèles et la fonction retombe sur le milieu
+   des origines, très loin du bon point. Or le ré-échantillonnage du profil crée
+   exactement ce cas sur les flancs. On décale donc chaque sommet le long de la
+   bissectrice de ses deux normales (mitre), ce qui redonne le sommet d'origine
+   quand elles sont confondues. Même convention de signe qu'`offsetPoly`. */
+function _poolOffset(poly, d, cw){
+  var n=poly.length, N=[], i;
+  for(i=0;i<n;i++){
+    var a=poly[i], b=poly[(i+1)%n], ex=b[0]-a[0], ez=b[1]-a[1], L=Math.hypot(ex,ez)||1;
+    N.push([cw*(-ez/L), cw*(ex/L)]);
+  }
+  var out=[];
+  for(i=0;i<n;i++){
+    var n0=N[(i-1+n)%n], n1=N[i], p=poly[i];
+    var k=1+(n0[0]*n1[0]+n0[1]*n1[1]);
+    if(k<1e-6){ out.push([p[0]+d*n1[0], p[1]+d*n1[1]]); continue; }   /* demi-tour */
+    out.push([p[0]+d*(n0[0]+n1[0])/k, p[1]+d*(n0[1]+n1[1])/k]);
+  }
+  return out;
+}
+/* Insère un sommet à chaque franchissement d'une rupture de pente : sans cela
+   une paroi enjamberait deux pentes et sa face basse ne serait plus plane. */
+function poolResample(poly, D){
+  var out=[], n=poly.length;
+  for(var i=0;i<n;i++){
+    var a=poly[i], b=poly[(i+1)%n]; out.push(a);
+    var ua=D.uOf(a), ub=D.uOf(b);
+    if(Math.abs(ub-ua)<1e-9) continue;
+    var cuts=D.breaks.filter(function(u){ return (u-ua)*(u-ub)<0; });
+    cuts.sort(function(p,q){ return (ub>ua)?(p-q):(q-p); });
+    cuts.forEach(function(u){ var t=(u-ua)/(ub-ua); out.push([a[0]+t*(b[0]-a[0]), a[1]+t*(b[1]-a[1])]); });
+  }
+  return out;
+}
+/* Découpe d'un polygone CONVEXE par la bande u∈[a,b] (Sutherland–Hodgman).
+   On ne l'applique qu'à des triangles : la découpe d'un polygone concave
+   produirait des ponts dégénérés. */
+/* Supprime les sommets consécutifs confondus. Sans ce nettoyage, une arête qui
+   tombe exactement sur une ligne de rupture est émise deux fois : le polygone
+   reste juste, mais il produit des triangles d'aire nulle — donc des normales
+   NaN à l'export. */
+function _poolDedup(P){
+  var R=[], e=1e-7;
+  for(var i=0;i<P.length;i++){
+    var a=P[i], b=R[R.length-1];
+    if(b && Math.abs(a[0]-b[0])<e && Math.abs(a[1]-b[1])<e) continue;
+    R.push(a);
+  }
+  while(R.length>1){
+    var f=R[0], l=R[R.length-1];
+    if(Math.abs(f[0]-l[0])<e && Math.abs(f[1]-l[1])<e) R.pop(); else break;
+  }
+  return R;
+}
+function _poolHalf(P, D, keepGE, lim){
+  var R=[], n=P.length;
+  for(var i=0;i<n;i++){
+    var p=P[i], q=P[(i+1)%n], up=D.uOf(p), uq=D.uOf(q);
+    var ip=keepGE?(up>=lim-1e-9):(up<=lim+1e-9), iq=keepGE?(uq>=lim-1e-9):(uq<=lim+1e-9);
+    if(ip) R.push(p);
+    if(ip!==iq){ var t=(lim-up)/((uq-up)||1e-9); R.push([p[0]+t*(q[0]-p[0]), p[1]+t*(q[1]-p[1])]); }
+  }
+  return _poolDedup(R);
+}
+/* Triangule le polygone en plan, découpe chaque triangle par les bandes du
+   profil, et rappelle cb(polygoneConvexe2D, pente) pour chaque morceau. */
+function poolStrips(poly, D, cb){
+  var flat=poly.map(function(p){ return [p[0],0,p[1]]; });
+  var tri=triangulateFace(flat,[0,1,0]);
+  /* Les ruptures ne couvrent que le contour INTÉRIEUR. Le radier, lui, s'appuie
+     sur le contour extérieur qui déborde de l'épaisseur de paroi : sans ces deux
+     bandes sentinelles, la dalle s'arrêtait net au droit du bassin et laissait
+     un manque le long des murs de tête. Au-delà, la profondeur est constante,
+     donc ces bandes sont horizontales (pente nulle). */
+  var BR=[-1e4].concat(D.breaks, [1e4]);
+  for(var k=0;k<tri.length;k+=3){
+    var T=[poly[tri[k]],poly[tri[k+1]],poly[tri[k+2]]];
+    for(var s=1;s<BR.length;s++){
+      var a=BR[s-1], b=BR[s];
+      var Q=_poolHalf(T,D,true,a); if(Q.length<3) continue;
+      Q=_poolHalf(Q,D,false,b);   if(Q.length<3) continue;
+      var ar=Math.abs(polyArea(Q)); if(ar<1e-7) continue;
+      cb(Q, (D.d(b)-D.d(a))/Math.max(1e-9,b-a));
+    }
+  }
+}
+/* normale du plan du fond pour une pente s (dérivée de la profondeur selon u) */
+function _poolNrm(D, s){ return norm((D.axis==='x')?[s,1,0]:[0,1,s]); }
+/* Triangle exploitable ? Une découpe laisse parfois trois points alignés :
+   aire nulle, normale indéfinie, export rejeté. */
+function _triOK(a,b,c){
+  var u=sub(b,a), v=sub(c,a), w=cross(u,v);
+  return (w[0]*w[0]+w[1]*w[1]+w[2]*w[2]) > 1e-16;
+}
+function _emitTri(a,b,c,nrm,col){ if(_triOK(a,b,c)) face([a,b,c], nrm, col, 1); }
+/* Nappe simple face (le revêtement du fond), décalée de `off` au-dessus du plan. */
+function poolFloorFaces(poly, D, off, col){
+  poolStrips(poly, D, function(Q,s){
+    var nrm=_poolNrm(D,s);
+    var V=Q.map(function(p){ return [p[0], -D.dAt(p)+off, p[1]]; });
+    if(polyArea(Q)<0) V.reverse();
+    for(var i=1;i<V.length-1;i++) _emitTri(V[0],V[i],V[i+1], nrm, col);
+  });
+}
+/* Dalle d'épaisseur `t` dont la face SUPÉRIEURE suit le profil (radier). */
+function poolSlab(poly, D, off, t, col){
+  poolStrips(poly, D, function(Q,s){
+    var nrm=_poolNrm(D,s);
+    var R=(polyArea(Q)<0)?Q.slice().reverse():Q.slice();
+    var top=R.map(function(p){ return [p[0], -D.dAt(p)+off,   p[1]]; });
+    var bot=R.map(function(p){ return [p[0], -D.dAt(p)+off-t, p[1]]; });
+    var i;
+    for(i=1;i<R.length-1;i++) _emitTri(top[0],top[i],top[i+1], nrm, col);
+    var dn=[-nrm[0],-nrm[1],-nrm[2]];
+    for(i=1;i<R.length-1;i++) _emitTri(bot[0],bot[i+1],bot[i], dn, col);
+    for(i=0;i<R.length;i++){ var j=(i+1)%R.length;
+      var q=[bot[i],bot[j],top[j],top[i]];
+      if(!_triOK(q[0],q[1],q[2])) continue;
+      face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), col, 1); }
+  });
+}
+/* ---------------------------------------------------------------------------
+   ESCALIERS — vraies marches : giron, contremarche, nombre.
+   Chaque marche est un prisme plein dont le DESSUS est horizontal et dont la
+   SOUS-FACE épouse le fond : sur un fond en pente, une marche à fond plat
+   s'enfoncerait sous le radier d'un côté et flotterait de l'autre.
+   --------------------------------------------------------------------------- */
+function _ccw(p){ return (polyArea(p)>=0)?p:p.slice().reverse(); }
+function _rectPoly(x0,z0,x1,z1){ return _ccw([[x0,z0],[x1,z0],[x1,z1],[x0,z1]]); }
+/* profondeurs extrêmes sous une emprise (d est affine par morceaux en u :
+   ses extrema sur un polygone sont atteints en des sommets) */
+function _poolDRange(poly, D){
+  var mn=1e9, mx=-1e9;
+  poly.forEach(function(p){ var d=D.dAt(p); if(d<mn)mn=d; if(d>mx)mx=d; });
+  return {min:mn, max:mx};
+}
+/* Prisme dont le dessus est le plan horizontal y=yTop et le dessous le fond. */
+function poolPrismToFloor(poly, D, yTop, col){
+  poolStrips(poly, D, function(Q,s){
+    var R=(polyArea(Q)<0)?Q.slice().reverse():Q.slice();
+    var top=R.map(function(p){ return [p[0], yTop, p[1]]; });
+    var bot=R.map(function(p){ return [p[0], -D.dAt(p), p[1]]; });
+    var nb=_poolNrm(D,s), dn=[-nb[0],-nb[1],-nb[2]], i;
+    for(i=1;i<R.length-1;i++) _emitTri(top[0],top[i],top[i+1], [0,1,0], col);
+    for(i=1;i<R.length-1;i++) _emitTri(bot[0],bot[i+1],bot[i], dn, col);
+    for(i=0;i<R.length;i++){ var j=(i+1)%R.length;
+      var q=[bot[i],bot[j],top[j],top[i]];
+      if(!_triOK(q[0],q[1],q[2]) && !_triOK(q[0],q[2],q[3])) continue;
+      face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), col, 1); }
+  });
+}
+/* nombre de marches et contremarche recalés sur la profondeur disponible.
+   On prend la profondeur la PLUS FAIBLE de l'emprise : la marche du bas doit
+   rester au-dessus du fond partout, pas seulement en moyenne. */
+function _poolRisers(dLoc){
+  var nb=Math.max(1,Math.min(12,PPISCINE.escNb|0)), r=Math.max(0.08,PPISCINE.escContre/100);
+  var util=Math.max(0.10, dLoc-0.02);
+  if(nb*r>util) r=util/nb;                  /* jamais plus bas que le fond */
+  return {nb:nb, r:r, g:Math.max(0.15,PPISCINE.escGiron/100)};
+}
+function poolStairs(bb, D, col){
+  var P=PPISCINE, type=P.escType;
+  if(!type || type==='aucun') return;
+  /* Les anciennes configurations n'avaient qu'un `escPos`. On recale un
+     emplacement cohérent avec le type plutôt que de produire une géométrie folle. */
+  var pos=P.escPos||'angle-tl';
+  if(type==='angle' && pos.indexOf('angle')!==0) pos='angle-tl';
+  if(type!=='angle' && pos.indexOf('cote')!==0)  pos='cote-n';
+  var x0=bb.cx-bb.w/2, x1=bb.cx+bb.w/2, z0=bb.cz-bb.d/2, z1=bb.cz+bb.d/2;
+  var W=Math.max(0.4, Math.min(P.escW/100, Math.min(bb.w,bb.d)-0.2));
+  var k, poly, R, top, polys=[];
+  if(type==='angle'){
+    var left=(pos.charAt(pos.length-1)==='l'), topC=(pos.indexOf('t')>=0);
+    var cx=left?x0:x1, sgx=left?1:-1, cz=topC?z0:z1, sgz=topC?1:-1;
+    /* L'emprise CROÎT avec la profondeur : la marche du haut n'avance que d'un
+       giron, celle du bas de nb girons. L'inverse noierait tous les gradins
+       sous le premier bloc. */
+    var nbA=Math.max(1,Math.min(12,P.escNb|0)), gA=Math.max(0.15,P.escGiron/100);
+    for(k=0;k<nbA;k++){
+      var e=Math.min((k+1)*gA, Math.min(bb.w,bb.d)-0.1);
+      polys.push(_rectPoly(Math.min(cx,cx+sgx*e), Math.min(cz,cz+sgz*e),
+                           Math.max(cx,cx+sgx*e), Math.max(cz,cz+sgz*e)));
+    }
+  } else {
+    var horiz=(pos==='cote-n'||pos==='cote-s');
+    var base=(pos==='cote-n')?z0:(pos==='cote-s')?z1:(pos==='cote-o')?x0:x1;
+    var sg=(pos==='cote-n'||pos==='cote-o')?1:-1;
+    var ctr=horiz?bb.cx:bb.cz;
+    var nb0=Math.max(1,Math.min(12,P.escNb|0)), g0=Math.max(0.15,P.escGiron/100);
+    if(type==='roman'){
+      /* marches en arc de cercle : rayon décroissant, centre au milieu du côté */
+      /* rayon croissant avec la profondeur : W est le diamètre de la marche du bas */
+      var Rk0=Math.max(0.5, W/2);
+      for(k=0;k<nb0;k++){
+        var rad=Rk0-(nb0-1-k)*g0; if(rad<0.18) continue;
+        var pts=[], N=16, t, a2, b2;
+        for(var i2=0;i2<=N;i2++){
+          t=Math.PI*i2/N;
+          a2=ctr - rad*Math.cos(t);                          /* le long du côté  */
+          b2=base + sg*rad*Math.sin(t);                      /* vers l'intérieur */
+          pts.push(horiz?[a2,b2]:[b2,a2]);
+        }
+        polys.push(_ccw(_poolDedup(pts)));
+      }
+    } else {
+      /* marches droites : rectangles emboîtés, giron constant, avancée croissante */
+      for(k=0;k<nb0;k++){
+        var run=Math.min((k+1)*g0, (horiz?bb.d:bb.w)-0.1);
+        var far=base+sg*run;
+        polys.push(horiz? _rectPoly(ctr-W/2, Math.min(base,far), ctr+W/2, Math.max(base,far))
+                        : _rectPoly(Math.min(base,far), ctr-W/2, Math.max(base,far), ctr+W/2));
+      }
+    }
+  }
+  if(!polys.length) return;
+  /* La contremarche est calée sur la profondeur la plus faible sous la marche
+     du bas — sinon le nez de marche affleurerait le fond côté petit bain. */
+  R=_poolRisers(_poolDRange(polys[polys.length-1], D).min);
+  for(k=0;k<polys.length;k++){
+    top=-(k+1)*R.r;
+    poolPrismToFloor(polys[k], D, top, col);
+  }
+}
+/* plage immergée / banquette : palier large sous une faible hauteur d'eau */
+function poolBanquette(bb, D, col){
+  var P=PPISCINE; if(!P.banqOn) return;
+  var pos=P.banqCote||'cote-s';
+  var x0=bb.cx-bb.w/2, x1=bb.cx+bb.w/2, z0=bb.cz-bb.d/2, z1=bb.cz+bb.d/2;
+  var horiz=(pos==='cote-n'||pos==='cote-s');
+  var base=(pos==='cote-n')?z0:(pos==='cote-s')?z1:(pos==='cote-o')?x0:x1;
+  var sg=(pos==='cote-n'||pos==='cote-o')?1:-1;
+  var run=Math.min(P.banqW/100, (horiz?bb.d:bb.w)-0.2), far=base+sg*run;
+  var poly=horiz? _rectPoly(x0, Math.min(base,far), x1, Math.max(base,far))
+                : _rectPoly(Math.min(base,far), z0, Math.max(base,far), z1);
+  /* le palier ne peut pas être plus profond que le fond sous son emprise */
+  var dr=_poolDRange(poly, D);
+  var yTop=-Math.min(Math.max(0.05, P.banqProf/100), Math.max(0.03, dr.min-0.02));
+  poolPrismToFloor(poly, D, yTop, col);
 }
 function buildPiscine(){
   var A=PPISCINE.len/100, B=PPISCINE.wid/100, prof=Math.max(0.4,PPISCINE.prof/100), sh=PPISCINE.shape;
@@ -5539,40 +5868,68 @@ function buildPiscine(){
   else { poly=outlinePoly(sh, A, B, PPISCINE.lx/100, PPISCINE.lz/100, PPISCINE.lcorner||'tr', (PPISCINE.tb||200)/100, (PPISCINE.tw||300)/100, PPISCINE.ux/100, PPISCINE.uz/100); }
   if(!poly || poly.length<3) poly=outlinePoly('rect',A,B);
   if(sh==='libre'){ CUR_POLY=poly; POLY_TARGET=PPISCINE; poly=arcCurve(poly, PPISCINE); }
-  var ccw=polyArea(poly)>=0?1:-1, n=poly.length;
   var liner=POOL_LINERS.filter(function(m){return m.id===PPISCINE.liner;})[0]||POOL_LINERS[0];
-  var colBasin=liner.c;
+  var cst=poolConstr();
+  /* Revêtement intérieur : la teinte du liner sert de couleur native, la texture
+     native est la mosaïque. Les deux restent surchargeables depuis Finitions. */
+  var colBasin=fcol('pbassin', liner.c), texBasin=ftex('pbassin', 'mosaique');
+  var colStruct=fcol('pstruct', cst.c),  texStruct=ftex('pstruct', cst.tex);
   var colWater=[Math.round((liner.c[0]+70)/2), Math.round((liner.c[1]+150)/2), Math.round((liner.c[2]+205)/2)];
-  var twall=(PPISCINE.constr==='coque')?0.08:0.20;
+  var twall=Math.max(0.05, (PPISCINE.wallTh||cst.th)/100);
   var marg=PPISCINE.margelleOn?Math.max(0.05,PPISCINE.margelle/100):0;
   var plage=PPISCINE.plageOn?Math.max(0.1,PPISCINE.plage/100):0;
-  var outerW=offsetPoly(poly, twall, -ccw);
-  _CURTEX=null;
-  /* radier : haut a -prof */
-  dallePrism(poly, -prof-0.18, 0.18, colBasin);
-  /* parois interieures (liner) de -prof a 0 */
+
+  /* Profil : on échantillonne le contour aux ruptures de pente AVANT de
+     calculer l'offset, pour que paroi et structure restent en vis-à-vis. */
+  var D=poolProfile(polyBBox(poly));
+  poly=poolResample(poly, D);
+  var ccw=polyArea(poly)>=0?1:-1, n=poly.length;
+  var outerW=_poolOffset(poly, twall, -ccw);
+  var inSkin=_poolOffset(poly, 0.008, ccw);   /* peau du revêtement, en léger retrait */
+
+  /* radier : sa face supérieure épouse le fond, sous tout l'emprise des parois */
+  _CURTEX=texStruct;
+  poolSlab(outerW, D, 0, 0.20, colStruct);
+  /* parois : prisme entre contour intérieur et contour extérieur, arasé à 0 */
   for(i=0;i<n;i++){ j=(i+1)%n; var pi=poly[i],pj=poly[j],oi=outerW[i],oj=outerW[j];
-    boxV([[pi[0],-prof,pi[1]],[pj[0],-prof,pj[1]],[oj[0],-prof,oj[1]],[oi[0],-prof,oi[1]],
-          [pi[0],0,pi[1]],[pj[0],0,pj[1]],[oj[0],0,oj[1]],[oi[0],0,oi[1]]], colBasin, 1); }
+    var yi=-D.dAt(pi), yj=-D.dAt(pj);
+    boxV([[pi[0],yi,pi[1]],[pj[0],yj,pj[1]],[oj[0],yj,oj[1]],[oi[0],yi,oi[1]],
+          [pi[0],0,pi[1]],[pj[0],0,pj[1]],[oj[0],0,oj[1]],[oi[0],0,oi[1]]], colStruct, 1); }
+  /* revêtement : fond + peau des parois */
+  _CURTEX=texBasin;
+  poolFloorFaces(poly, D, 0.008, colBasin);
+  for(i=0;i<n;i++){ j=(i+1)%n; var si=inSkin[i], sj=inSkin[j];
+    var q=[[si[0],-D.dAt(poly[i])+0.008,si[1]],[sj[0],-D.dAt(poly[j])+0.008,sj[1]],[sj[0],0,sj[1]],[si[0],0,si[1]]];
+    face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), colBasin, 1); }
+  /* escalier + banquette, revêtus comme le bassin */
+  var bb0=polyBBox(poly);
+  poolStairs(bb0, D, colBasin);
+  poolBanquette(bb0, D, colBasin);
+  _CURTEX=null;
   /* plan d'eau translucide a -0.12 */
-  var wp=offsetPoly(poly, 0.04, ccw), wtop=wp.map(function(q){return [q[0],-0.12,q[1]];}), wtri=triangulateFace(wtop,[0,1,0]);
+  var wp=_poolOffset(poly, 0.04, ccw), wtop=wp.map(function(q){return [q[0],-0.12,q[1]];}), wtri=triangulateFace(wtop,[0,1,0]);
   for(var w=0;w<wtri.length;w+=3) face([wtop[wtri[w]],wtop[wtri[w+1]],wtop[wtri[w+2]]],[0,1,0],colWater,0.62);
   /* margelle (recouvre le haut des parois + debord) */
-  if(marg>0){ var mO=offsetPoly(poly, twall+marg, -ccw); _CURTEX=FINISH_TEX.pmargelle;
+  if(marg>0){ var mO=_poolOffset(poly, twall+marg, -ccw); _CURTEX=FINISH_TEX.pmargelle;
     for(i=0;i<n;i++){ j=(i+1)%n;
       boxV([[poly[i][0],0,poly[i][1]],[poly[j][0],0,poly[j][1]],[mO[j][0],0,mO[j][1]],[mO[i][0],0,mO[i][1]],
             [poly[i][0],0.04,poly[i][1]],[poly[j][0],0.04,poly[j][1]],[mO[j][0],0.04,mO[j][1]],[mO[i][0],0.04,mO[i][1]]], FINISH.pmargelle, 1); }
     _CURTEX=null; }
   /* plage peripherique */
-  if(plage>0){ var inP=offsetPoly(poly, twall+marg, -ccw), pO=offsetPoly(poly, twall+marg+plage, -ccw); _CURTEX=FINISH_TEX.pplage;
+  if(plage>0){ var inP=_poolOffset(poly, twall+marg, -ccw), pO=_poolOffset(poly, twall+marg+plage, -ccw); _CURTEX=FINISH_TEX.pplage;
     for(i=0;i<n;i++){ j=(i+1)%n;
       boxV([[inP[i][0],-0.03,inP[i][1]],[inP[j][0],-0.03,inP[j][1]],[pO[j][0],-0.03,pO[j][1]],[pO[i][0],-0.03,pO[i][1]],
             [inP[i][0],0.0,inP[i][1]],[inP[j][0],0.0,inP[j][1]],[pO[j][0],0.0,pO[j][1]],[pO[i][0],0.0,pO[i][1]]], FINISH.pplage, 1); }
     _CURTEX=null; }
-  /* escalier (angle ou cote) */
-  if(PPISCINE.escPos && PPISCINE.escPos!=='aucun'){ _CURTEX=null; poolStairs(polyBBox(poly), PPISCINE.escPos, prof, colBasin); }
-  var obb=polyBBox(offsetPoly(poly, twall+marg+plage, -ccw));
-  DIMS={ w:obb.w, h:prof+0.1, d:obb.d, cy:-prof/2 };
+  /* Le sol WebGL est percé au droit de l'excavation, pas du bassin : c'est le
+     nu extérieur des parois qui sort de terre. La margelle, en encorbellement,
+     recouvre le bord du trou. */
+  /* Uniquement pour l'objet seul : en Scène, `outerW` est en repère objet et
+     l'instance porte une matrice — le trou tomberait à côté. */
+  if(typeof MODE!=='undefined' && MODE==='piscine') GROUND_HOLE=outerW;
+  var obb=polyBBox(_poolOffset(poly, twall+marg+plage, -ccw));
+  var hMax=D.dmax;                 /* la cote hors-tout suit le point le plus profond */
+  DIMS={ w:obb.w, h:hMax+0.1, d:obb.d, cy:-hMax/2 };
   return DIMS;
 }
 function buildPiscineUI(){
@@ -5582,12 +5939,22 @@ function buildPiscineUI(){
     {title:'Forme', fields:[{type:'choice',label:'Forme du bassin',key:'shape',options:shp}]},
     {title:'Dimensions', fields:[
       {type:'slider',label:'Longueur',unit:'cm',key:'len',min:200,max:2500,step:10},
-      {type:'slider',label:'Largeur',unit:'cm',key:'wid',min:150,max:1500,step:10},
-      {type:'slider',label:'Profondeur',unit:'cm',key:'prof',min:80,max:300,step:5}
+      {type:'slider',label:'Largeur',unit:'cm',key:'wid',min:150,max:1500,step:10}
     ]},
+    {title:'Profondeur', fields:[].concat(
+      [{type:'choice',label:'Fond',key:'profOn',options:[{id:0,l:'Plat'},{id:1,l:'Profil variable'}]}],
+      PPISCINE.profOn
+        ? [{type:'choice',label:'Axe du profil',key:'profAxis',options:[{id:'len',l:'Longueur'},{id:'wid',l:'Largeur'}]},
+           {type:'profil',label:'Profil en coupe',key:'profPts'}]
+        : [{type:'slider',label:'Profondeur',unit:'cm',key:'prof',min:80,max:300,step:5}]
+    )},
     {title:'Construction', fields:[
-      {type:'choice',label:'Type',key:'constr',options:POOL_CONSTR},
-      {type:'mat',label:'Revêtement / couleur eau',key:'liner',mats:POOL_LINERS}
+      /* preset et non choice : changer de structure recale l'épaisseur normalisée */
+      {type:'preset',label:'Structure',options:POOL_CONSTR.map(function(c){
+        return {l:c.l, set:{constr:c.id, wallTh:c.th}}; })},
+      {type:'slider',label:'Épaisseur paroi',unit:'cm',key:'wallTh',min:8,max:30,step:1},
+      {type:'mat',label:'Couleur de l’eau',key:'liner',mats:POOL_LINERS},
+      {type:'note',text:'Le revêtement intérieur (mosaïque par défaut) et la structure se règlent dans <b>Finitions</b>.'}
     ]},
     {title:'Margelle', fields:[
       {type:'choice',label:'Margelle',key:'margelleOn',options:oui},
@@ -5597,13 +5964,37 @@ function buildPiscineUI(){
       {type:'choice',label:'Plage de piscine',key:'plageOn',options:oui},
       {type:'slider',label:'Largeur plage',unit:'cm',key:'plage',min:40,max:400,step:10}
     ]},
-    {title:'Escalier', fields:[
-      {type:'choice',label:'Emplacement',key:'escPos',options:[
-        {id:'aucun',l:'Aucun'},
-        {id:'angle-tl',l:'Angle 1'},{id:'angle-tr',l:'Angle 2'},{id:'angle-br',l:'Angle 3'},{id:'angle-bl',l:'Angle 4'},
-        {id:'cote-n',l:'Côté A'},{id:'cote-e',l:'Côté B'},{id:'cote-s',l:'Côté C'},{id:'cote-o',l:'Côté D'}
-      ]}
-    ]}
+    {title:'Escalier', fields:[].concat(
+      [{type:'choice',label:'Type',key:'escType',options:[
+        {id:'aucun',l:'Aucun'},{id:'droit',l:'Marches droites'},{id:'angle',l:'D’angle'},{id:'roman',l:'Roman'}]}],
+      (PPISCINE.escType==='angle')
+        ? [{type:'choice',label:'Angle',key:'escPos',options:[
+            {id:'angle-tl',l:'Angle 1'},{id:'angle-tr',l:'Angle 2'},{id:'angle-br',l:'Angle 3'},{id:'angle-bl',l:'Angle 4'}]}]
+        : (PPISCINE.escType&&PPISCINE.escType!=='aucun')
+        ? [{type:'choice',label:'Côté',key:'escPos',options:[
+            {id:'cote-n',l:'Côté A'},{id:'cote-e',l:'Côté B'},{id:'cote-s',l:'Côté C'},{id:'cote-o',l:'Côté D'}]}]
+        : [],
+      (PPISCINE.escType&&PPISCINE.escType!=='aucun')
+        ? [{type:'slider',label:'Nombre de marches',unit:'',key:'escNb',min:1,max:10,step:1},
+           {type:'slider',label:'Giron',unit:'cm',key:'escGiron',min:20,max:60,step:1},
+           {type:'slider',label:'Contremarche',unit:'cm',key:'escContre',min:10,max:30,step:1}]
+        : [],
+      (PPISCINE.escType==='droit'||PPISCINE.escType==='roman')
+        ? [{type:'slider',label:'Largeur',unit:'cm',key:'escW',min:60,max:500,step:10}]
+        : [],
+      (PPISCINE.escType&&PPISCINE.escType!=='aucun')
+        ? [{type:'note',text:'La contremarche est rabattue si la profondeur locale ne permet pas de descendre toutes les marches.'}]
+        : []
+    )},
+    {title:'Plage immergée', fields:[].concat(
+      [{type:'choice',label:'Banquette',key:'banqOn',options:oui}],
+      PPISCINE.banqOn
+        ? [{type:'choice',label:'Côté',key:'banqCote',options:[
+            {id:'cote-n',l:'Côté A'},{id:'cote-e',l:'Côté B'},{id:'cote-s',l:'Côté C'},{id:'cote-o',l:'Côté D'}]},
+           {type:'slider',label:'Largeur',unit:'cm',key:'banqW',min:40,max:400,step:10},
+           {type:'slider',label:'Hauteur d’eau',unit:'cm',key:'banqProf',min:10,max:60,step:5}]
+        : []
+    )}
   ];
   if(PPISCINE.shape==='libre') groups[0].fields.push({type:'verts',key:'verts'});
   buildObjUI(PPISCINE, groups, buildPiscineUI);
@@ -12602,6 +12993,9 @@ function scnResync(){ var cfgs=cfgLoad(); function res(list){ (list||[]).forEach
 
 function build(){
   FC=[]; PRIMS=[]; CUR_POLY=null; _IFCTAG=null; DIMS_BB=null;
+  /* Seul un objet enterré perce le sol. Remis à zéro à chaque construction :
+     sans cela le trou d'une piscine survivrait au passage à un autre objet. */
+  GROUND_HOLE=null;
   /* texture courante par défaut = celle de l'élément "forme" (objets simples).
      buildMeuble la repositionne par élément (corps/étagère). */
   _CURTEX = FINISH_TEX.forme;
@@ -15296,8 +15690,128 @@ function buildObjUI(params, groups, rebuildUI){
       else if(f.type==='steelSerie') steelSerie(f);
       else if(f.type==='steelSize') steelSize(f);
       else if(f.type==='verts') vertsF(f);
+      else if(f.type==='profil') profilF(f);
     });
   });
+  /* ------------------------------------------------------------------
+     ÉDITEUR DE PROFIL EN COUPE
+     Canevas : abscisse = position le long de l'axe (0-100 %), ordonnée =
+     profondeur. Glisser un point le déplace, double-clic sur le vide en
+     ajoute un, double-clic sur un point le supprime. Les deux extrémités
+     ne peuvent pas coulisser : elles tiennent les murs de tête.
+     ------------------------------------------------------------------ */
+  function profilF(f){
+    var pts=params[f.key]; if(!Array.isArray(pts)||pts.length<2){ pts=[[0,120],[100,120]]; params[f.key]=pts; }
+    var wrap=document.createElement('div'); wrap.className='fld';
+    wrap.innerHTML='<div class="fh"><label>'+(f.label||'Profil en coupe')+' <span class="u">cm</span></label></div>';
+    var cv=document.createElement('canvas');
+    cv.style.cssText='width:100%;height:132px;display:block;background:var(--p2);border:1px solid var(--ln);border-radius:4px;cursor:crosshair;touch-action:none;';
+    wrap.appendChild(cv);
+    var hint=document.createElement('div'); hint.className='exp-note';
+    wrap.appendChild(hint);
+    function refreshHint(){
+      hint.textContent='Glisser un point · double-clic pour ajouter ou supprimer · '
+        + params[f.key].length + ' points (2 à 12).';
+    }
+    /* Ajout / retrait explicites : le double-clic seul n'est pas découvrable.
+       « + » coupe en deux le plus long segment ; « − » retire le point intérieur
+       le plus aligné, celui dont la suppression change le moins le profil. */
+    var nav=document.createElement('div'); nav.className='mat-grid';
+    var bAdd=document.createElement('button'); bAdd.textContent='+ Ajouter un point';
+    bAdd.onclick=function(){
+      var P=params[f.key]; if(P.length>=12) return;
+      var bi=0, bl=-1;
+      for(var i=0;i<P.length-1;i++){ var l=P[i+1][0]-P[i][0]; if(l>bl){ bl=l; bi=i; } }
+      if(bl<1) return;
+      P.splice(bi+1, 0, [Math.round((P[bi][0]+P[bi+1][0])/2*10)/10,
+                         Math.round((P[bi][1]+P[bi+1][1])/2)]);
+      commit();
+    };
+    var bDel=document.createElement('button'); bDel.textContent='− Retirer un point';
+    bDel.onclick=function(){
+      var P=params[f.key]; if(P.length<=2) return;
+      var bi=-1, be=1e9;
+      for(var i=1;i<P.length-1;i++){
+        var a=P[i-1], b=P[i], c=P[i+1];
+        var t=(b[0]-a[0])/Math.max(1e-9,(c[0]-a[0]));
+        var e=Math.abs(b[1]-(a[1]+t*(c[1]-a[1])));   /* écart à la corde */
+        if(e<be){ be=e; bi=i; }
+      }
+      if(bi>0){ P.splice(bi,1); commit(); }
+    };
+    nav.appendChild(bAdd); nav.appendChild(bDel); wrap.appendChild(nav);
+    /* presets */
+    var pre=document.createElement('div'); pre.className='mat-grid';
+    [['Fond plat',[[0,130],[100,130]]],
+     ['Pente douce',[[0,110],[100,180]]],
+     ['Double pente',[[0,120],[45,120],[70,180],[100,180]]],
+     ['Fosse',[[0,110],[55,110],[70,220],[85,220],[100,140]]]
+    ].forEach(function(o){
+      var b=document.createElement('button'); b.textContent=o[0];
+      b.onclick=function(){ params[f.key]=o[1].map(function(q){return [q[0],q[1]];}); build(); updateDims(); draw(); };
+      pre.appendChild(b);
+    });
+    wrap.appendChild(pre);
+    target.appendChild(wrap);
+
+    var PAD=18, DPR=Math.min(window.devicePixelRatio||1,2), W=0, H=0, drag=-1;
+    function dScale(){ var m=0; params[f.key].forEach(function(q){ if(q[1]>m) m=q[1]; }); return Math.max(200, m+40); }
+    function toPx(q){ var dm=dScale();
+      return [PAD+(W-2*PAD)*q[0]/100, PAD+(H-2*PAD)*Math.min(q[1],dm)/dm]; }
+    function toVal(px,py){ var dm=dScale();
+      return [Math.max(0,Math.min(100,(px-PAD)/Math.max(1,W-2*PAD)*100)),
+              Math.max(20,Math.min(400,Math.round((py-PAD)/Math.max(1,H-2*PAD)*dm)))]; }
+    function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||'#888'; }
+    function draw(){
+      W=cv.clientWidth||300; H=132; cv.width=W*DPR; cv.height=H*DPR;
+      var c=cv.getContext('2d'); c.setTransform(DPR,0,0,DPR,0,0); c.clearRect(0,0,W,H);
+      var P=params[f.key].slice().sort(function(a,b){return a[0]-b[0];});
+      var px=P.map(toPx);
+      /* eau */
+      c.beginPath(); c.moveTo(px[0][0],PAD);
+      px.forEach(function(q){ c.lineTo(q[0],q[1]); });
+      c.lineTo(px[px.length-1][0],PAD); c.closePath();
+      c.fillStyle='rgba(90,150,200,0.28)'; c.fill();
+      /* ligne d'eau */
+      c.strokeStyle=css('--ln'); c.lineWidth=1;
+      c.beginPath(); c.moveTo(PAD,PAD); c.lineTo(W-PAD,PAD); c.stroke();
+      /* fond */
+      c.strokeStyle=css('--am')||'#e5701c'; c.lineWidth=2;
+      c.beginPath(); px.forEach(function(q,i){ i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1]); }); c.stroke();
+      /* points + cotes */
+      c.font='9px monospace'; c.textAlign='center';
+      px.forEach(function(q,i){
+        c.fillStyle=(i===0||i===px.length-1)?css('--dm')||'#888':(css('--am')||'#e5701c');
+        c.beginPath(); c.arc(q[0],q[1],4,0,6.2832); c.fill();
+        c.fillStyle=css('--tx')||'#ccc';
+        c.fillText(P[i][1]+'', q[0], Math.min(H-3,q[1]+13));
+      });
+    }
+    function hit(px,py){ var P=params[f.key], best=-1, bd=100;
+      P.forEach(function(q,i){ var a=toPx(q), d2=Math.hypot(a[0]-px,a[1]-py); if(d2<bd&&d2<9){ bd=d2; best=i; } });
+      return best; }
+    function pos(ev){ var r=cv.getBoundingClientRect(); return [ev.clientX-r.left, ev.clientY-r.top]; }
+    function commit(){ params[f.key].sort(function(a,b){return a[0]-b[0];}); build(); updateDims(); draw(); refreshHint(); }
+    cv.onpointerdown=function(ev){ var m=pos(ev); drag=hit(m[0],m[1]); if(drag>=0){ cv.setPointerCapture(ev.pointerId); ev.preventDefault(); } };
+    cv.onpointermove=function(ev){
+      if(drag<0) return;
+      var m=pos(ev), v=toVal(m[0],m[1]), P=params[f.key];
+      /* extrémités : abscisse figée. Autres : bornées par les voisins. */
+      if(drag===0) v[0]=0; else if(drag===P.length-1) v[0]=100;
+      else v[0]=Math.max(P[drag-1][0]+0.5, Math.min(P[drag+1][0]-0.5, v[0]));
+      P[drag]=[Math.round(v[0]*10)/10, v[1]];
+      build(); updateDims(); draw();
+    };
+    cv.onpointerup=function(){ if(drag>=0){ drag=-1; commit(); } };
+    cv.ondblclick=function(ev){
+      var m=pos(ev), i=hit(m[0],m[1]), P=params[f.key];
+      if(i>0 && i<P.length-1){ P.splice(i,1); }
+      else if(i<0 && P.length<12){ var v=toVal(m[0],m[1]); if(v[0]>0.5&&v[0]<99.5) P.push([Math.round(v[0]*10)/10, v[1]]); }
+      commit();
+    };
+    refreshHint();
+    setTimeout(draw,0);
+  }
   function colorF(f){
     var d=document.createElement('div'); d.className='fh'; d.style.marginTop='6px';
     d.innerHTML='<label>'+(f.label||'Couleur')+'</label>';
