@@ -15168,7 +15168,9 @@ function buildImmeubleUI(){
 
   for(var hi=0;hi<PIM.nFloors;hi++){ (function(idx){
     var val=(PIM.heights&&PIM.heights[idx]!=null)?PIM.heights[idx]:300;
-    var lab=(idx===0)?'RDC':('Étage '+idx);
+    /* Étiquette du niveau : « RDC » est un nœud entier (traduisible) ; pour les
+       étages on isole le numéro pour que « Étage » reste un nœud à part. */
+    var lab=(idx===0)?'<span>RDC</span>':('<span>Étage</span> '+idx);
     var fld=document.createElement('div'); fld.className='fld';
     fld.innerHTML='<div class="fh"><label>'+lab+' <span class="u">cm</span></label><input type="number" min="200" max="1000" step="5" value="'+val+'"></div><input type="range" min="200" max="1000" step="5" value="'+val+'">';
     var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
@@ -20482,6 +20484,18 @@ var I18N_ADD23={
 "Feuillage vert":["Green foliage","Follaje verde","Fogliame verde","Grünes Laub","Folhagem verde","Zöld lombozat","绿叶","緑の葉","हरा पर्णसमूह","Зелёная листва","Зелене листя","أوراق خضراء"]
 };
 (function(){ for(var fr in I18N_ADD23){ var t=I18N_ADD23[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD24 — étiquettes de niveaux (immeuble). RDC = ground floor / rez-de-chaussée. */
+var I18N_ADD24={
+"RDC":["Ground","Planta baja","Piano terra","EG","R/C","Földszint","首层","1階","भूतल","1-й этаж","1-й поверх","الطابق الأرضي"],
+"Étage":["Floor","Planta","Piano","OG","Piso","Emelet","楼层","階","मंज़िल","Этаж","Поверх","الطابق"],
+"Toit":["Roof","Cubierta","Tetto","Dach","Cobertura","Tető","屋顶","屋根","छत","Кровля","Дах","السطح"],
+"Ét.":["Fl.","Pl.","P.","G.","P.","Em.","层","階","मं.","Эт.","Пов.","ط."],
+"Tous":["All","Todos","Tutti","Alle","Todos","Mind","全部","すべて","सभी","Все","Усі","الكل"]
+};
+(function(){ for(var fr in I18N_ADD24){ var t=I18N_ADD24[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
