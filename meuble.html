@@ -639,7 +639,7 @@ WGL.initGL = function(){
     'uniform mat4 mvp;varying vec3 vn;varying vec3 vc;varying vec2 vmr;varying vec3 vw;'+
     'void main(){gl_Position=mvp*vec4(p,1.0);vn=n;vc=c;vmr=mr;vw=p;}';
   var fs='precision highp float;varying vec3 vn;varying vec3 vc;varying vec2 vmr;varying vec3 vw;'+
-    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float ovOn;uniform vec3 ovCol;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;uniform float ovOn;uniform vec3 ovCol;'+
     'const float PI=3.14159265;'+
     'float D_GGX(float NoH,float a){float a2=a*a;float d=NoH*NoH*(a2-1.0)+1.0;return a2/(PI*d*d);}'+
     'float G_Smith(float NoV,float NoL,float a){float k=a*0.5;float gv=NoV/(NoV*(1.0-k)+k);float gl=NoL/(NoL*(1.0-k)+k);return gv*gl;}'+
@@ -654,7 +654,7 @@ WGL.initGL = function(){
     'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
     'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);vec3 kd=(1.0-F)*(1.0-metal);'+
     'col+=(kd*dc/PI+spec)*lightCols[i]*NoL;}'+
-    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*(0.6+0.4*(1.0-metal));'+
+    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);vec3 _sd=normalize(lightDirs[0]);float _sf=max(dot(N,_sd),0.0);amb+=iblAmt*(lightCols[0]*_sf*0.22+vec3(0.09,0.12,0.17)*max(-dot(N,_sd),0.0)*0.55);col+=amb*alb*(0.6+0.4*(1.0-metal));'+
     'vec3 R=reflect(-Vd,N);float rh=R.y*0.5+0.5;vec3 er=mix(ambBot,ambTop,rh)*1.4;'+
     'vec3 Fe=fres(NoV,F0)*(1.0-rough);col+=er*Fe;'+
     'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));gl_FragColor=vec4(col,1.0);}';
@@ -815,7 +815,20 @@ WGL.resize=function(){
   if(!WGL.gl) return;
   var cv=document.getElementById('glcv');
   var r=cv.getBoundingClientRect();
-  cv.width=Math.max(1,r.width*devicePixelRatio); cv.height=Math.max(1,r.height*devicePixelRatio);
+  /* SURÉCHANTILLONNAGE (SSAA) : on agrandit le TAMPON DE DESSIN d'un facteur,
+     le navigateur le réduit ensuite à la taille CSS → anti-crénelage gratuit sur
+     toute l'image (géométrie ET shaders). Le picking passe par le canvas 2D `cv`,
+     pas par `glcv` : il n'est donc pas affecté. Le ratio reste identique, donc le
+     cadrage colle toujours à la projection logicielle. Facteur 1 = ancien rendu. */
+  var ss=(typeof PREFS!=='undefined' && PREFS.ssaa>0)?PREFS.ssaa:1.5;
+  var scale=devicePixelRatio*ss;
+  /* garde-fou mobile : plafonne le nombre total de pixels (sinon un écran retina
+     × SSAA fait exploser la charge GPU et le budget mémoire des framebuffers).
+     On réduit le FACTEUR uniformément → le ratio reste celui de la fenêtre. */
+  var MAXPIX=8.5e6, maxScale=Math.sqrt(MAXPIX/Math.max(1,r.width*r.height));
+  if(scale>maxScale) scale=maxScale;
+  var W=Math.max(1,Math.round(r.width*scale)), H=Math.max(1,Math.round(r.height*scale));
+  cv.width=W; cv.height=H;
   WGL.gl.viewport(0,0,cv.width,cv.height);
 };
 
@@ -847,6 +860,7 @@ WGL.render=function(){
   gl.uniform3fv(gl.getUniformLocation(WGL.prog,'lightCols'),new Float32Array([].concat.apply([],e.C)));
   gl.uniform3fv(gl.getUniformLocation(WGL.prog,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(WGL.prog,'ambBot'),new Float32Array(e.aB));
+  gl.uniform1f(gl.getUniformLocation(WGL.prog,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
   gl.uniform1f(gl.getUniformLocation(WGL.prog,'ovOn'), PROD_OVERRIDE?1.0:0.0);
   var _oc=FINISH.fab||[180,182,188];
   gl.uniform3f(gl.getUniformLocation(WGL.prog,'ovCol'), _oc[0]/255, _oc[1]/255, _oc[2]/255);
@@ -868,7 +882,7 @@ WGL.initTexGL=function(){
     'varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
     'void main(){vec4 wp=model*vec4(p,1.0);gl_Position=pv*wp;vn=mat3(model)*n;vw=wp.xyz;vsp=lvp*wp;vec2 su=uv*uvScale;float cr=cos(uvRot),sr=sin(uvRot);vuv=vec2(su.x*cr-su.y*sr,su.x*sr+su.y*cr);}';
   var fs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
-    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;'+
     'uniform float ovOn;uniform vec3 ovCol;uniform sampler2D tex0;uniform float useTex;uniform vec3 baseCol;uniform vec2 mrp;uniform float uAlpha;'+
     GLSL_SH_FS+
     'const float PI=3.14159265;'+
@@ -891,7 +905,7 @@ WGL.initTexGL=function(){
     'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
     'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);vec3 kd=(1.0-F)*(1.0-metal);'+
     'col+=(kd*dc/PI+spec)*lightCols[i]*NoL*((i==0)?shf:1.0);}'+
-    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*(0.6+0.4*(1.0-metal));'+
+    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);vec3 _sd=normalize(lightDirs[0]);float _sf=max(dot(N,_sd),0.0);amb+=iblAmt*(lightCols[0]*_sf*0.22+vec3(0.09,0.12,0.17)*max(-dot(N,_sd),0.0)*0.55);col+=amb*alb*(0.6+0.4*(1.0-metal));'+
     'vec3 R=reflect(-Vd,N);float rh=R.y*0.5+0.5;vec3 er=mix(ambBot,ambTop,rh)*1.4;'+
     'vec3 Fe=fres(NoV,F0)*(1.0-rough);col+=er*Fe;'+
     /* VERRE (uAlpha<1) : même traitement que progG. Le diffus et l'ambiant calculés
@@ -1095,6 +1109,7 @@ WGL.renderT=function(){
   gl.uniform3fv(gl.getUniformLocation(P,'lightCols'),new Float32Array([].concat.apply([],e.C)));
   gl.uniform3fv(gl.getUniformLocation(P,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(P,'ambBot'),new Float32Array(e.aB));
+  gl.uniform1f(gl.getUniformLocation(P,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
   gl.uniform1f(gl.getUniformLocation(P,'ovOn'), PROD_OVERRIDE?1.0:0.0);
   var oc=FINISH.fab||[180,182,188];
   gl.uniform3f(gl.getUniformLocation(P,'ovCol'),oc[0]/255,oc[1]/255,oc[2]/255);
@@ -1167,7 +1182,7 @@ WGL.renderSceneTex=function(){
   var tx=cam.tx||0,tz=cam.tz||0, ex=tx+cam.r*Math.sin(cam.ph)*Math.sin(cam.th), ey=cam.ty+cam.r*Math.cos(cam.ph), ez=tz+cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
   var mv=WGL._look([ex,ey,ez],[tx,cam.ty,tz],[0,1,0]);
   var as=cv.width/cv.height, fa=Math.max(100,cam.r*3+60), prj=WGL._persp(0.95,as,0.02,fa), pv=WGL._mul(prj,mv);
-  var _site=(typeof SITE!=='undefined'&&SITE.on);
+  var _site=(typeof SITE!=='undefined'&&SITE.on&&SITE.show!==0);
   /* --- CARTE D'OMBRE (soleil) : rendue avant tout, dans son propre framebuffer --- */
   var _sunL=WGL.sunVec(e.L[0]);
   var _shOK=(!_site) && WGL.renderShadowMap(_sunL, function(ulM, lp0){
@@ -1291,6 +1306,7 @@ WGL.renderSceneTex=function(){
   gl.uniform3fv(gl.getUniformLocation(P,'lightCols'),new Float32Array([].concat.apply([],e.C)));
   gl.uniform3fv(gl.getUniformLocation(P,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(P,'ambBot'),new Float32Array(e.aB));
+  gl.uniform1f(gl.getUniformLocation(P,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
   gl.uniform1f(gl.getUniformLocation(P,'ovOn'),0.0);
   gl.uniform3f(gl.getUniformLocation(P,'ovCol'),0.7,0.71,0.73);
   gl.uniform1i(gl.getUniformLocation(P,'tex0'),0);
@@ -1365,6 +1381,7 @@ WGL.renderSceneTex=function(){
     gl.uniform3fv(gl.getUniformLocation(PG,'lightCols'),new Float32Array([].concat.apply([],e.C)));
     gl.uniform3fv(gl.getUniformLocation(PG,'ambTop'),new Float32Array(e.aT));
     gl.uniform3fv(gl.getUniformLocation(PG,'ambBot'),new Float32Array(e.aB));
+    gl.uniform1f(gl.getUniformLocation(PG,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
     WGL.bindShadowU(PG,_shOK);
     WGL.bindEnvColors(PG);   /* ciel/sol réels → reflets du verre */
     var gM=gl.getUniformLocation(PG,'model'), glp=gl.getAttribLocation(PG,'p'), gln=gl.getAttribLocation(PG,'n'), glc=gl.getAttribLocation(PG,'c');
@@ -1384,6 +1401,7 @@ WGL.renderSceneTex=function(){
     gl.uniformMatrix4fv(gM,false,WGL._ident());
   }
   WGL.compositeAO(_aoOK);   /* occlusion ambiante : couleur *= AO */
+  WGL.postFX();             /* bloom + étalonnage + vignette (non intrusif) */
 };
 /* ============================================================================
    PROTOTYPE — RENDU WEBGL DES OBJETS GÉNÉRIQUES (à partir de la liste FC)
@@ -1398,7 +1416,7 @@ WGL.initGGL=function(){
     'varying vec3 vn;varying vec3 vw;varying vec4 vc;'+
     'void main(){vec4 wp=model*vec4(p,1.0);gl_Position=pv*wp;vn=mat3(model)*n;vw=wp.xyz;vc=c;vsp=lvp*wp;}';
   var fs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec4 vc;'+
-    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;'+
     'uniform vec3 skyTopC;uniform vec3 skyHorC;uniform vec3 gndC;'+
     GLSL_SH_FS+
     'const float PI=3.14159265;'+
@@ -1413,7 +1431,7 @@ WGL.initGGL=function(){
     'float NoL=max(dot(N,Ld),0.0);float NoH=max(dot(N,H),0.0);float VoH=max(dot(Vd,H),0.0);'+
     'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
     'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);col+=(alb/PI+spec)*lightCols[i]*NoL*((i==0)?shf:1.0);}'+
-    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*0.9;'+
+    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);vec3 _sd=normalize(lightDirs[0]);float _sf=max(dot(N,_sd),0.0);amb+=iblAmt*(lightCols[0]*_sf*0.22+vec3(0.09,0.12,0.17)*max(-dot(N,_sd),0.0)*0.55);col+=amb*alb*0.9;'+
     'float isG=step(vc.a,0.95);'+
     /* VERRE : réflexion du vrai ciel au-dessus de l'horizon, du sol en dessous, + éclat solaire */
     'vec3 Rr=reflect(-Vd,N);'+
@@ -1438,7 +1456,7 @@ WGL.initGGL=function(){
   var tvs='attribute vec3 p;attribute vec3 n;attribute vec2 uv;uniform mat4 pv;'+GLSL_SH_VS+'varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
     'void main(){gl_Position=pv*vec4(p,1.0);vn=n;vw=p;vuv=uv;vsp=lvp*vec4(p,1.0);}';
   var tfs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
-    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform sampler2D uTex;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;uniform sampler2D uTex;'+
     GLSL_SH_FS+
     'const float PI=3.14159265;'+
     'float D_GGX(float NoH,float a){float a2=a*a;float d=NoH*NoH*(a2-1.0)+1.0;return a2/(PI*d*d);}'+
@@ -1452,7 +1470,7 @@ WGL.initGGL=function(){
     'float NoL=max(dot(N,Ld),0.0);float NoH=max(dot(N,H),0.0);float VoH=max(dot(Vd,H),0.0);'+
     'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
     'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);col+=(alb/PI+spec)*lightCols[i]*NoL*((i==0)?shf:1.0);}'+
-    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*0.9;'+
+    'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);vec3 _sd=normalize(lightDirs[0]);float _sf=max(dot(N,_sd),0.0);amb+=iblAmt*(lightCols[0]*_sf*0.22+vec3(0.09,0.12,0.17)*max(-dot(N,_sd),0.0)*0.55);col+=amb*alb*0.9;'+
     'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));gl_FragColor=vec4(col,1.0);}';
   var prt=gl.createProgram();gl.attachShader(prt,sh(gl.VERTEX_SHADER,tvs));gl.attachShader(prt,sh(gl.FRAGMENT_SHADER,tfs));gl.linkProgram(prt);
   if(!gl.getProgramParameter(prt,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(prt));
@@ -1820,6 +1838,106 @@ WGL.compositeAO=function(ok){
   gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
 };
 /* ============================================================================
+   POST-TRAITEMENT — bloom + étalonnage heure dorée + vignettage.
+   NON INTRUSIF : la scène est rendue normalement à l'écran, PUIS recopiée dans
+   une texture (copyTexSubImage2D) et retraitée. Aucune passe d'éclairage n'est
+   modifiée ; désactivé, le rendu est strictement identique. Chaîne :
+     1) capture écran → sceneTex ;
+     2) extraction des hautes lumières (seuil doux) → demi-résolution ;
+     3) flou gaussien séparable (H puis V) ;
+     4) recomposition : scène + bloom, teinte chaude/froide, courbe S, vignette.
+   ============================================================================ */
+WGL.postEnabled=function(){
+  if(typeof PREFS==='undefined') return false;
+  var bl=(PREFS.bloom!=null?PREFS.bloom:0.5), gr=(PREFS.grade!=null?PREFS.grade:0.5);
+  return (bl>0.001 || gr>0.001);
+};
+WGL._pfxProg=function(fs){
+  var gl=WGL.gl;
+  var vs='attribute vec2 q;varying vec2 uv;void main(){uv=q*0.5+0.5;gl_Position=vec4(q,0.0,1.0);}';
+  function sh(t,s){var o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error('postFX',gl.getShaderInfoLog(o));return o;}
+  var p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,vs));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS))console.error('postFX link',gl.getProgramInfoLog(p));
+  return p;
+};
+WGL.initPostFX=function(){
+  if(WGL.pfxInit===false) return false;
+  var gl=WGL.gl; if(!gl){ WGL.pfxInit=false; return false; }
+  if(!WGL.pfxBright){
+    WGL.pfxBright=WGL._pfxProg('precision highp float;varying vec2 uv;uniform sampler2D src;uniform float thr;uniform float soft;'+
+      'void main(){vec3 c=texture2D(src,uv).rgb;float l=max(c.r,max(c.g,c.b));float k=clamp((l-thr)/max(1e-4,soft),0.0,1.0);gl_FragColor=vec4(c*k*k,1.0);}');
+    WGL.pfxBlur=WGL._pfxProg('precision highp float;varying vec2 uv;uniform sampler2D src;uniform vec2 dir;'+
+      'void main(){vec3 s=texture2D(src,uv).rgb*0.227027;'+
+      's+=texture2D(src,uv+dir*1.3846).rgb*0.316216;s+=texture2D(src,uv-dir*1.3846).rgb*0.316216;'+
+      's+=texture2D(src,uv+dir*3.2308).rgb*0.070270;s+=texture2D(src,uv-dir*3.2308).rgb*0.070270;'+
+      'gl_FragColor=vec4(s,1.0);}');
+    WGL.pfxComp=WGL._pfxProg('precision highp float;varying vec2 uv;uniform sampler2D scene;uniform sampler2D bloom;'+
+      'uniform float bloomAmt;uniform float gradeAmt;uniform float vig;'+
+      'void main(){vec3 c=texture2D(scene,uv).rgb;vec3 b=texture2D(bloom,uv).rgb;c+=b*bloomAmt;'+
+      'if(gradeAmt>0.0){float l=dot(c,vec3(0.299,0.587,0.114));'+
+      'vec3 warm=vec3(1.06,1.015,0.95),cool=vec3(0.97,0.99,1.05);'+          /* hautes lumières chaudes, ombres froides */
+      'vec3 tint=mix(cool,warm,smoothstep(0.15,0.85,l));vec3 g=c*tint;'+
+      'g=mix(g,g*g*(3.0-2.0*g),0.18);'+                                       /* légère courbe S */
+      'c=mix(c,g,gradeAmt);}'+
+      'vec2 d=uv-0.5;float r=dot(d,d);c*=1.0-vig*smoothstep(0.15,0.75,r);'+   /* vignette */
+      'gl_FragColor=vec4(clamp(c,0.0,1.0),1.0);}');
+  }
+  var cv=gl.canvas, W=Math.max(2,cv.width|0), H=Math.max(2,cv.height|0);
+  if(WGL.pfx && WGL.pfx.W===W && WGL.pfx.H===H){ WGL.pfxInit=true; return true; }
+  try{
+    if(WGL.pfx){ gl.deleteTexture(WGL.pfx.scene); }   /* ancienne taille : on libère la capture */
+    var sc=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,sc);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,W,H,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    var hw=Math.max(2,W>>1), hh=Math.max(2,H>>1);          /* bloom en demi-résolution (basse fréquence) */
+    var A=WGL._mkRT(hw,hh,true), B=WGL._mkRT(hw,hh,true);
+    WGL.pfx={ W:W, H:H, hw:hw, hh:hh, scene:sc, A:A, B:B };
+    WGL.pfxInit=true; return true;
+  }catch(e){ console.warn('postFX init',e); WGL.pfxInit=false; return false; }
+};
+WGL.postFX=function(){
+  if(!WGL.postEnabled() || !WGL.initPostFX()) return;
+  var gl=WGL.gl, P=WGL.pfx, W=P.W, H=P.H;
+  var bloomAmt=(PREFS.bloom!=null?PREFS.bloom:0.5), gradeAmt=(PREFS.grade!=null?PREFS.grade:0.5);
+  gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.BLEND);
+  function quad(pr){ var lq=gl.getAttribLocation(pr,'q'); gl.bindBuffer(gl.ARRAY_BUFFER,WGL._fsQuad());
+    gl.enableVertexAttribArray(lq); gl.vertexAttribPointer(lq,2,gl.FLOAT,false,0,0); gl.drawArrays(gl.TRIANGLES,0,6); }
+  /* 1) capture de l'image affichée (framebuffer par défaut lié) */
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,P.scene);
+  gl.copyTexSubImage2D(gl.TEXTURE_2D,0,0,0,0,0,W,H);
+  /* 2) extraction des hautes lumières → A (demi-résolution) */
+  gl.bindFramebuffer(gl.FRAMEBUFFER,P.A.fb); gl.viewport(0,0,P.hw,P.hh);
+  gl.useProgram(WGL.pfxBright);
+  gl.bindTexture(gl.TEXTURE_2D,P.scene); gl.uniform1i(gl.getUniformLocation(WGL.pfxBright,'src'),0);
+  gl.uniform1f(gl.getUniformLocation(WGL.pfxBright,'thr'),0.75);
+  gl.uniform1f(gl.getUniformLocation(WGL.pfxBright,'soft'),0.35);
+  quad(WGL.pfxBright);
+  /* 3) flou séparable : A→B (H) puis B→A (V) */
+  gl.useProgram(WGL.pfxBlur);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,P.B.fb); gl.viewport(0,0,P.hw,P.hh);
+  gl.bindTexture(gl.TEXTURE_2D,P.A.tex); gl.uniform1i(gl.getUniformLocation(WGL.pfxBlur,'src'),0);
+  gl.uniform2f(gl.getUniformLocation(WGL.pfxBlur,'dir'),1/P.hw,0);
+  quad(WGL.pfxBlur);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,P.A.fb); gl.viewport(0,0,P.hw,P.hh);
+  gl.bindTexture(gl.TEXTURE_2D,P.B.tex);
+  gl.uniform2f(gl.getUniformLocation(WGL.pfxBlur,'dir'),0,1/P.hh);
+  quad(WGL.pfxBlur);
+  /* 4) recomposition à l'écran : scène + bloom + grade + vignette */
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,W,H);
+  gl.useProgram(WGL.pfxComp);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,P.scene); gl.uniform1i(gl.getUniformLocation(WGL.pfxComp,'scene'),0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,P.A.tex); gl.uniform1i(gl.getUniformLocation(WGL.pfxComp,'bloom'),1);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.uniform1f(gl.getUniformLocation(WGL.pfxComp,'bloomAmt'),bloomAmt);
+  gl.uniform1f(gl.getUniformLocation(WGL.pfxComp,'gradeAmt'),gradeAmt);
+  gl.uniform1f(gl.getUniformLocation(WGL.pfxComp,'vig'),gradeAmt*0.30);
+  quad(WGL.pfxComp);
+  gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+};
+/* ============================================================================
    HERBE PROCÉDURALE TUILABLE — bruit de valeur PÉRIODIQUE (la période suit la
    fréquence), donc les bords se raccordent exactement. Aucun fichier externe.
    ============================================================================ */
@@ -1998,7 +2116,7 @@ WGL.renderG=function(){
   var _as=cv.width/cv.height, _fa=Math.max(100,cam.r*3+60);
   var prj=ORTHO?WGL._ortho(cam.r*Math.tan(0.95/2),_as,0.02,_fa):WGL._persp(0.95,_as,0.02,_fa), pv=WGL._mul(prj,mv);
   var e=WGL.ENVS[WGL.env];
-  var _site=(typeof SITE!=='undefined'&&SITE.on);
+  var _site=(typeof SITE!=='undefined'&&SITE.on&&SITE.show!==0);
   /* --- CARTE D'OMBRE (soleil) : toute la géométrie opaque, matrice modèle identité --- */
   var _sunL=WGL.sunVec(e.L[0]);
   var _isScn=(typeof MODE!=='undefined' && MODE==='scene');
@@ -2049,6 +2167,7 @@ WGL.renderG=function(){
   gl.uniform3fv(gl.getUniformLocation(P,'lightCols'),new Float32Array([].concat.apply([],e.C)));
   gl.uniform3fv(gl.getUniformLocation(P,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(P,'ambBot'),new Float32Array(e.aB));
+  gl.uniform1f(gl.getUniformLocation(P,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
   WGL.bindShadowU(P,_shOK); WGL.bindEnvColors(P);   /* ombres + reflets de verre */
   var lp=gl.getAttribLocation(P,'p'), ln=gl.getAttribLocation(P,'n'), lc=gl.getAttribLocation(P,'c');
   function draw(pb,nb,cb,count){
@@ -2094,6 +2213,7 @@ WGL.renderG=function(){
     gl.uniform3fv(gl.getUniformLocation(PT2,'lightCols'),new Float32Array([].concat.apply([],e.C)));
     gl.uniform3fv(gl.getUniformLocation(PT2,'ambTop'),new Float32Array(e.aT));
     gl.uniform3fv(gl.getUniformLocation(PT2,'ambBot'),new Float32Array(e.aB));
+    gl.uniform1f(gl.getUniformLocation(PT2,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
     gl.uniform1i(gl.getUniformLocation(PT2,'uTex'),0);
     WGL.bindShadowU(PT2,_shOK);
     var tlp=gl.getAttribLocation(PT2,'p'), tln=gl.getAttribLocation(PT2,'n'), tlu=gl.getAttribLocation(PT2,'uv');
@@ -2107,7 +2227,7 @@ WGL.renderG=function(){
     gl.disableVertexAttribArray(tlu);
     gl.useProgram(P);
   }
-  if(G.countMap && typeof SITE!=='undefined' && SITE.on){ if(!WGL.mapTexReady) WGL.makeMapTex();
+  if(G.countMap && typeof SITE!=='undefined' && SITE.on && SITE.show!==0){ if(!WGL.mapTexReady) WGL.makeMapTex();
     if(WGL.mapTexReady){ gl.useProgram(WGL.progGround); gl.uniformMatrix4fv(gl.getUniformLocation(WGL.progGround,'pv'),false,pv);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,WGL.mapTex); gl.uniform1i(gl.getUniformLocation(WGL.progGround,'map'),0);
       var gp=gl.getAttribLocation(WGL.progGround,'p'), gu=gl.getAttribLocation(WGL.progGround,'uv');
@@ -2119,6 +2239,7 @@ WGL.renderG=function(){
   draw(G.pT,G.nT,G.cT,G.countT);
   gl.depthMask(true); gl.disable(gl.BLEND);
   WGL.compositeAO(_aoOK);   /* occlusion ambiante : couleur *= AO */
+  WGL.postFX();             /* bloom + étalonnage + vignette (non intrusif) */
 };
 WGL.showGeneric=function(dims){
   if(!WGL.initGL()){ ENGINE='soft'; DIRTY=true; return; }
@@ -2244,10 +2365,13 @@ var FIELDS_MEUBLE = [
   {k:'sh', l:'Étagères',   u:'',   min:0,  max:8,   step:1},
   {k:'dr', l:'Portes',     u:'',   min:0,  max:3,   step:1}
 ];
+/* Formes : jusqu'à 300 m d'arête pour esquisser des volumes à l'échelle d'un
+   bâtiment (IGH compris). Le champ numérique permet la saisie précise ; le
+   curseur sert au dégrossissage. */
 var FIELDS_FORME = [
-  {k:'w', l:'Largeur',    u:'cm', min:10, max:300, step:5},
-  {k:'h', l:'Hauteur',    u:'cm', min:10, max:300, step:5},
-  {k:'d', l:'Profondeur', u:'cm', min:10, max:300, step:5}
+  {k:'w', l:'Largeur',    u:'cm', min:10, max:30000, step:10},
+  {k:'h', l:'Hauteur',    u:'cm', min:10, max:30000, step:10},
+  {k:'d', l:'Profondeur', u:'cm', min:10, max:30000, step:10}
 ];
 
 /* Liste des formes géométriques disponibles (id + libellé bouton) */
@@ -2909,6 +3033,7 @@ function getTexImage(id){
 var FINISH = {
   pmargelle:[210,206,196], pplage:[200,196,186],
   pbassin:[150,180,196], pstruct:[176,176,170],   /* piscine : revêtement intérieur (mosaïque) / structure */
+  rampsurf:[196,196,192], rampstruct:[176,176,172],   /* rampe PMR : roulement / joues */
   vstruct:[80,84,90], vsoub:[180,178,172], vsoubExt:[180,178,172], vsoubInt:[198,194,187], chab:[205,198,182], chtub:[120,124,130],
   corps:   [176, 140, 98],
   etagere: [176, 140, 98],
@@ -2989,6 +3114,7 @@ function ftex(key, native){ return FINISH_ON[key] ? (FINISH_TEX[key]||null) : (n
 var FINISH_TEX = {
   pbassin:'mosaique',              /* revêtement intérieur du bassin : mosaïque par défaut */
   pstruct:null,                    /* structure : parpaing / béton banché (posé selon le type) */
+  rampsurf:null, rampstruct:null,  /* rampe PMR */
   pmargelle:null, pplage:null, vstruct:null, vsoub:null, vsoubExt:null, vsoubInt:null, chab:null,
   imdalle:null, impoteau:null, impoutre:null, imvoile:null, chtub:null,
   tcadre:null, touvrant:null, tpoignee:null, vcadre:null, vouvrant:null,
@@ -3108,6 +3234,17 @@ var FINISH_ELEMS_ESCALIER = [
   {id:'esccontre', l:'Contremarches'},
   {id:'escstruct', l:'Limon / structure'}
 ];
+var FINISH_ELEMS_RAMPE = [
+  {id:'rampsurf',   l:'Surface de roulement'},
+  {id:'rampstruct', l:'Structure / joues'}
+];
+var FINISH_ELEMS_ASC = [
+  {id:'ascgaine',  l:'Gaine'},
+  {id:'ascdoor',   l:'Portes palières'},
+  {id:'asccab',    l:'Cabine'},
+  {id:'ascfloor',  l:'Sol cabine'},
+  {id:'ascstruct', l:'Guidage / structure'}
+];
 var FINISH_ELEMS_FERME = [ {id:'fmembrure', l:'Membrures'}, {id:'ftreillis', l:'Treillis'} ];
 var FINISH_ELEMS_TOITURE = [ {id:'toitcharp', l:'Charpente'} ];
 var FINISH_ELEMS_FORME = [ {id:'forme', l:'Forme'} ];
@@ -3187,7 +3324,7 @@ function uiBgStyle(ctx){ return UIKRAFT ? kraftPattern(ctx) : (UILIGHT?'#e9edf2'
 
 /* ===== PRÉFÉRENCES DE PRÉSENTATION (persistées) : thème, polices, ciel/sol WebGL, trame ===== */
 var PREFS_KEY='BPO_PREFS_v1';
-var PREFS=(function(){ var d={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0,coteColor:'',coteSize:0,coteFont:''};
+var PREFS=(function(){ var d={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0,coteColor:'',coteSize:0,coteFont:'', ssaa:1.5, bloom:0.5, grade:0.5, ibl:0.6};
   try{ var s=JSON.parse(localStorage.getItem(PREFS_KEY)); if(s) for(var k in s){ if(k in d) d[k]=s[k]; } }catch(e){} return d; })();
 function prefsSave(){ try{ localStorage.setItem(PREFS_KEY, JSON.stringify(PREFS)); }catch(e){} }
 /* ---- Contrôles Ombres / Soleil, réutilisables (Préférences ET panneau Scène).
@@ -3224,6 +3361,38 @@ function buildSunControls(host, rerender){
     sl2.textContent=(+si.value).toFixed(2);
     si.oninput=function(){ PREFS.ssaoStrength=parseFloat(si.value); sl2.textContent=PREFS.ssaoStrength.toFixed(2); prefsSave(); DIRTY=true; if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
     wS.appendChild(si); wS.appendChild(sl2); rS.appendChild(wS);
+  }
+  /* Qualité d'image (SSAA) : facteur de suréchantillonnage. 1 = rapide, 2 = net. */
+  if(glOn){
+    var rQ=line('Netteté (anti-crénelage)'), wQ=document.createElement('div'); wQ.style.cssText='display:flex;align-items:center;gap:6px;';
+    var qi=document.createElement('input'); qi.type='range'; qi.min=1; qi.max=2; qi.step=0.25;
+    qi.value=(PREFS.ssaa!=null?PREFS.ssaa:1.5); qi.style.width='110px';
+    var ql=document.createElement('span'); ql.style.cssText='font-size:10px;color:var(--dm);min-width:34px;text-align:right;';
+    ql.textContent=(+qi.value).toFixed(2)+'×';
+    qi.oninput=function(){ PREFS.ssaa=parseFloat(qi.value); ql.textContent=PREFS.ssaa.toFixed(2)+'×'; prefsSave();
+      if(WGL&&WGL.resize){ WGL.resize(); if(WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); } };
+    wQ.appendChild(qi); wQ.appendChild(ql); rQ.appendChild(wQ);
+    /* Bloom : halo des hautes lumières (soleil, reflets vifs). */
+    var rBl=line('Halo (bloom)'), wBl=document.createElement('div'); wBl.style.cssText='display:flex;align-items:center;gap:6px;';
+    var bi=document.createElement('input'); bi.type='range'; bi.min=0; bi.max=1.2; bi.step=0.05;
+    bi.value=(PREFS.bloom!=null?PREFS.bloom:0.5); bi.style.width='110px';
+    var bl2=document.createElement('span'); bl2.style.cssText='font-size:10px;color:var(--dm);min-width:34px;text-align:right;'; bl2.textContent=(+bi.value).toFixed(2);
+    bi.oninput=function(){ PREFS.bloom=parseFloat(bi.value); bl2.textContent=PREFS.bloom.toFixed(2); prefsSave(); if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
+    wBl.appendChild(bi); wBl.appendChild(bl2); rBl.appendChild(wBl);
+    /* Étalonnage : teinte heure dorée + contraste + vignette. */
+    var rGr=line('Ambiance (étalonnage)'), wGr=document.createElement('div'); wGr.style.cssText='display:flex;align-items:center;gap:6px;';
+    var gi=document.createElement('input'); gi.type='range'; gi.min=0; gi.max=1; gi.step=0.05;
+    gi.value=(PREFS.grade!=null?PREFS.grade:0.5); gi.style.width='110px';
+    var gl2=document.createElement('span'); gl2.style.cssText='font-size:10px;color:var(--dm);min-width:34px;text-align:right;'; gl2.textContent=(+gi.value).toFixed(2);
+    gi.oninput=function(){ PREFS.grade=parseFloat(gi.value); gl2.textContent=PREFS.grade.toFixed(2); prefsSave(); if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
+    wGr.appendChild(gi); wGr.appendChild(gl2); rGr.appendChild(wGr);
+    /* IBL : modelé par lumière d'ambiance directionnelle (chaud côté soleil, froid à l'ombre). */
+    var rIb=line('Modelé (lumière d\'ambiance)'), wIb=document.createElement('div'); wIb.style.cssText='display:flex;align-items:center;gap:6px;';
+    var ii=document.createElement('input'); ii.type='range'; ii.min=0; ii.max=1.2; ii.step=0.05;
+    ii.value=(PREFS.ibl!=null?PREFS.ibl:0.6); ii.style.width='110px';
+    var il2=document.createElement('span'); il2.style.cssText='font-size:10px;color:var(--dm);min-width:34px;text-align:right;'; il2.textContent=(+ii.value).toFixed(2);
+    ii.oninput=function(){ PREFS.ibl=parseFloat(ii.value); il2.textContent=PREFS.ibl.toFixed(2); prefsSave(); if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
+    wIb.appendChild(ii); wIb.appendChild(il2); rIb.appendChild(wIb);
   }
   tog('Ciel avec nuages', PREFS.clouds!==0, function(){ PREFS.clouds=(PREFS.clouds!==0)?0:1; prefsSave(); redraw(); rerender&&rerender(); });
   tog('Sol herbe (procédural)', PREFS.grass!==0, function(){ PREFS.grass=(PREFS.grass!==0)?0:1; prefsSave(); redraw(); rerender&&rerender(); });
@@ -3526,6 +3695,7 @@ function parkLayers(){
 function parkTotalThick(){ var t=0; parkLayers().forEach(function(l){ t+=l.t; }); return t; }
 /* Récapitulatif chiffré, recalculé à chaque buildParking(). */
 var PARK_INFO = {total:0, pmr:0, req:0, area:0, dropped:0, isl:0};
+var RAMPE_INFO = {slope:5, run:0, dev:0, width:140, palRepos:140, nF:1};
 /* Boîte englobante RÉELLE du dernier objet construit, quand il n'est pas centré
    sur l'origine avec sa base à y = 0 (convention de tous les autres objets).
    drawCotes() s'y recale ; sinon les cotes flottent à côté de l'élément. */
@@ -3651,6 +3821,49 @@ var PE = { shape:'droit', totalH:280, stepH:17, stepD:28, width:100, gap:6, palD
   matStep:'beton', matRiser:'beton', matStruct:'acier', matRail:'acier',
   railSides:'droite', railH:100, railFill:'barreaux', railExt:30, railPalier:1, usage:'habitation',
   verts:'0,0 0,250 220,250' };
+/* ============================================================================
+   RAMPE PMR — plan incliné + paliers. Trois tracés : droit (avec paliers de
+   repos automatiques), en L (deux volées à 90°), demi-tour (deux volées
+   opposées). Chasse-roue ou joue pleine sur les rives, garde-corps simple ou
+   double. Contrôle généraliste : pente, largeur, longueur des paliers.
+   Repère : départ à y=0, la rampe monte selon +Z (puis +X en L).
+   ============================================================================ */
+var PRAMPE = {
+  shape:'droit', totalH:60, pente:5, width:140, acces:'face', sortie:'face',   /* entrée / sortie : de face / gauche / droite */
+  palBas:140, palHaut:140, palRepos:140, reposEvery:50,   /* palier de repos tous les `reposEvery` cm de dénivelé */
+  wall:'chasse', wallH:12, wallEp:12,                     /* chasse-roue / joue pleine / aucun */
+  rail:'deux', railDouble:1, mainH:90, secH:75, fill:'barreaux',
+  matSurf:'beton', matStruct:'beton', matRail:'inox',
+  gapU:20 };
+/* ============================================================================
+   Configurateur ASCENSEUR (EN 81-20/-50 pour la trame, EN 81-70 accessibilité).
+   Repère objet : sol fini du niveau bas (arrêt 0) à y=0 ; les niveaux montent en
+   +Y ; la cuvette descend sous y=0 ; la façade (portes) est côté -Z. Cotes en cm.
+   ============================================================================ */
+/* Cabines normalisées EN 81-70 : cw = largeur (X), cd = profondeur (Z), door = passage libre. */
+var ASC_CHARGE = {
+  '630' :{kg:630,  cw:110, cd:140, door:80,  lbl:'630 kg — 8 pers. (Type 2)'},
+  '1000':{kg:1000, cw:110, cd:210, door:90,  lbl:'1000 kg — 13 pers. (Type 3)'},
+  '1275':{kg:1275, cw:200, cd:140, door:110, lbl:'1275 kg — 17 pers. (brancard)'}
+};
+var ASC_GAINE_MATS = [
+  {id:'beton',   l:'Béton',       c:[190,190,186]},
+  {id:'parpaing',l:'Parpaing',    c:[178,178,172]},
+  {id:'brique',  l:'Brique',      c:[168,96,74]},
+  {id:'metal',   l:'Métal/verre', c:[150,160,172]}
+];
+function ascGaineCol(id){ var m=ASC_GAINE_MATS.filter(function(x){return x.id===id;})[0]; return m?m.c.slice():null; }
+var ASC_INFO = {cw:110, cd:140, door:80, cuvette:110, surcourse:360, N:2, ok:true};
+var PASC = {
+  charge:'630', type:'traction', machineRoom:1,   /* traction / hydraulique ; local machinerie en toiture */
+  aspect:'standard',                               /* standard (maçonné) / vitre (panoramique) */
+  levels:3, hLevel:300, hGround:0, perFloor:0,     /* arrêts + hauteur d'étage courant (cm) ; hGround 0 = comme courant ; perFloor : override h0..h(N-2) */
+  cuvette:110, surcourse:360,                      /* profondeur cuvette + course de sécurité haute (cm) */
+  gaineMat:'beton', wallEp:20,                     /* paroi de gaine (matériau + épaisseur cm) */
+  doorType:'centrale', doorW:0, doorH:200,         /* portes : centrale / télescopique ; 0 = auto */
+  cabinAt:0, animate:0,                            /* cabine à l'arrêt n (0 = niveau bas) ; animate : montée/descente continue */
+  showGaine:1, showCab:1, showDoors:1, showStruct:1, showMachine:1,
+  cabWall:'inox', matDoor:'inox' };
 /* Configurateur Ferme (treillis). span/height/sec en cm. */
 var FERME_TYPES = [
   {id:'ferme1',       l:'Ferme 1'},
@@ -3943,6 +4156,8 @@ var CATALOG = {
       {id:'cheminee',   label:'Cheminée',         status:'ready', grp:'construction', icon:'🔥'},
       {id:'toiture',    label:'Charpente / toiture',status:'ready', grp:'construction', icon:'🔺'},
       {id:'escalier',   label:'Escalier',         status:'ready', grp:'construction', icon:'🪜'},
+      {id:'rampe',      label:'Rampe PMR',        status:'ready', grp:'construction', icon:'♿'},
+      {id:'ascenseur',  label:'Ascenseur',        status:'ready', grp:'construction', icon:'🛗'},
       /* VS15 : présentation TEXTE, sinon le navigateur rend l'équerre en emoji coloré. */
       {id:'ferme',      label:'Ferme',            status:'ready', grp:'construction', icon:'📐︎'},
       {id:'forme',      label:'Forme',            status:'ready', grp:'construction', icon:'🔷'},
@@ -4024,6 +4239,8 @@ function selectCat(catId){
   else if(cat.id==='poutre'){ MODE='poutre'; }
   else if(cat.id==='gardecorps'){ MODE='gardecorps'; }
   else if(cat.id==='escalier'){ MODE='escalier'; }
+  else if(cat.id==='rampe'){ MODE='rampe'; }
+  else if(cat.id==='ascenseur'){ MODE='ascenseur'; }
   else if(cat.id==='ferme'){ MODE='ferme'; }
   else if(cat.id==='toiture'){ MODE='toiture'; }
   else if(cat.id==='scene'){ MODE='scene'; }
@@ -4415,7 +4632,36 @@ function _fillMenu(m, items){
 }
 /* ---------- Annuler / Refaire (historique multi-niveaux) ---------- */
 var UNDO_HIST=[], REDO_HIST=[], _undoBase=null, _undoMode=null, _undoApplying=false, _undoTimer=null, UNDO_MAX=80;
-function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,parking:PPARK,ombriere:POMB,store:PSTORE,mosquito:PMOSQ,escalier:PE,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
+function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,parking:PPARK,ombriere:POMB,store:PSTORE,mosquito:PMOSQ,escalier:PE,rampe:PRAMPE,ascenseur:PASC,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
+/* ---------- Réinitialisation des paramètres (bouton en tête de panneau) ----------
+   On mémorise, au PREMIER affichage de chaque outil (état d'usine), un instantané
+   du jeu de paramètres. Le bouton « Réinitialiser » y revient. Pour le mobilier,
+   la clé inclut le type (chaque meuble a ses valeurs par défaut). */
+var PARAM_SNAP={};
+function paramSnapKey(){ return (typeof MODE!=='undefined' && MODE==='furn' && typeof FURN!=='undefined') ? ('furn:'+FURN.type) : (typeof MODE!=='undefined'?MODE:''); }
+function paramSnapObj(){ return (typeof MODE!=='undefined' && MODE==='furn' && typeof FURN!=='undefined') ? FURN.p : paramObjFor(typeof MODE!=='undefined'?MODE:''); }
+function ensureSnap(){ var k=paramSnapKey(), o=paramSnapObj(); if(o && k && !(k in PARAM_SNAP)){ try{ PARAM_SNAP[k]=JSON.parse(JSON.stringify(o)); }catch(e){} } }
+function resetParams(){ var k=paramSnapKey(), o=paramSnapObj(), d=PARAM_SNAP[k]; if(!d||!o) return;
+  for(var kk in o){ if(!(kk in d)) delete o[kk]; }                                   /* retire les clés ajoutées */
+  for(var k2 in d){ o[k2]=(d[k2]&&typeof d[k2]==='object')?JSON.parse(JSON.stringify(d[k2])):d[k2]; }
+  if(typeof MODE!=='undefined' && MODE==='ascenseur' && typeof ascStopAnim==='function') ascStopAnim();
+}
+/* Insère la barre « Réinitialiser » en tête du panneau #params (après son vidage). */
+function paramResetButton(rebuildFn){
+  var host=document.getElementById('params'); if(!host) return;
+  if(!paramSnapObj()) return;              /* pas d'objet paramétrique (ex. Scène) → pas de bouton */
+  ensureSnap();
+  var bar=document.createElement('div'); bar.style.cssText='display:flex;justify-content:flex-end;margin:0 0 8px;';
+  var b=document.createElement('button'); b.type='button'; b.title='Réinitialiser les paramètres';
+  b.innerHTML='↺ <span>Réinitialiser</span>';
+  b.style.cssText='font-size:11px;line-height:1;padding:5px 10px;border-radius:6px;cursor:pointer;color:var(--tx);background:transparent;border:1px solid var(--dm);opacity:.85;';
+  b.onmouseenter=function(){ b.style.opacity='1'; b.style.borderColor='var(--am)'; };
+  b.onmouseleave=function(){ b.style.opacity='.85'; b.style.borderColor='var(--dm)'; };
+  b.onclick=function(){ resetParams(); try{ build(); }catch(e){} if(typeof rebuildFn==='function') rebuildFn();
+    if(typeof updateDims==='function') updateDims();
+    if(typeof fitCamera==='function' && typeof DIMS!=='undefined' && DIMS) try{ fitCamera(DIMS); }catch(e){} };
+  bar.appendChild(b); host.appendChild(bar);
+}
 /* La Scène (assemblage) a son propre stockage : on l'expose à l'undo mais PAS à
    paramObjFor (donc pas aux « Mes configurations »). SCENE.sel est un index,
    les instances sont sérialisables → snapshot/restore JSON sûr. */
@@ -8472,6 +8718,366 @@ function buildEscalier(){
   }
   DIMS=dims; return dims;
 }
+/* ============================ RAMPE PMR ============================ */
+/* Nappe inclinée : dalle d'épaisseur `tt` dont le dessus part de (cx,cz,y0) et
+   monte de `rise` sur une longueur horizontale `runLen` dans la direction
+   unitaire (dx,dz). Rend l'extrémité et la normale latérale. */
+function rampSlab(cx,cz,y0, dx,dz, runLen, rise, w, tt, col){
+  var nx=-dz, nz=dx, hw=w/2;
+  var ex=cx+dx*runLen, ez=cz+dz*runLen, y1=y0+rise;
+  var c0=[cx+nx*hw, y0, cz+nz*hw], c1=[cx-nx*hw, y0, cz-nz*hw],
+      c2=[ex-nx*hw, y1, ez-nz*hw], c3=[ex+nx*hw, y1, ez+nz*hw];
+  quadSlab(c0,c1,c2,c3, tt, col);
+  return {x:ex, z:ez, y:y1, nx:nx, nz:nz, dx:dx, dz:dz};
+}
+/* Chasse-roue (ou joue) le long d'un bord incliné, posé SUR la nappe. */
+function rampCurb(ax,az,yA, bx,bz,yB, h, ep, col){
+  slopedBeam(ax,az,bx,bz, yA+h, yB+h, h, ep, col);
+}
+/* Garde-corps incliné : une ou deux mains courantes suivant la pente + montants
+   verticaux depuis la surface. yA/yB = cote de la SURFACE aux deux extrémités. */
+function rampRailRun(ax,az,yA, bx,bz,yB, O){
+  var dx=bx-ax, dz=bz-az, L=Math.hypot(dx,dz)||1, rt=0.04;
+  slopedBeam(ax,az,bx,bz, yA+O.mainH, yB+O.mainH, rt, rt, O.rc);
+  if(O.railDouble) slopedBeam(ax,az,bx,bz, yA+O.secH, yB+O.secH, rt, rt, O.rc);
+  var np=Math.max(1,Math.round(L/0.90));
+  for(var k=0;k<=np;k++){ var t=k/np, x=ax+dx*t, z=az+dz*t, ys=yA+(yB-yA)*t, mh=O.mainH-rt;
+    box(x, ys+mh/2, z, 0.04, mh, 0.04, O.rc,1); }
+  if(O.fill==='barreaux'){ var nb=Math.max(1,Math.round(L/0.11));
+    for(var k2=1;k2<nb;k2++){ var t2=k2/nb, x2=ax+dx*t2, z2=az+dz*t2, ys2=yA+(yB-yA)*t2, bh=O.secH-0.06;
+      box(x2, ys2+0.06+bh/2, z2, 0.016, bh, 0.016, O.rc,1); } }
+}
+/* Palier plat : dalle + garde-corps périmétrique optionnel sur les bords `sides`
+   (objet {n,s,e,w} → true pour poser une lisse). */
+function rampLanding(cx,cz,y, lw,ld, tt, col, O, sides){
+  box(cx, y-tt/2, cz, lw, tt, ld, col, 1);
+  if(!sides) return;
+  var x0=cx-lw/2, x1=cx+lw/2, z0=cz-ld/2, z1=cz+ld/2;
+  if(sides.n) escRailRun(x0,z0,x1,z0, y, O.rc, O.mainH, O.fill);
+  if(sides.s) escRailRun(x0,z1,x1,z1, y, O.rc, O.mainH, O.fill);
+  if(sides.w) escRailRun(x0,z0,x0,z1, y, O.rc, O.mainH, O.fill);
+  if(sides.e) escRailRun(x1,z0,x1,z1, y, O.rc, O.mainH, O.fill);
+}
+function buildRampe(){
+  var P=PRAMPE;
+  var rise=Math.max(0.05,P.totalH/100), slope=Math.max(0.02,P.pente/100);
+  var w=Math.max(0.9,P.width/100), tt=0.16;
+  var mat=RAIL_MATS.filter(function(m){return m.id===P.matRail;})[0]||RAIL_MATS[0];
+  var O={ sc:fcol('rampsurf', escColor(P.matSurf)||[196,196,192]),
+          bc:fcol('rampstruct', escColor(P.matStruct)||[176,176,172]),
+          rc:escColor(P.matRail)||mat.c,
+          mainH:Math.max(0.6,P.mainH/100), secH:Math.max(0.3,P.secH/100),
+          railDouble:!!P.railDouble, fill:P.fill };
+  var pb=Math.max(0.4,P.palBas/100), ph=Math.max(0.4,P.palHaut/100), pr=Math.max(0.4,P.palRepos/100);
+  var wallOn=(P.wall!=='aucun'), wallH=Math.max(0.03,P.wallH/100), wallEp=Math.max(0.03,P.wallEp/100);
+  var railL=(P.rail==='gauche'||P.rail==='deux'), railR=(P.rail==='droite'||P.rail==='deux');
+  /* Bord ouvert du palier d'entrée : de face (bord avant), ou sur un côté (on
+     ferme alors l'avant et on ouvre le côté choisi). */
+  function entrySides(){
+    if(P.acces==='gauche') return {n:true, e:true};   /* ouvert à gauche (ouest) */
+    if(P.acces==='droite') return {n:true, w:true};   /* ouvert à droite (est)  */
+    return {w:railL, e:railR};                         /* de face : avant ouvert */
+  }
+  /* Bords d'un palier selon le SENS de marche (dx,dz) : quel bord est au fond
+     (sortie de face), à gauche, à droite. Le bord d'arrivée de la volée (« près »)
+     reste toujours libre. */
+  function edgeMap(dx,dz){
+    if(dz>0.5)  return {far:'s',near:'n',left:'w',right:'e'};
+    if(dz<-0.5) return {far:'n',near:'s',left:'e',right:'w'};
+    if(dx>0.5)  return {far:'e',near:'w',left:'n',right:'s'};
+    return {far:'w',near:'e',left:'s',right:'n'};
+  }
+  function exitSides(dx,dz){
+    var m=edgeMap(dx,dz), o={};
+    if(P.sortie==='gauche'){ o[m.far]=true; if(railR)o[m.right]=true; }
+    else if(P.sortie==='droite'){ o[m.far]=true; if(railL)o[m.left]=true; }
+    else { if(railL)o[m.left]=true; if(railR)o[m.right]=true; }   /* de face : fond ouvert */
+    return o;
+  }
+  /* découpage en volées : un palier de repos tous `reposEvery` cm de dénivelé */
+  var nF = (P.shape==='droit') ? Math.max(1, Math.ceil(rise/Math.max(0.10,P.reposEvery/100)))
+         : 2;
+  var riseF=rise/nF, runF=riseF/slope;
+  RAMPE_INFO={ slope:P.pente, run:runF, dev:runF*nF, width:P.width, palRepos:P.palRepos, nF:nF };
+  /* On prend la normale latérale RENVOYÉE par la nappe (b.nx,b.nz = (-dz,dx),
+     soit la GAUCHE du sens de montée). L'ancien code utilisait celle du point de
+     départ, de signe opposé → le rail « gauche » atterrissait à droite sur la
+     volée mais à gauche sur le palier. */
+  function flightRails(a, b){   /* garde-corps des deux rives d'une volée a→b (centres) */
+    var nx=b.nx, nz=b.nz;
+    if(railL){ rampRailRun(a.x+nx*w/2,a.z+nz*w/2,a.y, b.x+nx*w/2,b.z+nz*w/2,b.y, O); }
+    if(railR){ rampRailRun(a.x-nx*w/2,a.z-nz*w/2,a.y, b.x-nx*w/2,b.z-nz*w/2,b.y, O); }
+  }
+  function flightCurbs(a,b){
+    if(!wallOn) return; var nx=b.nx, nz=b.nz;
+    rampCurb(a.x+nx*w/2,a.z+nz*w/2,a.y, b.x+nx*w/2,b.z+nz*w/2,b.y, wallH, wallEp, O.bc);
+    rampCurb(a.x-nx*w/2,a.z-nz*w/2,a.y, b.x-nx*w/2,b.z-nz*w/2,b.y, wallH, wallEp, O.bc);
+  }
+  var dims;
+  if(P.shape==='droit'){
+    var cz=0, y=0;
+    /* Extrémités OUVERTES : garde-corps sur les seuls grands côtés (w/e).
+       Un rail en travers du bord d'entrée ou de sortie interdirait l'accès. */
+    rampLanding(0, cz+pb/2, 0, w, pb, tt, O.bc, O, entrySides()); cz+=pb;
+    for(var f=0; f<nF; f++){
+      var a={x:0,z:cz,y:y,nx:1,nz:0}, b=rampSlab(0,cz,y, 0,1, runF, riseF, w, tt, O.sc);
+      flightCurbs(a,b); flightRails(a,b);
+      cz=b.z; y=b.y;
+      if(f<nF-1){ rampLanding(0, cz+pr/2, y, w, pr, tt, O.bc, O, {w:railL,e:railR}); cz+=pr; }
+    }
+    rampLanding(0, cz+ph/2, y, w, ph, tt, O.bc, O, exitSides(0,1)); cz+=ph;
+    dims={ w:w, h:rise+0.2, d:cz, cy:rise/2 };
+  } else if(P.shape==='L'){
+    var y=0;
+    rampLanding(0, pb/2, 0, w, pb, tt, O.bc, O, entrySides());
+    var a1={x:0,z:pb,y:0,nx:1,nz:0}, b1=rampSlab(0,pb,0, 0,1, runF, riseF, w, tt, O.sc);
+    flightCurbs(a1,b1); flightRails(a1,b1);
+    var lz=b1.z, y1=b1.y;
+    /* palier d'angle : rails sur les deux bords extérieurs (nord + ouest),
+       les deux autres bords donnent sur les volées. */
+    rampLanding(w/2, lz+w/2, y1, w, w, tt, O.bc, O, {n:true,w:true});
+    var a2={x:w/2,z:lz+w/2,y:y1,nx:0,nz:1}, b2=rampSlab(w/2,lz+w/2,y1, 1,0, runF, riseF, w, tt, O.sc);
+    flightCurbs(a2,b2); flightRails(a2,b2);
+    rampLanding(b2.x+ph/2, b2.z, b2.y, ph, w, tt, O.bc, O, exitSides(1,0));   /* 2e volée : marche +X */
+    dims={ w:w/2+runF+ph, h:rise+0.2, d:lz+w, cy:rise/2 };
+  } else { /* demi-tour */
+    var gap=Math.max(0,P.gapU/100), dx=w+gap;
+    rampLanding(0, pb/2, 0, w, pb, tt, O.bc, O, entrySides());
+    var a1u={x:0,z:pb,y:0,nx:1,nz:0}, b1u=rampSlab(0,pb,0, 0,1, runF, riseF, w, tt, O.sc);
+    flightCurbs(a1u,b1u); flightRails(a1u,b1u);
+    var lzU=b1u.z, y1u=b1u.y;
+    rampLanding(dx/2, lzU+w/2, y1u, dx+w, w, tt, O.bc, O, {n:true});   /* palier de demi-tour : rail au fond seulement */
+    var a2u={x:dx,z:lzU+w/2,y:y1u,nx:1,nz:0}, b2u=rampSlab(dx,lzU+w/2,y1u, 0,-1, runF, riseF, w, tt, O.sc);
+    flightCurbs(a2u,b2u); flightRails(a2u,b2u);
+    rampLanding(dx, b2u.z-ph/2, b2u.y, w, ph, tt, O.bc, O, exitSides(0,-1));   /* 2e volée : marche -Z */
+    dims={ w:dx+w, h:rise+0.2, d:lzU+w, cy:rise/2 };
+  }
+  DIMS=dims; return dims;
+}
+/* ============================================================================
+   buildAscenseur() : gaine + cabine + portes palières + guidage + contrepoids
+   + cuvette + surcourse + local machinerie. Façade ouverte (vue « maison de
+   poupée ») : on voit la cabine et le guidage à travers les baies palières.
+   ============================================================================ */
+/* ascHeights() : hauteurs inter-niveaux (m). Priorité : override par étage (perFloor)
+   > hauteur du RDC (hGround) pour le 1er entre-niveau > hauteur d'étage courant. */
+function ascHeights(P,N){
+  var arr=[];
+  for(var i=0;i<N-1;i++){
+    var v;
+    if(P.perFloor && P['h'+i]>0) v=P['h'+i];
+    else if(i===0 && P.hGround>0) v=P.hGround;
+    else v=P.hLevel;
+    arr.push(Math.max(2.0, v/100));
+  }
+  return arr;
+}
+function buildAscenseur(){
+  var P=PASC;
+  var C=ASC_CHARGE[P.charge]||ASC_CHARGE['630'];
+  var cw=C.cw/100, cd=C.cd/100;                          /* cabine intérieure X×Z */
+  var dw=(P.doorW>0?P.doorW:C.door)/100;                 /* passage libre porte */
+  var dh=Math.max(2.0,(P.doorH>0?P.doorH:200)/100);      /* hauteur passage */
+  var trac=(P.type==='traction');
+  var ext=(P.aspect==='exterieur');                      /* ascenseur extérieur sur ossature acier */
+  var glass=(P.aspect==='vitre'||ext);                   /* panoramique / vitré (l'extérieur est vitré) */
+  /* jeux normalisés : guidage 2 côtés + contrepoids (traction latéral) ou vérin (hydraulique). */
+  var extraX=trac?0.46:0.30, extraZ=0.18;
+  var gx=cw+extraX, gz=cd+extraZ;                         /* gaine intérieure */
+  var we=Math.max(0.10,P.wallEp/100);
+  var Gx=gx+2*we, Gz=gz+2*we;                             /* gaine extérieure */
+  var N=Math.max(2,Math.min(200,P.levels|0));            /* jusqu'à 200 niveaux */
+  var HH=ascHeights(P,N), yL=[0];                        /* cotes cumulées de chaque plancher */
+  for(var q=0;q<HH.length;q++) yL.push(yL[q]+HH[q]);
+  var yCab=ascCabinY(P,N,yL);                            /* position cabine (animée ou arrêt choisi) */
+  var pit=Math.max(0,P.cuvette/100);
+  var over=Math.max(2.5,P.surcourse/100);
+  var yTop=yL[N-1];                                       /* dernier niveau desservi */
+  var yShaftTop=yTop+over;                                /* dalle haute de gaine */
+  var yBot=-pit;
+  var mrOn=(P.showMachine!==0 && P.machineRoom!==0 && !glass), mrH=2.2;
+  /* couleurs / textures via finitions */
+  var gcol=fcol('ascgaine', ascGaineCol(P.gaineMat)||[190,190,186]);
+  var dcol=fcol('ascdoor',  escColor(P.matDoor)||[180,184,190]);
+  var wcol=fcol('asccab',   escColor(P.cabWall)||[200,204,210]);
+  var fcol2=fcol('ascfloor',[92,92,98]);
+  var scol=fcol('ascstruct',[110,114,120]);
+  var glCol=[150,180,200], glA=0.30, frCol=[176,180,186];   /* vitrage + cadre inox (mode panoramique) */
+  var _K=_CURTEX;
+  /* ---------- GAINE : 3 côtés (fond + 2 flancs), façade ouverte. Maçonnée (pleine)
+     ou panoramique (vitrage + poteaux d'angle + traverses par niveau). ---------- */
+  if(P.showGaine!==0){
+    _CURTEX=ftex('ascgaine',null);
+    var H=yShaftTop-yBot, midY=(yShaftTop+yBot)/2, fz=-Gz/2+we/2;
+    if(!glass){
+      box(0, midY, Gz/2-we/2, Gx, H, we, gcol,1);              /* fond (z+) */
+      box(-Gx/2+we/2, midY, 0, we, H, Gz, gcol,1);             /* flanc gauche */
+      box(Gx/2-we/2,  midY, 0, we, H, Gz, gcol,1);             /* flanc droit */
+    } else {
+      var gt=0.04;                                             /* vitrage mince */
+      box(0, midY, Gz/2-gt/2, Gx-2*we, H, gt, glCol,glA);      /* fond vitré */
+      box(-Gx/2+we-gt/2, midY, 0, gt, H, Gz-2*we, glCol,glA);  /* flanc gauche vitré */
+      box(Gx/2-we+gt/2,  midY, 0, gt, H, Gz-2*we, glCol,glA);  /* flanc droit vitré */
+      _CURTEX=ftex('ascstruct',null);
+      var ps=Math.max(0.06,we*0.6), cxs=[-Gx/2+ps/2, Gx/2-ps/2], czs=[-Gz/2+ps/2, Gz/2-ps/2];
+      for(var pa=0;pa<4;pa++){ box(cxs[pa%2], midY, czs[pa<2?0:1], ps, H, ps, frCol,1); }  /* 4 poteaux d'angle */
+      var trF=function(yy){ box(0, yy, Gz/2-ps/2, Gx, ps, ps, frCol,1);
+        box(-Gx/2+ps/2, yy, 0, ps, ps, Gz, frCol,1); box(Gx/2-ps/2, yy, 0, ps, ps, Gz, frCol,1); };
+      for(var it=0;it<N;it++) trF(yL[it]); trF(yBot); trF(yShaftTop);   /* traverses (3 côtés) par niveau */
+      if(ext){                                            /* contreventement en croix (3 faces) : ossature autoportante */
+        var lv=[yBot]; for(var lb=0;lb<N;lb++) lv.push(yL[lb]); lv.push(yShaftTop);
+        lv.sort(function(a,b){return a-b;});
+        var bx0=-Gx/2+ps/2, bx1=Gx/2-ps/2, bz1=Gz/2-ps/2, sec=Math.max(0.05,ps*0.7);
+        for(var lb2=0;lb2<lv.length-1;lb2++){ var yA=lv[lb2], yB=lv[lb2+1]; if(yB-yA<0.25) continue;
+          beam3D([bx0,yA,-bz1],[bx0,yB,bz1],sec,frCol); beam3D([bx0,yA,bz1],[bx0,yB,-bz1],sec,frCol);   /* flanc gauche */
+          beam3D([bx1,yA,-bz1],[bx1,yB,bz1],sec,frCol); beam3D([bx1,yA,bz1],[bx1,yB,-bz1],sec,frCol);   /* flanc droit */
+          beam3D([bx0,yA,bz1],[bx1,yB,bz1],sec,frCol); beam3D([bx1,yA,bz1],[bx0,yB,bz1],sec,frCol);     /* fond */
+        }
+      }
+      _CURTEX=ftex('ascgaine',null);
+    }
+    box(0, yBot-we/2, 0, Gx, we, Gz, gcol,1);                   /* radier de cuvette */
+    box(0, yShaftTop+we/2, 0, Gx, we, Gz, gcol,1);              /* dalle haute */
+    /* façade : jambages + linteau/allège autour de chaque baie palière (z=-Gz/2) */
+    var jw=Math.max(0.02,(Gx-dw)/2), jth=glass?Math.max(0.06,we*0.6):we, jcol=glass?frCol:gcol;
+    if(glass) _CURTEX=ftex('ascstruct',null);
+    for(var i=0;i<N;i++){
+      var yy=yL[i];
+      box(-(dw/2+jw/2), yy+dh/2, fz, jw, dh, jth, jcol,1);      /* jambage gauche */
+      box( (dw/2+jw/2), yy+dh/2, fz, jw, dh, jth, jcol,1);      /* jambage droit */
+      var top=(i<N-1)?yL[i+1]:yShaftTop, sh=top-(yy+dh);
+      if(sh>0.001){
+        if(glass){ box(0,(yy+dh)+sh/2,fz,Gx-2*we,sh,0.04,glCol,glA); box(0,(yy+dh)+0.03,fz,Gx,0.06,jth,frCol,1); }
+        else box(0, (yy+dh)+sh/2, fz, Gx, sh, we, gcol,1);
+      }
+    }
+    if(pit>0.001){ if(glass) box(0,yBot/2,fz,Gx-2*we,-yBot,0.04,glCol,glA); else box(0, yBot/2, fz, Gx, -yBot, we, gcol,1); }
+    _CURTEX=ftex('ascgaine',null);
+  }
+  /* ---------- PORTES PALIÈRES : 2 vantaux par baie ; ouvertes au niveau cabine ---------- */
+  if(P.showDoors!==0){
+    _CURTEX=ftex('ascdoor',null);
+    var dz=-gz/2+0.03, pt=0.04, lw=dw/2;
+    var pcol=glass?[172,196,212]:dcol, paA=glass?0.55:1;
+    for(var i2=0;i2<N;i2++){
+      var yl=yL[i2], open=(P.showCab!==0 && Math.abs(yl-yCab)<0.12), xL, xR;   /* ouvertes quand la cabine est à quai */
+      if(!open){ xL=-dw/4; xR=dw/4; }                            /* fermées : les 2 vantaux couvrent la baie */
+      else if(P.doorType==='telescopique'){ xL=-dw/2-lw/2; xR=-dw/2-lw*1.5; }  /* ouvertes, vantaux empilés à gauche */
+      else { xL=-dw/2-lw/2; xR=dw/2+lw/2; }                      /* ouvertes, refoulement central symétrique */
+      box(xL, yl+dh/2, dz, lw, dh, pt, pcol,paA);               /* vantail 1 */
+      box(xR, yl+dh/2, dz, lw, dh, pt, pcol,paA);               /* vantail 2 */
+      box(0, yl-0.02, dz, dw+0.10, 0.04, 0.12, scol,1);          /* seuil */
+    }
+  }
+  /* ---------- GUIDAGE cabine + contrepoids ---------- */
+  if(P.showStruct!==0){
+    _CURTEX=ftex('ascstruct',null);
+    var Hg=yShaftTop-yBot, midg=(yShaftTop+yBot)/2;
+    box(-(gx/2-0.05), midg, 0, 0.03, Hg, 0.12, scol,1);         /* rail guidage gauche */
+    box( (gx/2-0.05), midg, 0, 0.03, Hg, 0.12, scol,1);         /* rail guidage droit */
+    if(trac){
+      var yCW=Math.max(yBot+0.6, Math.min(yShaftTop-0.6, (yTop-yCab)+0.5));   /* contrepoids ~opposé à la cabine */
+      box(0, yCW, gz/2-0.12, gx*0.42, 0.9, 0.16, scol,1);       /* contrepoids (fond de gaine) */
+      box(0, yShaftTop-0.20, gz/2-0.12, gx-0.10, 0.10, 0.14, scol,1);  /* poulie de renvoi (tête) */
+    } else {
+      box(gx/2-0.14, midg-Hg*0.25, 0, 0.10, Hg*0.5, 0.10, scol,1);     /* vérin latéral (hydraulique) */
+    }
+  }
+  /* ---------- CABINE au niveau cabinAt ---------- */
+  if(P.showCab!==0){
+    var yF=yCab;
+    var ccz=-gz/2+cd/2+0.03, ce=0.05, cabH=Math.max(2.2,dh+0.2);
+    var cbCol=glass?glCol:wcol, cbA=glass?glA:1, cbT=glass?0.03:ce;
+    _CURTEX=ftex('ascfloor',null);
+    box(0, yF+0.03, ccz, cw, 0.06, cd, fcol2,1);                 /* sol cabine */
+    _CURTEX=ftex('asccab',null);
+    box(0, yF+cabH+0.02, ccz, cw, 0.04, cd, glass?frCol:wcol,1); /* plafond */
+    box(0, yF+cabH/2, ccz+cd/2-ce/2, cw, cabH, cbT, cbCol,cbA);  /* paroi fond */
+    box(-cw/2+ce/2, yF+cabH/2, ccz, cbT, cabH, cd, cbCol,cbA);   /* paroi gauche */
+    box( cw/2-ce/2, yF+cabH/2, ccz, cbT, cabH, cd, cbCol,cbA);   /* paroi droite */
+    if(glass){ _CURTEX=ftex('ascstruct',null); var e2=0.04;      /* cadres inox aux arêtes verticales */
+      box(-cw/2+e2/2, yF+cabH/2, ccz+cd/2, e2,cabH,e2, frCol,1); box( cw/2-e2/2, yF+cabH/2, ccz+cd/2, e2,cabH,e2, frCol,1);
+      box(-cw/2+e2/2, yF+cabH/2, ccz-cd/2, e2,cabH,e2, frCol,1); box( cw/2-e2/2, yF+cabH/2, ccz-cd/2, e2,cabH,e2, frCol,1); }
+    /* portes de cabine (2 vantaux) côté façade, ouvertes */
+    _CURTEX=ftex('ascdoor',null);
+    var cdz=ccz-cd/2+0.02, ch=dh, ccol=glass?[172,196,212]:dcol, ca=glass?0.55:1;
+    box(-dw/2-0.10, yF+ch/2, cdz, dw/2, ch, 0.035, ccol,ca);
+    box( dw/2+0.10, yF+ch/2, cdz, dw/2, ch, 0.035, ccol,ca);
+  }
+  /* ---------- PASSERELLES d'accès (ascenseur extérieur) : un platelage + garde-corps
+     par niveau côté façade, prêt à se raccorder au bâtiment. ---------- */
+  if(ext && P.showStruct!==0){
+    _CURTEX=ftex('ascstruct',null);
+    var bw=1.2, pz=-Gz/2-bw/2, pw=dw+0.5, rz=-Gz/2-bw+0.04;
+    for(var fb=0;fb<N;fb++){ var yy=yL[fb];
+      box(0, yy-0.05, pz, pw, 0.10, bw, scol,1);                        /* platelage */
+      box(-(pw/2-0.03), yy+0.50, rz, 0.05,1.0,0.05, frCol,1);           /* montant gauche */
+      box( (pw/2-0.03), yy+0.50, rz, 0.05,1.0,0.05, frCol,1);           /* montant droit */
+      box(0, yy+1.00, rz, pw,0.05,0.05, frCol,1);                       /* lisse haute */
+      box(0, yy+0.55, rz, pw,0.04,0.04, frCol,1);                       /* lisse intermédiaire */
+    }
+  }
+  /* ---------- LOCAL MACHINERIE (traction, en toiture) ---------- */
+  if(mrOn){
+    _CURTEX=ftex('ascgaine',null);
+    var y0=yShaftTop+we, mW=Gx, mD=Gz;
+    box(0, y0+mrH/2, mD/2-we/2, mW, mrH, we, gcol,1);            /* fond */
+    box(-mW/2+we/2, y0+mrH/2, 0, we, mrH, mD, gcol,1);          /* flanc G */
+    box( mW/2-we/2, y0+mrH/2, 0, we, mrH, mD, gcol,1);          /* flanc D */
+    box(0, y0+mrH/2, -mD/2+we/2, mW, mrH, we, gcol,1);          /* façade (fermée) */
+    box(0, y0+mrH+we/2, 0, mW, we, mD, gcol,1);                 /* toit */
+    _CURTEX=ftex('ascstruct',null);
+    box(0, y0+0.5, gz/2-0.35, Math.min(1.1,gx*0.7), 0.7, 0.6, scol,1);  /* treuil / machine */
+  } else if(trac && P.showStruct!==0){
+    _CURTEX=ftex('ascstruct',null);
+    box(0, yShaftTop-0.45, gz/2-0.30, Math.min(1.0,gx*0.7), 0.55, 0.5, scol,1); /* machine sans local (MRL) en tête de gaine */
+  }
+  _CURTEX=_K;
+  /* percement du sol WebGL au droit de la gaine */
+  if(typeof MODE!=='undefined' && MODE==='ascenseur')
+    GROUND_HOLE=[[-Gx/2,-Gz/2],[Gx/2,-Gz/2],[Gx/2,Gz/2],[-Gx/2,Gz/2]];
+  /* bandeau de conformité */
+  ASC_INFO={ cw:C.cw, cd:C.cd, door:(P.doorW>0?P.doorW:C.door), cuvette:P.cuvette, surcourse:P.surcourse, N:N, kg:C.kg,
+             okCab:(C.cw>=100&&C.cd>=125), okDoor:((P.doorW>0?P.doorW:C.door)>=80) };
+  var totTop=mrOn?(yShaftTop+we+mrH+we):(yShaftTop+we);
+  var DIMS2={ w:Gx, h:totTop-yBot, d:ext?Gz+1.4:Gz, cy:(totTop+yBot)/2 };
+  DIMS=DIMS2; return DIMS2;
+}
+function clampAt(a,N){ a=a|0; if(a<0)a=0; if(a>N-1)a=N-1; return a; }
+/* ---- Animation cabine : montée/descente en continu (boucle rAF) ---- */
+var ASC_ANIM={ on:false, y:0, from:0, to:1, dir:1, phase:'move', t0:0, dur:1, raf:0 };
+/* Cote Y de la cabine : position animée si l'anim tourne, sinon l'arrêt choisi. */
+function ascCabinY(P,N,yL){
+  if(P.animate && ASC_ANIM.on) return Math.max(yL[0], Math.min(yL[N-1], ASC_ANIM.y));
+  return yL[clampAt(P.cabinAt,N)];
+}
+function ascStartAnim(){ var A=ASC_ANIM; if(A.on) return; A.on=true; A.dir=1; A.from=0; A.to=1; A.phase='move'; A.t0=(typeof performance!=='undefined'?performance.now():Date.now()); A.dur=1; ascAnimTick(); }
+function ascStopAnim(){ ASC_ANIM.on=false; if(ASC_ANIM.raf) cancelAnimationFrame(ASC_ANIM.raf); ASC_ANIM.raf=0; }
+function ascAnimTick(){
+  var A=ASC_ANIM;
+  if(!(typeof MODE!=='undefined' && MODE==='ascenseur' && PASC.animate)){ ascStopAnim(); return; }
+  var N=Math.max(2,Math.min(200,PASC.levels|0));
+  var HH=ascHeights(PASC,N), yL=[0]; for(var q=0;q<HH.length;q++) yL.push(yL[q]+HH[q]);
+  A.from=Math.max(0,Math.min(N-1,A.from)); A.to=Math.max(0,Math.min(N-1,A.to));
+  var now=(typeof performance!=='undefined'?performance.now():Date.now()), el=(now-A.t0)/1000;
+  if(A.phase==='move'){
+    var tt=A.dur>0?Math.min(1,el/A.dur):1, e=tt*tt*(3-2*tt);   /* ease in/out */
+    A.y=yL[A.from]+(yL[A.to]-yL[A.from])*e;
+    if(tt>=1){ A.y=yL[A.to]; A.phase='dwell'; A.t0=now; }
+  } else {
+    A.y=yL[A.to];
+    if(el>0.9){                                               /* attente portes ouvertes ~0,9 s */
+      var nx=A.to+A.dir;
+      if(nx>N-1){ A.dir=-1; nx=A.to+A.dir; }
+      if(nx<0){ A.dir=1; nx=A.to+A.dir; }
+      nx=Math.max(0,Math.min(N-1,nx));
+      A.from=A.to; A.to=nx; A.dur=Math.max(0.4,Math.abs(yL[A.to]-yL[A.from])/2.2); A.phase='move'; A.t0=now;  /* ~2,2 m/s */
+    }
+  }
+  try{ build(); }catch(err){}
+  DIRTY=true; if(typeof WGL!=='undefined' && WGL.render && (WGL.gActive||WGL.txActive)) WGL.render();
+  A.raf=requestAnimationFrame(ascAnimTick);
+}
 /* gcPosts() : montants aux angles francs (>~17°) + répartis par entraxe le long du
    contour — évite un poteau à chaque sommet des arcs (courbes propres). */
 /* gcPost() : montant vertical — rond (cylindre) ou carré ORIENTÉ selon la
@@ -11791,7 +12397,8 @@ var PHANGAR={
   found:'filantes', foundW:50, foundH:50,
   wall:'bardage', wallIso:true, roofIso:true, bardType:'nervure', bardDir:'vert', cornAngle:true, purlins:6, purlinMode:'dessus',
   rives:true, gussets:true, iProfiles:true, girts:3, girtSec:'plat', bracing:'complet', roofCover:'bac', slabRDC:true, floors:0, floorH:300, floorCover:100, slabType:'beton',
-  longrine:false, longrineH:40, secDoor:0, secW:400, secH:450, secGable:'avant', secPos:0, secOpen:0
+  longrine:false, longrineH:40, secDoor:0, secW:400, secH:450, secGable:'avant', secPos:0, secOpen:0,
+  openLPg:0, openLPd:0, openPAv:0, openPAr:0   /* façades laissées ouvertes : long-pan gauche/droit (X∓), pignon avant/arrière (Z∓) */
 };
 /* barre (boîte orientée) dans le plan X-Y à la cote z, section t(perp dans le plan) x depth(selon Z) */
 function hStrut(ax,ay,bx,by,z,t,depth,col){
@@ -12113,23 +12720,27 @@ function buildHangar(){
     _CURTEX=null;
   }
   /* --- MURS --- */
+  /* Façades laissées ouvertes : on retire le remplissage / la peau du côté choisi,
+     la structure (poteaux, portiques) reste en place. LPg/LPd = long-pans (X∓),
+     PAv/PAr = pignons (Z∓). */
+  var oLPg=(PHANGAR.openLPg?1:0), oLPd=(PHANGAR.openLPd?1:0), oPAv=(PHANGAR.openPAv?1:0), oPAr=(PHANGAR.openPAr?1:0);
   if(PHANGAR.wall==='aucun'){ /* structure ouverte, sans murs */ }
   else if(PHANGAR.wall==='parpaing'){
     /* remplissage parpaing DANS le plan de la structure (entre poteaux) */
     _CURTEX=FINISH_TEX.hbeton;
-    box(-S/2,H/2,0, 0.2,H,L, cBet,1); box(S/2,(mono?HR:H)/2,0, 0.2,(mono?HR:H),L, cBet,1);
-    box(0,H/2,-halfL, S,H,0.2, cBet,1); box(0,H/2,halfL, S,H,0.2, cBet,1);
-    if(mono){ hGableMono(-halfL,0.2,S,H,HR,cBet); hGableMono(halfL,0.2,S,H,HR,cBet); }
-    else { hGable(-halfL,0.2,S,H,ridgeY,cBet); hGable(halfL,0.2,S,H,ridgeY,cBet); }
+    if(!oLPg) box(-S/2,H/2,0, 0.2,H,L, cBet,1); if(!oLPd) box(S/2,(mono?HR:H)/2,0, 0.2,(mono?HR:H),L, cBet,1);
+    if(!oPAv) box(0,H/2,-halfL, S,H,0.2, cBet,1); if(!oPAr) box(0,H/2,halfL, S,H,0.2, cBet,1);
+    if(mono){ if(!oPAv) hGableMono(-halfL,0.2,S,H,HR,cBet); if(!oPAr) hGableMono(halfL,0.2,S,H,HR,cBet); }
+    else { if(!oPAv) hGable(-halfL,0.2,S,H,ridgeY,cBet); if(!oPAr) hGable(halfL,0.2,S,H,ridgeY,cBet); }
     _CURTEX=null;
   } else {
     /* bardage métallique = peau EXTÉRIEURE, hors structure */
     var exW=colH/2+0.05, exG=colB/2+0.05;
     _CURTEX=FINISH_TEX.hbardage;
-    box(-S/2-exW,H/2,0, 0.04,H,L+2*exG, cBard,1); box(S/2+exW,(mono?HR:H)/2,0, 0.04,(mono?HR:H),L+2*exG, cBard,1);
-    gablePanel(-(halfL+exG), S/2+exW, doorsN, cBard, 0.04); gablePanel((halfL+exG), S/2+exW, doorsP, cBard, 0.04);
-    if(mono){ hGableMono(-halfL-exG,0.04,S,H,HR,cBard); hGableMono(halfL+exG,0.04,S,H,HR,cBard); }
-    else { hGable(-halfL-exG,0.04,S,H,ridgeY,cBard); hGable(halfL+exG,0.04,S,H,ridgeY,cBard); }
+    if(!oLPg) box(-S/2-exW,H/2,0, 0.04,H,L+2*exG, cBard,1); if(!oLPd) box(S/2+exW,(mono?HR:H)/2,0, 0.04,(mono?HR:H),L+2*exG, cBard,1);
+    if(!oPAv) gablePanel(-(halfL+exG), S/2+exW, doorsN, cBard, 0.04); if(!oPAr) gablePanel((halfL+exG), S/2+exW, doorsP, cBard, 0.04);
+    if(mono){ if(!oPAv) hGableMono(-halfL-exG,0.04,S,H,HR,cBard); if(!oPAr) hGableMono(halfL+exG,0.04,S,H,HR,cBard); }
+    else { if(!oPAv) hGable(-halfL-exG,0.04,S,H,ridgeY,cBard); if(!oPAr) hGable(halfL+exG,0.04,S,H,ridgeY,cBard); }
     /* relief du bardage : nervuré / ondulé / cassette, posé vertical ou horizontal */
     var BT={nervure:[0.30,0.035,0.06],ondule:[0.12,0.02,0.07],cassette:[1.2,0.012,0.03]}[PHANGAR.bardType];
     if(BT){ var bp=BT[0], bpr=BT[1], brw=BT[2], vert=(PHANGAR.bardDir!=='horiz');
@@ -12160,8 +12771,8 @@ function buildHangar(){
             for(var ci=0;ci<cuts.length;ci++){ var c=cuts[ci]; if(c[0]>cur){ box((cur+c[0])/2,yy,po,c[0]-cur,brw,bpr,cBard,1);} cur=Math.max(cur,c[1]); }
             if(cur<xhi) box((cur+xhi)/2,yy,po,xhi-cur,brw,bpr,cBard,1); } }
       }
-      ribsW('x', S/2+exW, 1, L, (mono?HR:H)); ribsW('x', -(S/2+exW), -1, L, H);
-      ribsGable(halfL+exG, 1, doorsP); ribsGable(-(halfL+exG), -1, doorsN);
+      if(!oLPd) ribsW('x', S/2+exW, 1, L, (mono?HR:H)); if(!oLPg) ribsW('x', -(S/2+exW), -1, L, H);
+      if(!oPAr) ribsGable(halfL+exG, 1, doorsP); if(!oPAv) ribsGable(-(halfL+exG), -1, doorsN);
     }
     /* cornières d'angle en L : referment le joint vertical entre façade et pignon */
     if(PHANGAR.cornAngle!==false){
@@ -12174,8 +12785,8 @@ function buildHangar(){
       _CURTEX=null;
     }
     if(PHANGAR.wallIso){ _CURTEX=null;
-      box(-S/2-exW+0.05,H/2,0,0.06,H,L,cIso,1); box(S/2+exW-0.05,(mono?HR:H)/2,0,0.06,(mono?HR:H),L,cIso,1);
-      gablePanel(-(halfL+exG)+0.05, S/2, doorsN, cIso, 0.06); gablePanel((halfL+exG)-0.05, S/2, doorsP, cIso, 0.06);
+      if(!oLPg) box(-S/2-exW+0.05,H/2,0,0.06,H,L,cIso,1); if(!oLPd) box(S/2+exW-0.05,(mono?HR:H)/2,0,0.06,(mono?HR:H),L,cIso,1);
+      if(!oPAv) gablePanel(-(halfL+exG)+0.05, S/2, doorsN, cIso, 0.06); if(!oPAr) gablePanel((halfL+exG)-0.05, S/2, doorsP, cIso, 0.06);
     }
     _CURTEX=null;
   }
@@ -12262,6 +12873,11 @@ function buildHangarUI(){
       {type:'choice',label:'Profil bardage',key:'bardType',options:[{id:'nervure',l:'Nervur\u00e9'},{id:'ondule',l:'Ondul\u00e9'},{id:'cassette',l:'Cassette'},{id:'plan',l:'Lisse'}]},
       {type:'choice',label:'Pose bardage',key:'bardDir',options:[{id:'vert',l:'Verticale'},{id:'horiz',l:'Horizontale'}]},
       {type:'choice',label:'Cornières d\u2019angle',key:'cornAngle',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}]},
+    {title:'Façades ouvertes', fields:[
+      {type:'choice',label:'Long-pan gauche',key:'openLPg',options:[{id:0,l:'Fermée'},{id:1,l:'Ouverte'}]},
+      {type:'choice',label:'Long-pan droit',key:'openLPd',options:[{id:0,l:'Fermée'},{id:1,l:'Ouverte'}]},
+      {type:'choice',label:'Pignon avant',key:'openPAv',options:[{id:0,l:'Fermée'},{id:1,l:'Ouverte'}]},
+      {type:'choice',label:'Pignon arrière',key:'openPAr',options:[{id:0,l:'Fermée'},{id:1,l:'Ouverte'}]}]},
     {title:'Rives', fields:[
       {type:'choice',key:'rives',options:[{id:true,l:'Avec rives'},{id:false,l:'Sans'}]}]},
     {title:'Planchers', fields:[
@@ -13021,6 +13637,8 @@ function build(){
   else if(MODE==='poutre'){ r=buildPoutre(); }
   else if(MODE==='gardecorps'){ r=buildGardeCorps(); }
   else if(MODE==='escalier'){ r=buildEscalier(); }
+  else if(MODE==='rampe'){ r=buildRampe(); }
+  else if(MODE==='ascenseur'){ r=buildAscenseur(); }
   else if(MODE==='ferme'){ r=buildFerme(); }
   else if(MODE==='toiture'){ r=buildToiture(); }
   else if(MODE==='scene'){ r=buildScene(); }
@@ -13052,7 +13670,7 @@ function build(){
   _CURTEX = null;   /* reset après construction */
   /* La finition des objets génériques est désormais appliquée PAR ÉLÉMENT dans
      chaque constructeur (fcol/ftex), et non plus en écrasant FC après coup. */
-  if(typeof SITE!=='undefined' && SITE.on) addSiteGround();
+  if(typeof SITE!=='undefined' && SITE.on && SITE.show!==0) addSiteGround();
   if(typeof IMG_UL!=='undefined' && IMG_UL.on) addImgGround();
   if(typeof CTX!=='undefined' && CTX.on) addContext();
   if(typeof SUN!=='undefined' && SUN.on) addShadows();
@@ -14298,7 +14916,7 @@ function fillColorTri(p0,p1,p2, c0,c1,c2){
 function drawSiteGizmo(cam,W,H){
   SG=null;
   if(PLOT_CLEAN) return;
-  if(!(typeof SITE!=='undefined' && SITE.on)) return;
+  if(!(typeof SITE!=='undefined' && SITE.on && SITE.show!==0)) return;
   var c=proj(cam,[0,0.1,0],W,H); if(!c) return;
   var aL=Math.max(5,(DIMS.w||10)*0.8), xt=proj(cam,[aL,0.1,0],W,H), zt=proj(cam,[0,0.1,aL],W,H), RR=74;
   function arr(a,b,col){ if(!b) return; ctx.strokeStyle=col; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
@@ -14700,6 +15318,7 @@ function curParams(){ return MODE==='forme' ? PF : P; }
 function buildUI(){
   var host=document.getElementById('params');
   host.innerHTML='';
+  paramResetButton(buildUI);              /* bouton « Réinitialiser » en tête */
   var params=curParams();
   curFields().forEach(function(f){
     var val = (params[f.k]!==undefined) ? params[f.k] : f.min;
@@ -15580,6 +16199,13 @@ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.innerHT
     posIn('Position X — est (m)','posX'); posIn('Position Z — nord (m)','posZ'); posIn('Position Y — haut (m)','posY'); posIn('Rotation nord (°)','north');
     var b=document.createElement('button'); b.textContent=(SITE.on?'Recharger la carte':'Charger la carte (OSM)'); b.className='tex-none';
     b.onclick=function(){ loadSiteMap(); }; target.appendChild(b);
+    if(SITE.on){   /* afficher / masquer la géolocalisation sans la décharger */
+      var bv=document.createElement('div'); bv.className='wall-toggle';
+      var vis=(SITE.show!==0);
+      bv.innerHTML='<span>Afficher la géolocalisation</span><button class="'+(vis?'on':'')+'"><span>'+(vis?'Affichée':'Masquée')+'</span></button>';
+      bv.querySelector('button').onclick=function(){ SITE.show=(SITE.show===0)?1:0; build(); DIRTY=true; if(WGL&&WGL.gActive) WGL.render(); buildImmeubleUI(); };
+      target.appendChild(bv);
+    }
     var b2=document.createElement('button'); b2.textContent='Voir sur OpenStreetMap'; b2.className='tex-none';
     b2.onclick=function(){ window.open('https://www.openstreetmap.org/#map='+SITE.zoom+'/'+SITE.lat+'/'+SITE.lon,'_blank'); }; target.appendChild(b2);
     var sg=document.createElement('div'); sg.className='mat-grid'; [['plan','Plan OSM'],['satellite','Satellite']].forEach(function(o){ var bb=document.createElement('button'); bb.textContent=o[1]; if((SITE.mapStyle||'plan')===o[0]) bb.className='on'; bb.onclick=function(){ SITE.mapStyle=o[0]; loadSiteMap(); buildImmeubleUI(); }; sg.appendChild(bb); }); target.appendChild(sg);
@@ -15619,6 +16245,7 @@ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.innerHT
 function buildObjUI(params, groups, rebuildUI){
   var host=document.getElementById('params');
   host.innerHTML='';
+  paramResetButton(rebuildUI);            /* bouton « Réinitialiser » en tête */
   var target=host; UI_FIRST=true;
   function grp(txt){ target=uiAccordion(host,txt); }
 
@@ -16066,6 +16693,119 @@ function buildEscalierUI(){
      .concat(PE.railSides!=='aucun'?[{type:'mat', key:'matRail', label:'Garde-corps', mats:RAIL_MATS}]:[])}
   ], buildEscalierUI);
   escConformNote();
+}
+/* Note de conformité de la rampe — seuils GÉNÉRALISTES (ordres de grandeur,
+   valables hors France). Confort ≤ 5 %, toléré court ≤ 8 %, largeur ≥ 1,20 m,
+   palier de repos ≥ 1,40 m. */
+function rampeConformNote(){
+  var host=document.getElementById('params'); if(!host) return;
+  var I=RAMPE_INFO, p=I.slope, w=I.width, pr=I.palRepos;
+  var okP=(p<=5.001), tolP=(p<=8.001), okW=(w>=120), okR=(pr>=140);
+  var ok=okP&&okW&&okR, warn=(!ok)&&tolP&&okW&&okR;
+  var col=ok?'#4a9d6b':(warn?'#c98a3d':'#c0503d');
+  var d=document.createElement('div'); d.style.cssText='margin:10px 0;padding:9px 10px;border-radius:7px;font-size:11px;line-height:1.5;color:var(--tx);border:1px solid '+col+';background:'+(ok?'rgba(74,157,107,.13)':'rgba(201,138,61,.13)')+';';
+  d.innerHTML='<b><span>Pente</span> '+p.toFixed(1)+' %</b> · <span>volée</span> '+I.run.toFixed(2)+' m · <span>développé</span> '+I.dev.toFixed(2)+' m'+(I.nF>1?(' · '+(I.nF-1)+' <span>paliers de repos</span>'):'')+'<br>'+
+    '<span>Confort ≤ 5 % · toléré court ≤ 8 % · largeur ≥ 1,20 m · repos ≥ 1,40 m</span> → '+
+    (ok?'<b style="color:#5cc98a"><span>conforme</span> ✓</b>':(warn?'<b style="color:#e0a24a"><span>toléré ⚠</span></b>':'<b style="color:#e07a5f"><span>hors seuils ⚠</span></b>'));
+  host.appendChild(d);
+}
+function buildRampeUI(){
+  var P=PRAMPE, oui=[{id:1,l:'Oui'},{id:0,l:'Non'}];
+  buildObjUI(P, [
+    {title:'Tracé', fields:[
+      {type:'choice',key:'shape',options:[{id:'droit',l:'Droit'},{id:'L',l:'En L'},{id:'demitour',l:'Demi-tour'}]},
+      {type:'choice',label:'Accès (entrée)',key:'acces',options:[{id:'face',l:'De face'},{id:'gauche',l:'Par la gauche'},{id:'droite',l:'Par la droite'}]},
+      {type:'choice',label:'Sortie',key:'sortie',options:[{id:'face',l:'De face'},{id:'gauche',l:'Par la gauche'},{id:'droite',l:'Par la droite'}]}
+    ]},
+    {title:'Dimensions', fields:[
+      {type:'slider',label:'Hauteur à monter',unit:'cm',key:'totalH',min:5,max:600,step:1},
+      {type:'slider',label:'Pente',unit:'%',key:'pente',min:2,max:12,step:0.5},
+      {type:'slider',label:'Largeur',unit:'cm',key:'width',min:90,max:300,step:5}
+    ].concat(P.shape==='demitour'?[{type:'slider',label:'Jour entre volées',unit:'cm',key:'gapU',min:0,max:60,step:5}]:[])},
+    {title:'Paliers', fields:[
+      {type:'slider',label:'Palier bas',unit:'cm',key:'palBas',min:100,max:300,step:10},
+      {type:'slider',label:'Palier haut',unit:'cm',key:'palHaut',min:100,max:300,step:10}
+    ].concat(P.shape==='droit'?[
+      {type:'slider',label:'Palier de repos',unit:'cm',key:'palRepos',min:120,max:300,step:10},
+      {type:'slider',label:'Repos tous les',unit:'cm dénivelé',key:'reposEvery',min:20,max:100,step:5}
+    ]:[{type:'slider',label:'Palier intermédiaire',unit:'cm',key:'palRepos',min:120,max:300,step:10}])},
+    {title:'Rives', fields:[
+      {type:'choice',label:'Bordure',key:'wall',options:[{id:'chasse',l:'Chasse-roue'},{id:'joue',l:'Joue pleine'},{id:'aucun',l:'Aucune'}]}
+    ].concat(P.wall!=='aucun'?[
+      {type:'slider',label:'Hauteur bordure',unit:'cm',key:'wallH',min:5,max:60,step:1},
+      {type:'slider',label:'Épaisseur bordure',unit:'cm',key:'wallEp',min:5,max:30,step:1}
+    ]:[])},
+    {title:'Garde-corps', fields:[
+      {type:'choice',label:'Côté',key:'rail',options:[{id:'aucun',l:'Aucun'},{id:'gauche',l:'Gauche'},{id:'droite',l:'Droite'},{id:'deux',l:'Deux côtés'}]}
+    ].concat(P.rail!=='aucun'?[
+      {type:'choice',label:'Double lisse',key:'railDouble',options:oui},
+      {type:'slider',label:'Main courante haute',unit:'cm',key:'mainH',min:70,max:110,step:1}
+    ].concat(P.railDouble?[{type:'slider',label:'Main courante basse',unit:'cm',key:'secH',min:40,max:90,step:1}]:[])
+     .concat([{type:'choice',key:'fill',options:[{id:'barreaux',l:'Barreaudage'},{id:'lisse',l:'Lisse simple'}]}]):[])},
+    {title:'Matériaux', fields:[
+      {type:'mat',key:'matSurf',label:'Surface de roulement',mats:RAIL_MATS},
+      {type:'mat',key:'matStruct',label:'Structure / joues',mats:RAIL_MATS}
+    ].concat(P.rail!=='aucun'?[{type:'mat',key:'matRail',label:'Garde-corps',mats:RAIL_MATS}]:[])}
+  ], buildRampeUI);
+  rampeConformNote();
+}
+/* UI de l'Ascenseur */
+function buildAscenseurUI(){
+  var P=PASC, oui=[{id:1,l:'Oui'},{id:0,l:'Non'}];
+  var Nl=Math.max(2,Math.min(200,P.levels|0));
+  if(P.perFloor){ for(var s=0;s<Nl-1;s++){ if(!(P['h'+s]>0)) P['h'+s]=(s===0&&P.hGround>0?P.hGround:P.hLevel); } }
+  var pfFields=[];
+  if(P.perFloor && Nl<=12){ for(var s2=0;s2<Nl-1;s2++) pfFields.push({type:'slider',label:'Niveau '+s2+' → '+(s2+1),unit:'cm',key:'h'+s2,min:200,max:600,step:5}); }
+  buildObjUI(P, [
+    {title:'Type & capacité', fields:[
+      {type:'choice',label:'Charge / cabine',key:'charge',options:[{id:'630',l:'630 kg — 8 pers.'},{id:'1000',l:'1000 kg — 13 pers.'},{id:'1275',l:'1275 kg — brancard'}]},
+      {type:'choice',label:'Aspect',key:'aspect',options:[{id:'standard',l:'Standard (maçonné)'},{id:'vitre',l:'Panoramique (vitré)'},{id:'exterieur',l:'Extérieur (ossature acier)'}]},
+      {type:'choice',label:'Motorisation',key:'type',options:[{id:'traction',l:'Traction à câbles'},{id:'hydraulique',l:'Hydraulique'}]}
+    ].concat(P.type==='traction'&&P.aspect==='standard'?[{type:'choice',label:'Machinerie',key:'machineRoom',options:[{id:1,l:'Avec local (toiture)'},{id:0,l:'Sans local (MRL)'}]}]:[])},
+    {title:'Desserte & hauteurs', fields:[
+      {type:'slider',label:'Nombre d\'arrêts',unit:'',key:'levels',min:2,max:200,step:1},
+      {type:'slider',label:'Hauteur d\'étage courant',unit:'cm',key:'hLevel',min:220,max:600,step:5},
+      {type:'slider',label:'Hauteur du RDC (0 = idem)',unit:'cm',key:'hGround',min:0,max:700,step:5},
+      {type:'choice',label:'Hauteur par étage',key:'perFloor',options:oui},
+      {type:'slider',label:'Cabine à l\'arrêt',unit:'n°',key:'cabinAt',min:0,max:Nl-1,step:1},
+      {type:'choice',label:'Animer (montée / descente)',key:'animate',options:oui}
+    ].concat(pfFields)},
+    {title:'Gaine', fields:[
+      {type:'choice',label:'Matériau',key:'gaineMat',options:ASC_GAINE_MATS.map(function(m){return {id:m.id,l:m.l};})},
+      {type:'slider',label:'Épaisseur paroi',unit:'cm',key:'wallEp',min:10,max:30,step:1},
+      {type:'slider',label:'Cuvette',unit:'cm',key:'cuvette',min:0,max:250,step:5},
+      {type:'slider',label:'Surcourse',unit:'cm',key:'surcourse',min:250,max:500,step:5}
+    ]},
+    {title:'Portes palières', fields:[
+      {type:'choice',label:'Ouverture',key:'doorType',options:[{id:'centrale',l:'Centrale (2 vantaux)'},{id:'telescopique',l:'Télescopique'}]},
+      {type:'slider',label:'Passage libre (0 = auto)',unit:'cm',key:'doorW',min:0,max:130,step:5},
+      {type:'slider',label:'Hauteur passage',unit:'cm',key:'doorH',min:200,max:240,step:5}
+    ]},
+    {title:'Affichage', fields:[
+      {type:'choice',label:'Gaine',key:'showGaine',options:oui},
+      {type:'choice',label:'Cabine',key:'showCab',options:oui},
+      {type:'choice',label:'Portes',key:'showDoors',options:oui},
+      {type:'choice',label:'Guidage / contrepoids',key:'showStruct',options:oui}
+    ].concat(P.type==='traction'&&P.machineRoom!==0?[{type:'choice',label:'Local machinerie',key:'showMachine',options:oui}]:[])},
+    {title:'Matériaux', fields:[
+      {type:'mat',key:'cabWall',label:'Cabine',mats:RAIL_MATS},
+      {type:'mat',key:'matDoor',label:'Portes',mats:RAIL_MATS}
+    ]}
+  ], buildAscenseurUI);
+  ascenseurConformNote();
+  if(PASC.animate) ascStartAnim(); else ascStopAnim();   /* démarre/arrête la boucle d'animation */
+}
+/* Bandeau accessibilité / trame ascenseur (EN 81-70, indicatif). */
+function ascenseurConformNote(){
+  var host=document.getElementById('params'); if(!host) return;
+  var I=ASC_INFO, ok=(I.okCab&&I.okDoor), col=ok?'#4a9d6b':'#c98a3d';
+  var d=document.createElement('div'); d.style.cssText='margin:10px 0;padding:9px 10px;border-radius:7px;font-size:11px;line-height:1.5;color:var(--tx);border:1px solid '+col+';background:'+(ok?'rgba(74,157,107,.13)':'rgba(201,138,61,.13)')+';';
+  d.innerHTML='<b><span>Cabine</span> '+I.cw+'×'+I.cd+' cm · <span>passage</span> '+I.door+' cm</b> · '+I.N+' <span>arrêts</span><br>'+
+    '<span>Cuvette</span> '+I.cuvette+' cm · <span>surcourse</span> '+I.surcourse+' cm<br>'+
+    '<span>EN 81-70 : cabine ≥ 110×140 cm · passage ≥ 80 cm</span> → '+
+    (ok?'<b style="color:#5cc98a"><span>accessible ✓</span></b>':'<b style="color:#e0a24a"><span>à vérifier ⚠</span></b>')+
+    '<br><span style="color:var(--dm);font-size:9.5px;"><span>Trame indicative — cuvette, surcourse et local machinerie à valider avec l\'ascensoriste et le BET (EN 81-20/-50).</span></span>';
+  host.appendChild(d);
 }
 /* UI de la Ferme */
 function buildFermeUI(){
@@ -17049,6 +17789,8 @@ function finishElemsFor(){
     case 'poutre':    return FINISH_ELEMS_POUTRE;
     case 'gardecorps':return FINISH_ELEMS_GARDECORPS;
     case 'escalier':  return FINISH_ELEMS_ESCALIER;
+    case 'rampe':     return FINISH_ELEMS_RAMPE;
+    case 'ascenseur': return FINISH_ELEMS_ASC;
     case 'ferme':     return FINISH_ELEMS_FERME;
     case 'toiture':   return FINISH_ELEMS_TOITURE;
     case 'forme':     return FINISH_ELEMS_FORME;
@@ -17701,6 +18443,8 @@ var ICONS={
  cheminee:SVGIC('<path d="M5 21V6h14v15"/><path d="M4 6h16"/><path d="M9 21v-5a3 3 0 0 1 6 0v5"/>'),
  toiture:SVGIC('<path d="M3 12l9-7 9 7"/><path d="M5 11v8h14v-8"/>'),
  escalier:SVGIC('<path d="M4 20v-3h4v-3h4v-3h4v-3h4"/>'),
+ rampe:SVGIC('<path d="M3 20h4l10-9h4"/><path d="M3 20v-2m18-9v-2"/>'),
+ ascenseur:SVGIC('<rect x="6" y="3" width="12" height="18" rx="1"/><line x1="12" y1="3" x2="12" y2="21"/><path d="M9 9l1.4-2 1.4 2z"/><path d="M15 15l-1.4 2-1.4-2z"/>'),
  coque:SVGIC('<path d="M4 8v5a5 5 0 0 0 5 5h6a5 5 0 0 0 5-5V8"/><line x1="3" y1="8" x2="21" y2="8"/>'),
  ouvtoit:SVGIC('<path d="M3 13l9-6 9 6"/><rect x="9" y="12" width="6" height="6"/>'),
  fenangle:SVGIC('<path d="M5 4v15h15"/><rect x="5" y="4" width="8" height="8"/>'),
@@ -17971,6 +18715,8 @@ function refreshView(){
       else if(cat.id==='poutre'){ buildPoutreUI(); }
       else if(cat.id==='gardecorps'){ buildRailUI(); }
       else if(cat.id==='escalier'){ buildEscalierUI(); }
+      else if(cat.id==='rampe'){ buildRampeUI(); }
+      else if(cat.id==='ascenseur'){ buildAscenseurUI(); }
       else if(cat.id==='ferme'){ buildFermeUI(); }
       else if(cat.id==='toiture'){ buildToitureUI(); }
       else if(cat.id==='scene'){ buildSceneUI(); }
@@ -19720,6 +20466,9 @@ var I18N_ADD8={
 "Voiles périphériques (murs)":["Perimeter walls (shear walls)","Muros perimetrales (pantallas)","Setti perimetrali (muri)","Umfassungswände (Schotten)","Paredes perimetrais (de betão)","Kerületi falak (falpillérek)","周边剪力墙","外周耐力壁","परिधीय दीवारें","Периметральные стены (диафрагмы)","Периметральні стіни (діафрагми)","الجدران المحيطية"],
 "Côté du massif":["Pad side","Lado del macizo","Lato del plinto","Fundamentseite","Lado do maciço","Talptömb oldala","独立基础边长","独立基礎の辺長","पैड भुजा","Сторона фундаментной подушки","Сторона фундаментної подушки","ضلع القاعدة"],
 "Site / Géolocalisation":["Site / Geolocation","Emplazamiento / Geolocalización","Sito / Geolocalizzazione","Standort / Geolokalisierung","Local / Geolocalização","Telek / Geolokáció","场地 / 地理定位","敷地 / 位置情報","साइट / भू-स्थान","Участок / Геолокация","Ділянка / Геолокація","الموقع / تحديد الموقع"],
+"Afficher la géolocalisation":["Show geolocation","Mostrar geolocalización","Mostra geolocalizzazione","Geolokalisierung anzeigen","Mostrar geolocalização","Geolokáció megjelenítése","显示地理定位","位置情報を表示","भू-स्थान दिखाएँ","Показать геолокацию","Показати геолокацію","إظهار تحديد الموقع"],
+"Affichée":["Shown","Mostrada","Mostrata","Angezeigt","Mostrada","Látható","已显示","表示中","दिखाया गया","Показано","Показано","معروض"],
+"Masquée":["Hidden","Oculta","Nascosta","Ausgeblendet","Oculta","Rejtve","已隐藏","非表示","छिपा हुआ","Скрыто","Приховано","مخفي"],
 "Géocoder l'adresse":["Geocode the address","Geocodificar la dirección","Geocodifica l'indirizzo","Adresse geokodieren","Geocodificar o endereço","Cím geokódolása","地址地理编码","住所をジオコーディング","पता जियोकोड करें","Геокодировать адрес","Геокодувати адресу","ترميز العنوان جغرافيًا"],
 "Charger la carte (OSM)":["Load the map (OSM)","Cargar el mapa (OSM)","Carica la mappa (OSM)","Karte laden (OSM)","Carregar o mapa (OSM)","Térkép betöltése (OSM)","加载地图（OSM）","地図を読み込む（OSM）","मानचित्र लोड करें (OSM)","Загрузить карту (OSM)","Завантажити карту (OSM)","تحميل الخريطة (OSM)"],
 "Recharger la carte":["Reload the map","Recargar el mapa","Ricarica la mappa","Karte neu laden","Recarregar o mapa","Térkép újratöltése","重新加载地图","地図を再読み込み","मानचित्र पुनः लोड करें","Перезагрузить карту","Перезавантажити карту","إعادة تحميل الخريطة"],
@@ -19932,6 +20681,63 @@ var I18N_ADD11={
 "Couvrir les travées":["Cover the bay runs","Cubrir las filas","Copri le file","Reihen überdachen","Cobrir as filas","Sorok lefedése","覆盖车位排","駐車列を覆う","पंक्तियों को ढकें","Накрыть ряды","Накрити ряди","تغطية الصفوف"],
 "Pente de nappe":["Array slope","Pendiente del faldón","Pendenza della falda","Feldneigung","Inclinação do pano","Mező lejtése","组件坡度","アレイ勾配","ऐरे ढाल","Уклон ската","Ухил схилу","ميل السقيفة"],
 "Hauteur libre (côté allée)":["Clear height (aisle side)","Altura libre (lado calle)","Altezza libera (lato corsia)","Lichte Höhe (Fahrgassenseite)","Altura livre (lado do corredor)","Szabad magasság (közlekedősáv felől)","净空高度（通道侧）","有効高さ（通路側）","स्पष्ट ऊँचाई (गलियारा ओर)","Габарит по высоте (со стороны проезда)","Габарит за висотою (з боку проїзду)","الارتفاع الحر (جهة الممر)"],
+/* ---------- Ascenseur ---------- */
+"Ascenseur":["Elevator","Ascensor","Ascensore","Aufzug","Elevador","Felvonó","电梯","エレベーター","लिफ्ट","Лифт","Ліфт","مصعد"],
+"Gaine":["Shaft","Hueco","Vano corsa","Schacht","Poço","Akna","井道","昇降路","शाफ्ट","Шахта","Шахта","بئر المصعد"],
+"Portes palières":["Landing doors","Puertas de piso","Porte di piano","Schachttüren","Portas de patamar","Aknaajtók","层门","乗場ドア","लैंडिंग दरवाज़े","Двери шахты","Двері шахти","أبواب الطابق"],
+"Cabine":["Cabin","Cabina","Cabina","Kabine","Cabine","Fülke","轿厢","かご","केबिन","Кабина","Кабіна","المقصورة"],
+"Sol cabine":["Cabin floor","Suelo de cabina","Pavimento cabina","Kabinenboden","Piso da cabine","Fülkepadló","轿厢地板","かご床","केबिन फ़र्श","Пол кабины","Підлога кабіни","أرضية المقصورة"],
+"Guidage / structure":["Guides / structure","Guías / estructura","Guide / struttura","Führungen / Struktur","Guias / estrutura","Vezetők / szerkezet","导轨/结构","ガイド/構造","गाइड / संरचना","Направляющие / каркас","Напрямні / каркас","الموجهات / الهيكل"],
+"Guidage / contrepoids":["Guides / counterweight","Guías / contrapeso","Guide / contrappeso","Führungen / Gegengewicht","Guias / contrapeso","Vezetők / ellensúly","导轨/对重","ガイド/釣合おもり","गाइड / काउंटरवेट","Направляющие / противовес","Напрямні / противага","الموجهات / الثقل الموازن"],
+"Type & capacité":["Type & capacity","Tipo y capacidad","Tipo e capacità","Typ & Kapazität","Tipo e capacidade","Típus és kapacitás","类型与容量","種類と積載量","प्रकार और क्षमता","Тип и вместимость","Тип і місткість","النوع والسعة"],
+"Charge / cabine":["Load / cabin","Carga / cabina","Portata / cabina","Last / Kabine","Carga / cabine","Teher / fülke","载重/轿厢","積載/かご","भार / केबिन","Нагрузка / кабина","Навантаження / кабіна","الحمولة / المقصورة"],
+"Motorisation":["Drive","Motorización","Motorizzazione","Antrieb","Motorização","Meghajtás","驱动方式","駆動方式","मोटर","Привод","Привід","نظام الدفع"],
+"Traction à câbles":["Rope traction","Tracción por cables","Trazione a funi","Seiltrieb","Tração por cabos","Kötélhajtás","曳引式","ロープ式","रस्सी ट्रैक्शन","Канатный привод","Канатний привід","جر بالحبال"],
+"Hydraulique":["Hydraulic","Hidráulico","Idraulico","Hydraulisch","Hidráulico","Hidraulikus","液压式","油圧式","हाइड्रोलिक","Гидравлический","Гідравлічний","هيدروليكي"],
+"Machinerie":["Machinery","Maquinaria","Macchinario","Maschinenraum","Maquinaria","Gépészet","机房设置","機械室","मशीनरी","Машинное отделение","Машинне відділення","نظام الآلات"],
+"Local machinerie":["Machine room","Cuarto de máquinas","Locale macchine","Maschinenraum","Casa de máquinas","Gépterem","机房","機械室","मशीन कक्ष","Машинное помещение","Машинне приміщення","غرفة الآلات"],
+"Avec local (toiture)":["With room (roof)","Con cuarto (cubierta)","Con locale (in copertura)","Mit Raum (Dach)","Com casa (cobertura)","Géptérrel (tető)","有机房（屋顶）","機械室あり（屋上）","कक्ष सहित (छत)","С машинным помещением (крыша)","З машинним приміщенням (дах)","بغرفة (السطح)"],
+"Sans local (MRL)":["Machine-room-less (MRL)","Sin cuarto (MRL)","Senza locale (MRL)","Ohne Raum (MRL)","Sem casa (MRL)","Géptér nélkül (MRL)","无机房 (MRL)","機械室なし（MRL）","बिना कक्ष (MRL)","Без машинного помещения (MRL)","Без машинного приміщення (MRL)","بدون غرفة (MRL)"],
+"Desserte":["Service","Servicio","Servizio","Bedienung","Atendimento","Kiszolgálás","停靠","停止階","सेवा","Обслуживание","Обслуговування","الخدمة"],
+"Nombre d'arrêts":["Number of stops","Número de paradas","Numero di fermate","Anzahl Haltestellen","Número de paradas","Megállók száma","停靠层数","停止階数","स्टॉप की संख्या","Число остановок","Кількість зупинок","عدد الطوابق"],
+"Hauteur d'étage":["Floor height","Altura de planta","Altezza di piano","Geschosshöhe","Altura do piso","Szintmagasság","层高","階高","मंज़िल ऊँचाई","Высота этажа","Висота поверху","ارتفاع الطابق"],
+"Réinitialiser":["Reset","Restablecer","Reimposta","Zurücksetzen","Redefinir","Visszaállítás","重置","リセット","रीसेट करें","Сбросить","Скинути","إعادة تعيين"],
+"Façades ouvertes":["Open façades","Fachadas abiertas","Facciate aperte","Offene Fassaden","Fachadas abertas","Nyitott homlokzatok","开敞立面","開放ファサード","खुले अग्रभाग","Открытые фасады","Відкриті фасади","واجهات مفتوحة"],
+"Long-pan gauche":["Left eaves side","Lado largo izquierdo","Lato lungo sinistro","Traufseite links","Fachada lateral esquerda","Bal oldalfal","左侧檐墙","左の側壁","बायाँ लंबा हिस्सा","Левая продольная стена","Ліва поздовжня стіна","الجانب الطولي الأيسر"],
+"Long-pan droit":["Right eaves side","Lado largo derecho","Lato lungo destro","Traufseite rechts","Fachada lateral direita","Jobb oldalfal","右侧檐墙","右の側壁","दायाँ लंबा हिस्सा","Правая продольная стена","Права поздовжня стіна","الجانب الطولي الأيمن"],
+"Pignon avant":["Front gable","Hastial delantero","Frontone anteriore","Vorderer Giebel","Empena frontal","Elülső oromfal","前山墙","前妻側","अगला गेबल","Передний фронтон","Передній фронтон","الجملون الأمامي"],
+"Pignon arrière":["Rear gable","Hastial trasero","Frontone posteriore","Hinterer Giebel","Empena traseira","Hátsó oromfal","后山墙","後妻側","पिछला गेबल","Задний фронтон","Задній фронтон","الجملون الخلفي"],
+"Fermée":["Closed","Cerrada","Chiusa","Geschlossen","Fechada","Zárt","封闭","閉じる","बंद","Закрыта","Закрита","مغلقة"],
+"Ouverte":["Open","Abierta","Aperta","Offen","Aberta","Nyitott","开敞","開く","खुला","Открыта","Відкрита","مفتوحة"],
+"Aspect":["Appearance","Aspecto","Aspetto","Erscheinung","Aspeto","Megjelenés","外观","外観","रूप","Вид","Вигляд","المظهر"],
+"Standard (maçonné)":["Standard (masonry)","Estándar (obra)","Standard (muratura)","Standard (gemauert)","Padrão (alvenaria)","Szabvány (falazott)","标准（砌筑）","標準（組積）","मानक (चिनाई)","Стандарт (кладка)","Стандарт (мурування)","قياسي (بناء)"],
+"Panoramique (vitré)":["Panoramic (glazed)","Panorámico (acristalado)","Panoramico (vetrato)","Panorama (verglast)","Panorâmico (envidraçado)","Panorámás (üvegezett)","观光（玻璃）","パノラマ（ガラス）","पैनोरमिक (काँच)","Панорамный (остеклённый)","Панорамний (заскленений)","بانورامي (زجاجي)"],
+"Extérieur (ossature acier)":["Exterior (steel frame)","Exterior (estructura de acero)","Esterno (struttura in acciaio)","Außen (Stahlgerüst)","Exterior (estrutura de aço)","Külső (acélszerkezet)","室外（钢结构）","屋外（鉄骨）","बाहरी (स्टील ढाँचा)","Наружный (стальной каркас)","Зовнішній (сталевий каркас)","خارجي (هيكل فولاذي)"],
+"Animer (montée / descente)":["Animate (up / down)","Animar (subida / bajada)","Anima (salita / discesa)","Animieren (auf / ab)","Animar (subida / descida)","Animálás (fel / le)","动画（上升/下降）","アニメ（昇降）","एनिमेट (ऊपर / नीचे)","Анимация (вверх / вниз)","Анімація (вгору / вниз)","تحريك (صعود / نزول)"],
+"Desserte & hauteurs":["Service & heights","Servicio y alturas","Servizio e altezze","Bedienung & Höhen","Atendimento e alturas","Kiszolgálás és magasságok","停靠与层高","停止階と階高","सेवा और ऊँचाइयाँ","Обслуживание и высоты","Обслуговування та висоти","الخدمة والارتفاعات"],
+"Hauteur d'étage courant":["Typical floor height","Altura de planta tipo","Altezza piano tipo","Regelgeschosshöhe","Altura do piso tipo","Általános szintmagasság","标准层高","基準階高","सामान्य मंज़िल ऊँचाई","Высота типового этажа","Висота типового поверху","ارتفاع الطابق النموذجي"],
+"Hauteur du RDC (0 = idem)":["Ground floor height (0 = same)","Altura de PB (0 = igual)","Altezza PT (0 = uguale)","EG-Höhe (0 = gleich)","Altura do R/C (0 = igual)","FSZ magasság (0 = azonos)","底层层高（0=相同）","1階の階高（0=同じ）","भूतल ऊँचाई (0 = समान)","Высота 1-го этажа (0 = как тип.)","Висота 1-го поверху (0 = як тип.)","ارتفاع الطابق الأرضي (0 = مثله)"],
+"Hauteur par étage":["Height per floor","Altura por planta","Altezza per piano","Höhe je Geschoss","Altura por piso","Magasság szintenként","逐层设定层高","階ごとの高さ","प्रति मंज़िल ऊँचाई","Высота по этажам","Висота по поверхах","ارتفاع لكل طابق"],
+"Cabine à l'arrêt":["Cabin at stop","Cabina en parada","Cabina alla fermata","Kabine an Haltestelle","Cabine na parada","Fülke a megállónál","轿厢所在层","かご位置","केबिन स्टॉप पर","Кабина на остановке","Кабіна на зупинці","المقصورة عند الطابق"],
+"Niveau bas (RDC)":["Lowest level (GF)","Nivel bajo (PB)","Livello basso (PT)","Unterste Ebene (EG)","Nível baixo (R/C)","Alsó szint (FSZ)","底层","最下階","निचला स्तर (भूतल)","Нижний уровень","Нижній рівень","المستوى الأدنى"],
+"Matériau":["Material","Material","Materiale","Material","Material","Anyag","材料","素材","सामग्री","Материал","Матеріал","المادة"],
+"Épaisseur paroi":["Wall thickness","Espesor de pared","Spessore parete","Wandstärke","Espessura da parede","Falvastagság","墙厚","壁厚","दीवार मोटाई","Толщина стены","Товщина стіни","سماكة الجدار"],
+"Cuvette":["Pit","Foso","Fossa","Schachtgrube","Poço (fosso)","Aknagödör","底坑","ピット","गड्ढा","Приямок","Приямок","حفرة القاع"],
+"Surcourse":["Headroom","Recorrido superior","Extracorsa","Schachtkopf","Sobrepercurso","Felső túlfutás","顶层高度","オーバーヘッド","ऊपरी स्थान","Верхний габарит","Верхній габарит","المسافة العلوية"],
+"Ouverture":["Opening","Apertura","Apertura","Öffnung","Abertura","Nyitás","开门方式","開き方","खुलना","Открывание","Відкривання","الفتح"],
+"Centrale (2 vantaux)":["Centre (2 panels)","Central (2 hojas)","Centrale (2 ante)","Mittig (2 Flügel)","Central (2 folhas)","Központi (2 szárny)","中分（2扇）","中央開き（2枚）","केंद्रीय (2 पल्ले)","Центральное (2 створки)","Центральне (2 стулки)","مركزي (مصراعان)"],
+"Télescopique":["Telescopic","Telescópica","Telescopica","Teleskopisch","Telescópica","Teleszkópos","旁开（伸缩）","片開き（テレスコ）","टेलीस्कोपिक","Телескопическое","Телескопічне","تلسكوبي"],
+"Passage libre (0 = auto)":["Clear width (0 = auto)","Paso libre (0 = auto)","Passaggio libero (0 = auto)","Lichte Breite (0 = auto)","Passagem livre (0 = auto)","Szabad nyílás (0 = auto)","净开门 (0=自动)","有効開口 (0=自動)","स्पष्ट चौड़ाई (0 = ऑटो)","Ширина проёма (0 = авто)","Ширина отвору (0 = авто)","العرض الصافي (0 = تلقائي)"],
+"Hauteur passage":["Clear height","Altura de paso","Altezza passaggio","Lichte Höhe","Altura de passagem","Szabad magasság","净开门高","有効高さ","स्पष्ट ऊँचाई","Высота проёма","Висота отвору","الارتفاع الصافي"],
+"Portes":["Doors","Puertas","Porte","Türen","Portas","Ajtók","门","ドア","दरवाज़े","Двери","Двері","الأبواب"],
+"Parpaing":["Concrete block","Bloque de hormigón","Blocco di cemento","Betonstein","Bloco de betão","Betonelem","混凝土砌块","コンクリートブロック","कंक्रीट ब्लॉक","Бетонный блок","Бетонний блок","كتلة خرسانية"],
+"Brique":["Brick","Ladrillo","Mattone","Ziegel","Tijolo","Tégla","砖","レンガ","ईंट","Кирпич","Цегла","طوب"],
+"Métal/verre":["Metal/glass","Metal/vidrio","Metallo/vetro","Metall/Glas","Metal/vidro","Fém/üveg","金属/玻璃","金属/ガラス","धातु/काँच","Металл/стекло","Метал/скло","معدن/زجاج"],
+"arrêts":["stops","paradas","fermate","Haltestellen","paradas","megálló","层","停止階","स्टॉप","остановок","зупинок","طوابق"],
+"passage":["clear width","paso","passaggio","Durchgang","passagem","nyílás","净开门","開口","मार्ग","проём","отвір","المدخل"],
+"accessible ✓":["accessible ✓","accesible ✓","accessibile ✓","barrierefrei ✓","acessível ✓","akadálymentes ✓","无障碍 ✓","バリアフリー ✓","सुलभ ✓","доступно ✓","доступно ✓","ميسور ✓"],
+"à vérifier ⚠":["to verify ⚠","a verificar ⚠","da verificare ⚠","zu prüfen ⚠","a verificar ⚠","ellenőrizendő ⚠","待核查 ⚠","要確認 ⚠","जाँचें ⚠","проверить ⚠","перевірити ⚠","للتحقق ⚠"],
+"Trame indicative — cuvette, surcourse et local machinerie à valider avec l'ascensoriste et le BET (EN 81-20/-50).":["Indicative grid — pit, headroom and machine room to be validated with the lift contractor and the engineer (EN 81-20/-50).","Trama indicativa — foso, recorrido superior y cuarto de máquinas a validar con el ascensorista y la oficina técnica (EN 81-20/-50).","Maglia indicativa — fossa, extracorsa e locale macchine da validare con l'ascensorista e lo studio tecnico (EN 81-20/-50).","Richtwerte — Grube, Schachtkopf und Maschinenraum sind mit dem Aufzugsbauer und dem Ingenieurbüro zu bestätigen (EN 81-20/-50).","Malha indicativa — poço, sobrepercurso e casa de máquinas a validar com o instalador e o gabinete técnico (EN 81-20/-50).","Tájékoztató raszter — az aknagödröt, felső túlfutást és géptermet a felvonószerelővel és a mérnökirodával kell egyeztetni (EN 81-20/-50).","示意尺寸——底坑、顶层高度及机房须与电梯厂商及设计院确认（EN 81-20/-50）。","参考寸法 — ピット・オーバーヘッド・機械室は昇降機業者および設計事務所と確認のこと（EN 81-20/-50）。","संकेतात्मक ग्रिड — गड्ढा, ऊपरी स्थान और मशीन कक्ष लिफ्ट ठेकेदार व अभियंता से सत्यापित करें (EN 81-20/-50)।","Ориентировочная схема — приямок, верхний габарит и машинное помещение согласуются с лифтёром и проектировщиком (EN 81-20/-50).","Орієнтовна схема — приямок, верхній габарит і машинне приміщення узгоджуються з ліфтовиком і проєктувальником (EN 81-20/-50).","شبكة استرشادية — يجب اعتماد حفرة القاع والمسافة العلوية وغرفة الآلات مع مقاول المصاعد والمكتب الهندسي (EN 81-20/-50)."],
 /* ---------- Cuisine ---------- */
 "Type d'élément":["Unit type","Tipo de mueble","Tipo di elemento","Möbeltyp","Tipo de módulo","Elem típusa","柜体类型","ユニット種別","यूनिट प्रकार","Тип модуля","Тип модуля","نوع الوحدة"],
 "Élément seul":["Single unit","Mueble suelto","Elemento singolo","Einzelmöbel","Módulo isolado","Önálló elem","单个柜体","単体ユニット","एकल यूनिट","Отдельный модуль","Окремий модуль","وحدة مفردة"],
@@ -20090,6 +20896,10 @@ var I18N_ADD13={
 "Ombres portées du soleil":["Cast sun shadows","Sombras arrojadas del sol","Ombre portate del sole","Sonnenschlagschatten","Sombras projetadas do sol","Napárnyékok","太阳投影","太陽の落ち影","सूर्य की परछाइयाँ","Тени от солнца","Тіні від сонця","ظلال الشمس"],
 "Soleil — course réelle":["Sun — true path","Sol — recorrido real","Sole — percorso reale","Sonne — realer Lauf","Sol — percurso real","Nap — valós pálya","太阳 — 真实轨迹","太陽 — 実際の軌道","सूर्य — वास्तविक पथ","Солнце — истинный ход","Сонце — істинний хід","الشمس — المسار الحقيقي"],
 "Intensité SSAO":["SSAO strength","Intensidad SSAO","Intensità SSAO","SSAO-Stärke","Intensidade SSAO","SSAO erőssége","SSAO 强度","SSAO 強度","SSAO तीव्रता","Интенсивность SSAO","Інтенсивність SSAO","شدة SSAO"],
+"Netteté (anti-crénelage)":["Sharpness (anti-aliasing)","Nitidez (antialias)","Nitidezza (antialiasing)","Schärfe (Kantenglättung)","Nitidez (anti-serrilhado)","Élesség (élsimítás)","清晰度（抗锯齿）","シャープネス（アンチエイリアス）","तीक्ष्णता (एंटी-एलियासिंग)","Резкость (сглаживание)","Різкість (згладжування)","الحدة (تنعيم الحواف)"],
+"Halo (bloom)":["Glow (bloom)","Halo (bloom)","Bagliore (bloom)","Leuchten (Bloom)","Brilho (bloom)","Ragyogás (bloom)","泛光（bloom）","ブルーム","ग्लो (ब्लूम)","Свечение (bloom)","Сяйво (bloom)","توهج (bloom)"],
+"Ambiance (étalonnage)":["Mood (colour grade)","Ambiente (etalonaje)","Atmosfera (color grading)","Stimmung (Farblook)","Ambiente (gradação)","Hangulat (színvilág)","氛围（调色）","ムード（カラーグレード）","माहौल (कलर ग्रेड)","Настроение (цветокоррекция)","Настрій (кольорокорекція)","الأجواء (تدرّج الألوان)"],
+"Modelé (lumière d'ambiance)":["Modelling (ambient light)","Modelado (luz ambiental)","Modellazione (luce ambientale)","Modellierung (Umgebungslicht)","Modelado (luz ambiente)","Modellálás (környezeti fény)","造型光（环境光）","陰影表現（環境光）","मॉडलिंग (परिवेश प्रकाश)","Моделирование (окружающий свет)","Моделювання (розсіяне світло)","التجسيم (الإضاءة المحيطة)"],
 "Sol herbe (procédural)":["Grass ground (procedural)","Suelo de césped (procedural)","Terreno erboso (procedurale)","Rasenboden (prozedural)","Solo relvado (procedural)","Füves talaj (procedurális)","草地（程序生成）","芝生の地面（プロシージャル）","घास की ज़मीन (प्रक्रियात्मक)","Травяной грунт (процедурный)","Трав'яний ґрунт (процедурний)","أرضية عشب (إجرائية)"],
 "Ciel avec nuages":["Sky with clouds","Cielo con nubes","Cielo con nuvole","Himmel mit Wolken","Céu com nuvens","Felhős ég","有云天空","雲のある空","बादलों वाला आकाश","Небо с облаками","Небо з хмарами","سماء بغيوم"],
 "Heure dorée":["Golden hour","Hora dorada","Ora d'oro","Goldene Stunde","Hora dourada","Aranyóra","黄金时刻","ゴールデンアワー","गोल्डन आवर","Золотой час","Золота година","الساعة الذهبية"],
@@ -20496,6 +21306,44 @@ var I18N_ADD24={
 "Tous":["All","Todos","Tutti","Alle","Todos","Mind","全部","すべて","सभी","Все","Усі","الكل"]
 };
 (function(){ for(var fr in I18N_ADD24){ var t=I18N_ADD24[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD25 — Rampe PMR. */
+var I18N_ADD25={
+"Rampe PMR":["Accessibility ramp","Rampa accesible","Rampa accessibile","Rollstuhlrampe","Rampa acessível","Akadálymentes rámpa","无障碍坡道","スロープ","सुलभ रैंप","Пандус","Пандус","منحدر لذوي الإعاقة"],
+"Demi-tour":["Switchback","Media vuelta","A U","Kehre","Meia-volta","Fordulós","折返","折り返し","यू-टर्न","Разворот","Розворот","التفاف"],
+"Accès (entrée)":["Access (entry)","Acceso (entrada)","Accesso (ingresso)","Zugang (Eingang)","Acesso (entrada)","Megközelítés (bejárat)","入口方向","進入口","पहुँच (प्रवेश)","Доступ (вход)","Доступ (вхід)","الوصول (المدخل)"],
+"Sortie":["Exit","Salida","Uscita","Ausgang","Saída","Kijárat","出口","出口","निकास","Выход","Вихід","المخرج"],
+"De face":["Front-on","De frente","Frontale","Frontal","De frente","Szemből","正面","正面から","सामने से","Спереди","Спереду","من الأمام"],
+"Par la gauche":["From the left","Por la izquierda","Da sinistra","Von links","Pela esquerda","Balról","从左侧","左から","बाईं ओर से","Слева","Ліворуч","من اليسار"],
+"Par la droite":["From the right","Por la derecha","Da destra","Von rechts","Pela direita","Jobbról","从右侧","右から","दाईं ओर से","Справа","Праворуч","من اليمين"],
+"Hauteur à monter":["Height to climb","Altura a salvar","Altezza da superare","Zu überwindende Höhe","Altura a vencer","Leküzdendő magasság","总提升高度","上がる高さ","चढ़ाई ऊँचाई","Высота подъёма","Висота підйому","الارتفاع المراد صعوده"],
+"Palier bas":["Bottom landing","Meseta inferior","Pianerottolo inferiore","Unteres Podest","Patamar inferior","Alsó pihenő","底部平台","下部踊り場","निचला लैंडिंग","Нижняя площадка","Нижній майданчик","بسطة سفلية"],
+"Palier haut":["Top landing","Meseta superior","Pianerottolo superiore","Oberes Podest","Patamar superior","Felső pihenő","顶部平台","上部踊り場","ऊपरी लैंडिंग","Верхняя площадка","Верхній майданчик","بسطة علوية"],
+"Palier de repos":["Rest landing","Meseta de descanso","Pianerottolo di riposo","Ruhepodest","Patamar de descanso","Pihenő","休息平台","休憩踊り場","विश्राम लैंडिंग","Промежуточная площадка","Проміжний майданчик","بسطة استراحة"],
+"Palier intermédiaire":["Intermediate landing","Meseta intermedia","Pianerottolo intermedio","Zwischenpodest","Patamar intermédio","Közbenső pihenő","中间平台","中間踊り場","मध्यवर्ती लैंडिंग","Промежуточная площадка","Проміжний майданчик","بسطة وسطى"],
+"Repos tous les":["Rest every","Descanso cada","Riposo ogni","Ruhepodest alle","Descanso a cada","Pihenő minden","每隔多少设休息平台","休憩の間隔","हर कितने पर विश्राम","Площадка через каждые","Майданчик через кожні","استراحة كل"],
+"Jour entre volées":["Gap between flights","Hueco entre tramos","Luce tra le rampe","Abstand zwischen Läufen","Vão entre lanços","Karok közti hézag","梯段间隙","スロープ間の隙間","उड़ानों के बीच अंतराल","Зазор между маршами","Зазор між маршами","الفجوة بين القِلبتين"],
+"Chasse-roue":["Wheel guard","Guarda-ruedas","Cordolo di guida","Radabweiser","Guarda-rodas","Kerékvető","轮挡","車輪ガード","व्हील गार्ड","Колёсоотбойник","Колесовідбійник","حاجز العجلات"],
+"Joue pleine":["Solid upstand","Zanca ciega","Sponda piena","Volle Wange","Rebordo cheio","Tömör oldalfal","实体侧墙","立ち上がり壁","ठोस अपस्टैंड","Сплошной борт","Суцільний борт","جانب صمّ"],
+"Hauteur bordure":["Upstand height","Altura del bordillo","Altezza del cordolo","Aufkantungshöhe","Altura do rebordo","Peremmagasság","侧挡高度","立ち上がり高さ","बॉर्डर ऊँचाई","Высота борта","Висота борту","ارتفاع الحافة"],
+"Épaisseur bordure":["Upstand thickness","Espesor del bordillo","Spessore del cordolo","Aufkantungsstärke","Espessura do rebordo","Peremvastagság","侧挡厚度","立ち上がり厚","बॉर्डर मोटाई","Толщина борта","Товщина борту","سماكة الحافة"],
+"Double lisse":["Double rail","Doble pasamanos","Doppio corrimano","Doppelholm","Duplo corrimão","Kettős korlát","双扶手","二段手すり","दोहरी रेल","Двойной поручень","Подвійний поручень","درابزين مزدوج"],
+"Main courante haute":["Upper handrail","Pasamanos alto","Corrimano alto","Oberer Handlauf","Corrimão superior","Felső kapaszkodó","高扶手","上部手すり","ऊपरी हैंडरेल","Верхний поручень","Верхній поручень","درابزين علوي"],
+"Main courante basse":["Lower handrail","Pasamanos bajo","Corrimano basso","Unterer Handlauf","Corrimão inferior","Alsó kapaszkodó","低扶手","下部手すり","निचला हैंडरेल","Нижний поручень","Нижній поручень","درابزين سفلي"],
+"Surface de roulement":["Running surface","Superficie de rodadura","Superficie di calpestio","Lauffläche","Superfície de circulação","Járófelület","坡道面层","走行面","चलने की सतह","Поверхность движения","Поверхня руху","سطح السير"],
+"Structure / joues":["Structure / upstands","Estructura / zancas","Struttura / sponde","Tragwerk / Wangen","Estrutura / rebordos","Szerkezet / oldalfalak","结构 / 侧墙","構造 / 側壁","संरचना / अपस्टैंड","Конструкция / борта","Конструкція / борти","الهيكل / الجوانب"],
+"Pente":["Slope","Pendiente","Pendenza","Neigung","Inclinação","Lejtés","坡度","勾配","ढाल","Уклон","Ухил","الميل"],
+"volée":["flight","tramo","rampa","Lauf","lanço","kar","梯段","スロープ","उड़ान","марш","марш","قِلبة"],
+"développé":["developed length","longitud desarrollada","lunghezza sviluppata","abgewickelte Länge","comprimento desenvolvido","kiterített hossz","展开长度","展開長さ","विकसित लंबाई","развёрнутая длина","розгорнута довжина","الطول المنبسط"],
+"paliers de repos":["rest landings","mesetas de descanso","pianerottoli di riposo","Ruhepodeste","patamares de descanso","pihenők","休息平台","休憩踊り場","विश्राम लैंडिंग","промежуточные площадки","проміжні майданчики","بسطات استراحة"],
+"Confort ≤ 5 % · toléré court ≤ 8 % · largeur ≥ 1,20 m · repos ≥ 1,40 m":["Comfort ≤ 5% · tolerated short ≤ 8% · width ≥ 1.20 m · landing ≥ 1.40 m","Confort ≤ 5% · tolerado corto ≤ 8% · anchura ≥ 1,20 m · descanso ≥ 1,40 m","Comfort ≤ 5% · tollerato breve ≤ 8% · larghezza ≥ 1,20 m · pianerottolo ≥ 1,40 m","Komfort ≤ 5% · kurz toleriert ≤ 8% · Breite ≥ 1,20 m · Podest ≥ 1,40 m","Conforto ≤ 5% · tolerado curto ≤ 8% · largura ≥ 1,20 m · patamar ≥ 1,40 m","Kényelmes ≤ 5% · rövid megengedett ≤ 8% · szélesség ≥ 1,20 m · pihenő ≥ 1,40 m","舒适 ≤ 5% · 短段容许 ≤ 8% · 宽度 ≥ 1.20 m · 平台 ≥ 1.40 m","快適 ≤ 5% · 短区間許容 ≤ 8% · 幅 ≥ 1.20 m · 踊り場 ≥ 1.40 m","आरामदेह ≤ 5% · अल्प सहन ≤ 8% · चौड़ाई ≥ 1.20 m · लैंडिंग ≥ 1.40 m","Комфорт ≤ 5% · коротко допустимо ≤ 8% · ширина ≥ 1,20 м · площадка ≥ 1,40 м","Комфорт ≤ 5% · коротко допустимо ≤ 8% · ширина ≥ 1,20 м · майданчик ≥ 1,40 м","مريح ≤ 5٪ · مقبول قصير ≤ 8٪ · العرض ≥ 1٫20 م · البسطة ≥ 1٫40 م"],
+"conforme":["compliant","conforme","conforme","normgerecht","conforme","megfelel","符合","適合","अनुरूप","соответствует","відповідає","مطابق"],
+"toléré ⚠":["tolerated ⚠","tolerado ⚠","tollerato ⚠","toleriert ⚠","tolerado ⚠","megengedett ⚠","容许 ⚠","許容 ⚠","सहनीय ⚠","допустимо ⚠","допустимо ⚠","مقبول ⚠"],
+"hors seuils ⚠":["out of range ⚠","fuera de umbrales ⚠","fuori soglia ⚠","außerhalb ⚠","fora dos limites ⚠","határon kívül ⚠","超出阈值 ⚠","範囲外 ⚠","सीमा से बाहर ⚠","вне пределов ⚠","поза межами ⚠","خارج الحدود ⚠"]
+};
+(function(){ for(var fr in I18N_ADD25){ var t=I18N_ADD25[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
