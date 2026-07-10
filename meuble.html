@@ -579,10 +579,10 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
      n'apparaissent pas (le code retombe alors sur le catalogue de secours). -->
 <!-- Langues nordiques, sorties du monolithe. Doit précéder le bloc i18n, qui
      fusionne window.BPO_I18N_EXT après ses propres tables. -->
-<script src="data/i18n-nordic.js?v=20260710"></script>
-<script src="data/fabricant-meshes.js?v=20260710"></script>
-<script src="data/fabricants.js?v=20260710"></script>
-<script src="data/textured-objects.js?v=20260710"></script>
+<script src="data/i18n-nordic.js?v=20260710b"></script>
+<script src="data/fabricant-meshes.js?v=20260710b"></script>
+<script src="data/fabricants.js?v=20260710b"></script>
+<script src="data/textured-objects.js?v=20260710b"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
 /* WEBGL_OBJECTS -> data/ */
@@ -904,8 +904,16 @@ WGL.initTexGL=function(){
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(pr));
   WGL.progT=pr; return true;
 };
-/* Opacité d'un matériau de produit : 1 sauf surcharge explicite. */
-function prodAl(pid, gi){ var ov=prodFin(pid,gi); return (ov && ov.al!=null) ? ov.al : 1; }
+/* Opacité d'un matériau de produit. Trois niveaux, du plus fort au plus faible :
+   la surcharge de l'utilisateur, puis l'opacité NATIVE portée par le groupe
+   (`g.al`, posée à la conversion pour les matériaux « Transp _ … »), puis 1.
+   C'est ce qui rend un plateau de verre translucide sans rien régler. */
+function prodAl(pid, gi, g){
+  var ov=prodFin(pid,gi);
+  if(ov && ov.al!=null) return ov.al;
+  if(g && g.al!=null) return g.al;
+  return 1;
+}
 WGL.makeTex=function(key,dataURI){
   var gl=WGL.gl, t=gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D,t);
@@ -1105,17 +1113,17 @@ WGL.renderT=function(){
     else { gl.uniform1f(ulUse,0.0); var c=(ov&&ov.col)||g.col||[180,180,180]; gl.uniform3f(ulBase,c[0]/255,c[1]/255,c[2]/255); }
     gl.uniform1f(ulUV, (texKey && PROD_TEXSCALE[M.id] && PROD_TEXSCALE[M.id][texKey])||1.0);
     gl.uniform1f(ulUR, (texKey && PROD_TEXROT[M.id] && PROD_TEXROT[M.id][texKey])||0.0);
-    gl.uniform1f(ulAl, prodAl(M.id,gi));
+    gl.uniform1f(ulAl, prodAl(M.id,gi,g));
     gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4);
   }
   /* Opaques d'abord, tampon de profondeur en écriture ; puis les matériaux
      translucides, mélangés et SANS écriture de profondeur — sinon une vitre
      dessinée tôt masquerait ce qu'on doit voir au travers. */
-  M.groups.forEach(function(g,gi){ if(prodAl(M.id,gi)>=0.999) drawGroup(g,gi); });
-  var hasT=M.groups.some(function(g,gi){ return prodAl(M.id,gi)<0.999; });
+  M.groups.forEach(function(g,gi){ if(prodAl(M.id,gi,g)>=0.999) drawGroup(g,gi); });
+  var hasT=M.groups.some(function(g,gi){ return prodAl(M.id,gi,g)<0.999; });
   if(hasT){
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
-    M.groups.forEach(function(g,gi){ if(prodAl(M.id,gi)<0.999) drawGroup(g,gi); });
+    M.groups.forEach(function(g,gi){ if(prodAl(M.id,gi,g)<0.999) drawGroup(g,gi); });
     gl.depthMask(true); gl.disable(gl.BLEND);
   }
 };
@@ -1308,11 +1316,11 @@ WGL.renderSceneTex=function(){
       else { gl.uniform1f(ulUse,0.0); var c=(ov&&ov.col)||g.col||[180,180,180]; gl.uniform3f(ulBase,c[0]/255,c[1]/255,c[2]/255); }
       gl.uniform1f(ulUV,(texKey&&PROD_TEXSCALE[inst.prod]&&PROD_TEXSCALE[inst.prod][texKey])||1.0);
       gl.uniform1f(ulUR,(texKey&&PROD_TEXROT[inst.prod]&&PROD_TEXROT[inst.prod][texKey])||0.0);
-      gl.uniform1f(ulAl, prodAl(inst.prod,gi));
+      gl.uniform1f(ulAl, prodAl(inst.prod,gi,g));
       gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4);
     }
     (pg.groups||[]).forEach(function(g,gi){
-      if(prodAl(inst.prod,gi)>=0.999) drawG(g,gi);
+      if(prodAl(inst.prod,gi,g)>=0.999) drawG(g,gi);
       else _late.push({bind:bindInst, draw:drawG, g:g, gi:gi});
     });
   });
@@ -2087,7 +2095,7 @@ function fabDirOf(pid){
   }catch(e){}
   return null;
 }
-var DATA_VER='20260710';   /* à incrémenter à chaque publication de data/ */
+var DATA_VER='20260710b';   /* à incrémenter à chaque publication de data/ */
 function isFabMesh(pid){ return !!fabDirOf(pid); }
 /* compatibilité : d'anciens appels testent encore isHaworth() */
 function isHaworth(pid){ return isFabMesh(pid); }
@@ -2886,6 +2894,8 @@ var FINISH = {
   /* store banne */
   stoile:[216,207,188], srayure:[122,47,42], slamb:[216,207,188],
   sbras:[240,239,236], scoffre:[240,239,236], sbarre:[200,198,194],
+  /* table Mosquito */
+  mqverre:[249,249,254], mqbandeau:[248,0,0], mqcorps:[168,164,158], mqsemelle:[54,56,60],
   vitrage:[150,200,235]      /* vitrage : teinte, l'opacité vit dans FINISH_AL */
 };
 /* FINISH_AL[clé] : opacité de l'élément, 0 (invisible) à 1 (opaque). Absente =
@@ -2906,7 +2916,7 @@ var FINISH_ON = {};
 var FINISH_SET = {};
 /* Modes dont chaque élément porte un interrupteur natif/personnalisé. La Forme
    n'y figure pas : elle n'a pas de matériau natif, sa finition est toujours active. */
-var FINISH_SWITCHABLE = { mur:1, poteau:1, poutre:1, gardecorps:1, escalier:1, ferme:1, toiture:1, route:1, parking:1, ombriere:1 };
+var FINISH_SWITCHABLE = { mur:1, poteau:1, poutre:1, gardecorps:1, escalier:1, ferme:1, toiture:1, route:1, parking:1, ombriere:1, store:1, mosquito:1 };
 function finSwitch(){ return !!FINISH_SWITCHABLE[MODE]; }
 /* Couleur effective d'un élément : le natif tant que l'interrupteur est ouvert. */
 function fcol(key, native){ return FINISH_ON[key] ? FINISH[key] : native; }
@@ -2928,7 +2938,8 @@ var FINISH_TEX = {
   proul:null, pbase:null, pdalle:null, pfond:null, pforme:null, pmarquage:null, ppmr:null,
   pislot:null, pbordure:null, parbre:null, ptronc:null, vitrage:null,
   ombpoteau:null, ombpoutre:null, ombpanne:null, ombpv:null, ombcadre:null, ombplat:null,
-  stoile:null, srayure:null, slamb:null, sbras:null, scoffre:null, sbarre:null
+  stoile:null, srayure:null, slamb:null, sbras:null, scoffre:null, sbarre:null,
+  mqverre:null, mqbandeau:null, mqcorps:null, mqsemelle:null
 };
 var PROD_OVERRIDE = false;  /* produits fabricants : false = materiaux PBR d'origine ; true = teinte RAL globale */
 /* échelle de répétition de la texture (nombre de répétitions sur ~1 m) */
@@ -2984,6 +2995,12 @@ var FINISH_ELEMS_VERANDA = [
   {id:'vsoubInt', l:'Soubassement int.'}
 ];
 var FINISH_ELEMS_CHEMINEE = [ {id:'chab', l:'Habillage'}, {id:'chtub', l:'Conduit / tubage'} ];
+var FINISH_ELEMS_MOSQUITO = [
+  {id:'mqverre',   l:'Plateau (verre)'},
+  {id:'mqbandeau', l:'Bandeau'},
+  {id:'mqcorps',   l:'Corps'},
+  {id:'mqsemelle', l:'Semelle'}
+];
 var FINISH_ELEMS_STORE = [
   {id:'stoile',  l:'Toile'},
   {id:'srayure', l:'Rayures'},
@@ -3338,6 +3355,8 @@ var PPARK = {
    ============================================================================ */
 var POMB = {
   type:'central',           /* 'central' | 'lateral' */
+  dual:'pignon',            /* nappe double : 'pignon' (2 pentes) | 'noue' (2 pentes inversées) | 'parallele' */
+  paraMode:'prolong',       /* si 'parallele' : 'prolong' (un seul plan continu) | 'meme' (2 sheds, même hauteur de sommet) */
   bays:6,                   /* nombre de travées entre poteaux */
   bayW:500,                 /* entraxe des poteaux, le long de X (cm) */
   span:1600,                /* portée totale en Z, d'un bord de nappe à l'autre (cm) */
@@ -3379,6 +3398,7 @@ var PSTORE = {
   poseH:280,                /* hauteur de pose, sous le tube (cm) */
   tilt:15,                  /* inclinaison de la toile (°) */
   arms:2,                   /* nombre de bras articulés */
+  open:100,                 /* ouverture du store (%) : 100 = bras tendus, moins = bras pliés */
   lambH:20,                 /* hauteur du lambrequin (cm) — 0 = sans */
   lambScallop:false,        /* lambrequin festonné */
   cheeks:false,             /* joues latérales (devanture) */
@@ -3388,6 +3408,35 @@ var PSTORE = {
   stripes:false,            /* toile rayée */
   stripeW:20,               /* largeur d'une rayure (cm) */
   colCloth:'#d8cfbc', colStripe:'#7a2f2a', colFrame:'#f0efec', colBar:'#c8c6c2'
+};
+
+/* ============================================================================
+   TABLE MOSQUITO — Architecture-AL Design, famille refondue en paramétrique
+
+   Les trois maillages ArchiCAD (Table, Square Table, 4P Table) étaient le MÊME
+   objet à trois formats. Relevé sur les maillages, de bas en haut :
+     semelle anthracite   0 → 7 mm,    retrait 5,6 cm
+     corps béton          7 mm → H−27, retrait 4,1 cm
+     bandeau vermillon    12 mm sous le verre, retrait 11 cm
+     plateau verre        18 mm, à fleur des rives — d'où le joint creux de 9 mm
+   Les cotes ci-dessous reprennent ce relevé ; les trois modèles d'origine sont
+   des préréglages. Angles arrondis : le corps est un prisme à coins congés.
+   ============================================================================ */
+var PMOSQ = {
+  L:201, l:102, H:76,       /* longueur × largeur × hauteur hors-tout (cm) */
+  r:12,                     /* rayon des angles (cm) */
+  tGlass:1.8,               /* épaisseur du plateau verre (cm) */
+  tBand:1.2, inBand:11,     /* bandeau : épaisseur et retrait (cm) */
+  inBody:4.1,               /* retrait du corps sous le plateau (cm) */
+  joint:0.9,                /* joint creux entre corps et plateau (cm) */
+  tSole:0.7, inSole:5.6,    /* semelle : épaisseur et retrait (cm) */
+  alGlass:28,               /* opacité du plateau (%) */
+  colGlass:'#f9f9fe', colBand:'#f80000', colBody:'#a8a49e', colSole:'#36383c'
+};
+var MOSQ_PRESETS = {
+  rect:   {L:201, l:102, H:76,  lbl:'Table'},
+  carre:  {L:202, l:202, H:76,  lbl:'Square Table'},
+  haute:  {L:201, l:187, H:115, lbl:'4P Table'}
 };
 /* Couches de la structure, de haut en bas. Les couches d'épaisseur nulle sont
    omises. C'est aussi ce qui donne les bandes visibles sur les abouts et les
@@ -3841,8 +3890,8 @@ var CATALOG = {
       {id:'haworth', label:'Haworth', status:'ready', subs:[
         {id:'bureau', label:'Bureau administratif 1p'}
       ]},
-      {id:'technal', label:'Technal', status:'ready'},
-      {id:'velux',   label:'Velux',   status:'ready'},
+      {id:'technal', label:'Technal', status:'ready', locked:true},
+      {id:'velux',   label:'Velux',   status:'ready', locked:true},
       {id:'flos',    label:'Flos',    status:'ready'}
     ]))
   }
@@ -3859,6 +3908,12 @@ function curCat(){
   for(var i=0;i<b.cats.length;i++) if(b.cats[i].id===CAT) return b.cats[i];
   return b.cats[0];
 }
+/* Cherche une catégorie dans TOUTES les branches (la recherche traverse les branches). */
+function _catById(id){
+  for(var k in CATALOG){ var cs=CATALOG[k]&&CATALOG[k].cats; if(!cs) continue;
+    for(var i=0;i<cs.length;i++) if(cs[i].id===id) return cs[i]; }
+  return null;
+}
 
 /* selectCat() : sélectionne une catégorie du catalogue et synchronise le moteur.
    - 'objet' -> mode meuble (géométrie reliée)
@@ -3866,12 +3921,18 @@ function curCat(){
    - autres  -> placeholder « à venir » (status 'todo')
    C'est le pont entre la navigation du catalogue et le moteur existant. */
 function selectCat(catId){
+  /* Verrou fabricant : on refuse la sélection quel que soit le chemin d'appel
+     (bouton, recherche, lien profond). Rien n'est construit, rien n'est affiché. */
+  var _c=_catById(catId);
+  if(_c && _c.locked){ return; }
   CAT = catId;
   var cat = curCat();
   if(cat.id==='objet'){ MODE='meuble'; }
   else if(cat.id==='forme'){ MODE='forme'; }
   else if(cat.id==='route'){ MODE='route'; }
   else if(cat.id==='parking'){ MODE='parking'; }
+  else if(cat.id==='ombriere'){ MODE='ombriere'; }
+  else if(cat.id==='store'){ MODE='store'; }
   else if(cat.id==='mur'){ MODE='mur'; }
   else if(cat.id==='dalle'){ MODE='dalle'; }
   else if(cat.id==='piscine'){ MODE='piscine'; }
@@ -3901,6 +3962,11 @@ function selectCat(catId){
     if(!cat.subs.some(function(s){return s.id===AL_PRODUCT;})){
       AL_PRODUCT = cat.subs[0].id;
     }
+    /* …sauf si le produit retenu est PROCÉDURAL : il a son propre mode, sinon
+       build() le construirait avec le moteur des maillages et sortirait un tout
+       autre objet. */
+    var _sp=cat.subs.filter(function(s){return s.id===AL_PRODUCT;})[0];
+    if(_sp && _sp.proc) MODE=_sp.proc;
   }
   else { MODE='todo'; }      /* catégorie pas encore remplie */
 }
@@ -4268,7 +4334,7 @@ function _fillMenu(m, items){
 }
 /* ---------- Annuler / Refaire (historique multi-niveaux) ---------- */
 var UNDO_HIST=[], REDO_HIST=[], _undoBase=null, _undoMode=null, _undoApplying=false, _undoTimer=null, UNDO_MAX=80;
-function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,parking:PPARK,ombriere:POMB,store:PSTORE,escalier:PE,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
+function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,parking:PPARK,ombriere:POMB,store:PSTORE,mosquito:PMOSQ,escalier:PE,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
 /* La Scène (assemblage) a son propre stockage : on l'expose à l'undo mais PAS à
    paramObjFor (donc pas aux « Mes configurations »). SCENE.sel est un index,
    les instances sont sérialisables → snapshot/restore JSON sûr. */
@@ -4288,7 +4354,7 @@ function doRedo(){ clearTimeout(_undoTimer); if(!REDO_HIST.length) return; UNDO_
 /* --- RÉINITIALISATION — valeurs par défaut de l'outil courant (annulable) --- */
 var PARAM_DEFAULTS={};
 function captureDefaults(){
-  ['meuble','forme','route','parking','ombriere','store','mur','dalle','piscine','veranda','cheminee','immeuble','poteau','poutre',
+  ['meuble','forme','route','parking','ombriere','store','mosquito','mur','dalle','piscine','veranda','cheminee','immeuble','poteau','poutre',
    'gardecorps','escalier','ferme','toiture','porte','fenetre','murrideau','furn','cuisine','hangar',
    'technal','velux','flos','scene'].forEach(function(m){
     try{ var o=(m==='scene' && typeof SCENE!=='undefined')?SCENE:paramObjFor(m);
@@ -9625,17 +9691,32 @@ function buildOmbriere(){
 
   /* Sous-face de la poutre à l'abscisse z. Le point BAS de la nappe est toujours
      à la hauteur libre demandée : c'est la cote qui compte pour un véhicule. */
-  function yb(z){
-    return (P.type==='central') ? clear + (half-Math.abs(z))*tn
-                                : clear + (half-z)*tn;
+  /* Sous-face de la poutre à l'abscisse z. `clear` est toujours la hauteur libre
+     au POINT BAS de la nappe, quel que soit le profil. Toute la géométrie (poutres,
+     pannes, bac, modules) se cale sur cette fonction : inverser un pan ne demande
+     donc rien d'autre. */
+  /* `s` = la nappe considérée (−1 ou +1). Indispensable en « sheds » : au droit des
+     poteaux (z = 0) les deux nappes n'ont PAS la même cote — l'une y finit en bas,
+     l'autre y commence en haut. Sans ce paramètre, le décrochement est impossible. */
+  function yb(z, s){
+    if(P.type!=='central') return clear + (half-z)*tn;
+    var m=P.dual||'pignon';
+    if(s===undefined || s===0) s=(z<0?-1:1);
+    if(m==='parallele'){
+      if((P.paraMode||'prolong')==='meme')                 /* sheds : même hauteur de sommet, décrochement au centre */
+        return (s<0) ? clear + (-z)*tn : clear + (half-z)*tn;
+      return clear + (half-z)*tn;                          /* prolongement : un seul plan continu */
+    }
+    if(m==='noue')      return clear + Math.abs(z)*tn;     /* deux pentes inversées : point bas au centre */
+    return clear + (half-Math.abs(z))*tn;                  /* pignon : point haut au centre (défaut) */
   }
-  function yt(z){ return yb(z)+bh; }              /* dessus de poutre = appui des pannes */
-  function yDeck(z){ return yt(z)+ph; }           /* plan de pose des modules */
+  function yt(z, s){ return yb(z,s)+bh; }         /* dessus de poutre = appui des pannes */
+  function yDeck(z, s){ return yt(z,s)+ph; }      /* plan de pose des modules */
 
   /* ---- poteaux ---- */
   _IFCTAG={st:0,ty:'column'}; _CURTEX=ftex('ombpoteau',null);
   var zPost=(P.type==='central')?0:-half;
-  var hPost=yt(zPost);
+  var hPost=yt(zPost, 1);          /* en sheds, le poteau doit monter jusqu'au faîte de la nappe HAUTE */
   for(var i=0;i<=P.bays;i++){
     var x=-Lx/2 + i*(P.bayW/100);
     box(x, hPost/2, zPost, pxw, hPost, pxd, cPost, 1);
@@ -9644,15 +9725,15 @@ function buildOmbriere(){
 
   /* ---- poutres transversales (une par file de poteaux), inclinées ---- */
   _IFCTAG={st:0,ty:'beam'}; _CURTEX=ftex('ombpoutre',null);
-  function slopedBeamZ(x, z0, z1, w, h, col){
+  function slopedBeamZ(x, z0, z1, w, h, col, s){
     /* membrure d'axe Z, section w (en X) × h (verticale), suivant la nappe */
-    var y0=yb(z0), y1=yb(z1);
+    var y0=yb(z0,s), y1=yb(z1,s);
     boxV([[x-w/2,y0,z0],[x+w/2,y0,z0],[x+w/2,y1,z1],[x-w/2,y1,z1],
           [x-w/2,y0+h,z0],[x+w/2,y0+h,z0],[x+w/2,y1+h,z1],[x-w/2,y1+h,z1]], col, 1);
   }
   for(i=0;i<=P.bays;i++){
     var xb=-Lx/2 + i*(P.bayW/100);
-    if(P.type==='central'){ slopedBeamZ(xb, 0, -half, bw, bh, cBeam); slopedBeamZ(xb, 0, half, bw, bh, cBeam); }
+    if(P.type==='central'){ slopedBeamZ(xb, 0, -half, bw, bh, cBeam, -1); slopedBeamZ(xb, 0, half, bw, bh, cBeam, 1); }
     else slopedBeamZ(xb, -half, half, bw, bh, cBeam);
   }
   _CURTEX=null; _IFCTAG=null;
@@ -9661,8 +9742,8 @@ function buildOmbriere(){
      Par défaut une panne à chaque JOINT de modules, plus les deux rives : la
      panne tombe alors sous les fixations, comme sur un vrai calepinage. */
   _CURTEX=ftex('ombpanne',null);
-  function purlinAt(z){
-    var y=yt(z);
+  function purlinAt(z, s){
+    var y=yt(z,s);
     boxV([[-Lx/2,y,z-pw/2],[Lx/2,y,z-pw/2],[Lx/2,y,z+pw/2],[-Lx/2,y,z+pw/2],
           [-Lx/2,y+ph,z-pw/2],[Lx/2,y+ph,z-pw/2],[Lx/2,y+ph,z+pw/2],[-Lx/2,y+ph,z+pw/2]], cPurlin, 1);
   }
@@ -9674,7 +9755,7 @@ function buildOmbriere(){
     var zz=nappeZs(sgn), z0=zz[0], z1=zz[1];
     var nP=(P.purlinN>0)?P.purlinN:(F.nRow+1);
     if(nP<2) nP=2;
-    for(var k=0;k<nP;k++) purlinAt(z0+(z1-z0)*k/(nP-1));
+    for(var k=0;k<nP;k++) purlinAt(z0+(z1-z0)*k/(nP-1), sgn);
   });
   _CURTEX=null;
 
@@ -9684,7 +9765,7 @@ function buildOmbriere(){
     _CURTEX=ftex('ombplat',null);
     nappes.forEach(function(sgn){
       var zz=nappeZs(sgn), z0=zz[0], z1=zz[1];
-      var ya=yDeck(z0), yb2=yDeck(z1);
+      var ya=yDeck(z0,sgn), yb2=yDeck(z1,sgn);
       boxV([[-Lx/2,ya,z0],[Lx/2,ya,z0],[Lx/2,yb2,z1],[-Lx/2,yb2,z1],
             [-Lx/2,ya+deckT,z0],[Lx/2,ya+deckT,z0],[Lx/2,yb2+deckT,z1],[-Lx/2,yb2+deckT,z1]], cDeck, 1);
     });
@@ -9711,7 +9792,7 @@ function buildOmbriere(){
         var za=zs0 + dir*r*F.pitchL*cs, zb2=za + dir*F.mL*cs;
         for(var c=0;c<F.nCol;c++){
           var xa=xs0 + c*F.pitchX, xb2=xa + F.mW;
-          var y0=yDeck(za)+base, y1=yDeck(zb2)+base;
+          var y0=yDeck(za,sgn)+base, y1=yDeck(zb2,sgn)+base;
           /* inclinaison propre : on pivote autour du bord haut du module */
           if(tilt>1e-4){ var d=Math.abs(zb2-za)*Math.tan(tilt); y1 += (dir>0? -d : -d); }
           _CURTEX=ftex('ombcadre',null);
@@ -9766,7 +9847,13 @@ function buildOmbriere(){
 var STORE_INFO={surf:0, proj:0, drop:0, low:0};
 function buildStore(){
   var fs=FC.length, S=PSTORE;
-  var W=S.width/100, A=S.proj/100, H=S.poseH/100;
+  /* `proj` = avancée MAXIMALE, bras tendus (c'est la longueur physique du bras).
+     `open` = ouverture réelle, en % : c'est elle qui sort ou rentre le store, et donc
+     qui plie les bras. Plancher à 10 cm : une toile de longueur nulle produirait des
+     faces dégénérées (rejetées à l'export). */
+  var W=S.width/100, Afull=S.proj/100, H=S.poseH/100;
+  var op=(S.open==null?100:Math.max(5,Math.min(100,S.open)))/100;
+  var A=Math.max(0.10, Afull*op);
   var th=S.tilt*Math.PI/180, ct=Math.cos(th), st=Math.sin(th);
   var lam=S.lambH/100, barH=S.barH/100, aw=S.armW/100;
   var bxH=S.boxH/100, bxD=S.boxD/100;
@@ -9827,6 +9914,37 @@ function buildStore(){
 
   /* --- bras articulés (ou consoles droites pour la devanture) --- */
   _CURTEX=ftex('sbras',null);
+  /* Membrure entre DEUX POINTS 3D quelconques (beamSegY impose un x constant, or le
+     bras plié sort de son plan x). Repère orthonormé autour de l'axe, puis prisme. */
+  function arm3(px,py,pz, qx,qy,qz, w, col){
+    var dx=qx-px, dy=qy-py, dz=qz-pz, L=Math.hypot(dx,dy,dz); if(L<1e-6) return;
+    var ux=dx/L, uy=dy/L, uz=dz/L;
+    var ax=0,ay=1,az=0; if(Math.abs(uy)>0.9){ ax=1; ay=0; az=0; }
+    var n1x=uy*az-uz*ay, n1y=uz*ax-ux*az, n1z=ux*ay-uy*ax;
+    var l1=Math.hypot(n1x,n1y,n1z)||1; n1x/=l1; n1y/=l1; n1z/=l1;
+    var n2x=uy*n1z-uz*n1y, n2y=uz*n1x-ux*n1z, n2z=ux*n1y-uy*n1x;
+    var h=w/2;
+    function V(t,s1,s2){ return [px+dx*t+n1x*s1*h+n2x*s2*h, py+dy*t+n1y*s1*h+n2y*s2*h, pz+dz*t+n1z*s1*h+n2z*s2*h]; }
+    boxV([V(0,-1,-1),V(0,1,-1),V(1,1,-1),V(1,-1,-1),
+          V(0,-1,1), V(0,1,1), V(1,1,1), V(1,-1,1)], col, 1);
+  }
+  /* --- Bras articulé : deux tronçons de LONGUEUR FIXE (armLen/2), rotulés. Le pliage
+     se fait DANS LE PLAN DE LA TOILE : le coude s'écarte latéralement (en X), il ne
+     plonge pas vers le sol. Avec D = corde ancrage→barre, l'écart vaut
+     h = √((L/2)² − (D/2)²) : nul à pleine sortie (bras tendu), croissant quand le
+     store rentre. Le coude est dirigé vers l'AXE, pour rester sous la toile. --- */
+  var clr=Math.max(0.05, aw*0.75);
+  var A0z=z0+0.02, A0y=y0-clr;                    /* rotule au mur */
+  var A1z=z1-0.02, A1y=y1-barH-0.01;              /* rotule sous la barre de charge */
+  var D=Math.hypot(A1z-A0z, A1y-A0y)||1e-6;       /* corde à l'ouverture COURANTE */
+  /* Longueur du bras = corde à pleine sortie. C'est une constante physique : le bras
+     ne s'allonge pas, il se déplie. Refermer le store réduit D, donc plie le bras. */
+  var z1f=z0+Afull*ct, y1f=y0-Afull*st;
+  var Dmax=Math.hypot((z1f-0.02)-A0z, (y1f-barH-0.01)-A0y);
+  var Ltot=Math.max(D, Dmax);
+  var Lh=Ltot/2;
+  var hLat=Math.sqrt(Math.max(0, Lh*Lh - (D/2)*(D/2)));   /* écart latéral du coude */
+  var Emz=(A0z+A1z)/2, Emy=(A0y+A1y)/2;           /* milieu de la corde */
   var nA=Math.max(2, Math.min(6, S.arms));
   for(var j=0;j<nA;j++){
     var t=(nA===1)?0.5:(j/(nA-1));
@@ -9837,10 +9955,14 @@ function buildStore(){
       boxV([[x-aw/2,y0-0.55,-0.02],[x+aw/2,y0-0.55,-0.02],[x+aw/2,y0,-0.02],[x-aw/2,y0,-0.02],
             [x-aw/2,y0-0.55,0.05],[x+aw/2,y0-0.55,0.05],[x+aw/2,y0,0.05],[x-aw/2,y0,0.05]], cArm, 1);
     } else {
-      /* bras à deux tronçons : coude à mi-avancée, légèrement remonté */
-      var zm=z0+(z1-z0)*0.52, ym=y0-(y0-y1)*0.30;
-      beamSegY(x, y0-0.06, z0+0.02, ym, zm, aw, cArm);
-      beamSegY(x, ym, zm, y1-barH-0.01, z1-0.02, aw*0.85, cArm);
+      /* coude dirigé vers l'axe (les bras se plient l'un vers l'autre), borné pour
+         ne pas traverser le milieu ni sortir de la toile */
+      var sx=(x>0)?-1:((x<0)?1:1);
+      var room=Math.max(0, Math.abs(x)-0.04);
+      var hx=Math.min(hLat, room);
+      var Ex=x+sx*hx;
+      arm3(x,A0y,A0z, Ex,Emy,Emz, aw, cArm);            /* tronçon arrière */
+      arm3(Ex,Emy,Emz, x,A1y,A1z, aw*0.85, cArm);       /* tronçon avant */
     }
   }
   /* platines murales */
@@ -9868,11 +9990,16 @@ function buildStore(){
 
   /* --- joues latérales (devanture) --- */
   if(S.cheeks || droit){
+    /* Volume mince, et non deux faces rigoureusement coplanaires : superposées au
+       même x, elles se disputaient le tampon de profondeur (z-fighting), ce qui
+       hachait la texture. Un prisme de 12 mm donne aussi une tranche visible. */
     _CURTEX=ftex('stoile',null);
+    var ct=0.012;
     [-1,1].forEach(function(sgn){
-      var x3=sgn*W/2;
-      face([[x3,y0,z0],[x3,y1,z1],[x3,y1-barH-lam,z1],[x3,y0-0.55,z0]], [sgn,0,0], cCloth, 1);
-      face([[x3,y0-0.55,z0],[x3,y1-barH-lam,z1],[x3,y1,z1],[x3,y0,z0]], [-sgn,0,0], cCloth, 1);
+      var x3=sgn*W/2, xa=x3-ct/2, xb2=x3+ct/2;
+      var yc=y1-barH-lam;                       /* bas de la joue, au droit de la barre */
+      boxV([[xa,y0,z0],[xa,y1,z1],[xa,yc,z1],[xa,y0-0.55,z0],
+            [xb2,y0,z0],[xb2,y1,z1],[xb2,yc,z1],[xb2,y0-0.55,z0]], cCloth, 1);
     });
     _CURTEX=null;
   }
@@ -9883,6 +10010,81 @@ function buildStore(){
   }
   var bb=_facesBBox(FC,fs);
   DIMS={ w:Math.max(0.1,bb.mx[0]-bb.mn[0]), h:Math.max(0.1,bb.mx[1]-bb.mn[1]), d:Math.max(0.1,bb.mx[2]-bb.mn[2]) };
+  DIMS_BB=bb;
+  return DIMS;
+}
+/* ============================================================================
+   TABLE MOSQUITO
+   ----------------------------------------------------------------------------
+   Quatre prismes à coins congés, empilés. Le rayon est borné à la moitié du plus
+   petit côté du prisme le plus étroit — sinon les congés se recouvrent et le
+   contour se retourne, ce qui produit des faces d'aire nulle.
+   ============================================================================ */
+/* Contour d'un rectangle W×D centré, à coins arrondis de rayon r. */
+function roundRectPoly(W, D, r, seg){
+  seg=seg||6;
+  r=Math.max(0, Math.min(r, Math.min(W,D)/2 - 1e-4));
+  var hw=W/2, hd=D/2, p=[];
+  if(r<1e-4) return [[hw,hd],[-hw,hd],[-hw,-hd],[hw,-hd]];
+  var C=[[hw-r,hd-r,0],[-hw+r,hd-r,Math.PI/2],[-hw+r,-hd+r,Math.PI],[hw-r,-hd+r,3*Math.PI/2]];
+  C.forEach(function(c){
+    for(var k=0;k<=seg;k++){ var a=c[2]+k/seg*(Math.PI/2);
+      p.push([c[0]+Math.cos(a)*r, c[1]+Math.sin(a)*r]); }
+  });
+  return p;
+}
+/* Prisme droit sur ce contour, entre y0 et y1. Normales sortantes. */
+function roundRectPrism(W, D, r, y0, y1, col, al, seg){
+  var p=roundRectPoly(W,D,r,seg), n=p.length, i;
+  if(y1-y0<1e-5) return;
+  /* aire signée : on impose un contour direct, sinon dessus et dessous s'inversent */
+  var a2=0; for(i=0;i<n;i++){ var q=p[i], s=p[(i+1)%n]; a2+=q[0]*s[1]-s[0]*q[1]; }
+  if(a2<0) p=p.slice().reverse();
+  var top=p.map(function(q){ return [q[0], y1, q[1]]; });
+  var bot=p.map(function(q){ return [q[0], y0, q[1]]; });
+  face(top.slice().reverse(), [0,1,0], col, al);      /* dessus */
+  face(bot, [0,-1,0], col, al);                       /* dessous */
+  for(i=0;i<n;i++){
+    var A=p[i], B=p[(i+1)%n];
+    var dx=B[0]-A[0], dz=B[1]-A[1], L=Math.hypot(dx,dz); if(L<1e-9) continue;
+    var nx=dz/L, nz=-dx/L;                            /* sortante pour un contour direct */
+    /* Ordre A-bas → A-haut → B-haut → B-bas : le produit vectoriel donne alors la
+       normale SORTANTE. L'ordre naturel (A-bas, B-bas, B-haut, A-haut) l'inverse,
+       ce que le rendu masque — il lit `n` — mais que les exports DAE/OBJ trahissent. */
+    face([[A[0],y0,A[1]],[A[0],y1,A[1]],[B[0],y1,B[1]],[B[0],y0,B[1]]], [nx,0,nz], col, al);
+  }
+}
+function buildMosquito(){
+  var fs=FC.length, M=PMOSQ;
+  var L=M.L/100, l=M.l/100, H=M.H/100, r=M.r/100;
+  var tg=M.tGlass/100, tb=M.tBand/100, jo=M.joint/100;
+  var iBand=M.inBand/100, iBody=M.inBody/100, iSole=M.inSole/100, tSole=M.tSole/100;
+  /* Chaque retrait doit laisser un prisme réel : au-delà, on l'écrase à zéro. */
+  var mn=Math.min(L,l)/2 - 0.01;
+  iBody=Math.min(iBody, mn); iBand=Math.min(iBand, mn); iSole=Math.min(iSole, mn);
+
+  var cGlass=fcol('mqverre',_hexRGB(M.colGlass)), cBand=fcol('mqbandeau',_hexRGB(M.colBand));
+  var cBody =fcol('mqcorps',_hexRGB(M.colBody)),  cSole=fcol('mqsemelle',_hexRGB(M.colSole));
+  var alG=Math.max(0, Math.min(1, M.alGlass/100));
+
+  var yGlass0=H-tg;                       /* sous-face du plateau */
+  var yBody1 =yGlass0-jo;                 /* dessus du corps, joint creux dessous */
+  var ySole1 =tSole;
+  if(yBody1 <= ySole1+0.01) yBody1=ySole1+0.01;
+
+  _CURTEX=ftex('mqsemelle',null);
+  roundRectPrism(L-2*iSole, l-2*iSole, Math.max(0,r-iSole), 0, ySole1, cSole, 1, 6);
+  _CURTEX=ftex('mqcorps',null);
+  roundRectPrism(L-2*iBody, l-2*iBody, Math.max(0,r-iBody), ySole1, yBody1, cBody, 1, 8);
+  _CURTEX=ftex('mqbandeau',null);
+  var yb0=Math.max(ySole1, yGlass0-tb);
+  roundRectPrism(L-2*iBand, l-2*iBand, Math.max(0,r-iBand), yb0, yGlass0, cBand, 1, 6);
+  _CURTEX=ftex('mqverre',null);
+  roundRectPrism(L, l, r, yGlass0, H, cGlass, alG, 8);   /* plateau à fleur des rives */
+  _CURTEX=null;
+
+  var bb=_facesBBox(FC,fs);
+  DIMS={ w:Math.max(0.01,bb.mx[0]-bb.mn[0]), h:Math.max(0.01,bb.mx[1]-bb.mn[1]), d:Math.max(0.01,bb.mx[2]-bb.mn[2]) };
   DIMS_BB=bb;
   return DIMS;
 }
@@ -12146,7 +12348,7 @@ function fabDecode(pid, cb){
          ENTIÈREMENT le matériau (voir renderT). */
       var ov=prodFin(pid, gi), tex=ov?(ov.tex||null):(g.tex||null);
       var col=(ov&&ov.col)?ov.col.slice():(g.col?g.col.slice():[170,162,150]), gf=[];
-      var gAl=prodAl(pid, gi);                       /* opacité du matériau (verre…) */
+      var gAl=prodAl(pid, gi, g);                    /* opacité du matériau (verre…) */
       for(var t=g.start;t<g.start+g.count;t+=3){
         var a=idx[t],b=idx[t+1],c2=idx[t+2];
         gf.push({verts:[V(a),V(b),V(c2)], n:N(a), col:col, al:gAl, vn:[N(a),N(b),N(c2)],
@@ -12414,6 +12616,7 @@ function build(){
   else if(MODE==='parking'){ r=buildParking(); }
   else if(MODE==='ombriere'){ r=buildOmbriere(); }
   else if(MODE==='store'){ r=buildStore(); }
+  else if(MODE==='mosquito'){ r=buildMosquito(); }
   else if(MODE==='hangar'){ r=buildHangar(); }
   else if(MODE==='quadripod'){
     if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[AL_PRODUCT]){
@@ -15898,14 +16101,27 @@ function buildOmbriereUI(){
     {title:'Structure', fields:[
       {type:'choice',key:'type',options:[{id:'central',l:'Poteau central'},{id:'lateral',l:'Poteau latéral'}]},
       {type:'note',text:(P.type==='central')
-        ? 'Un rang de poteaux au milieu, deux nappes en ailes de papillon : deux travées couvertes dos-à-dos.'
-        : 'Poteaux d’un seul côté, nappe en porte-à-faux : une travée, accès dégagé de l’autre bord.'},
+        ? 'Un rang de poteaux au milieu, deux nappes dos-à-dos.'
+        : 'Poteaux d’un seul côté, nappe en porte-à-faux : une travée, accès dégagé de l’autre bord.'}]
+      .concat((P.type==='central')?[
+      {type:'choice',key:'dual',options:[{id:'pignon',l:'2 pentes'},{id:'noue',l:'2 pentes inversées'},{id:'parallele',l:'Parallèles'}]},
+      {type:'note',text:(P.dual==='parallele')
+        ? 'Les deux pans sont dans le même sens.'
+        : (P.dual==='noue')
+        ? 'Deux pentes inversées, point bas au centre : les eaux se rejoignent dans une noue sur la file de poteaux.'
+        : 'Ailes de papillon : point haut au centre, les eaux s’écoulent vers les deux bords.'}
+      ]:[]).concat((P.type==='central' && P.dual==='parallele')?[
+      {type:'choice',key:'paraMode',options:[{id:'prolong',l:'Dans le prolongement'},{id:'meme',l:'Même hauteur de sommet'}]},
+      {type:'note',text:(P.paraMode==='meme')
+        ? 'Deux sheds identiques : chaque nappe a son propre faîte, à la même hauteur, avec un décrochement au droit des poteaux. La hauteur totale reste modérée.'
+        : 'Un seul plan continu d’un bord à l’autre : la nappe monte sur toute la portée, donc deux fois plus haut. Rendement maximal, hauteur maximale.'}
+      ]:[]).concat([
       {type:'slider',label:'Travées',unit:'',key:'bays',min:1,max:30,step:1},
       {type:'slider',label:'Entraxe des poteaux',unit:'cm',key:'bayW',min:250,max:1200,step:10},
       {type:'slider',label:'Portée (sens de la pente)',unit:'cm',key:'span',min:400,max:3000,step:20},
       {type:'slider',label:'Hauteur libre',unit:'cm',key:'clear',min:180,max:600,step:5},
       {type:'slider',label:'Pente',unit:'°',key:'slope',min:0,max:30,step:0.5}
-    ]},
+    ])},
     {title:'Sections', fields:[
       {type:'slider',label:'Poteau — largeur',unit:'cm',key:'postW',min:10,max:100,step:1},
       {type:'slider',label:'Poteau — profondeur',unit:'cm',key:'postD',min:10,max:100,step:1},
@@ -15957,10 +16173,14 @@ function buildStoreUI(){
     ]},
     {title:'Dimensions', fields:[
       {type:'slider',label:'Largeur',unit:'cm',key:'width',min:150,max:700,step:5},
-      {type:'slider',label:'Avancée',unit:'cm',key:'proj',min:100,max:400,step:5},
+      {type:'slider',label:'Avancée maxi (bras tendus)',unit:'cm',key:'proj',min:100,max:400,step:5},
       {type:'slider',label:'Hauteur de pose',unit:'cm',key:'poseH',min:200,max:450,step:5},
       {type:'slider',label:'Inclinaison',unit:'°',key:'tilt',min:0,max:45,step:1},
-      {type:'slider',label:'Bras',unit:'',key:'arms',min:2,max:6,step:1}
+      {type:'slider',label:'Bras',unit:'',key:'arms',min:2,max:6,step:1},
+      {type:'slider',label:'Ouverture',unit:'%',key:'open',min:5,max:100,step:1},
+      {type:'note',text:(PSTORE.open>=99)
+        ? 'Store <b>sorti à fond</b> : les bras sont tendus, l’avancée vaut '+PSTORE.proj+' cm.'
+        : 'Store ouvert à '+PSTORE.open+' % : avancée réelle <b>'+Math.round(PSTORE.proj*PSTORE.open/100)+' cm</b>. Les bras, de longueur fixe, se <b>plient</b> — les coudes rentrent l’un vers l’autre.'}
     ]},
     {title:'Finition basse', fields:[
       {type:'slider',label:'Lambrequin',unit:'cm',key:'lambH',min:0,max:50,step:1}
@@ -15988,6 +16208,53 @@ function buildStoreUI(){
     ]}
   ];
   buildObjUI(S, groups, buildStoreUI);
+}
+/* `rebuild` : le configurateur est atteint depuis le catalogue fabricants, où le
+   panneau porte en plus la fiche produit. Sans ce relais, le moindre curseur la
+   ferait disparaître. */
+function buildMosquitoUI(rebuild){
+  var M=PMOSQ, self=rebuild||buildMosquitoUI;
+  var cur=Object.keys(MOSQ_PRESETS).filter(function(k){
+    var p=MOSQ_PRESETS[k]; return p.L===M.L && p.l===M.l && p.H===M.H;
+  })[0]||null;
+  var groups=[
+    {title:'Modèle', fields:[
+      {type:'note',text:'Les trois tables Mosquito d’origine sont des préréglages de cet objet (boutons en haut du panneau). Toute autre dimension est libre.'},
+      {type:'slider',label:'Longueur',unit:'cm',key:'L',min:60,max:400,step:1},
+      {type:'slider',label:'Largeur',unit:'cm',key:'l',min:40,max:400,step:1},
+      {type:'slider',label:'Hauteur',unit:'cm',key:'H',min:35,max:130,step:1},
+      {type:'slider',label:'Rayon des angles',unit:'cm',key:'r',min:0,max:60,step:1}
+    ]},
+    {title:'Plateau', fields:[
+      {type:'slider',label:'Épaisseur du verre',unit:'cm',key:'tGlass',min:0.6,max:6,step:0.1},
+      {type:'slider',label:'Opacité du verre',unit:'%',key:'alGlass',min:0,max:100,step:1},
+      {type:'slider',label:'Joint creux',unit:'cm',key:'joint',min:0,max:5,step:0.1},
+      {type:'color',key:'colGlass',label:'Teinte du verre'}
+    ]},
+    {title:'Bandeau', fields:[
+      {type:'slider',label:'Épaisseur',unit:'cm',key:'tBand',min:0.3,max:8,step:0.1},
+      {type:'slider',label:'Retrait',unit:'cm',key:'inBand',min:0,max:40,step:0.5},
+      {type:'color',key:'colBand',label:'Couleur'}
+    ]},
+    {title:'Corps & semelle', fields:[
+      {type:'slider',label:'Retrait du corps',unit:'cm',key:'inBody',min:0,max:30,step:0.1},
+      {type:'color',key:'colBody',label:'Corps'},
+      {type:'slider',label:'Épaisseur de semelle',unit:'cm',key:'tSole',min:0.2,max:10,step:0.1},
+      {type:'slider',label:'Retrait de semelle',unit:'cm',key:'inSole',min:0,max:30,step:0.1},
+      {type:'color',key:'colSole',label:'Semelle'}
+    ]}
+  ];
+  buildObjUI(M, groups, self);
+  /* boutons de préréglage, insérés en tête du panneau */
+  var host=document.getElementById('params'); if(!host) return;
+  var wrap=document.createElement('div'); wrap.className='ral-fam'; wrap.style.marginBottom='8px';
+  Object.keys(MOSQ_PRESETS).forEach(function(k){
+    var p=MOSQ_PRESETS[k], b=document.createElement('button');
+    b.textContent=p.lbl; if(k===cur) b.className='on';
+    b.onclick=function(){ M.L=p.L; M.l=p.l; M.H=p.H; build(); DIRTY=true; self(); if(typeof updateDims==='function')updateDims(); };
+    wrap.appendChild(b);
+  });
+  host.insertBefore(wrap, host.firstChild);
 }
 function parkAltEditor(){
   var host=document.getElementById('params'); if(!host) return;
@@ -16232,6 +16499,7 @@ function finishElemsFor(){
     case 'parking':   return parkFinishElems();
     case 'ombriere':  return ombFinishElems();
     case 'store':     return storeFinishElems();
+    case 'mosquito':  return FINISH_ELEMS_MOSQUITO;
   }
   return null;
 }
@@ -16441,7 +16709,7 @@ function buildProductMatPanel(host, pid, groups){
      matériau, donc le plateau et le filet d'une table de ping-pong se règlent
      séparément. Le rendu WebGL les dessine alors en dernier, mélangés. */
   (function(){
-    var cur=prodAl(pid,gi);
+    var cur=prodAl(pid,gi,g);
     var r2=document.createElement('div'); r2.className='fh'; r2.style.marginTop='8px';
     var lb=document.createElement('label'); lb.textContent='Opacité';
     var uu=document.createElement('span'); uu.className='u'; uu.textContent=Math.round(cur*100)+' %';
@@ -16884,6 +17152,9 @@ var ICONS={
  cuisine:SVGIC('<rect x="4" y="4" width="16" height="16" rx="1"/><circle cx="9" cy="9" r="1.6"/><circle cx="15" cy="9" r="1.6"/><line x1="7" y1="15" x2="17" y2="15"/><line x1="7" y1="18" x2="17" y2="18"/>'),
  assises:SVGIC('<path d="M7 11h10"/><path d="M7 11V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v6"/><path d="M7 11l-1 9"/><path d="M17 11l1 9"/>')
 };
+/* Repli des listes de produits d'un fabricant (Haworth en compte 38). Par défaut
+   la liste est ouverte, comme avant ; l'état ne survit pas au rechargement. */
+var FAB_OPEN={};
 function buildCatList(){
   var host=document.getElementById('cat-list');
   host.innerHTML='';
@@ -16900,6 +17171,7 @@ function buildCatList(){
       });
     } else {
       CATALOG.fabricants.cats.forEach(function(c){
+        if(c.locked) return;                       /* marque verrouillée : ni la marque ni ses produits ne remontent */
         if(_norm(c.label).indexOf(SQ)>=0) res.push({ic:'•',lab:c.label,fn:function(){ selectCat(c.id); _clearSearch(); buildCatList(); refreshView(); }});
         (c.subs||[]).forEach(function(s){ if(_norm(s.label).indexOf(SQ)>=0) res.push({ic:'•',lab:c.label+' · '+s.label,sub:true,fn:function(){ selectCat(c.id); _clearSearch(); buildCatList(); refreshView(); }}); });
       });
@@ -16940,18 +17212,43 @@ function buildCatList(){
     target = target || host;
     var b=document.createElement('button');
     b.innerHTML = '<span class="cat-lbl"><span class="cat-ic">'+(ICONS[cat.id]||cat.icon||'•')+'</span>'+cat.label+'</span>' + (cat.status==='todo' ? '<span class="badge">·</span>' : '');
+    /* Marque VERROUILLÉE (accord fabricant en attente) : le bouton est inerte et
+       aucun produit, aucune géométrie, aucun panneau n'est construit. */
+    if(cat.locked){
+      b.innerHTML='<span class="cat-lbl"><span class="cat-ic">🔒</span>'+cat.label+'</span>';
+      b.disabled=true;
+      b.style.cssText='opacity:.42;cursor:not-allowed;';
+      b.title='Accès suspendu — en attente de l’accord du fabricant';
+      target.appendChild(b);
+      return;
+    }
     if(cat.id===CAT) b.className='on';
     b.title = (cat.status==='todo') ? 'À venir' : '';
+    /* Fabricant : le bouton porte un chevron et se replie lui-même, comme les entêtes
+       de groupe en générique. Premier clic = sélectionner (et déplier) ; clic suivant,
+       la marque étant déjà active = replier / déplier sa liste de produits. */
+    var _hasSubs=!!(cat.subs && cat.subs.length);
+    if(_hasSubs){
+      if(FAB_OPEN[cat.id]===undefined) FAB_OPEN[cat.id]=true;
+      var car=document.createElement('span');
+      car.style.cssText='float:right;opacity:.65;font-size:10px;line-height:inherit;';
+      car.textContent=(cat.id===CAT && FAB_OPEN[cat.id]) ? '▾' : '▸';
+      b.appendChild(car);
+      b.title=(cat.id===CAT) ? (FAB_OPEN[cat.id]?'Replier les produits':'Déplier les produits') : cat.label;
+    }
     b.onclick=function(){
+      if(_hasSubs && cat.id===CAT){ FAB_OPEN[cat.id]=!FAB_OPEN[cat.id]; buildCatList(); return; }
+      if(_hasSubs) FAB_OPEN[cat.id]=true;                 /* on ouvre en sélectionnant la marque */
       selectCat(cat.id);
       buildCatList();
       refreshView();
     };
     target.appendChild(b);
 
-    /* sous-menu : si la catégorie a des produits ET qu'elle est active,
+    /* sous-menu : si la catégorie a des produits, qu'elle est active ET dépliée,
        on liste ses produits en retrait juste en dessous. */
     if(cat.subs && cat.id===CAT){
+      if(!FAB_OPEN[cat.id]) return;                       /* repliée : produit suivant */
       var sub=document.createElement('div'); sub.className='subcat-list';
       cat.subs.forEach(function(p){
         var sb=document.createElement('button'); sb.className='subcat-item';
@@ -16961,13 +17258,26 @@ function buildCatList(){
           AL_PRODUCT=p.id;
           PROD_MAT=0;                       /* le matériau édité appartient au produit précédent */
           PROD_OVERRIDE=(PROD_VIEW[p.id]==='global');
+          /* Produit PROCÉDURAL du catalogue : pas de maillage, donc pas de WGL.show().
+             Il bascule le moteur sur son mode paramétrique, mais reste listé sous sa
+             marque — la catégorie courante ne change pas. */
+          if(p.proc){
+            MODE=p.proc;
+            try{ WGL.hide(); }catch(_e){}
+            build(); buildCatList(); buildProcProductUI(p); updateDims(); DIRTY=true;
+            if(typeof buildFinishElems==='function') buildFinishElems();
+            if(typeof buildFinishPanel==='function') buildFinishPanel();
+            return;
+          }
+          MODE='quadripod';
           WGL.show(AL_PRODUCT);
           buildCatList(); buildProductUI(); updateDims();
         };
-        /* glisser vers la scène pour placer ce produit fabricant */
+        /* glisser vers la scène pour placer ce produit fabricant (maillages seulement :
+           un produit procédural entre dans la scène par son bouton dédié) */
         if(typeof scnBindDrop==='function') scnBindDrop();   /* s'assure que la zone de dépôt #vp est active */
-        sb.draggable=true; sb.title='Glisser dans la scène pour placer';
-        sb.addEventListener('dragstart',function(ev){ SCN_DRAG_FAB=p.id; if(ev.dataTransfer){ try{ ev.dataTransfer.setData('text/plain','fab:'+p.id); ev.dataTransfer.effectAllowed='copy'; }catch(_e){} } });
+        sb.draggable=!p.proc; sb.title=p.proc?'Objet paramétrique':'Glisser dans la scène pour placer';
+        sb.addEventListener('dragstart',function(ev){ if(p.proc){ ev.preventDefault(); return; } SCN_DRAG_FAB=p.id; if(ev.dataTransfer){ try{ ev.dataTransfer.setData('text/plain','fab:'+p.id); ev.dataTransfer.effectAllowed='copy'; }catch(_e){} } });
         sb.addEventListener('dragend',function(){ setTimeout(function(){ SCN_DRAG_FAB=null; },60); });
         sub.appendChild(sb);
       });
@@ -17133,6 +17443,42 @@ function refreshView(){
 
 /* buildProductUI() : fiche produit d'un objet fabricant (importé, non paramétrique).
    La sélection du produit se fait dans le sous-menu de gauche (sous le fabricant). */
+/* Panneau d'un produit PROCÉDURAL du catalogue fabricants : la fiche du produit,
+   puis les réglages de son configurateur, puis l'ajout à la scène. Le maillage
+   n'existe pas — les dimensions viennent donc de DIMS, calculé par build(). */
+var PROC_UI={ mosquito:{ ui:'buildMosquitoUI', desc:'Table basse ou mange-debout. Monolithe béton sur semelle acier, bandeau laqué vermillon, plateau en verre à fleur des rives.', mat:'Béton · Acier · Verre' } };
+function buildProcProductUI(p){
+  var host=document.getElementById('params'); if(!host) return;
+  var cfg=PROC_UI[p.proc]||{};
+  var again=function(){ buildProcProductUI(p); };            /* le panneau se reconstruit entier */
+  if(typeof window[cfg.ui]==='function') window[cfg.ui](again);
+  else host.innerHTML='';
+  var card=document.createElement('div'); card.className='product-card';
+  var d=(typeof DIMS!=='undefined'&&DIMS)?DIMS:{w:0,h:0,d:0};
+  card.innerHTML=
+    '<div class="pc-maker">'+curCat().label.toUpperCase()+'</div>'+
+    '<div class="pc-name">'+p.label+'</div>'+
+    '<div class="pc-desc">'+(cfg.desc||'')+'</div>'+
+    '<div class="pc-spec"><span>Dimensions</span><b>'+Math.round(d.w*100)+' × '+Math.round(d.d*100)+' × '+Math.round(d.h*100)+' cm</b></div>'+
+    '<div class="pc-spec"><span>Matériaux</span><b>'+(cfg.mat||'—')+'</b></div>'+
+    '<div class="pc-badge">● Produit fabricant — objet paramétrique</div>';
+  host.insertBefore(card, host.firstChild);
+  /* Ajout à la scène : instance générique (mode + params), pas un maillage `fabprod`. */
+  var add=document.createElement('button'); add.textContent='➕ Ajouter à la scène';
+  add.className='save-add'; add.style.marginTop='12px';
+  add.onclick=function(){
+    var mode=p.proc, pobj=paramObjFor(mode); if(!pobj) return;
+    try{
+      if(typeof enterSceneMode==='function') enterSceneMode(); else selectCat('scene');
+      SCENE.instances.push({ mode:mode, name:p.label, label:p.label,
+        params:JSON.parse(JSON.stringify(pobj)), x:0, z:0, y:0, rotY:0 });
+      scnSelSingle(SCENE.instances.length-1);
+      build(); refreshView(); DIRTY=true;
+      if(typeof buildSceneUI==='function') buildSceneUI();
+    }catch(e){ alert('Erreur : '+(e&&e.message||e)); }
+  };
+  host.appendChild(add);
+}
 function buildProductUI(){
   var host=document.getElementById('params');
   host.innerHTML='';
@@ -18621,7 +18967,11 @@ var I18N_ADD6={
 "Barre de charge":{"en":"Front bar","es":"Barra de carga","it":"Barra di carico","de":"Ausfallprofil","pt":"Barra de carga","hu":"Terhelőrúd","zh":"前梁","ja":"フロントバー","ar":"قضيب أمامي","ru":"Передний профиль","uk":"Передній профіль"},
 "Avancée":{"en":"Projection","es":"Salida","it":"Sporgenza","de":"Ausfall","pt":"Avanço","hu":"Kinyúlás","zh":"外伸","ja":"出幅","ar":"البروز","ru":"Вылет","uk":"Виліт"},
 "Rayures":{"en":"Stripes","es":"Rayas","it":"Righe","de":"Streifen","pt":"Riscas","hu":"Csíkok","zh":"条纹","ja":"ストライプ","ar":"خطوط","ru":"Полосы","uk":"Смуги"},
-"Bras":{"en":"Arms","es":"Brazos","it":"Bracci","de":"Arme","pt":"Braços","hu":"Karok","zh":"支臂","ja":"アーム","ar":"الأذرع","ru":"Кронштейны","uk":"Кронштейни"}
+"Bras":{"en":"Arms","es":"Brazos","it":"Bracci","de":"Arme","pt":"Braços","hu":"Karok","zh":"支臂","ja":"アーム","ar":"الأذرع","ru":"Кронштейны","uk":"Кронштейни"},
+"Table Mosquito":{"en":"Mosquito table","es":"Mesa Mosquito","it":"Tavolo Mosquito","de":"Mosquito-Tisch","pt":"Mesa Mosquito","hu":"Mosquito asztal","zh":"Mosquito 桌","ja":"Mosquito テーブル","hi":"Mosquito मेज़","ar":"طاولة Mosquito","ru":"Стол Mosquito","uk":"Стіл Mosquito"},
+"Plateau (verre)":{"en":"Top (glass)","es":"Tablero (vidrio)","it":"Piano (vetro)","de":"Platte (Glas)","pt":"Tampo (vidro)","hu":"Lap (üveg)","zh":"台面（玻璃）","ja":"天板（ガラス）","hi":"टॉप (कांच)","ar":"سطح (زجاج)","ru":"Столешница (стекло)","uk":"Стільниця (скло)"},
+"Bandeau":{"en":"Band","es":"Franja","it":"Fascia","de":"Band","pt":"Faixa","hu":"Sáv","zh":"饰带","ja":"帯","hi":"पट्टी","ar":"شريط","ru":"Полоса","uk":"Смуга"},
+"Semelle":{"en":"Base plate","es":"Zócalo","it":"Basamento","de":"Fußplatte","pt":"Base","hu":"Talplemez","zh":"底板","ja":"ベースプレート","hi":"आधार पट्टी","ar":"قاعدة","ru":"Опорная плита","uk":"Опорна плита"}
 };
 (function(){ for(var fr in I18N_ADD6){ var t=I18N_ADD6[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
 /* Langues sorties du monolithe (data/i18n-nordic.js). Fusionnées en dernier, donc
