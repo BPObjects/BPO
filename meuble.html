@@ -894,10 +894,18 @@ WGL.initTexGL=function(){
     'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);col+=amb*alb*(0.6+0.4*(1.0-metal));'+
     'vec3 R=reflect(-Vd,N);float rh=R.y*0.5+0.5;vec3 er=mix(ambBot,ambTop,rh)*1.4;'+
     'vec3 Fe=fres(NoV,F0)*(1.0-rough);col+=er*Fe;'+
+    /* VERRE (uAlpha<1) : même traitement que progG. Le diffus et l'ambiant calculés
+       ci-dessus sont écartés ; la vitre = teinte transmise sombre + réflexion Fresnel
+       + éclat solaire. C'est ce qui l'empêche de virer au blanc laiteux. */
+    'float isG=step(uAlpha,0.995);'+
+    'float Fg=0.04+0.96*pow(1.0-NoV,5.0);'+
+    'vec3 envG=mix(ambBot,ambTop,rh)*1.6;'+
+    'float glintG=pow(max(dot(R,normalize(lightDirs[0])),0.0),64.0)*shf;'+
+    'vec3 tintG=alb*(amb*0.85+lightCols[0]*0.20*shf);'+
+    'col=mix(col, mix(tintG,envG,Fg)+vec3(glintG*0.50), isG);'+
     'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));'+
-    /* Un verre vu de biais réfléchit davantage : on remonte l'opacité au rasant.
-       Sans ce terme de Fresnel, une vitre translucide disparaît de profil. */
-    'float aOut=uAlpha<0.999 ? clamp(uAlpha + pow(1.0-NoV,4.0)*(1.0-uAlpha)*0.8, 0.0, 1.0) : 1.0;'+
+    /* L'opacité suit Fresnel : quasi transparent de face, miroir au rasant. */
+    'float aOut=isG>0.5 ? clamp(mix(uAlpha,0.97,Fg),0.0,0.97) : 1.0;'+
     'gl_FragColor=vec4(col,aOut);}';
   function sh(t,src){var o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
   var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);
@@ -1411,11 +1419,18 @@ WGL.initGGL=function(){
     'vec3 Rr=reflect(-Vd,N);'+
     'vec3 skyR=(Rr.y>=0.0)?mix(skyHorC,skyTopC,pow(clamp(Rr.y,0.0,1.0),0.75))'+
     ':mix(skyHorC,gndC,clamp(-Rr.y*2.2,0.0,1.0));'+
-    'float fre=pow(1.0-NoV,4.0);'+
+    /* Fresnel de Schlick, F0=0.04 : une vitre ne réfléchit que 4 % de face,
+       ~100 % au rasant. C'est LUI qui doit doser réflexion et transparence. */
+    'float Fg=0.04+0.96*pow(1.0-NoV,5.0);'+
     'float glint=pow(max(dot(Rr,normalize(lightDirs[0])),0.0),64.0)*shf;'+
-    'col=mix(col, mix(col,skyR,0.62)+skyR*fre*0.95+vec3(glint*0.55), isG*0.92);'+
+    /* Le verre ne diffuse pas : on jette le terme diffus/ambiant calculé plus haut
+       et on ne garde que (teinte transmise, très sombre) + (réflexion) + (éclat).
+       Sans cela une teinte claire s'éclaire jusqu'au blanc et la vitre devient laiteuse. */
+    'vec3 tintG=alb*(amb*0.85+lightCols[0]*0.20*shf);'+
+    'col=mix(col, mix(tintG,skyR,Fg)+vec3(glint*0.55), isG);'+
     'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));'+
-    'gl_FragColor=vec4(col, mix(vc.a, clamp(vc.a+fre*0.5,0.0,0.85), isG));}';
+    /* L'opacité suit Fresnel : quasi transparent de face, miroir au rasant. */
+    'gl_FragColor=vec4(col, mix(vc.a, clamp(mix(vc.a,0.97,Fg),0.0,0.97), isG));}';
   function sh(t,src){var o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
   var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(pr));
@@ -10214,15 +10229,22 @@ function meshHandle(T, x, y, faceZ, faceDir, colH, mir){
   var z=faceZ+faceDir*((PPORTE.hOff||0)/100);
   var cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry),cz=Math.cos(rz),sz=Math.sin(rz);
   function rot(vx,vy,vz){ var b=vy*cx-vz*sx, c=vy*sx+vz*cx; vy=b; vz=c; var d=vx*cy+vz*sy, e=-vx*sy+vz*cy; vx=d; vz=e; var f=vx*cz-vy*sz, g=vx*sz+vy*cz; return [f,g,vz]; }
-  /* Le maillage contient l'ensemble traversant (levier devant + derriere) ;
-     l'axe Z du modele = axe du fouillot = normale de la porte. On place une seule
-     fois au centre (faceZ=zc) : chaque levier tombe sur sa face. mir reflechit
-     horizontalement selon le bord (gauche/droite) de la poignee. */
-  function tf(i){ var r=rot(P[i*3]*s*mir,P[i*3+1]*s,P[i*3+2]*s); return T([x+r[0], y+r[1], z+faceDir*r[2]]); }
+  /* Le maillage est oriente A L'ENVERS en Z : son plan de fixation est a z=zmax
+     (l'entree de cle y est plaquee) et le levier ressort vers z=0. Poser z=0 sur
+     la face enfoncerait 6,4 cm de quincaillerie dans un vantail de 4 cm — elle
+     ressortait de l'autre cote. On retourne donc Z : (zmax - z) vaut 0 au plan de
+     fixation et croit vers l'exterieur, que faceDir oriente vers la bonne face. */
+  if(M._zmax===undefined){ var zm=0; for(var q=2;q<P.length;q+=3) if(P[q]>zm) zm=P[q]; M._zmax=zm; }
+  var ZM=M._zmax;
+  function tf(i){ var r=rot(P[i*3]*s*mir,P[i*3+1]*s,(ZM-P[i*3+2])*s); return T([x+r[0], y+r[1], z+faceDir*r[2]]); }
   /* Normale geometrique par triangle (ombrage a facettes) : le maillage 3D Warehouse
      a des normales lissees bruitees ; on les ignore. Le shader gere le recto-verso. */
+  /* Orientation des triangles : chaque symetrie (miroir X, retournement Z du
+     maillage, face arriere) inverse le sens de parcours. On ne permute que si
+     leur nombre est impair, sinon les normales exportees pointent vers l'interieur. */
+  var swap = ((((mir<0)?1:0) + 1 + ((faceDir<0)?1:0)) % 2) === 1;
   for(var t=0;t<TRI.length;t++){ var a=TRI[t];
-    var i0=a[0], i1=(mir<0)?a[2]:a[1], i2=(mir<0)?a[1]:a[2];
+    var i0=a[0], i1=swap?a[2]:a[1], i2=swap?a[1]:a[2];
     var v0=tf(i0),v1=tf(i1),v2=tf(i2);
     var ux=v1[0]-v0[0],uy=v1[1]-v0[1],uz=v1[2]-v0[2], wx=v2[0]-v0[0],wy=v2[1]-v0[1],wz=v2[2]-v0[2];
     var nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx, ln=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
@@ -10249,7 +10271,11 @@ function buildHandle(T, x0,x1, handleEdge, handleY, zc, lt, colH, type){
     leafBox(T, roseX,handleY,zc-lt/2+0.004, 0.04,0.14,0.012, colH,1);
   } else {
     _CURTEX=null;                                  /* bequille importee : metal de base, sans texture */
-    var hm=(handleEdge>0?1:-1);                    /* sens du levier */
+    /* Sens du levier. Le maillage part de la rosace (x=0) et s'etend vers +x sur
+       10,9 cm. La rosace etant a 8 cm du bord de fermeture, un levier vers +x
+       depasserait le vantail de 2,9 cm. Il doit pointer vers les paumelles,
+       donc a l'oppose du bord qui porte la poignee. */
+    var hm=(handleEdge>0?-1:1);
     meshHandle(T, roseX, handleY, zc+lt/2+0.002, +1, colH, hm);   /* face avant (2mm proud anti z-fight) */
     meshHandle(T, roseX, handleY, zc-lt/2-0.002, -1, colH, hm);   /* face arriere */
   }
