@@ -4,30 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BPO — Le catalogue 3D des composants du bâtiment</title>
-<meta name="description" content="Configurez des composants du bâtiment en 3D à vos dimensions, habillez-les de vos finitions, puis exportez-les en IFC, DAE ou OBJ pour ArchiCAD, Revit et SketchUp.">
-<link rel="canonical" href="https://bpobjects.github.io/BPO/">
-<link rel="alternate" hreflang="fr" href="https://bpobjects.github.io/BPO/">
-<link rel="alternate" hreflang="en" href="https://bpobjects.github.io/BPO/en/">
-<link rel="alternate" hreflang="de" href="https://bpobjects.github.io/BPO/de/">
-<link rel="alternate" hreflang="es" href="https://bpobjects.github.io/BPO/es/">
-<link rel="alternate" hreflang="it" href="https://bpobjects.github.io/BPO/it/">
-<link rel="alternate" hreflang="pt" href="https://bpobjects.github.io/BPO/pt/">
-<link rel="alternate" hreflang="hu" href="https://bpobjects.github.io/BPO/hu/">
-<link rel="alternate" hreflang="ru" href="https://bpobjects.github.io/BPO/ru/">
-<link rel="alternate" hreflang="uk" href="https://bpobjects.github.io/BPO/uk/">
-<link rel="alternate" hreflang="zh" href="https://bpobjects.github.io/BPO/zh/">
-<link rel="alternate" hreflang="ja" href="https://bpobjects.github.io/BPO/ja/">
-<link rel="alternate" hreflang="hi" href="https://bpobjects.github.io/BPO/hi/">
-<link rel="alternate" hreflang="ar" href="https://bpobjects.github.io/BPO/ar/">
-<link rel="alternate" hreflang="x-default" href="https://bpobjects.github.io/BPO/">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Building Product Objects">
-<meta property="og:locale" content="fr_FR">
-<meta property="og:title" content="BPO — Le catalogue 3D des composants du bâtiment">
-<meta property="og:description" content="Configurez des composants du bâtiment en 3D à vos dimensions, habillez-les de vos finitions, puis exportez-les en IFC, DAE ou OBJ pour ArchiCAD, Revit et SketchUp.">
-<meta property="og:url" content="https://bpobjects.github.io/BPO/">
-<meta property="og:image" content="https://bpobjects.github.io/BPO/assets/favicon-512.png">
-<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="alternate icon" href="favicon.ico" sizes="16x16 32x32 48x48">
@@ -74,13 +50,9 @@
   .topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,0.82);
     backdrop-filter:saturate(160%) blur(12px);border-bottom:1px solid var(--ln);}
   .topbar .wrap{display:flex;align-items:center;justify-content:space-between;padding-top:15px;padding-bottom:15px;}
-  .brand{display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
-  .brand .blockup{display:flex;align-items:center;gap:10px;}
+  .brand{display:flex;align-items:center;gap:11px;}
   .brand img{height:32px;width:auto;display:block;}
-  .brand .bt{font-size:21px;letter-spacing:0.02em;font-weight:600;color:var(--ink);line-height:1;}
-  .brand .btag{font-size:10.5px;letter-spacing:0.19em;text-transform:uppercase;
-    font-weight:500;color:var(--steel);white-space:nowrap;line-height:1;}
-  @media(max-width:520px){.brand .btag{display:none;}}
+  .brand .bt{font-size:13px;letter-spacing:0.14em;font-weight:600;color:var(--ink);}
   .nav-mini{display:flex;gap:28px;font-size:14px;align-items:center;}
   .nav-mini a{color:var(--dm);text-decoration:none;transition:color .2s;}
   .nav-mini a:hover{color:var(--ink);}
@@ -133,11 +105,9 @@
   .card{border:1px solid var(--ln);border-radius:18px;padding:40px 36px;background:var(--card);
     display:flex;flex-direction:column;transition:transform .25s, box-shadow .3s, border-color .3s;}
   .card:hover{transform:translateY(-4px);box-shadow:0 24px 50px rgba(20,35,60,0.08);border-color:#d5e0ee;}
-  .card-ico{width:64px;height:64px;border-radius:16px;display:flex;align-items:center;justify-content:center;
-    margin-bottom:24px;background:#f4f6f9;border:1px solid var(--ln);color:var(--ink);
-    transition:background .25s, color .25s, border-color .25s;}
-  .card-ico svg{width:34px;height:34px;display:block;}
-  .card:hover .card-ico{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .card-ico{width:50px;height:50px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+    margin-bottom:22px;font-size:23px;background:rgba(255,138,61,0.14);}
+  .card-mfr .card-ico{background:#eef1f6;}
   .card .role{font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:14px;}
   .card-mfr .role{color:var(--dm);}
   .card h3{font-size:24px;font-weight:400;margin-bottom:10px;}
@@ -211,14 +181,11 @@
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="index.html" style="text-decoration:none;">
-      <span class="blockup">
       <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="BPO">
         <g stroke="#ff8a3d" stroke-width="1" opacity=".5"><path d="M16 4 27 12 23 25 9 25 5 12Z"/><path d="M16 16 16 4M16 16 27 12M16 16 23 25M16 16 9 25M16 16 5 12"/></g>
         <g fill="#e5701c"><circle cx="16" cy="4" r="2.1"/><circle cx="27" cy="12" r="2.1"/><circle cx="23" cy="25" r="2.1"/><circle cx="9" cy="25" r="2.1"/><circle cx="5" cy="12" r="2.1"/><circle cx="16" cy="16" r="2.6"/></g>
       </svg>
       <span class="bt">BPO</span>
-      </span>
-      <span class="btag">Architectural Parametrics</span>
     </a>
     <nav class="nav-mini">
       <a href="#acces">Accès</a>
@@ -227,7 +194,6 @@
       <a href="compte.html">Mon compte</a>
       <a href="meuble.html" class="cta">Ouvrir le configurateur →</a>
     </nav>
-    <style>.topbar .wrap{flex-wrap:nowrap;gap:10px;}.nav-mini{white-space:nowrap;}.nav-mini a{white-space:nowrap;}.langnav{position:relative;flex:0 0 auto;margin-left:10px;font-size:12px;}.langnav>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #e2e6ec;border-radius:8px;color:#42505f;white-space:nowrap;background:#fff;}.langnav>summary::-webkit-details-marker{display:none;}.langnav>summary::after{content:"\25BE";font-size:10px;opacity:.55;}.langnav>summary:hover{border-color:#ffc79a;color:#0d1526;}.langnav[open]>summary{border-color:#ff8a3d;color:#0d1526;}.langnav .ln-list{position:absolute;right:0;top:calc(100% + 6px);z-index:60;background:#fff;border:1px solid #e2e6ec;border-radius:10px;box-shadow:0 12px 32px rgba(13,21,38,.14);padding:8px;display:grid;grid-template-columns:repeat(2,minmax(118px,1fr));gap:2px;}.langnav .ln-list a,.langnav .ln-list .ln-cur{display:block;padding:6px 10px;border-radius:6px;text-decoration:none;color:#42505f;white-space:nowrap;}.langnav .ln-list a:hover{background:#fff3e9;color:#e5701c;}.langnav .ln-list .ln-cur{color:#0d1526;font-weight:600;background:#f4f6f9;}[dir="rtl"] .langnav .ln-list{right:auto;left:0;}[dir="rtl"] .langnav{margin-left:0;margin-right:10px;}@media(max-width:620px){.langnav>summary .ln-name{display:none;}.langnav .ln-list{grid-template-columns:1fr;}}</style><details class="langnav"><summary aria-label="Langue"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg><span class="ln-name">Français</span></summary><nav class="ln-list" aria-label="Langue"><span class="ln-cur" aria-current="true" lang="fr">Français</span><a hreflang="en" lang="en" href="https://bpobjects.github.io/BPO/en/">English</a><a hreflang="de" lang="de" href="https://bpobjects.github.io/BPO/de/">Deutsch</a><a hreflang="es" lang="es" href="https://bpobjects.github.io/BPO/es/">Español</a><a hreflang="it" lang="it" href="https://bpobjects.github.io/BPO/it/">Italiano</a><a hreflang="pt" lang="pt" href="https://bpobjects.github.io/BPO/pt/">Português</a><a hreflang="hu" lang="hu" href="https://bpobjects.github.io/BPO/hu/">Magyar</a><a hreflang="ru" lang="ru" href="https://bpobjects.github.io/BPO/ru/">Русский</a><a hreflang="uk" lang="uk" href="https://bpobjects.github.io/BPO/uk/">Українська</a><a hreflang="zh" lang="zh" href="https://bpobjects.github.io/BPO/zh/">中文</a><a hreflang="ja" lang="ja" href="https://bpobjects.github.io/BPO/ja/">日本語</a><a hreflang="hi" lang="hi" href="https://bpobjects.github.io/BPO/hi/">हिन्दी</a><a hreflang="ar" lang="ar" href="https://bpobjects.github.io/BPO/ar/">العربية</a></nav></details>
   </div>
 </header>
 
@@ -237,7 +203,8 @@
     <div class="hero-copy">
       <span class="eyebrow">Building Product Objects</span>
       <h1>Le catalogue 3D des <span class="grad">composants du bâtiment</span>.</h1>
-      <p class="hero-sub">Configurez chaque produit à vos dimensions, habillez-le de vos finitions, puis exportez-le en IFC, DAE ou OBJ — prêt à poser dans ArchiCAD, Revit ou SketchUp.</p>
+      <p class="hero-sub">Configurez chaque produit à vos dimensions, habillez-le de vos finitions,
+        puis exportez-le en IFC, DAE ou OBJ — prêt à poser dans ArchiCAD, Revit ou SketchUp.</p>
       <div class="hero-cta">
         <a href="meuble.html" class="btn btn-primary">Ouvrir le configurateur <span class="btn-arrow">→</span></a>
         <a href="#fabricants" class="btn btn-ghost">Vous êtes fabricant ?</a>
@@ -276,52 +243,36 @@
     <div class="head">
       <div class="eyebrow">Deux portes d'entrée</div>
       <h2>Choisissez votre accès</h2>
-      <p>Une plateforme, deux usages : les architectes configurent et exportent, les fabricants exposent leurs produits là où ils se conçoivent.</p>
+      <p>Une plateforme, deux usages : les architectes configurent et exportent,
+         les fabricants exposent leurs produits là où ils se conçoivent.</p>
     </div>
 
     <div class="cards">
       <!-- Architectes -->
       <div class="card card-arch">
-        <div class="card-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2.6 20.6 7.4 12 12.2 3.4 7.4Z"/>
-            <path d="M3.4 7.4v9.2L12 21.4l8.6-4.8V7.4"/>
-            <path d="M12 12.2v9.2"/>
-            <g fill="currentColor" stroke="none">
-              <circle cx="12" cy="2.6" r="1.5"/><circle cx="20.6" cy="7.4" r="1.5"/>
-              <circle cx="3.4" cy="7.4" r="1.5"/><circle cx="12" cy="12.2" r="1.7"/>
-            </g>
-          </svg>
-        </div>
+        <div class="card-ico">📐</div>
         <div class="role">Architectes &amp; prescripteurs</div>
         <h3>Explorer le catalogue</h3>
         <div class="price"><span class="amt">100&nbsp;€</span><span class="per">/ an · renouvelable auto</span></div>
-        <p class="lead">Un abonnement, tout le catalogue et tous les exports. Configurez chaque objet à vos dimensions et posez-le dans votre maquette.</p>
+        <p class="lead">Un abonnement, tout le catalogue et tous les exports. Configurez chaque
+           objet à vos dimensions et posez-le dans votre maquette.</p>
         <ul>
           <li>Objets paramétriques : murs, dalles, poteaux, poutres, profils acier, immeubles entiers…</li>
           <li>Finitions RAL, textures matériaux, import de vos propres images</li>
           <li>Export OBJ, DAE et IFC pour ArchiCAD, Revit &amp; SketchUp</li>
-          <li>Interface en 13 langues, mise en page et impression PDF</li>
+          <li>Interface en 10 langues, mise en page et impression PDF</li>
         </ul>
         <a href="meuble.html" class="btn btn-primary">Ouvrir le configurateur <span class="btn-arrow">→</span></a>
       </div>
 
       <!-- Fabricants -->
       <div class="card card-mfr">
-        <div class="card-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2.6 20.4V10.2l6 3.6v-3.6l6 3.6V5.4h3.6a2 2 0 0 1 2 2v13"/>
-            <path d="M1.6 20.4h20.8"/>
-            <path d="M7 20.4v-3.2M13 20.4v-3.2"/>
-            <path d="M17.4 5.4V2.6"/>
-          </svg>
-        </div>
+        <div class="card-ico">🏭</div>
         <div class="role">Fabricants &amp; industriels</div>
         <h3>Promouvoir vos produits</h3>
         <div class="price"><span class="amt">Sur devis</span></div>
-        <p class="lead">Faites modéliser vos gammes en objets 3D configurables et placez-les devant les architectes au moment où ils conçoivent.</p>
+        <p class="lead">Faites modéliser vos gammes en objets 3D configurables et placez-les
+           devant les architectes au moment où ils conçoivent.</p>
         <ul>
           <li>Vos produits réels, aux cotes exactes, dans les projets BIM</li>
           <li>Visibilité auprès des prescripteurs dès la conception</li>
@@ -349,10 +300,10 @@
         <p>Étages, trame de poteaux, façades, cloisons, trémies percées et calques pour masquer les familles.</p></div>
       <div class="feat"><div class="fi">📤</div><h3>Export BIM</h3>
         <p>IFC (ArchiCAD / Revit), DAE (SketchUp) et OBJ universel — éléments natifs, aux unités réelles.</p></div>
-      <div class="feat"><div class="fi">🎨</div><h3>Finitions &amp; matériaux</h3>
+      <div class="feat"><div class="fi">🎨</div><h3>Finitions & matériaux</h3>
         <p>Couleurs RAL, textures, ou vos propres images. Doublages, isolants, verrières, murs-rideaux.</p></div>
       <div class="feat"><div class="fi">🌍</div><h3>Multilingue</h3>
-        <p>Interface disponible en 13 langues, du français à l'arabe, japonais et chinois.</p></div>
+        <p>Interface disponible en 10 langues, du français à l'arabe, japonais et chinois.</p></div>
       <div class="feat"><div class="fi">🖨️</div><h3>Mise en page</h3>
         <p>Planches A4→A0, vues à l'échelle, cotes, cartouche personnalisable et impression PDF.</p></div>
     </div>
@@ -389,7 +340,9 @@
     <div class="inner">
       <div class="eyebrow">Espace fabricants</div>
       <h2>Vos produits dans les projets, dès la conception</h2>
-      <p>Quand un architecte place un objet de votre gamme dans sa maquette, votre produit entre dans le projet. Nous modélisons vos composants en objets 3D paramétriques ; vous gagnez en prescription.</p>
+      <p>Quand un architecte place un objet de votre gamme dans sa maquette, votre produit entre
+         dans le projet. Nous modélisons vos composants en objets 3D paramétriques ; vous gagnez
+         en prescription.</p>
       <a href="espace-fabricants.html" class="btn btn-primary">
         Devenir fabricant partenaire <span class="btn-arrow">→</span>
       </a>
