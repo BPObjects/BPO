@@ -3012,8 +3012,71 @@ function genTextureCanvas(def){
   return {data:out.data, w:S, h:S};
 }
 
+/* ============================================================================
+   TEXTURES PHOTO — repli photo réaliste sur le procédural.
+   Si une image existe pour l'id d'une texture (data/textures/<id>.jpg), elle
+   remplace le rendu procédural. Chargement asynchrone : le procédural s'affiche
+   d'abord, puis la photo prend le relais dès qu'elle est décodée (invalidation
+   du cache GL + redraw). Zéro configuration : déposer un fichier nommé
+   « <id>.jpg » dans data/textures/. Un manifest.json optionnel (liste blanche)
+   évite les requêtes 404 en désignant explicitement les fichiers disponibles.
+     · manifest = tableau  ["parquet_chene.jpg", ...]      -> id = nom sans ext
+     · manifest = objet    {"parquet_chene":"chene.jpg"}   -> id -> fichier
+   ============================================================================ */
+var TEX_PHOTO = { enabled:true, dir:'data/textures/', map:null, hasManifest:false, state:{}, size:512 };
+(function loadTexManifest(){
+  try{
+    fetch(TEX_PHOTO.dir+'manifest.json',{cache:'no-store'})
+      .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
+      .then(function(j){
+        var m={};
+        if(Array.isArray(j)){ j.forEach(function(f){ var b=(''+f).replace(/^.*[\/\\]/,''); m[b.replace(/\.[^.]+$/,'')]=b; }); }
+        else if(j && typeof j==='object'){ for(var k in j){ if(j.hasOwnProperty(k)) m[k]=j[k]; } }
+        TEX_PHOTO.map=m; TEX_PHOTO.hasManifest=true;   /* manifest présent -> liste blanche (même vide) */
+      })
+      .catch(function(){ TEX_PHOTO.map={}; TEX_PHOTO.hasManifest=false; });   /* absent -> mode probe <id>.jpg */
+  }catch(e){ TEX_PHOTO.map={}; TEX_PHOTO.hasManifest=false; }
+})();
+/* Jette la texture GL en cache pour cet id et redessine (photo fraîchement prête). */
+function texPhotoInvalidate(id){
+  try{ if(window.WGL && WGL.txt2 && WGL.txt2[id]){ if(WGL.gl && WGL.txt2[id].tex) WGL.gl.deleteTexture(WGL.txt2[id].tex); delete WGL.txt2[id]; } }catch(e){}
+  try{ if(window.WGL && WGL.txt && WGL.txt[id]){ if(WGL.gl && WGL.txt[id].tex) WGL.gl.deleteTexture(WGL.txt[id].tex); delete WGL.txt[id]; } }catch(e){}
+  try{ DIRTY=true; }catch(e){}
+  try{ if(window.WGL && WGL.render && (WGL.gActive||WGL.txActive||WGL.ready)) WGL.render(); }catch(e){}
+}
+/* Tente (une seule fois par id) de charger la photo correspondante. */
+function ensureTexPhoto(id){
+  if(!TEX_PHOTO.enabled || TEX_PHOTO.map===null) return;   /* manifest pas encore résolu */
+  if(TEX_PHOTO.state[id]) return;                          /* déjà tenté/en cours/abouti */
+  var file;
+  if(TEX_PHOTO.hasManifest){
+    if(!TEX_PHOTO.map[id]){ TEX_PHOTO.state[id]='none'; return; }
+    file=TEX_PHOTO.map[id];
+  } else {
+    if(id==='sitemap'||id==='imgcad'||/^perf_/.test(id)){ TEX_PHOTO.state[id]='none'; return; }
+    file=id+'.jpg';   /* mode probe */
+  }
+  TEX_PHOTO.state[id]='loading';
+  var img=new Image();
+  img.onload=function(){
+    try{
+      var S=TEX_PHOTO.size, cv=document.createElement('canvas'); cv.width=S; cv.height=S;
+      var g=cv.getContext('2d');
+      /* recadrage carré centré (évite d'étirer une photo non carrée) */
+      var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height, ss=Math.min(iw,ih);
+      g.drawImage(img,(iw-ss)/2,(ih-ss)/2,ss,ss,0,0,S,S);
+      var d=g.getImageData(0,0,S,S);
+      TEX_IMAGES[id]={data:d.data,w:S,h:S,photo:true};
+      TEX_PHOTO.state[id]='ok';
+      texPhotoInvalidate(id);
+    }catch(e){ TEX_PHOTO.state[id]='err'; }
+  };
+  img.onerror=function(){ TEX_PHOTO.state[id]='none'; };
+  img.src=TEX_PHOTO.dir+file;
+}
 /* getTexImage() : renvoie les pixels d'une texture par id, générée à la demande. */
 function getTexImage(id){
+  ensureTexPhoto(id);
   if(TEX_IMAGES[id]) return TEX_IMAGES[id];
   var def=TEXTURE_DEFS.filter(function(t){return t.id===id;})[0];
   if(def){ TEX_IMAGES[id]=genTextureCanvas(def); return TEX_IMAGES[id]; }
