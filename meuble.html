@@ -266,7 +266,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
    S'applique sur grand écran OU dès que l'appareil est en PAYSAGE (mobile inclus,
    car c'est là qu'on a la largeur pour étaler les 3 colonnes confortablement). */
 @media(min-width:760px), (orientation:landscape){
-  #app{grid-template-columns:190px 1fr var(--savew,40px) 380px;grid-template-rows:46px 1fr;}
+  #app{grid-template-columns:240px 1fr var(--savew,40px) 380px;grid-template-rows:46px 1fr;}
   header{grid-column:1/5;grid-row:1;}
   #sidebar{grid-column:1;grid-row:2;border-bottom:none;border-right:1px solid var(--ln);
     overflow-y:auto;overflow-x:hidden;padding:12px 12px;}
@@ -279,11 +279,11 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
   .cat-list button{padding:7px 10px;}
 }
 /* Téléphone en paysage : panneau Paramètres plus étroit (280px, comme avant) pour laisser respirer le viewport ; ordinateur reste à 380px. */
-@media (orientation:landscape) and (max-height:500px){#app{grid-template-columns:190px 1fr var(--savew,40px) 280px;}}
+@media (orientation:landscape) and (max-height:500px){#app{grid-template-columns:240px 1fr var(--savew,40px) 280px;}}
 /* ---- Colonne "Mes configurations" (repliable, à gauche des paramètres) ---- */
-#app{--savew:40px;}
-#app.save-open{--savew:238px;}
-#savecol{background:var(--pn);border-left:1px solid var(--ln);overflow-y:auto;overflow-x:hidden;}
+#app{--savew:0px;}
+#app.save-open{--savew:0px;}
+#savecol{display:none;}
 /* 💾 : posé sur l'axe commun, d'où la marge haute plutôt qu'un padding vertical */
 #saveToggle{width:100%;height:var(--tbH);margin-top:var(--tbT);background:var(--p2);color:var(--tx);border:0;border-bottom:1px solid var(--ln);
   padding:0;cursor:pointer;font-size:15px;line-height:1;filter:grayscale(1);}
@@ -430,7 +430,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     <div id="viewOverlay" style="position:absolute;top:var(--tbT);left:165px;height:var(--tbH);z-index:30;display:none;align-items:center;gap:5px;background:rgba(24,28,36,0.88);border:1px solid #33404d;border-radius:6px;padding:0 7px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
     <div id="floorBar" style="position:absolute;bottom:52px;left:50%;transform:translateX(-50%);z-index:30;display:none;align-items:center;gap:6px;background:rgba(24,28,36,0.9);border:1px solid #33404d;border-radius:7px;padding:4px 10px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
     <button class="vp-btn" id="recenter" title="Recentrer la vue" style="top:auto;right:auto;bottom:14px;left:50%;transform:translateX(-50%);">⊕ Recentrer</button>
-    <button class="vp-btn" id="sceneBtn" title="Scène — assemblage de configurations" style="right:10px;background:#1b1b1b;color:#f2f2f2;border-color:#888;filter:grayscale(1);">◱ Scène</button>
+    <button class="vp-btn" id="sceneBtn" title="Scène — assemblage de configurations" style="display:none;right:10px;background:#1b1b1b;color:#f2f2f2;border-color:#888;filter:grayscale(1);">◱ Scène</button>
     <div id="prefsPanel" style="position:absolute;top:46px;right:10px;z-index:40;display:none;width:250px;max-height:80%;overflow:auto;background:rgba(22,26,34,0.97);border:1px solid #33404d;border-radius:8px;padding:10px 12px;color:#cdd6e0;box-shadow:0 8px 26px rgba(0,0,0,.55);font-family:system-ui,sans-serif;"></div>
     <div class="vp-bar" id="render-banner" style="right:206px;"></div>
     <div class="vp-bar" id="webgl-bar" style="right:128px;"></div>
@@ -446,19 +446,11 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     </div>
   </div>
 
-  <!-- COLONNE "MES CONFIGURATIONS" : sauvegarde/réédition (repliable) -->
-  <div id="savecol">
-    <button id="saveToggle" title="Mes configurations enregistrées">💾</button>
-    <div id="saveBody">
-      <div class="slbl">Mes configurations</div>
-      <button id="saveBtn" class="save-add">＋ Enregistrer la config actuelle</button>
-      <div id="saveList" class="save-list"></div>
-    </div>
-  </div>
+  <!-- "Ma bibliothèque" est désormais un groupe du menu de gauche (sous Mobilier), construit par buildCatList -->
 
   <!-- COLONNE DROITE : paramètres OU mise en page -->
   <div id="panel">
-    <div id="panel-tabs"><button id="pt-params" class="on">Paramètres</button><button id="pt-mep">Mise en page</button></div>
+    <div id="panel-tabs"><button id="pt-params" class="on">Paramètres</button><button id="pt-scene">Scène</button><button id="pt-mep">Mise en page</button></div>
     <div id="mep-panel" style="display:none;">
         <div class="slbl">Format &amp; orientation</div>
         <div class="plot-row">
@@ -570,7 +562,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
         <button id="exp-ifc23">↓ .IFC 2x3</button>
       </div>
       <div class="exp-note">OBJ universel · DAE pour SketchUp · IFC4 pour ArchiCAD/Revit · IFC 2x3 pour SketchUp / vieux importeurs (unités m)</div>
-      <button id="exp-airender" style="width:100%;margin-top:8px;font-size:12px;padding:8px;font-weight:600;">🎨 Rendu IA (Gemini)</button>
+      <button id="exp-photorender" style="width:100%;margin-top:8px;font-size:12px;padding:8px;font-weight:600;">🎞 Rendu photo</button>
     </div>
   </div>
 </div>
@@ -583,6 +575,9 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script src="data/fabricant-meshes.js?v=20260710b"></script>
 <script src="data/fabricants.js?v=20260710b"></script>
 <script src="data/textured-objects.js?v=20260710b"></script>
+<script src="bpo-raytrace.js?v=20260712f"></script>
+<script src="bpo-render-hook.js?v=20260712j"></script>
+<script src="bpo-import.js?v=20260711v"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
 /* WEBGL_OBJECTS -> data/ */
@@ -4840,6 +4835,7 @@ function cfgRender(){
   if(!list.length && !folders.length){ el.innerHTML='<div class="save-empty">Aucune configuration enregistrée. Réglez un objet puis « Enregistrer ».</div>'; return; }
   _folderTree({ containerEl:el, items:list, folders:folders, saveItems:cfgStore, saveFolders:cfgFoldStore, rerender:cfgRender, dragKey:'bpocfg',
     makeItemEl:function(cfg){
+      if(cfg.type==='import' && window.BPO_import){ return window.BPO_import.makeItemEl(cfg); }
       var d=document.createElement('div'); d.className='save-item';
       d.innerHTML='<span class="nm" title="'+cfgEsc(cfg.name)+'">'+cfgEsc(cfg.name)+'</span><span class="meta">'+cfgEsc(cfg.label||cfg.mode)+' · '+cfgEsc(cfg.date||'')+'</span>';
       /* glisser une config dans le viewer → l'ajoute à la scène (bascule en mode Scène au besoin) */
@@ -5239,11 +5235,19 @@ function setPaperMode(on){
 /* setMEP() : bascule le panneau droit entre Paramètres et Mise en page ;
    en Mise en page, l'espace papier occupe le viewport. */
 var MEP_MODE=false;
+function updatePanelTabs(){
+  var scene=(typeof MODE!=='undefined' && MODE==='scene');
+  var mep=(typeof MEP_MODE!=='undefined' && MEP_MODE);
+  var pP=document.getElementById('pt-params'), pS=document.getElementById('pt-scene'), pM=document.getElementById('pt-mep');
+  if(pP) pP.classList.toggle('on', !scene && !mep);
+  if(pS) pS.classList.toggle('on', scene && !mep);
+  if(pM) pM.classList.toggle('on', mep);
+}
 function setMEP(on){
   MEP_MODE=on;
   var mp=document.getElementById('mep-panel'); if(mp) mp.style.display=on?'block':'none';
   var p=document.getElementById('panel'); if(p) p.classList.toggle('mep-on',on);
-  var a=document.getElementById('pt-params'), b=document.getElementById('pt-mep'); if(a)a.classList.toggle('on',!on); if(b)b.classList.toggle('on',on);
+  updatePanelTabs();
   setPaperMode(on); if(on) plotRefresh(); else { TPL_EDIT=false; tplToolbar(); }
 }
 function plotDragStart(e,v,s,mode,el,cap){ e.preventDefault();
@@ -13421,9 +13425,15 @@ function scnLocalFaces(inst){
   inst.x=sx;inst.z=sz;inst.y=sy;inst.rotY=sr;
   return f||[];
 }
+function _rot3(rx,ry,rz){
+  var cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry),cz=Math.cos(rz),sz=Math.sin(rz);
+  var Y=[cy,0,-sy,0,1,0,sy,0,cy], X=[1,0,0,0,cx,-sx,0,sx,cx], Z=[cz,-sz,0,sz,cz,0,0,0,1];
+  function mul(A,B){var R=new Array(9);for(var i=0;i<3;i++)for(var j=0;j<3;j++){var s=0;for(var k=0;k<3;k++)s+=A[i*3+k]*B[k*3+j];R[i*3+j]=s;}return R;}
+  return mul(Y, mul(X, Z));
+}
 function scnModel(inst){
-  var r=(inst.rotY||0)*Math.PI/180, c=Math.cos(r), s=Math.sin(r);
-  return new Float32Array([ c,0,s,0, 0,1,0,0, -s,0,c,0, (inst.x||0)/100,(inst.y||0)/100,(inst.z||0)/100,1 ]);
+  var M=_rot3((inst.rotX||0)*Math.PI/180,(inst.rotY||0)*Math.PI/180,(inst.rotZ||0)*Math.PI/180);
+  return new Float32Array([ M[0],M[3],M[6],0, M[1],M[4],M[7],0, M[2],M[5],M[8],0, (inst.x||0)/100,(inst.y||0)/100,(inst.z||0)/100,1 ]);
 }
 function scnInstGL(inst){
   if(!WGL.gl) return null;
@@ -13470,10 +13480,10 @@ function scnInstSplitGL(inst){
 }
 function instanceFaces(inst, _depth){
   _depth=_depth||0;
-  var rot=((inst.rotY||0))*Math.PI/180, c=Math.cos(rot), s=Math.sin(rot);
+  var _M=_rot3(((inst.rotX||0))*Math.PI/180, ((inst.rotY||0))*Math.PI/180, ((inst.rotZ||0))*Math.PI/180);
   var tx=(inst.x||0)/100, ty=(inst.y||0)/100, tz=(inst.z||0)/100;
-  function R(p){ return [p[0]*c - p[2]*s + tx, p[1]+ty, p[0]*s + p[2]*c + tz]; }
-  function Rn(n){ return n?[n[0]*c-n[2]*s, n[1], n[0]*s+n[2]*c]:n; }
+  function R(p){ return [_M[0]*p[0]+_M[1]*p[1]+_M[2]*p[2]+tx, _M[3]*p[0]+_M[4]*p[1]+_M[5]*p[2]+ty, _M[6]*p[0]+_M[7]*p[1]+_M[8]*p[2]+tz]; }
+  function Rn(n){ return n?[_M[0]*n[0]+_M[1]*n[1]+_M[2]*n[2], _M[3]*n[0]+_M[4]*n[1]+_M[5]*n[2], _M[6]*n[0]+_M[7]*n[1]+_M[8]*n[2]]:n; }
   function xf(f){ return { verts:f.verts.map(R), n:Rn(f.n), col:f.col, al:f.al, tex:f.tex, ifc:f.ifc, vn:f.vn?f.vn.map(Rn):null, uv:f.uv||null }; }   /* uv conservées (export texturé) */
   /* instance-GROUPE : une scène enregistrée insérée comme un seul objet → on assemble
      récursivement les faces de ses enfants puis on applique la transformation du groupe. */
@@ -13485,7 +13495,7 @@ function instanceFaces(inst, _depth){
   if(inst.mode==='fabprod'){
     var fc=FAB_CACHE[inst.prod];
     if(!fc || !fc.ready){ fabDecode(inst.prod, function(){ if(MODE==='scene'){ try{ build(); }catch(e){} DIRTY=true; } }); return []; }
-    var _xk=inst.prod+'|'+(inst.x||0)+','+(inst.z||0)+','+(inst.rotY||0)+','+(inst.y||0);
+    var _xk=inst.prod+'|'+(inst.x||0)+','+(inst.z||0)+','+(inst.rotY||0)+','+(inst.rotX||0)+','+(inst.rotZ||0)+','+(inst.y||0);
     if(inst._xk===_xk && inst._xf) return inst._xf;   /* cache : seul l'objet déplacé est recalculé */
     var _out=fc.faces.map(xf); inst._xf=_out; inst._xk=_xk; return _out;
   }
@@ -14313,6 +14323,17 @@ function drawGizov(){
       g.beginPath(); g.arc(cp.x,cp.y,prim?5:4,0,6.283); g.fillStyle='#fff'; g.fill(); g.strokeStyle='rgba(255,138,61,0.95)'; g.stroke();
       giz.rx=hp.x; giz.ry=hp.y;
     }
+    /* anneaux de rotation X (rouge) et Z (bleu) — pilotent rotX / rotZ de l'instance */
+    if(cp){ giz.cpx=cp.x; giz.cpy=cp.y;
+      var _arX=(inst.rotX||0)*Math.PI/180, hpX=wglProjPt(vpv,[cx0, yb+rr*Math.cos(_arX), cz0+rr*Math.sin(_arX)]);
+      if(hpX){ g.beginPath(); g.moveTo(cp.x,cp.y); g.lineTo(hpX.x,hpX.y); g.strokeStyle='rgba(255,90,90,0.55)'; g.lineWidth=1.5; g.stroke();
+        g.beginPath(); g.arc(hpX.x,hpX.y,prim?7:5,0,6.283); g.fillStyle=(SCN_ROT&&SCN_ROT.axis==='x')?'#ff5a5a':(prim?'rgba(255,90,90,0.95)':'rgba(255,90,90,0.6)'); g.fill(); g.lineWidth=2; g.strokeStyle='#fff'; g.stroke();
+        giz.rxX=hpX.x; giz.ryX=hpX.y; }
+      var _arZ=(inst.rotZ||0)*Math.PI/180, hpZ=wglProjPt(vpv,[cx0+rr*Math.cos(_arZ), yb+rr*Math.sin(_arZ), cz0]);
+      if(hpZ){ g.beginPath(); g.moveTo(cp.x,cp.y); g.lineTo(hpZ.x,hpZ.y); g.strokeStyle='rgba(90,160,255,0.55)'; g.lineWidth=1.5; g.stroke();
+        g.beginPath(); g.arc(hpZ.x,hpZ.y,prim?7:5,0,6.283); g.fillStyle=(SCN_ROT&&SCN_ROT.axis==='z')?'#5aa0ff':(prim?'rgba(90,160,255,0.95)':'rgba(90,160,255,0.6)'); g.fill(); g.lineWidth=2; g.strokeStyle='#fff'; g.stroke();
+        giz.rxZ=hpZ.x; giz.ryZ=hpZ.y; }
+    }
     /* poignée de hauteur (flèche bleue) */
     var _fpy=scnFootprint(inst), topY=(inst.y||0)/100+(_fpy?_fpy.y1:0.8)+0.02;
     var vB=wglProjPt(vpv,[cx0,topY,cz0]), vT=wglProjPt(vpv,[cx0,topY+0.55,cz0]), vRr=wglProjPt(vpv,[cx0,topY+1.55,cz0]);
@@ -14355,7 +14376,11 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
           SCN_VDRAG={my:e.clientY, ppm:G.ppmY||60, base:scnSel().map(function(i){return {i:i,y:SCENE.instances[i].y||0};})}; GB='v'; drawGizov(); return; }
         if(G.rx!=null && Math.hypot(G.rx-m.x,G.ry-m.y)<14){
           var g0=wglGround(vpv,m.x,m.y), deg0=g0?Math.atan2(-(g0[0]-G.cx),g0[1]-G.cz)*180/Math.PI:0;
-          SCN_ROT={cx:G.cx,cz:G.cz,deg0:deg0, base:scnSel().map(function(i){var it=SCENE.instances[i];return {i:i,rot:it.rotY||0,x:it.x||0,z:it.z||0};})}; GB='r'; drawGizov(); return; }
+          SCN_ROT={axis:'y',cx:G.cx,cz:G.cz,deg0:deg0, base:scnSel().map(function(i){var it=SCENE.instances[i];return {i:i,rot:it.rotY||0,x:it.x||0,z:it.z||0};})}; GB='r'; drawGizov(); return; }
+        if(G.rxX!=null && Math.hypot(G.rxX-m.x,G.ryX-m.y)<14){
+          SCN_ROT={axis:'x',cpx:G.cpx,cpy:G.cpy,ang0:Math.atan2(m.y-G.cpy,m.x-G.cpx), base:scnSel().map(function(i){return {i:i,rx:SCENE.instances[i].rotX||0};})}; GB='r'; drawGizov(); return; }
+        if(G.rxZ!=null && Math.hypot(G.rxZ-m.x,G.ryZ-m.y)<14){
+          SCN_ROT={axis:'z',cpx:G.cpx,cpy:G.cpy,ang0:Math.atan2(m.y-G.cpy,m.x-G.cpx), base:scnSel().map(function(i){return {i:i,rz:SCENE.instances[i].rotZ||0};})}; GB='r'; drawGizov(); return; }
       } }
       var bst=-1,bdd=34*34;
       for(var si=0;si<SCENE.instances.length;si++){ var it=SCENE.instances[si], sp=wglProjPt(vpv,[it.x/100,(it.y/100)||0,it.z/100]); if(sp){ var dd=(sp.x-m.x)*(sp.x-m.x)+(sp.y-m.y)*(sp.y-m.y); if(dd<bdd){bdd=dd;bst=si;} } }
@@ -14378,9 +14403,14 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
     if(GB){ var m=rel(e), vpv=wglVP(); if(!scnSel().length){GB=null;return;}
       if(GB==='v'){ var dyv=(SCN_VDRAG.my-e.clientY)/(SCN_VDRAG.ppm||60), dY=Math.round(dyv*100);
         SCN_VDRAG.base.forEach(function(b){ var it=SCENE.instances[b.i]; if(!it)return; var ny=b.y+dY; if(!e.shiftKey)ny=Math.round(ny/5)*5; it.y=ny; }); }
-      else if(GB==='r'){ var g3=wglGround(vpv,m.x,m.y); if(g3){ var deg=Math.atan2(-(g3[0]-SCN_ROT.cx),g3[1]-SCN_ROT.cz)*180/Math.PI, dd=deg-(SCN_ROT.deg0||0), rad=dd*Math.PI/180, cs=Math.cos(rad), sn=Math.sin(rad), grp=(SCN_ROT.base.length>1), px=SCN_ROT.cx*100, pz=SCN_ROT.cz*100;
-        SCN_ROT.base.forEach(function(b){ var it=SCENE.instances[b.i]; if(!it)return; var nr=b.rot+dd; if(!e.shiftKey)nr=Math.round(nr/5)*5; it.rotY=Math.round((nr+3600)%360);
-          if(grp){ var rx=b.x-px, rz=b.z-pz; it.x=Math.round(px+rx*cs-rz*sn); it.z=Math.round(pz+rx*sn+rz*cs); } }); } }
+      else if(GB==='r'){
+        if(SCN_ROT.axis==='x'||SCN_ROT.axis==='z'){
+          var _ang=Math.atan2(m.y-SCN_ROT.cpy,m.x-SCN_ROT.cpx), _dd=(_ang-SCN_ROT.ang0)*180/Math.PI;
+          SCN_ROT.base.forEach(function(b){ var it=SCENE.instances[b.i]; if(!it)return; var _bk=SCN_ROT.axis==='x'?(b.rx||0):(b.rz||0), _nr=_bk+_dd; if(!e.shiftKey)_nr=Math.round(_nr/5)*5; _nr=Math.round((_nr%360+360)%360); if(SCN_ROT.axis==='x')it.rotX=_nr; else it.rotZ=_nr; });
+        } else { var g3=wglGround(vpv,m.x,m.y); if(g3){ var deg=Math.atan2(-(g3[0]-SCN_ROT.cx),g3[1]-SCN_ROT.cz)*180/Math.PI, dd=deg-(SCN_ROT.deg0||0), rad=dd*Math.PI/180, cs=Math.cos(rad), sn=Math.sin(rad), grp=(SCN_ROT.base.length>1), px=SCN_ROT.cx*100, pz=SCN_ROT.cz*100;
+          SCN_ROT.base.forEach(function(b){ var it=SCENE.instances[b.i]; if(!it)return; var nr=b.rot+dd; if(!e.shiftKey)nr=Math.round(nr/5)*5; it.rotY=Math.round((nr+3600)%360);
+            if(grp){ var rx=b.x-px, rz=b.z-pz; it.x=Math.round(px+rx*cs-rz*sn); it.z=Math.round(pz+rx*sn+rz*cs); } }); } }
+      }
       else if(GB==='d'){ var g2=wglGround(vpv,m.x,m.y); if(g2&&SCN_DRAG.g0){ var dx=Math.round((g2[0]-SCN_DRAG.g0[0])*100), dz=Math.round((g2[1]-SCN_DRAG.g0[1])*100);
         SCN_DRAG.base.forEach(function(b){ var it=SCENE.instances[b.i]; if(!it)return; it.x=b.x+dx; it.z=b.z+dz; }); if(SCN_DRAG.base.length===1 && typeof scnSnapXZ==='function') scnSnapXZ(SCENE.sel); } }
       scnDragUpdate(); e.preventDefault(); return;
@@ -16915,6 +16945,7 @@ function buildToitureUI(){
 var SCN_DROP_BOUND=false, SCN_DRAG_CFG=null, SCN_DRAG_FAB=null, SCN_DRAG=null, SCN_CUR=null, SCN_ROT=null, SCN_GIZ=null, SCN_GIZS=[], SCN_VDRAG=null;
 /* entre en mode Scène (assemblage) par programmation (ex. après un glisser-déposer) */
 function enterSceneMode(){ try{
+  if(typeof MODE!=='undefined' && MODE!=='scene') window._preSceneMode=MODE;
   BRANCH='generiques';   /* la catégorie « scene » vit dans la branche génériques : sans ça, venant d'un produit fabricant, la vue ne bascule pas */
   var tabs=document.querySelectorAll('.tab'); for(var i=0;i<tabs.length;i++) tabs[i].classList.toggle('on', tabs[i].getAttribute('data-branch')==='generiques');
   if(typeof scnResync==='function') scnResync();
@@ -16994,6 +17025,8 @@ function buildSceneUI(){
   var configs=cfgLoad().filter(function(c){ return paramObjFor(c.mode); });
   var wrap=document.createElement('div'); wrap.className='fld';
   wrap.innerHTML='<div class="fh"><span>Scène — assemblage</span></div>'+
+    '<div class="slbl" style="font-size:10px;margin:4px 0 3px;">Scènes enregistrées</div><div id="scnSaved"></div>'+
+    '<button id="scnSave" style="width:100%;margin:2px 0 10px;font-size:11px;padding:6px;">💾 Enregistrer cette scène</button>'+
     '<div style="font-size:10.5px;color:var(--dm);line-height:1.5;margin:2px 0 8px;">Glissez une configuration dans la vue pour l\'ajouter (elle se pose au sol au point visé), ou cliquez « + ». Sélectionnez un élément puis réglez Position / Hauteur / Rotation.</div>'+
     '<div class="slbl" style="font-size:10px;margin:4px 0 3px;">Configurations disponibles</div>'+
     (configs.length?'<div id="scnCfgs" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;"></div>'
@@ -17002,9 +17035,7 @@ function buildSceneUI(){
     '<div id="scnSelBar" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>'+
     '<div id="scnList"></div>'+
     '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Ombres &amp; soleil</div>'+
-    '<div id="scnSunRow"></div>'+
-    '<div class="slbl" style="font-size:10px;margin:10px 0 3px;">Scènes enregistrées</div><div id="scnSaved"></div>'+
-    '<button id="scnSave" style="width:100%;margin-top:6px;font-size:11px;padding:6px;">💾 Enregistrer cette scène</button>';
+    '<div id="scnSunRow"></div>';
   host.appendChild(wrap);
   var cc=document.getElementById('scnCfgs');
   if(cc) configs.forEach(function(cfg){ var b=document.createElement('button'); b.textContent='+ '+cfg.name; b.title='Glisser dans la vue — '+(cfg.label||cfg.mode);
@@ -18139,12 +18170,16 @@ function buildProductMatPanel(host, pid, groups){
   if(ov.tex){
     var sLbl=document.createElement('div'); sLbl.className='slbl'; sLbl.style.marginTop='8px';
     var cur=(PROD_TEXSCALE[pid] && PROD_TEXSCALE[pid][ov.tex])||1;
-    sLbl.innerHTML='<span>Échelle de la texture</span> — '+cur.toFixed(1)+'×'; host.appendChild(sLbl);
-    var rg=document.createElement('input'); rg.type='range'; rg.min='0.2'; rg.max='20'; rg.step='0.1'; rg.value=cur;
+    sLbl.innerHTML='<span>Échelle de la texture</span> — '+cur.toFixed(2)+'×'; host.appendChild(sLbl);
+    var _LMIN=Math.log(0.01), _LMAX=Math.log(4);
+    var rg=document.createElement('input'); rg.type='range'; rg.min='0'; rg.max='1000'; rg.step='1';
+    /* inverse : vers la droite = motif plus GRAND (moins de repetitions par metre) */
+    rg.value=Math.round((_LMAX-Math.log(Math.max(0.01,Math.min(4,cur))))/(_LMAX-_LMIN)*1000);
     rg.oninput=function(){
+      var _v=Math.exp(_LMAX-(+rg.value/1000)*(_LMAX-_LMIN));
       if(!PROD_TEXSCALE[pid]) PROD_TEXSCALE[pid]={};
-      PROD_TEXSCALE[pid][ov.tex]=+rg.value;
-      sLbl.innerHTML='<span>Échelle de la texture</span> — '+(+rg.value).toFixed(1)+'×';
+      PROD_TEXSCALE[pid][ov.tex]=_v;
+      sLbl.innerHTML='<span>Échelle de la texture</span> — '+_v.toFixed(2)+'×';
       texAdjSave(); if(WGL.ready) WGL.render();
     };
     host.appendChild(rg);
@@ -18507,6 +18542,21 @@ function buildCatList(){
         inG.forEach(function(cat){ renderCat(cat, bd); });
       }
     });
+    /* Ma bibliothèque : configs + objets importés, organisable (remplace l'ancienne colonne 💾) */
+    (function(){
+      var col = (CATGRP_OPEN['biblio']!==undefined) ? CATGRP_OPEN['biblio'] : false;
+      var hd=document.createElement('div'); hd.className='grp-hd';
+      var ar=document.createElement('span'); ar.className='grp-ar'; ar.textContent='▸';
+      hd.appendChild(ar); hd.appendChild(document.createTextNode('Ma bibliothèque'));
+      var bd=document.createElement('div'); bd.className='grp-bd';
+      function paint(){ bd.style.display=col?'none':''; hd.classList.toggle('open',!col); }
+      paint();
+      hd.onclick=function(){ col=!col; CATGRP_OPEN['biblio']=col; paint(); };
+      host.appendChild(hd); host.appendChild(bd);
+      var sb=document.createElement('button'); sb.className='save-add'; sb.textContent='＋ Enregistrer la config actuelle'; sb.onclick=cfgAdd; bd.appendChild(sb);
+      var sl=document.createElement('div'); sl.id='saveList'; sl.className='save-list'; bd.appendChild(sl);
+      if(typeof cfgRender==='function'){ try{ cfgRender(); }catch(e){} }
+    })();
     return;
   }
   _cats.forEach(function(cat){ renderCat(cat, host); });
@@ -18662,6 +18712,7 @@ function renderFurnTree(target){
 /* Affiche la catégorie courante : objet réel (paramètres + rendu) ou placeholder */
 function refreshView(){
   DIRTY=true;
+  if(typeof updatePanelTabs==='function') updatePanelTabs();
   var cat=curCat();
   var ready=(cat.status==='ready');
   var isWall=(cat.id==='mur');
@@ -19417,7 +19468,13 @@ function _aiRun(){
     else if(/API key|API_KEY_INVALID|invalid/i.test(msg)) msg='Clé API invalide. Vérifie ta clé Google AI Studio.';
     status.textContent='✗ '+msg; go.disabled=false; });
 }
-(function(){ var b=document.getElementById('exp-airender'); if(b) b.onclick=openAIRender; })();
+/* Le rendu IA (Gemini) est retiré de l'interface : ce bouton lance désormais le
+   RENDU PHOTO (path tracer WebGPU), point d'entrée exposé par bpo-render-hook.js.
+   openAIRender() reste défini mais n'est plus appelé nulle part. */
+(function(){ var b=document.getElementById('exp-photorender'); if(b) b.onclick=function(){
+  if(typeof window.BPO_photoRender==='function') window.BPO_photoRender();
+  else alert('Moteur de rendu non chargé.');
+}; })();
 
 /* ============================================================================
    EXPORT IFC (IFC4, format STEP/SPF) — pour ArchiCAD et logiciels BIM
@@ -19770,8 +19827,9 @@ refreshView();        /* affiche l'objet courant */
   if(t) t.onclick=function(){ document.getElementById('app').classList.toggle('save-open'); };
   if(b) b.onclick=cfgAdd;
   /* onglets du panneau droit : Paramètres / Mise en page */
-  var ptP=document.getElementById('pt-params'), ptM=document.getElementById('pt-mep');
-  if(ptP) ptP.onclick=function(){ setMEP(false); };
+  var ptP=document.getElementById('pt-params'), ptM=document.getElementById('pt-mep'), ptS=document.getElementById('pt-scene');
+  if(ptP) ptP.onclick=function(){ if(typeof MODE!=='undefined' && MODE==='scene'){ var pm=window._preSceneMode; if(pm && typeof selectCat==='function'){ try{ selectCat(pm); if(typeof buildCatList==='function')buildCatList(); if(typeof refreshView==='function')refreshView(); }catch(e){} } } setMEP(false); };
+  if(ptS) ptS.onclick=function(){ if(typeof enterSceneMode==='function') enterSceneMode(); };
   if(ptM) ptM.onclick=function(){ setMEP(true); };
   /* réglages mise en page */
   var fmt=document.getElementById('plotFormat'), ori=document.getElementById('plotOrient');
