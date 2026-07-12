@@ -35,6 +35,46 @@
   }
 
   /* ---- extraction de la scène (triangles + matériaux) ---- */
+  /* Mode du sol du rendu : 0 = aplat (couleur PREFS), 1 = herbe, 2 = béton. */
+  var GROUND_MODE = 1;
+  /* Éclairage intérieur auto (toggle) + lampes manuelles (issues de la scène). */
+  var INTERIOR_ON = false;
+
+  /* Grille de lampes chaudes près des plafonds, dans le volume du bâtiment (bbox).
+     Pos en mètres (repère monde du rendu). Intensité ~ selon la taille de maille. */
+  function autoInteriorLights(bb) {
+    if (!bb) return [];
+    var x0 = bb[0], y0 = bb[1], z0 = bb[2], x1 = bb[3], y1 = bb[4], z1 = bb[5];
+    var w = x1 - x0, h = y1 - y0, d = z1 - z0;
+    if (!(w > 0.2 && h > 0.2 && d > 0.2)) return [];
+    var nx = Math.max(1, Math.min(3, Math.round(w / 4)));
+    var nz = Math.max(1, Math.min(3, Math.round(d / 4)));
+    var ny = Math.max(1, Math.min(2, Math.round(h / 3.2)));
+    var warm = [1.0, 0.86, 0.66], cell = (w / nx) * (d / nz);
+    var inten = Math.max(12, Math.min(90, cell * 3.0));
+    var out = [];
+    for (var iy = 0; iy < ny; iy++) {
+      var fy = y0 + h * (iy + 0.9) / ny;                 // juste sous le plafond de chaque niveau
+      for (var ix = 0; ix < nx; ix++) {
+        for (var iz = 0; iz < nz; iz++) {
+          out.push({ pos: [x0 + w * (ix + 0.5) / nx, fy, z0 + d * (iz + 0.5) / nz], radius: 0.25, color: warm, intensity: inten });
+        }
+      }
+    }
+    return out;
+  }
+  /* Lampes manuelles définies dans la scène de l'app (SCENE.lights, en cm). */
+  function gatherManualLights() {
+    var out = [];
+    try {
+      var arr = (window.SCENE && SCENE.lights) ? SCENE.lights : [];
+      for (var i = 0; i < arr.length; i++) {
+        var L = arr[i]; if (!L || L.on === false) continue;
+        out.push({ pos: [(L.x || 0) / 100, (L.y || 0) / 100, (L.z || 0) / 100], radius: (L.radius || 0.2), color: (L.color || [1.0, 0.86, 0.66]), intensity: (L.intensity == null ? 30 : L.intensity) });
+      }
+    } catch (e) {}
+    return out;
+  }
   function extractScene() {
     var faces = gatherFaces();
     var tris = [], mats = [], matMap = {};
@@ -72,7 +112,7 @@
     var gy = 0;
     var gCol = hexOr(window.prefHex01, (window.PREFS && PREFS.ground), null);
     var gAlb = gCol ? [srgb2lin(gCol[0]), srgb2lin(gCol[1]), srgb2lin(gCol[2])] : [0.10, 0.14, 0.07];
-    var gm = mats.length; mats.push({ albedo: gAlb, metal: 0, rough: 0.92, alpha: 1, ior: 1.5, grass: 1, emissive: [0, 0, 0] });
+    var gm = mats.length; mats.push({ albedo: gAlb, metal: 0, rough: 0.92, alpha: 1, ior: 1.5, grass: GROUND_MODE, emissive: [0, 0, 0], _ground: true });
     /* Sol assez grand pour que son bord tombe SOUS l'horizon visible : sinon on
        voit une bande de ciel « bas » entre la fin du sol et l'horizon. 8 km
        suffisent pour toute caméra d'architecture, sans gêner le BVH (f32). */
@@ -230,11 +270,39 @@
       env.sunColor = sunTint(el);
       renderer.setEnv(env);                 // recharge les uniformes + reset
     }
-    panel.appendChild(mkSlider('☀', 0, 6, 0.1, env.sunIntensity, function (v) { env.sunIntensity = v; renderer.setEnv(env); }));
-    panel.appendChild(mkSlider('⟳', 0, 360, 1, az, function (v) { az = v; applySun(); }));      // azimut
-    panel.appendChild(mkSlider('↕', 4, 85, 1, el, function (v) { el = v; applySun(); }));        // hauteur
+    var sSun = mkSlider('☀', 0, 6, 0.1, env.sunIntensity, function (v) { env.sunIntensity = v; renderer.setEnv(env); });
+    var sEl  = mkSlider('↕', 4, 85, 1, el, function (v) { el = v; applySun(); });                // hauteur
+    var sAmb = mkSlider(tr('Amb'), 0, 1, 0.05, env.warm, function (v) { env.warm = v; });
+    /* Sélecteur de SOL : change le mode du matériau sol et recharge la scène
+       (rebuild BVH + reset accumulateur). herbe / béton / aplat. */
+    var groundMat = null; for (var _gi = 0; _gi < sc.materials.length; _gi++) { if (sc.materials[_gi]._ground) groundMat = sc.materials[_gi]; }
+    panel.appendChild(mkGroundSelect(function (mode) {
+      GROUND_MODE = mode;
+      if (groundMat) { groundMat.grass = mode; renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
+    }));
+    /* Lumières : éclairage intérieur auto (toggle) + lampes manuelles de la scène. */
+    function applyLights() { renderer.setLights((INTERIOR_ON ? autoInteriorLights(sc.bb) : []).concat(gatherManualLights())); }
+    applyLights();
+    var bInt = mkBtn('Intérieur'); bInt.title = 'Éclairage intérieur automatique (lampes chaudes au plafond)';
+    bInt.onmouseenter = null; bInt.onmouseleave = null;
+    function updIntBtn() { bInt.style.background = INTERIOR_ON ? 'rgba(255,138,61,.95)' : '#242a33'; bInt.style.color = INTERIOR_ON ? '#151515' : '#e8e9ec'; bInt.style.borderColor = INTERIOR_ON ? '#ff8a3d' : '#3a4150'; }
+    updIntBtn();
+    bInt.onclick = function () { INTERIOR_ON = !INTERIOR_ON; updIntBtn(); applyLights(); };
+    panel.appendChild(bInt);
+    /* Sélecteur d'AMBIANCE DE CIEL : applique un preset (dégradé + soleil) et
+       resynchronise les curseurs soleil/hauteur/ambiance. */
+    panel.appendChild(mkSkySelect(function (p) {
+      env.skyTop = p.top.slice(); env.skyHor = p.hor.slice(); env.skyGround = p.gnd.slice(); env.skyInt = p.skyInt;
+      env.sunIntensity = p.sun; env.sunAngle = p.ang; env.warm = p.warm; el = p.el;
+      env.sunColor = sunTint(el); env.sunDir = dirFromAzEl(az, el);
+      renderer.setEnv(env);
+      setSliderVal(sSun, p.sun); setSliderVal(sEl, p.el); setSliderVal(sAmb, p.warm);
+    }));
+    panel.appendChild(sSun);
+    panel.appendChild(mkSlider('⟳', 0, 360, 1, az, function (v) { az = v; applySun(); }));        // azimut
+    panel.appendChild(sEl);
     panel.appendChild(mkSlider(tr('Expo'), 0.1, 2, 0.05, env.expo, function (v) { env.expo = v; }));
-    panel.appendChild(mkSlider(tr('Amb'), 0, 1, 0.05, env.warm, function (v) { env.warm = v; }));
+    panel.appendChild(sAmb);
     renderer.onProgress(function (n) { lbl.textContent = tr('Rendu photo') + ' — ' + n + ' ' + tr('échantillons'); });
     bPng.onclick = function () { var a = document.createElement('a'); a.download = 'BPO-rendu.png'; a.href = renderer.toPNG(); a.click(); };
     bClose.onclick = close;
@@ -269,6 +337,45 @@
     s.oninput = function () { t.textContent = (+s.value).toFixed(2); fn(+s.value); };
     w.appendChild(document.createTextNode(name)); w.appendChild(s); w.appendChild(t); return w;
   }
+  /* recale la valeur affichée d'un curseur (sans déclencher son oninput) */
+  function setSliderVal(w, v) { if (!w) return; var inp = w.querySelector('input'), sp = w.querySelector('span'); if (inp) inp.value = v; if (sp) sp.textContent = (+v).toFixed(2); }
+
+  /* Ambiances de ciel : chaque preset pilote le dégradé (zénith/horizon/sol),
+     l'intensité du ciel, et le soleil (intensité, taille angulaire, hauteur).
+     top/hor/gnd en linéaire 0..1 ; el = hauteur du soleil en degrés. */
+  var SKY_PRESETS = [
+    { id: 'clair',      label: 'Ciel clair',        top: [0.34, 0.55, 0.85], hor: [0.80, 0.87, 0.95], gnd: [0.42, 0.44, 0.42], skyInt: 0.60, sun: 3.6, ang: 0.025, el: 34, warm: 0.50 },
+    { id: 'beau',       label: 'Grand beau',        top: [0.20, 0.45, 0.83], hor: [0.72, 0.83, 0.94], gnd: [0.40, 0.43, 0.42], skyInt: 0.64, sun: 4.4, ang: 0.020, el: 62, warm: 0.45 },
+    { id: 'couvert',    label: 'Couvert',           top: [0.70, 0.72, 0.76], hor: [0.80, 0.82, 0.85], gnd: [0.55, 0.56, 0.57], skyInt: 0.95, sun: 0.7, ang: 0.120, el: 55, warm: 0.60 },
+    { id: 'brume',      label: 'Brumeux',           top: [0.62, 0.66, 0.72], hor: [0.86, 0.88, 0.90], gnd: [0.55, 0.56, 0.56], skyInt: 0.90, sun: 1.4, ang: 0.070, el: 40, warm: 0.55 },
+    { id: 'doree',      label: 'Heure dorée',       top: [0.34, 0.42, 0.62], hor: [0.98, 0.74, 0.48], gnd: [0.50, 0.40, 0.30], skyInt: 0.60, sun: 3.2, ang: 0.030, el: 9,  warm: 0.62 },
+    { id: 'couchant',   label: 'Coucher de soleil', top: [0.18, 0.22, 0.42], hor: [1.00, 0.54, 0.30], gnd: [0.45, 0.32, 0.26], skyInt: 0.55, sun: 2.6, ang: 0.035, el: 3,  warm: 0.70 },
+    { id: 'crepuscule', label: 'Crépuscule',        top: [0.05, 0.08, 0.19], hor: [0.19, 0.25, 0.44], gnd: [0.12, 0.14, 0.20], skyInt: 0.50, sun: 0.5, ang: 0.050, el: 2,  warm: 0.55 },
+    { id: 'studio',     label: 'Studio neutre',     top: [0.55, 0.56, 0.58], hor: [0.62, 0.63, 0.65], gnd: [0.40, 0.40, 0.42], skyInt: 0.85, sun: 1.6, ang: 0.060, el: 48, warm: 0.50 }
+  ];
+  function mkSkySelect(fn) {
+    var w = document.createElement('label');
+    w.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;';
+    var s = document.createElement('select');
+    s.style.cssText = 'font:11px system-ui;background:#242a33;color:#e8e9ec;border:1px solid #3a4150;border-radius:6px;padding:3px 6px;cursor:pointer;';
+    SKY_PRESETS.forEach(function (p, i) { var o = document.createElement('option'); o.value = i; o.textContent = p.label; s.appendChild(o); });
+    s.onmouseenter = function () { s.style.borderColor = '#ff8a3d'; };
+    s.onmouseleave = function () { s.style.borderColor = '#3a4150'; };
+    s.onchange = function () { fn(SKY_PRESETS[+s.value]); };
+    w.appendChild(document.createTextNode('Ciel')); w.appendChild(s); return w;
+  }
+  /* Sélecteur de SOL : herbe / béton / aplat (procéduraux dans le path tracer). */
+  function mkGroundSelect(fn) {
+    var w = document.createElement('label');
+    w.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;';
+    var s = document.createElement('select');
+    s.style.cssText = 'font:11px system-ui;background:#242a33;color:#e8e9ec;border:1px solid #3a4150;border-radius:6px;padding:3px 6px;cursor:pointer;';
+    [['1', 'Herbe'], ['2', 'Béton'], ['0', 'Uni']].forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; s.appendChild(op); });
+    s.onmouseenter = function () { s.style.borderColor = '#ff8a3d'; };
+    s.onmouseleave = function () { s.style.borderColor = '#3a4150'; };
+    s.onchange = function () { fn(+s.value); };
+    w.appendChild(document.createTextNode('Sol')); w.appendChild(s); return w;
+  }
 
   function addButton() {
     if (document.getElementById('bpo-pt-btn')) return;
@@ -287,6 +394,13 @@
       'border-radius:8px;border:1px solid #ff8a3d;background:rgba(255,138,61,.95);color:#151515;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.4);';
     b.onclick = launch;
     root.appendChild(b);
+    /* petit libellé « beta » juste sous le bouton, aligné à droite */
+    var bt = document.createElement('div'); bt.id = 'bpo-pt-beta'; bt.textContent = 'beta';
+    var bpos = vp ? 'position:absolute;top:35px;right:10px;z-index:8;'
+                  : 'position:fixed;top:35px;right:10px;z-index:99998;';
+    bt.style.cssText = bpos + 'font:600 9px system-ui;letter-spacing:.5px;text-transform:uppercase;' +
+      'color:#ff8a3d;opacity:.85;pointer-events:none;text-align:right;';
+    root.appendChild(bt);
   }
 
   function ensure() { try { addButton(); } catch (e) {} }
