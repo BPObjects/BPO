@@ -13557,6 +13557,12 @@ function scnInstSplitGL(inst){
               colT:(TP.length?{pos:buf(TP),nrm:buf(TN),col:buf(TC),count:TP.length/3}:null), tex:texB }; inst._sglsig=sig;
   return inst._sgl;
 }
+/* Vrai quand build() est appelé UNIQUEMENT pour extraire les faces d'une instance
+   (via instanceFaces) : dans ce cas build() ne doit PAS pousser sa géométrie au GPU
+   ni rendre (genericPostBuild), sinon chaque instance déclenche un WGL.render()
+   parasite en pleine construction -> état WebGL corrompu (drawArrays: no buffer
+   bound, uniform location not from program) et viewport noir. */
+var INST_FACEONLY=false;
 function instanceFaces(inst, _depth){
   _depth=_depth||0;
   var _M=_rot3(((inst.rotX||0))*Math.PI/180, ((inst.rotY||0))*Math.PI/180, ((inst.rotZ||0))*Math.PI/180);
@@ -13583,7 +13589,7 @@ function instanceFaces(inst, _depth){
   for(var kp in inst.params){ var v=inst.params[kp]; pobj[kp]=(v&&typeof v==='object')?JSON.parse(JSON.stringify(v)):v; }
   var sMODE=MODE, sFC=FC, sPR=PRIMS, sPOLY=CUR_POLY, sPT=POLY_TARGET, sDIMS=DIMS;
   var sSITE=(typeof SITE!=='undefined')?SITE.on:undefined;   /* protège l'état terrain/ciel */
-  MODE=mode; try{ build(); }catch(e){}
+  MODE=mode; var _pfo=INST_FACEONLY; INST_FACEONLY=true; try{ build(); }catch(e){} INST_FACEONLY=_pfo;
   var faces=FC;
   MODE=sMODE; FC=sFC; PRIMS=sPR; CUR_POLY=sPOLY; POLY_TARGET=sPT; DIMS=sDIMS;   /* restaure l'état courant */
   if(typeof SITE!=='undefined' && sSITE!==undefined) SITE.on=sSITE;
@@ -13769,7 +13775,7 @@ function build(){
   if(typeof SUN!=='undefined' && SUN.on) addShadows();
   CAM.ty = (r && r.cy!==undefined) ? r.cy : r.h/2;   /* recentre la visée (cy si l'objet déborde sous Y=0) */
   buildEdges();     /* prépare les arêtes (pour le mode lignes cachées) */
-  if(MODE!=='quadripod') genericPostBuild();   /* aiguillage moteur (tous objets) */
+  if(MODE!=='quadripod' && !INST_FACEONLY) genericPostBuild();   /* aiguillage moteur (tous objets) — pas pendant l'extraction de faces d'instances */
   DIRTY=true;
   return r;
 }
