@@ -614,7 +614,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script src="data/textured-objects.js?v=20260710b"></script>
 <script src="bpo-raytrace.js?v=20260712h"></script>
 <script src="bpo-render-hook.js?v=20260712o"></script>
-<script src="bpo-import.js?v=20260712a"></script>
+<script src="bpo-import.js?v=20260712b"></script>
+<script src="bpo-terrain.js?v=20260712e"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
 /* WEBGL_OBJECTS -> data/ */
@@ -1133,7 +1134,11 @@ WGL.renderT=function(){
   if(!M||!P) return;
   var tx=cam.tx||0,tz=cam.tz||0,ex=tx+cam.r*Math.sin(cam.ph)*Math.sin(cam.th),ey=cam.ty+cam.r*Math.cos(cam.ph),ez=tz+cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
   var mv=WGL._look([ex,ey,ez],[tx,cam.ty,tz],[0,1,0]);
-  var prj=WGL._persp(0.95,cv.width/cv.height,0.02,100); var mvp=WGL._mul(prj,mv);
+  /* Near/far ADAPTATIFS à la distance caméra : sinon un grand objet importé
+     (ex. terrain de 800 m) passe au-delà du far plane fixe (100 m) et disparaît
+     -> viewer noir. Le near suit aussi pour garder la précision du depth buffer. */
+  var _far=Math.max(100, cam.r*4+60), _near=Math.max(0.02, cam.r*0.002);
+  var prj=WGL._persp(0.95,cv.width/cv.height,_near,_far); var mvp=WGL._mul(prj,mv);
   var e=WGL.ENVS[WGL.env];
   gl.clearColor(0.082,0.09,0.106,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST);
@@ -3159,7 +3164,7 @@ var FINISH = {
   hbeton:   [165, 165, 160],  /* hangar : fondations / parpaing */
   sol:      [235, 232, 224],  /* dalle : sol fini (dallage blanc cassé) */
   fauxplaf: [238, 238, 236],   /* dalle : faux plafond BA13 */
-  imdalle:[176,176,172], impoteau:[164,164,162], impoutre:[150,150,148], imvoile:[158,158,156], imcloison:[236,236,232],
+  imdalle:[176,176,172], impoteau:[164,164,162], impoutre:[150,150,148], imvoile:[158,158,156], imcloison:[236,236,232], terrain:[150,160,120],
   tcadre:[64,67,71], touvrant:[64,67,71], tpoignee:[120,124,130], vcadre:[210,200,180], vouvrant:[210,200,180],
   kcaisson:[232,231,227], kfacade:[244,244,240], kplan:[58,60,64], kmetal:[176,180,186],
   /* --- objets génériques : une finition par élément, cf. FINISH_ON --- */
@@ -3217,7 +3222,7 @@ var FINISH_TEX = {
   pstruct:null,                    /* structure : parpaing / béton banché (posé selon le type) */
   rampsurf:null, rampstruct:null,  /* rampe PMR */
   pmargelle:null, pplage:null, vstruct:null, vsoub:null, vsoubExt:null, vsoubInt:null, chab:null,
-  imdalle:null, impoteau:null, impoutre:null, imvoile:null, imcloison:null, chtub:null,
+  imdalle:null, impoteau:null, impoutre:null, imvoile:null, imcloison:null, terrain:null, chtub:null,
   tcadre:null, touvrant:null, tpoignee:null, vcadre:null, vouvrant:null,
   corps:null, etagere:null, porte:null, forme:null, objet:null, bati:null, panneau:null, poignee:null, fcadre:null, fouvrant:null, fpoignee:null, cwframe:null, cwspandrel:null, cwvent:null, fstruct:null, fgarn:null, hossature:null, hbardage:null, hcorner:null, hbeton:null, sol:'dallage_blanc', fauxplaf:null,
   kcaisson:null, kfacade:null, kplan:null, kmetal:null,
@@ -3375,6 +3380,9 @@ var FINISH_ELEMS_IMMEUBLE = [
   {id:'imvoile',  l:'Voiles'},
   {id:'imcloison',l:'Cloisons'},
   {id:'vitrage',  l:'Vitrage'}
+];
+var FINISH_ELEMS_TERRAIN = [
+  {id:'terrain', l:'Terrain'}
 ];
 var FINISH_ELEMS_TECHNAL = [
   {id:'tcadre',   l:'Dormant'},
@@ -4271,6 +4279,7 @@ var CATALOG = {
       {id:'hangar',     label:'Hangar métallique', status:'ready', grp:'batiment', icon:'🏭'},
       {id:'piscine',    label:'Piscine',          status:'ready', grp:'batiment', icon:'🏊'},
       {id:'veranda',    label:'Véranda',          status:'ready', grp:'batiment', icon:'🏡'},
+      {id:'terrain',    label:'Terrain (DXF)',    status:'ready', grp:'batiment', icon:'⛰️'},
       /* --- ÉLÉMENTS DE CONSTRUCTION --- */
       {id:'mur',        label:'Mur',              status:'ready', grp:'construction', icon:'🧱'},
       {id:'poteau',     label:'Poteau',           status:'ready', grp:'construction', icon:'🏛️'},
@@ -4288,11 +4297,11 @@ var CATALOG = {
       /* VS15 : présentation TEXTE, sinon le navigateur rend l'équerre en emoji coloré. */
       {id:'ferme',      label:'Ferme',            status:'ready', grp:'construction', icon:'📐︎'},
       {id:'forme',      label:'Forme',            status:'ready', grp:'construction', icon:'🔷'},
-      {id:'route',      label:'Route / chaussée', status:'ready', grp:'construction', icon:'🛣︎'},
+      {id:'route',      label:'Route / chaussée', status:'ready', grp:'batiment', icon:'🛣︎'},
       /* 🅿 en présentation TEXTE (VS15) : sinon le navigateur le rend en emoji bleu,
          seul pictogramme coloré de toute l'arborescence. */
-      {id:'parking',    label:'Parking',          status:'ready', grp:'construction', icon:'🅿︎'},
-      {id:'ombriere',   label:'Ombrière PV',      status:'ready', grp:'construction', icon:'☀︎'},
+      {id:'parking',    label:'Parking',          status:'ready', grp:'batiment', icon:'🅿︎'},
+      {id:'ombriere',   label:'Ombrière PV',      status:'ready', grp:'batiment', icon:'☀︎'},
       {id:'store',      label:'Store banne',      status:'ready', grp:'construction', icon:'⛱︎'},
       /* --- MOBILIER / AGENCEMENT --- */
       {id:'objets',     label:'Objets',           status:'ready', grp:'mobilier', icon:'🪑'},
@@ -4360,6 +4369,7 @@ function selectCat(catId){
   else if(cat.id==='dalle'){ MODE='dalle'; }
   else if(cat.id==='piscine'){ MODE='piscine'; }
   else if(cat.id==='veranda'){ MODE='veranda'; }
+  else if(cat.id==='terrain'){ MODE='terrain'; }
   else if(cat.id==='cheminee'){ MODE='cheminee'; }
   else if(cat.id==='immeuble'){ MODE='immeuble'; }
   else if(cat.id==='poteau'){ MODE='poteau'; }
@@ -4759,7 +4769,7 @@ function _fillMenu(m, items){
 }
 /* ---------- Annuler / Refaire (historique multi-niveaux) ---------- */
 var UNDO_HIST=[], REDO_HIST=[], _undoBase=null, _undoMode=null, _undoApplying=false, _undoTimer=null, UNDO_MAX=80;
-function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,parking:PPARK,ombriere:POMB,store:PSTORE,mosquito:PMOSQ,escalier:PE,rampe:PRAMPE,ascenseur:PASC,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE}[mode]||null; }
+function paramObjFor(mode){ return {mur:PM,dalle:PD,piscine:PPISCINE,veranda:PVERANDA,cheminee:PCHEM,immeuble:PIM,poteau:PP,poutre:PB,gardecorps:PG,porte:PPORTE,fenetre:PFEN,technal:PTECH,velux:PVELUX,flos:PFLOS,murrideau:PMUR,hangar:PHANGAR,forme:PF,route:PROUTE,parking:PPARK,ombriere:POMB,store:PSTORE,mosquito:PMOSQ,escalier:PE,rampe:PRAMPE,ascenseur:PASC,ferme:PFERME,toiture:PTOIT,furn:(typeof FURN!=='undefined'?FURN.p:null),meuble:P,cuisine:PCUISINE,terrain:(typeof BPO_terrain!=='undefined'?BPO_terrain.PTERR:null)}[mode]||null; }
 /* ---------- Réinitialisation des paramètres (bouton en tête de panneau) ----------
    On mémorise, au PREMIER affichage de chaque outil (état d'usine), un instantané
    du jeu de paramètres. Le bouton « Réinitialiser » y revient. Pour le mobilier,
@@ -13837,6 +13847,7 @@ function build(){
   else if(MODE==='dalle'){ r=buildDalle(); }
   else if(MODE==='piscine'){ r=buildPiscine(); }
   else if(MODE==='veranda'){ r=buildVeranda(); }
+  else if(MODE==='terrain'){ r=(window.BPO_terrain?BPO_terrain.buildFC():(DIMS={w:1,h:0.1,d:1})); }
   else if(MODE==='cheminee'){ r=buildCheminee(); }
   else if(MODE==='immeuble'){ r=buildImmeuble(); }
   else if(MODE==='poteau'){ r=buildPoteau(); }
@@ -18116,6 +18127,7 @@ function finishKey(){
 function finishElemsFor(){
   switch(MODE){
     case 'immeuble':  return FINISH_ELEMS_IMMEUBLE;
+    case 'terrain':   return FINISH_ELEMS_TERRAIN;
     case 'meuble':    return FINISH_ELEMS_MEUBLE;
     case 'porte':     return FINISH_ELEMS_PORTE;
     case 'fenetre':   return FINISH_ELEMS_FENETRE;
@@ -18842,7 +18854,7 @@ function buildCatList(){
   var _cats=CATALOG[BRANCH].cats;
   /* onglet Génériques : grands ensembles repliables — même mécanique que le panneau de droite */
   if(BRANCH==='generiques' && _cats.some(function(c){return c.grp;})){
-    var GDEF={ batiment:'Bâtiment', construction:'Éléments de construction', mobilier:'Mobilier', biblio:'Ma bibliothèque' };
+    var GDEF={ batiment:'Bâtiment - Site', construction:'Éléments de construction', mobilier:'Mobilier', biblio:'Ma bibliothèque' };
     function renderGroup(gid){
       var label=GDEF[gid]; if(!label) return;
       var inG=(gid==='biblio')?null:_cats.filter(function(c){return (c.grp||'construction')===gid;});
@@ -19097,6 +19109,7 @@ function refreshView(){
       else if(cat.id==='velux'){ buildVeluxUI(); }
       else if(cat.id==='flos'){ buildFlosUI(); }
       else if(cat.id==='murrideau'){ buildMurRideauUI(); }
+      else if(cat.id==='terrain'){ if(window.BPO_terrain) BPO_terrain.buildUI(document.getElementById('params')); }
       else if(cat.id==='objets'){ buildFurnUI(); }
       else if(cat.id==='cuisine'){ buildCuisineUI(); }
       else if(cat.id==='hangar'){ buildHangarUI(); }

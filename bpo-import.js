@@ -569,6 +569,22 @@
     });
   }
 
+  /* Fige un maillage construit ailleurs (ex. terrain MNT) en OBJET IMPORTÉ :
+     mêmes stockage/rendu/scène/export que les imports de fichiers.
+       pos    : Float32Array (x,y,z...) déjà en Y-up, échelle mètres
+       idx    : Uint32Array (triangles)
+       groups : [{start,count,col:[r,g,b]|null,tex:id|null,name}]  (couleurs par groupe)
+     Renvoie une Promise -> pid. */
+  function bake(name, pos, idx, groups) {
+    var geo = {
+      pos: (pos instanceof Float32Array) ? pos : Float32Array.from(pos),
+      idx: (idx instanceof Uint32Array) ? idx : Uint32Array.from(idx),
+      groups: (groups && groups.length) ? groups : [{ start: 0, count: (idx.length), col: null, tex: null, name: 'Terrain' }]
+    };
+    core.ensureNormals(geo);
+    return addImport(name || 'Terrain', geo);
+  }
+
   /* transfo absolue depuis les champs numeriques */
   function setTransform(cfg, xf) {
     var pid = cfg && cfg.prod, R = IMP_REC[pid];
@@ -863,10 +879,10 @@
   function installHooks() {
     if (typeof glob.scnAddInstance === 'function' && !glob.scnAddInstance._bpoImp) {
       var _ai = glob.scnAddInstance;
-      glob.scnAddInstance = function (cfg, x, z) {
+      glob.scnAddInstance = function (cfg, x, z, sy) {
         if (cfg && cfg.prod && glob.TEX_OBJECTS && glob.TEX_OBJECTS[cfg.prod]) {
           if (glob.MODE !== 'scene' && typeof glob.enterSceneMode === 'function') glob.enterSceneMode();
-          return glob.scnAddFab(cfg.prod, x, z);
+          return glob.scnAddFab(cfg.prod, x, z, sy);   /* forwarde la hauteur de surface (drop sous curseur) */
         }
         return _ai.apply(this, arguments);
       };
@@ -1027,7 +1043,7 @@
     }).catch(function (e) { console.warn('BPO import: lecture du stock', e); });
   }
 
-  glob.BPO_import = { _core: core, openDialog: openDialog, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, _boot: boot, _installHooks: installHooks };
+  glob.BPO_import = { _core: core, openDialog: openDialog, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, _boot: boot, _installHooks: installHooks };
 
   if (doc && doc.readyState !== 'loading') setTimeout(boot, 0);
   else if (doc) doc.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 0); });
