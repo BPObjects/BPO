@@ -401,14 +401,14 @@
     b.title = tr('Rendu photoréaliste (path tracing)');
     var pos = vp ? 'position:absolute;top:8px;right:8px;z-index:8;'
                  : 'position:fixed;top:8px;right:8px;z-index:99998;';
-    b.style.cssText = pos + 'font:600 12px system-ui;padding:6px 11px;' +
-      'border-radius:8px;border:1px solid #ff8a3d;background:rgba(255,138,61,.95);color:#151515;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.4);';
+    b.style.cssText = pos + 'height:var(--tbH,30px);font:600 11px system-ui;padding:0 11px;display:inline-flex;align-items:center;' +
+      'border-radius:6px;border:1px solid #ff8a3d;background:rgba(255,138,61,.95);color:#151515;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.4);';
     b.onclick = launch;
     root.appendChild(b);
     /* petit libellé « beta » juste sous le bouton, aligné à droite */
     var bt = document.createElement('div'); bt.id = 'bpo-pt-beta'; bt.textContent = 'beta';
-    var bpos = vp ? 'position:absolute;top:35px;right:10px;z-index:8;'
-                  : 'position:fixed;top:35px;right:10px;z-index:99998;';
+    var bpos = vp ? 'position:absolute;top:40px;right:10px;z-index:8;'
+                  : 'position:fixed;top:40px;right:10px;z-index:99998;';
     bt.style.cssText = bpos + 'font:600 9px system-ui;letter-spacing:.5px;text-transform:uppercase;' +
       'color:#ff8a3d;opacity:.85;pointer-events:none;text-align:right;';
     root.appendChild(bt);

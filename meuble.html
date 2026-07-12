@@ -170,8 +170,8 @@ header{display:flex;align-items:center;justify-content:space-between;
 .dot{width:22px;height:22px;display:block;flex:none;border-radius:0;background:none;}
 .copyr{font-weight:400;font-size:9px;color:var(--am);line-height:1.1;white-space:nowrap;}
 #brandCol{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1.15;}
-#acctLink{color:var(--cy);font-size:11px;text-decoration:none;white-space:nowrap;}
-#acctLink:hover{text-decoration:underline;}
+#acctLink{color:var(--cy);font-size:11px;text-decoration:none;white-space:nowrap;background:var(--p2);border:1px solid var(--ln);border-radius:6px;padding:4px 9px;cursor:pointer;outline:none;display:inline-flex;align-items:center;line-height:1;}
+#acctLink:hover{border-color:var(--cy);color:var(--cy);text-decoration:none;}
 
 /* Viewport 3D */
 #vp{position:relative;overflow:hidden;}
@@ -5011,7 +5011,7 @@ function cfgApply(cfg){
 function cfgUpdate(id){
   var o=undoParams(); if(!o){ alert("Rien à mettre à jour ici."); return; }
   var list=cfgLoad(), it=list.filter(function(c){return c.id===id;})[0]; if(!it) return;
-  if(it.mode!==MODE && !confirm("La config « "+it.label+" » est d'un autre type que l'objet courant. Remplacer quand même ?")) return;
+  if(it.mode!==MODE && !confirm(trI18N('La config')+" « "+it.label+" » "+trI18N("est d'un autre type que l'objet courant. Remplacer quand même ?"))) return;
   it.mode=MODE; it.label=(curCat().label||MODE); it.params=JSON.parse(JSON.stringify(o)); it.date=new Date().toLocaleDateString('fr-FR');
   cfgStore(list); cfgRender();
   /* MAJ automatique des instances qui référencent cette config (scène en cours + scènes enregistrées) */
@@ -5022,7 +5022,7 @@ function cfgUpdate(id){
 function cfgRename(id){ var list=cfgLoad(), it=list.filter(function(c){return c.id===id;})[0]; if(!it) return;
   var nn=prompt('Renommer :', it.name); if(nn===null) return; it.name=(nn.trim()||it.name); cfgStore(list); cfgRender(); }
 function cfgDelete(id){ var list=cfgLoad(), it=list.filter(function(c){return c.id===id;})[0]; if(!it) return;
-  if(!confirm('Supprimer « '+it.name+' » ?')) return; cfgStore(list.filter(function(c){return c.id!==id;})); cfgRender(); }
+  if(!confirm(trI18N('Supprimer')+' « '+it.name+' » ?')) return; cfgStore(list.filter(function(c){return c.id!==id;})); cfgRender(); }
 var CFG_FOLD_KEY='BPO_CFG_FOLDERS_v1', SCN_FOLD_KEY='BPO_SCN_FOLDERS_v1';
 function cfgFoldLoad(){ try{ return JSON.parse(localStorage.getItem(CFG_FOLD_KEY))||[]; }catch(e){ return []; } }
 function cfgFoldStore(l){ try{ localStorage.setItem(CFG_FOLD_KEY, JSON.stringify(l)); }catch(e){} }
@@ -5062,7 +5062,7 @@ function _folderTree(opts){
       hdr.appendChild(tg); hdr.appendChild(nm);
       hdr.appendChild(fb('＋','Nouveau sous-dossier',function(){ newFolder(f.id); }));
       hdr.appendChild(fb('✎','Renommer',function(){ var nn=prompt('Renommer le dossier :',f.name); if(nn===null)return; f.name=(nn.trim()||f.name); opts.saveFolders(folders); opts.rerender(); }));
-      hdr.appendChild(fb('✕','Supprimer (le contenu remonte)',function(){ if(!confirm('Supprimer le dossier « '+f.name+' » ? Son contenu remonte au niveau supérieur.'))return; var par=f.parent||null; items.forEach(function(it){ if((it.parent||null)===f.id) it.parent=par; }); folders.forEach(function(x){ if((x.parent||null)===f.id) x.parent=par; }); var i=folders.indexOf(f); if(i>=0)folders.splice(i,1); opts.saveItems(items); opts.saveFolders(folders); opts.rerender(); }));
+      hdr.appendChild(fb('✕','Supprimer (le contenu remonte)',function(){ if(!confirm(trI18N('Supprimer le dossier')+' « '+f.name+' » ? '+trI18N('Son contenu remonte au niveau supérieur.')))return; var par=f.parent||null; items.forEach(function(it){ if((it.parent||null)===f.id) it.parent=par; }); folders.forEach(function(x){ if((x.parent||null)===f.id) x.parent=par; }); var i=folders.indexOf(f); if(i>=0)folders.splice(i,1); opts.saveItems(items); opts.saveFolders(folders); opts.rerender(); }));
       makeDrop(hdr, f.id);
       frag.appendChild(hdr);
       if(f.open) frag.appendChild(renderLevel(f.id, depth+1));
@@ -7217,7 +7217,7 @@ function applyUnderlay(){ if(!UNDERLAY.raw){ UNDERLAY.polys=[]; return; }
 function underlayImport(){ var inp=document.createElement('input'); inp.type='file'; inp.accept='.dxf,.dwg,.svg,.txt';
   inp.onchange=function(){ var f=inp.files&&inp.files[0]; if(!f)return; var low=f.name.toLowerCase();
     if(low.slice(-4)==='.dwg'){ var rb=new FileReader(); rb.onload=function(){ var u=new Uint8Array(rb.result), hd=''; for(var i=0;i<6&&i<u.length;i++)hd+=String.fromCharCode(u[i]);
-        if(hd.slice(0,2)==='AC'){ alert('Fichier DWG binaire détecté (version '+hd+').\n\nLe format DWG est propriétaire et ne peut pas être décodé de façon fiable dans le navigateur. Exporte-le en DXF depuis ton logiciel (commande DXFOUT, ou « Enregistrer sous → DXF ») puis réimporte le .dxf : les polylignes seront lues sans problème.'); }
+        if(hd.slice(0,2)==='AC'){ alert(trI18N('Fichier DWG binaire détecté')+' (version '+hd+').\n\n'+trI18N('Le format DWG est propriétaire et ne peut pas être décodé de façon fiable dans le navigateur. Exporte-le en DXF depuis ton logiciel (commande DXFOUT, ou « Enregistrer sous → DXF ») puis réimporte le .dxf : les polylignes seront lues sans problème.')); }
         else { try{ underlayLoadText(new TextDecoder().decode(u), f.name, low); }catch(e){ alert('Fichier illisible.'); } } };
       rb.readAsArrayBuffer(f); return; }
     var rd=new FileReader(); rd.onload=function(){ underlayLoadText(rd.result, f.name, low); }; rd.readAsText(f); };
@@ -17582,7 +17582,7 @@ function buildSceneUI(){
   buildSceneLightsUI();
   var _alb=document.getElementById('scnAddLight'); if(_alb) _alb.onclick=function(){ scnAddLight(); };
   var cc=document.getElementById('scnCfgs');
-  if(cc) configs.forEach(function(cfg){ var b=document.createElement('button'); b.textContent='+ '+cfg.name; b.title='Glisser dans la vue — '+(cfg.label||cfg.mode);
+  if(cc) configs.forEach(function(cfg){ var b=document.createElement('button'); b.textContent='+ '+cfg.name; b.title=trI18N('Glisser dans la vue —')+' '+trI18N(cfg.label||cfg.mode);
     b.draggable=true; b.style.cssText='font-size:10px;padding:3px 7px;cursor:grab;background:var(--p2);border:1px solid var(--ln);border-radius:5px;color:var(--tx);';
     b.addEventListener('dragstart',function(e){ SCN_DRAG_CFG=cfg; if(e.dataTransfer) e.dataTransfer.setData('text/plain', cfg.id); });
     b.onclick=function(){ scnAddInstance(cfg,0,0); refreshView(); };
@@ -19626,7 +19626,7 @@ function exportBuildFull(cb){
     SCN_FORCE_FC=prev;
     _fcClean();
     if(!FC || !FC.length){ alert('Rien à exporter : aucune géométrie.'); return; }
-    if(FC.length>400000 && !confirm('Ce modèle contient '+FC.length.toLocaleString('fr-FR')+' faces.\nL\'export sera très lourd et peut prendre du temps.\n\nContinuer ?')) return;
+    if(FC.length>400000 && !confirm(trI18N('Ce modèle contient')+' '+FC.length.toLocaleString('fr-FR')+' faces.\n'+trI18N("L'export sera très lourd et peut prendre du temps.")+'\n\n'+trI18N('Continuer ?'))) return;
     cb();
   }
   if(typeof MODE==='undefined' || MODE!=='scene' || !SCENE.instances || !SCENE.instances.length){ finish(); return; }
@@ -19874,12 +19874,12 @@ var AI_ENGINES={
             if(s.faulted){ rej(new Error('Génération échouée (worker).')); return; }
             if(s.done && s.generations && s.generations.length){ res(s.generations[0]); return; }
             if(Date.now()-t0>240000){ rej(new Error('Délai dépassé — file d\'attente chargée, réessaie.')); return; }
-            var st=document.getElementById('aiStatus'); if(st) st.textContent='⏳ File d\'attente AI Horde (gratuit)… position '+(s.queue_position!=null?s.queue_position:'?')+', ~'+(s.wait_time!=null?s.wait_time:'?')+'s';
+            var st=document.getElementById('aiStatus'); if(st) st.textContent='⏳ '+trI18N("File d'attente AI Horde (gratuit)… position")+' '+(s.queue_position!=null?s.queue_position:'?')+', ~'+(s.wait_time!=null?s.wait_time:'?')+'s';
             setTimeout(p,4000);
           }).catch(rej); })();
       }); }
       function run(seed,att){ return submit(seed).then(poll).then(function(gen){
-          if(gen.censored && att<1){ var st=document.getElementById('aiStatus'); if(st) st.textContent='⚠︎ Filtre AI Horde (faux positif) — nouvelle tentative avec une autre graine…'; return run(Math.floor(Math.random()*1e9), att+1); }
+          if(gen.censored && att<1){ var st=document.getElementById('aiStatus'); if(st) st.textContent=trI18N('⚠︎ Filtre AI Horde (faux positif) — nouvelle tentative avec une autre graine…'); return run(Math.floor(Math.random()*1e9), att+1); }
           if(gen.censored) throw new Error('Le filtre automatique d\'AI Horde a censuré le rendu (faux positif récurrent). Change légèrement la vue et réessaie, ou passe sur Gemini / OpenAI.');
           return gen.img;
         }); }
@@ -20010,11 +20010,11 @@ function _aiRun(){
   var key=document.getElementById('aiKey').value.trim();
   var model=(engKey==='gemini')?(document.getElementById('aiModel').value.trim()||AI_ENGINES.gemini.model):'';
   var prompt=document.getElementById('aiPrompt').value.trim(), shot=document.getElementById('aiShot')._data||_aiCaptureDataURL();
-  if(engKey!=='horde' && !key){ status.textContent='⚠︎ Renseigne ta clé API ('+(engKey==='openai'?'OpenAI':'Gemini')+').'; return; }
+  if(engKey!=='horde' && !key){ status.textContent='⚠︎ '+trI18N('Renseigne ta clé API')+' ('+(engKey==='openai'?'OpenAI':'Gemini')+').'; return; }
   if(!shot){ status.textContent='⚠︎ Impossible de capturer la vue.'; return; }
   try{ localStorage.setItem(AI_KEY_STORE,key); localStorage.setItem(AI_ENGINE_STORE,engKey); if(model) localStorage.setItem(AI_MODEL_STORE,model); }catch(e){}
   var b64=shot.replace(/^data:image\/[a-z]+;base64,/,'');
-  status.textContent=(engKey==='horde')?'⏳ Envoi à AI Horde (gratuit, file d\'attente commune)…':'⏳ Génération en cours… (10–30 s)';
+  status.textContent=(engKey==='horde')?('⏳ '+trI18N("Envoi à AI Horde (gratuit, file d'attente commune)…")):('⏳ '+trI18N('Génération en cours… (10–30 s)'));
   var go=document.getElementById('aiGo'); go.disabled=true;
   eng.call(prompt,b64,key,model).then(function(out){
     var w=document.getElementById('aiResultWrap'), im=document.getElementById('aiResult');
@@ -20431,7 +20431,7 @@ refreshView();        /* affiche l'objet courant */
   var tN=document.getElementById('tplNewBtn'); if(tN) tN.onclick=tplNew;
   var tD=document.getElementById('tplDrawBtn'); if(tD) tD.onclick=function(){ tplEnsure(); setTemplateEdit(!TPL_EDIT); };
   var tS=document.getElementById('tplSaveBtn'); if(tS) tS.onclick=tplSaveAs;
-  var tX=document.getElementById('tplDelBtn'); if(tX) tX.onclick=function(){ if(PLOT.templateName && confirm('Supprimer le template « '+PLOT.templateName+' » ?')){ tplDelete(PLOT.templateName); tplUseDefault(); } };
+  var tX=document.getElementById('tplDelBtn'); if(tX) tX.onclick=function(){ if(PLOT.templateName && confirm(trI18N('Supprimer le template')+' « '+PLOT.templateName+' » ?')){ tplDelete(PLOT.templateName); tplUseDefault(); } };
   tplLibUI();
   cfgRender(); plotRender();
 })();
@@ -20762,6 +20762,19 @@ var FLAG_BANDS={
  uk:'linear-gradient(180deg,#0057B7 0 50%,#FFD700 50%)'
 };
 function setFlag(){ var fe=document.getElementById('langflag'); if(fe) fe.innerHTML=FLAGS[LANG]||''; }
+/* Traduction automatique des boîtes natives (alert / confirm / prompt) : leur texte
+   n'est pas un nœud DOM, donc translateDOM ne le voit pas. Ce shim cherche la clé FR
+   dans I18N[LANG] avant l'affichage (apostrophe normalisée). Les messages concaténés
+   avec une donnée ne matchent pas et restent en français — ils demandent un tr() ciblé. */
+/* Helper de traduction ponctuel pour les chaînes CONSTRUITES en JS (concaténations)
+   que translateDOM ne peut pas matcher. Cherche la clé FR dans I18N[LANG]. */
+function trI18N(s){ try{ if(typeof s==='string' && typeof LANG!=='undefined' && LANG!=='fr' && typeof I18N!=='undefined' && I18N[LANG]){ var k=s.replace(/’/g,"'"); if(I18N[LANG][k]!=null) return I18N[LANG][k]; } }catch(e){} return s; }
+(function(){
+  var _al=window.alert, _cf=window.confirm, _pr=window.prompt;
+  window.alert=function(s){ return _al.call(window, trI18N(s)); };
+  window.confirm=function(s){ return _cf.call(window, trI18N(s)); };
+  window.prompt=function(s,d){ return _pr.call(window, trI18N(s), d); };
+})();
 /* Complément de traductions (menu gauche + panneau Mise en page + fond de plan + barre de coupe).
    Format objet {en,es,it,de,pt,hu,zh,ja,hi,ar} — fusionné dans I18N[langue] pour les clés encore vides. */
 var I18N_ADD2={
@@ -21963,6 +21976,228 @@ var I18N_ADD25={
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* ============================================================================
+   I18N_ADD26 — rattrapage d'audit (12/07/2026) : chrome visible, bibliothèque,
+   actions courantes, fonctions récentes (terrain/forme/hangar/thèmes), champs du
+   cartouche. Table POSITIONNELLE, ordre I18N_ORDER7 (en,es,it,de,pt,hu,zh,ja,hi,ru,uk,ar).
+   ============================================================================ */
+var I18N_ADD26={
+"Ma bibliothèque":["My library","Mi biblioteca","La mia libreria","Meine Bibliothek","Minha biblioteca","Saját könyvtár","我的库","マイライブラリ","मेरी लाइब्रेरी","Моя библиотека","Моя бібліотека","مكتبتي"],
+"Objets importés":["Imported objects","Objetos importados","Oggetti importati","Importierte Objekte","Objetos importados","Importált objektumok","导入的对象","インポートしたオブジェクト","आयातित वस्तुएँ","Импортированные объекты","Імпортовані об'єкти","كائنات مستوردة"],
+"Objet importé":["Imported object","Objeto importado","Oggetto importato","Importiertes Objekt","Objeto importado","Importált objektum","导入的对象","インポートしたオブジェクト","आयातित वस्तु","Импортированный объект","Імпортований об'єкт","كائن مستورد"],
+"Importer un objet":["Import an object","Importar un objeto","Importa un oggetto","Objekt importieren","Importar um objeto","Objektum importálása","导入对象","オブジェクトをインポート","वस्तु आयात करें","Импортировать объект","Імпортувати об'єкт","استيراد كائن"],
+"Cuisine":["Kitchen","Cocina","Cucina","Küche","Cozinha","Konyha","厨房","キッチン","रसोई","Кухня","Кухня","مطبخ"],
+"Portes":["Doors","Puertas","Porte","Türen","Portas","Ajtók","门","ドア","दरवाज़े","Двери","Двері","أبواب"],
+"Charpente / toiture":["Roof structure","Estructura de cubierta","Struttura del tetto","Dachtragwerk","Estrutura do telhado","Tetőszerkezet","屋顶结构","屋根構造","छत संरचना","Стропильная конструкция","Кроквяна конструкція","هيكل السقف"],
+"Terrain":["Terrain","Terreno","Terreno","Gelände","Terreno","Terep","地形","地形","भूभाग","Рельеф","Рельєф","تضاريس"],
+"Terrain (DXF)":["Terrain (DXF)","Terreno (DXF)","Terreno (DXF)","Gelände (DXF)","Terreno (DXF)","Terep (DXF)","地形 (DXF)","地形 (DXF)","भूभाग (DXF)","Рельеф (DXF)","Рельєф (DXF)","تضاريس (DXF)"],
+"Préférences":["Preferences","Preferencias","Preferenze","Einstellungen","Preferências","Beállítások","偏好设置","環境設定","प्राथमिकताएँ","Настройки","Налаштування","التفضيلات"],
+"À propos de BPO":["About BPO","Acerca de BPO","Informazioni su BPO","Über BPO","Sobre o BPO","A BPO névjegye","关于 BPO","BPO について","BPO के बारे में","О BPO","Про BPO","حول BPO"],
+"Éditer":["Edit","Editar","Modifica","Bearbeiten","Editar","Szerkesztés","编辑","編集","संपादित करें","Редактировать","Редагувати","تحرير"],
+"Editer":["Edit","Editar","Modifica","Bearbeiten","Editar","Szerkesztés","编辑","編集","संपादित करें","Редактировать","Редагувати","تحرير"],
+"Mettre à jour":["Update","Actualizar","Aggiorna","Aktualisieren","Atualizar","Frissítés","更新","更新","अपडेट करें","Обновить","Оновити","تحديث"],
+"Supprimer":["Delete","Eliminar","Elimina","Löschen","Eliminar","Törlés","删除","削除","हटाएँ","Удалить","Видалити","حذف"],
+"Supprimer l'élément":["Delete element","Eliminar el elemento","Elimina l'elemento","Element löschen","Eliminar o elemento","Elem törlése","删除元素","要素を削除","तत्व हटाएँ","Удалить элемент","Видалити елемент","حذف العنصر"],
+"Réinitialiser les paramètres":["Reset parameters","Restablecer parámetros","Reimposta i parametri","Parameter zurücksetzen","Repor parâmetros","Paraméterek visszaállítása","重置参数","パラメータをリセット","पैरामीटर रीसेट करें","Сбросить параметры","Скинути параметри","إعادة تعيين المعاملات"],
+"Enregistrer cette configuration dans Ma bibliothèque":["Save this configuration to My library","Guardar esta configuración en Mi biblioteca","Salva questa configurazione nella mia libreria","Diese Konfiguration in Meine Bibliothek speichern","Guardar esta configuração na Minha biblioteca","Konfiguráció mentése a Saját könyvtárba","将此配置保存到我的库","この構成をマイライブラリに保存","इस विन्यास को मेरी लाइब्रेरी में सहेजें","Сохранить эту конфигурацию в Мою библиотеку","Зберегти цю конфігурацію в Мою бібліотеку","حفظ هذا التكوين في مكتبتي"],
+"Glisser pour réordonner les menus":["Drag to reorder menus","Arrastrar para reordenar los menús","Trascina per riordinare i menu","Zum Neuordnen der Menüs ziehen","Arrastar para reordenar os menus","Húzza a menük átrendezéséhez","拖动以重新排序菜单","ドラッグしてメニューを並べ替え","मेनू पुनःक्रमित करने हेतु खींचें","Перетащите для изменения порядка меню","Перетягніть, щоб змінити порядок меню","اسحب لإعادة ترتيب القوائم"],
+"Recentrer la vue":["Recenter the view","Recentrar la vista","Ricentra la vista","Ansicht zentrieren","Recentrar a vista","Nézet középre","重新居中视图","ビューを再センタリング","दृश्य पुनः केंद्रित करें","Отцентрировать вид","Відцентрувати вигляд","إعادة توسيط العرض"],
+"Scène — assemblage de configurations":["Scene — assembly of configurations","Escena — ensamblaje de configuraciones","Scena — assemblaggio di configurazioni","Szene — Zusammenstellung von Konfigurationen","Cena — montagem de configurações","Jelenet — konfigurációk összeállítása","场景 — 配置组合","シーン — 構成の組み立て","दृश्य — विन्यासों का संयोजन","Сцена — сборка конфигураций","Сцена — збірка конфігурацій","مشهد — تجميع التكوينات"],
+"Thème clair / sombre / kraft / métal":["Theme: light / dark / kraft / metal","Tema: claro / oscuro / kraft / metal","Tema: chiaro / scuro / kraft / metallo","Thema: hell / dunkel / Kraft / Metall","Tema: claro / escuro / kraft / metal","Téma: világos / sötét / kraft / fém","主题：浅色/深色/牛皮纸/金属","テーマ：ライト/ダーク/クラフト/メタル","थीम: हल्का / गहरा / क्राफ्ट / धातु","Тема: светлая / тёмная / крафт / металл","Тема: світла / темна / крафт / метал","السمة: فاتحة / داكنة / كرافت / معدنية"],
+"Voir la maille":["Show mesh","Ver la malla","Mostra la mesh","Netz anzeigen","Mostrar a malha","Háló megjelenítése","显示网格","メッシュを表示","जाल दिखाएँ","Показать сетку","Показати сітку","إظهار الشبكة"],
+"Fond plat":["Flat bottom","Fondo plano","Fondo piatto","Flacher Boden","Fundo plano","Sík fenék","平底","平らな底","सपाट तल","Плоское дно","Плоске дно","قاع مسطح"],
+"Fond parallèle":["Parallel bottom","Fondo paralelo","Fondo parallelo","Paralleler Boden","Fundo paralelo","Párhuzamos fenék","平行底","平行な底","समानांतर तल","Параллельное дно","Паралельне дно","قاع مواز"],
+"Épaisseur du socle":["Base thickness","Espesor de la base","Spessore dello zoccolo","Sockeldicke","Espessura da base","Talp vastagsága","基座厚度","台座の厚さ","आधार मोटाई","Толщина основания","Товщина основи","سماكة القاعدة"],
+"Adoucissement":["Smoothing","Suavizado","Levigatura","Glättung","Suavização","Simítás","平滑","スムージング","चिकनाई","Сглаживание","Згладжування","تنعيم"],
+"Vue 3D":["3D view","Vista 3D","Vista 3D","3D-Ansicht","Vista 3D","3D nézet","三维视图","3Dビュー","3D दृश्य","3D-вид","3D-вигляд","عرض ثلاثي الأبعاد"],
+"Vue plan":["Plan view","Vista en planta","Vista in pianta","Draufsicht","Vista em planta","Alaprajz nézet","平面视图","平面ビュー","योजना दृश्य","Вид в плане","Вигляд у плані","عرض مخطط"],
+"Bois clair":["Light wood","Madera clara","Legno chiaro","Helles Holz","Madeira clara","Világos fa","浅色木","明るい木","हल्की लकड़ी","Светлое дерево","Світле дерево","خشب فاتح"],
+"Bois foncé":["Dark wood","Madera oscura","Legno scuro","Dunkles Holz","Madeira escura","Sötét fa","深色木","暗い木","गहरी लकड़ी","Тёмное дерево","Темне дерево","خشب داكن"],
+"Tube rond (évidé)":["Round tube (hollow)","Tubo redondo (hueco)","Tubo tondo (cavo)","Rundrohr (hohl)","Tubo redondo (oco)","Kör cső (üreges)","圆管（空心）","丸パイプ（中空）","गोल ट्यूब (खोखली)","Круглая труба (полая)","Кругла труба (порожниста)","أنبوب دائري (مجوف)"],
+"Tube carré (évidé)":["Square tube (hollow)","Tubo cuadrado (hueco)","Tubo quadro (cavo)","Vierkantrohr (hohl)","Tubo quadrado (oco)","Négyzetes cső (üreges)","方管（空心）","角パイプ（中空）","चौकोर ट्यूब (खोखली)","Квадратная труба (полая)","Квадратна труба (порожниста)","أنبوب مربع (مجوف)"],
+"Coque évidée":["Hollow shell","Casco hueco","Guscio cavo","Hohlschale","Casca oca","Üreges héj","空心壳","中空シェル","खोखला खोल","Полая оболочка","Порожниста оболонка","قشرة مجوفة"],
+"Nœuds Mero":["Mero nodes","Nudos Mero","Nodi Mero","Mero-Knoten","Nós Mero","Mero csomópontok","Mero 节点","メロ節点","मेरो नोड","Узлы Mero","Вузли Mero","عقد ميرو"],
+"Sphériques":["Spherical","Esféricos","Sferici","Kugelförmig","Esféricos","Gömb alakú","球形","球形","गोलाकार","Сферические","Сферичні","كروية"],
+"Inversées":["Inverted","Invertidas","Invertite","Umgekehrt","Invertidas","Fordított","倒置","反転","उलटे","Перевёрнутые","Перевернуті","مقلوبة"],
+"Vitrés":["Glazed","Acristalados","Vetrati","Verglast","Envidraçados","Üvegezett","玻璃","ガラス張り","काँच लगे","Остеклённые","Засклені","زجاجية"],
+"Côtés":["Sides","Lados","Lati","Seiten","Lados","Oldalak","边","辺","भुजाएँ","Стороны","Сторони","أضلاع"],
+"Points de contrôle / côté":["Control points / side","Puntos de control / lado","Punti di controllo / lato","Kontrollpunkte / Seite","Pontos de controlo / lado","Kontrollpontok / oldal","每边控制点","辺あたり制御点","प्रति भुजा नियंत्रण बिंदु","Контрольные точки / сторону","Контрольні точки / сторону","نقاط تحكم / ضلع"],
+"Courbe maîtresse tous les":["Index contour every","Curva maestra cada","Curva direttrice ogni","Haupthöhenlinie alle","Curva mestra a cada","Fő szintvonal minden","每隔计曲线","計曲線ごと","मुख्य समोच्च प्रत्येक","Основная горизонталь каждые","Основна горизонталь кожні","منحنى رئيسي كل"],
+"Épaisseur courbes":["Contour thickness","Grosor de curvas","Spessore curve","Höhenlinienstärke","Espessura das curvas","Szintvonal vastagsága","等高线粗细","等高線の太さ","समोच्च मोटाई","Толщина горизонталей","Товщина горизонталей","سماكة الخطوط الكنتورية"],
+"Titre du projet":["Project title","Título del proyecto","Titolo del progetto","Projekttitel","Título do projeto","Projekt megnevezése","项目名称","プロジェクト名","परियोजना शीर्षक","Название проекта","Назва проєкту","عنوان المشروع"],
+"Adresse du projet":["Project address","Dirección del proyecto","Indirizzo del progetto","Projektadresse","Endereço do projeto","Projekt helyszíne","项目地址","プロジェクト所在地","परियोजना पता","Адрес проекта","Адреса проєкту","عنوان المشروع"],
+"Maître d'ouvrage":["Client","Promotor","Committente","Bauherr","Dono da obra","Építtető","业主","施主","स्वामी","Заказчик","Замовник","صاحب المشروع"],
+"Adresse du maître d'ouvrage":["Client address","Dirección del promotor","Indirizzo del committente","Bauherr-Adresse","Endereço do dono da obra","Építtető címe","业主地址","施主住所","स्वामी का पता","Адрес заказчика","Адреса замовника","عنوان صاحب المشروع"],
+"Nom de l'agence":["Firm name","Nombre del estudio","Nome dello studio","Büroname","Nome do ateliê","Iroda neve","事务所名称","事務所名","फर्म का नाम","Название бюро","Назва бюро","اسم المكتب"],
+"Architecte (prénom nom, titre)":["Architect (first name last name, title)","Arquitecto (nombre apellido, título)","Architetto (nome cognome, titolo)","Architekt (Vorname Name, Titel)","Arquiteto (nome apelido, título)","Építész (vezeték- és keresztnév, titulus)","建筑师（名 姓，头衔）","建築家（氏名、肩書き）","वास्तुकार (नाम उपनाम, पदवी)","Архитектор (имя фамилия, звание)","Архітектор (ім'я прізвище, звання)","معماري (الاسم واللقب، الصفة)"],
+"Adresse de l'agence":["Firm address","Dirección del estudio","Indirizzo dello studio","Büroadresse","Endereço do ateliê","Iroda címe","事务所地址","事務所住所","फर्म का पता","Адрес бюро","Адреса бюро","عنوان المكتب"],
+"Tél · e-mail · site":["Tel · e-mail · website","Tel · correo · web","Tel · e-mail · sito","Tel · E-Mail · Website","Tel · e-mail · site","Tel · e-mail · web","电话 · 邮箱 · 网站","電話・メール・サイト","फ़ोन · ई-मेल · वेबसाइट","Тел · эл. почта · сайт","Тел · е-пошта · сайт","هاتف · بريد · موقع"],
+"Ordre des architectes n°":["Architects' board no.","N.º del colegio de arquitectos","N. ordine architetti","Architektenkammer-Nr.","N.º da ordem dos arquitetos","Építészkamarai szám","建筑师协会编号","建築士会番号","वास्तुकार बोर्ड सं.","№ в реестре архитекторов","№ реєстру архітекторів","رقم نقابة المعماريين"],
+"Nom du dessin":["Drawing name","Nombre del plano","Nome del disegno","Zeichnungsname","Nome do desenho","Rajz neve","图纸名称","図面名","आरेखण नाम","Название чертежа","Назва креслення","اسم الرسم"],
+"Réf n° (PC8)":["Ref. no. (PC8)","N.º ref. (PC8)","Rif. n. (PC8)","Ref.-Nr. (PC8)","Ref. n.º (PC8)","Hiv. sz. (PC8)","参考编号 (PC8)","参照番号 (PC8)","संदर्भ सं. (PC8)","Реф. № (PC8)","Реф. № (PC8)","رقم مرجعي (PC8)"]
+};
+(function(){ for(var fr in I18N_ADD26){ var t=I18N_ADD26[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* ============================================================================
+   I18N_ADD27 — batch 2 : libellés de panneaux (charpente/nappe/ombrière/GC),
+   options, messages courants, et FORMULAIRE DE CONTACT. Ordre I18N_ORDER7.
+   ============================================================================ */
+var I18N_ADD27={
+"Charpente":["Timber frame","Armazón","Struttura lignea","Dachstuhl","Estrutura de madeira","Fedélszék","木构架","小屋組","लकड़ी का ढाँचा","Стропильная система","Кроквяна система","هيكل خشبي"],
+"Charpente apparente":["Exposed frame","Armazón visto","Struttura a vista","Sichtdachstuhl","Estrutura aparente","Látszó fedélszék","外露构架","現し小屋組","खुला ढाँचा","Открытая стропильная система","Відкрита кроквяна система","هيكل ظاهر"],
+"Chevron — hauteur":["Rafter — height","Cabio — altura","Puntone — altezza","Sparren — Höhe","Caibro — altura","Szarufa — magasság","椽 — 高度","垂木 — 高さ","बल्ली — ऊँचाई","Стропило — высота","Кроква — висота","عارضة — الارتفاع"],
+"Chevron — largeur":["Rafter — width","Cabio — ancho","Puntone — larghezza","Sparren — Breite","Caibro — largura","Szarufa — szélesség","椽 — 宽度","垂木 — 幅","बल्ली — चौड़ाई","Стропило — ширина","Кроква — ширина","عارضة — العرض"],
+"Membrure — hauteur":["Chord — height","Cordón — altura","Corrente — altezza","Gurt — Höhe","Banzo — altura","Öv — magasság","弦杆 — 高度","弦材 — 高さ","कॉर्ड — ऊँचाई","Пояс — высота","Пояс — висота","وتر — الارتفاع"],
+"Membrure — largeur":["Chord — width","Cordón — ancho","Corrente — larghezza","Gurt — Breite","Banzo — largura","Öv — szélesség","弦杆 — 宽度","弦材 — 幅","कॉर्ड — चौड़ाई","Пояс — ширина","Пояс — ширина","وتر — العرض"],
+"Nappe — épaisseur":["Grid — thickness","Malla — espesor","Struttura reticolare — spessore","Netz — Dicke","Malha — espessura","Rácsháló — vastagság","网架 — 厚度","立体トラス — 厚さ","जाल — मोटाई","Сетка — толщина","Сітка — товщина","الشبكة — السماكة"],
+"Nappe — Ø nœud":["Grid — node Ø","Malla — Ø nudo","Reticolare — Ø nodo","Netz — Knoten-Ø","Malha — Ø nó","Rácsháló — csomópont Ø","网架 — 节点 Ø","立体トラス — 節点 Ø","जाल — नोड Ø","Сетка — Ø узла","Сітка — Ø вузла","الشبكة — قطر العقدة"],
+"Module — largeur":["Module — width","Módulo — ancho","Modulo — larghezza","Modul — Breite","Módulo — largura","Modul — szélesség","模块 — 宽度","モジュール — 幅","मॉड्यूल — चौड़ाई","Модуль — ширина","Модуль — ширина","الوحدة — العرض"],
+"Lanterneaux — 1 module sur":["Roof lights — 1 module in","Lucernarios — 1 módulo de cada","Lucernari — 1 modulo su","Oberlichter — 1 Modul von","Clarabóias — 1 módulo em cada","Felülvilágítók — 1 modul minden","天窗 — 每隔模块","天窓 — モジュールごと","रोशनदान — प्रत्येक मॉड्यूल","Фонари — 1 модуль из","Ліхтарі — 1 модуль з","المناور — وحدة من كل"],
+"Ombrière — modules PV":["Canopy — PV modules","Marquesina — módulos FV","Pensilina — moduli FV","Überdachung — PV-Module","Cobertura — módulos FV","Napvédő — PV modulok","光伏棚 — 组件","カーポート — PVモジュール","छाया — PV मॉड्यूल","Навес — PV-модули","Навіс — PV-модулі","مظلة — وحدات كهروضوئية"],
+"Ombrière — pannes":["Canopy — purlins","Marquesina — correas","Pensilina — arcarecci","Überdachung — Pfetten","Cobertura — madres","Napvédő — szelemenek","光伏棚 — 檩条","カーポート — 母屋","छाया — पर्लिन","Навес — прогоны","Навіс — прогони","مظلة — مرابط"],
+"Ombrière — poteaux":["Canopy — posts","Marquesina — pilares","Pensilina — pilastri","Überdachung — Stützen","Cobertura — pilares","Napvédő — oszlopok","光伏棚 — 立柱","カーポート — 柱","छाया — खंभे","Навес — стойки","Навіс — стійки","مظلة — أعمدة"],
+"Ombrière — poutres":["Canopy — beams","Marquesina — vigas","Pensilina — travi","Überdachung — Träger","Cobertura — vigas","Napvédő — gerendák","光伏棚 — 梁","カーポート — 梁","छाया — बीम","Навес — балки","Навіс — балки","مظلة — عوارض"],
+"Coffre — hauteur":["Box — height","Cajón — altura","Cassonetto — altezza","Kasten — Höhe","Caixa — altura","Tok — magasság","箱体 — 高度","ボックス — 高さ","बॉक्स — ऊँचाई","Короб — высота","Короб — висота","الصندوق — الارتفاع"],
+"Hauteur linteau":["Lintel height","Altura del dintel","Altezza architrave","Sturzhöhe","Altura da verga","Áthidaló magasság","过梁高度","まぐさ高さ","लिंटेल ऊँचाई","Высота перемычки","Висота перемички","ارتفاع العتب"],
+"Largeur jambages":["Jamb width","Ancho de jambas","Larghezza stipiti","Laibungsbreite","Largura das ombreiras","Kávaszélesség","门侧宽度","方立幅","चौखट चौड़ाई","Ширина откосов","Ширина укосів","عرض القوائم"],
+"Hauteur partie basse":["Lower part height","Altura parte inferior","Altezza parte bassa","Höhe unterer Teil","Altura parte inferior","Alsó rész magassága","下部高度","下部の高さ","निचले भाग की ऊँचाई","Высота нижней части","Висота нижньої частини","ارتفاع الجزء السفلي"],
+"Matériau maçonnerie":["Masonry material","Material de fábrica","Materiale muratura","Mauerwerksmaterial","Material de alvenaria","Falazat anyaga","砌体材料","組積材料","चिनाई सामग्री","Материал кладки","Матеріал кладки","مادة البناء"],
+"Moulurée (corniche)":["Moulded (cornice)","Moldurada (cornisa)","Modanata (cornicione)","Profiliert (Gesims)","Moldurada (cornija)","Profilozott (párkány)","线脚（檐口）","繰形（コーニス）","गढ़ी हुई (कॉर्निस)","Профилированный (карниз)","Профільований (карниз)","مزخرف (إفريز)"],
+"Cornières d'angle":["Corner angles","Angulares de esquina","Angolari d'angolo","Eckwinkel","Cantoneiras","Sarokidomok","转角角钢","隅アングル","कोना एंगल","Угловые уголки","Кутові куточки","زوايا الأركان"],
+"Section boisseau":["Flue section","Sección del conducto","Sezione canna fumaria","Zugquerschnitt","Secção da conduta","Kürtő keresztmetszet","烟道截面","煙道断面","धुआँ नलिका खंड","Сечение дымохода","Переріз димоходу","مقطع المدخنة"],
+"Rayon angle":["Corner radius","Radio de esquina","Raggio angolo","Eckradius","Raio de canto","Sarok sugara","转角半径","隅角半径","कोना त्रिज्या","Радиус угла","Радіус кута","نصف قطر الزاوية"],
+"Couleur surface":["Surface colour","Color de superficie","Colore superficie","Oberflächenfarbe","Cor da superfície","Felület színe","表面颜色","表面色","सतह रंग","Цвет поверхности","Колір поверхні","لون السطح"],
+"Couleur bordure":["Border colour","Color del borde","Colore bordo","Randfarbe","Cor da borda","Szegély színe","边框颜色","縁の色","किनारा रंग","Цвет края","Колір краю","لون الحد"],
+"Largeur bordure":["Border width","Ancho del borde","Larghezza bordo","Randbreite","Largura da borda","Szegélyszélesség","边框宽度","縁の幅","किनारा चौड़ाई","Ширина края","Ширина краю","عرض الحد"],
+"Hauteur (sol)":["Height (ground)","Altura (suelo)","Altezza (suolo)","Höhe (Boden)","Altura (solo)","Magasság (talaj)","高度（地面）","高さ（地面）","ऊँचाई (ज़मीन)","Высота (от земли)","Висота (від землі)","الارتفاع (الأرض)"],
+"Intensité":["Intensity","Intensidad","Intensità","Intensität","Intensidade","Intenzitás","强度","強度","तीव्रता","Интенсивность","Інтенсивність","الشدة"],
+"Allumée":["On","Encendida","Accesa","Ein","Ligada","Bekapcsolva","开","点灯","चालू","Включена","Увімкнена","مضاءة"],
+"Niveau":["Level","Nivel","Livello","Ebene","Nível","Szint","层","レベル","स्तर","Уровень","Рівень","المستوى"],
+"Angle en L":["L-corner","Ángulo en L","Angolo a L","L-Ecke","Ângulo em L","L-sarok","L 形转角","L 字コーナー","L-कोना","Угол L","Кут L","زاوية L"],
+"Angle diagonal":["Diagonal corner","Ángulo diagonal","Angolo diagonale","Diagonale Ecke","Ângulo diagonal","Átlós sarok","对角转角","対角コーナー","विकर्ण कोना","Диагональный угол","Діагональний кут","زاوية قطرية"],
+"Angle 2 (droit)":["Corner 2 (right)","Ángulo 2 (recto)","Angolo 2 (retto)","Ecke 2 (rechtwinklig)","Ângulo 2 (reto)","2. sarok (derék)","转角 2（直角）","コーナー2（直角）","कोना 2 (समकोण)","Угол 2 (прямой)","Кут 2 (прямий)","الزاوية 2 (قائمة)"],
+"Linéaire I":["Straight I","Lineal I","Lineare I","Gerade I","Linear I","Egyenes I","直线 I","直線 I","रैखिक I","Прямой I","Прямий I","خطي I"],
+"Îlot seul":["Island only","Solo isla","Solo isola","Nur Insel","Só ilha","Csak sziget","仅岛台","アイランドのみ","केवल द्वीप","Только остров","Тільки острів","جزيرة فقط"],
+"Libre (tracé)":["Free (path)","Libre (trazado)","Libero (tracciato)","Frei (Verlauf)","Livre (traçado)","Szabad (nyomvonal)","自由（走线）","自由（線形）","मुक्त (पथ)","Свободный (контур)","Вільний (контур)","حر (مسار)"],
+"Fixe (non ouvrant)":["Fixed (non-opening)","Fijo (no practicable)","Fisso (non apribile)","Fest (nicht öffnend)","Fixo (não abre)","Fix (nem nyíló)","固定（不可开启）","固定（開閉不可）","स्थिर (न खुलने वाला)","Глухое (не открывается)","Глухе (не відчиняється)","ثابت (لا يُفتح)"],
+"Mixte (bas plein + haut ajouré)":["Mixed (solid base + open top)","Mixto (base ciega + superior calado)","Misto (base piena + alto traforato)","Gemischt (unten voll + oben offen)","Misto (base cheia + topo vazado)","Vegyes (tömör alsó + áttört felső)","混合（下实 + 上镂空）","混合（下実 + 上透かし）","मिश्रित (निचला ठोस + ऊपरी जालीदार)","Смешанное (низ глухой + верх ажурный)","Змішане (низ глухий + верх ажурний)","مختلط (سفلي مصمت + علوي مفرّغ)"],
+"Bas : perforée":["Base: perforated","Base: perforada","Base: forata","Unten: perforiert","Base: perfurada","Alsó: perforált","下部：穿孔","下部：パンチング","निचला: छिद्रित","Низ: перфорация","Низ: перфорація","السفلي: مثقب"],
+"Bas : plein/tôle":["Base: solid/sheet","Base: ciega/chapa","Base: pieno/lamiera","Unten: voll/Blech","Base: cheia/chapa","Alsó: tömör/lemez","下部：实心/板","下部：無地/板","निचला: ठोस/शीट","Низ: сплошной/лист","Низ: суцільний/лист","السفلي: مصمت/صفيحة"],
+"GC palier : oui":["Landing rail: yes","Barandilla rellano: sí","Parapetto pianerottolo: sì","Podestgeländer: ja","Guarda patamar: sim","Pihenő korlát: igen","平台护栏：是","踊り場手すり：あり","लैंडिंग रेलिंग: हाँ","Ограждение площадки: да","Огородження майданчика: так","درابزين البسطة: نعم"],
+"GC palier : non":["Landing rail: no","Barandilla rellano: no","Parapetto pianerottolo: no","Podestgeländer: nein","Guarda patamar: não","Pihenő korlát: nem","平台护栏：否","踊り場手すり：なし","लैंडिंग रेलिंग: नहीं","Ограждение площадки: нет","Огородження майданчика: ні","درابزين البسطة: لا"],
+"Façade":["Facade","Fachada","Facciata","Fassade","Fachada","Homlokzat","立面","ファサード","अग्रभाग","Фасад","Фасад","واجهة"],
+"Revenir au modèle 3D":["Back to 3D model","Volver al modelo 3D","Torna al modello 3D","Zurück zum 3D-Modell","Voltar ao modelo 3D","Vissza a 3D modellhez","返回三维模型","3Dモデルに戻る","3D मॉडल पर लौटें","Вернуться к 3D-модели","Повернутися до 3D-моделі","العودة إلى النموذج ثلاثي الأبعاد"],
+"Retirer le logo":["Remove logo","Quitar el logo","Rimuovi il logo","Logo entfernen","Remover o logótipo","Logó eltávolítása","移除标志","ロゴを削除","लोगो हटाएँ","Убрать логотип","Прибрати логотип","إزالة الشعار"],
+"Éditer les sommets (déplacer / ajouter / courber en plan)":["Edit vertices (move / add / curve in plan)","Editar vértices (mover / añadir / curvar en planta)","Modifica vertici (sposta / aggiungi / curva in pianta)","Punkte bearbeiten (verschieben / hinzufügen / im Grundriss krümmen)","Editar vértices (mover / adicionar / curvar em planta)","Csúcsok szerkesztése (mozgatás / hozzáadás / ívelés alaprajzon)","编辑顶点（在平面中移动/添加/弯曲）","頂点を編集（平面で移動／追加／曲げ）","शीर्ष संपादित करें (योजना में ले जाएँ / जोड़ें / मोड़ें)","Правка вершин (перемещение / добавление / изгиб в плане)","Редагування вершин (переміщення / додавання / вигин у плані)","تحرير الرؤوس (تحريك / إضافة / تقويس في المخطط)"],
+"Modifier (matériaux, doublage…)":["Edit (materials, lining…)","Editar (materiales, trasdós…)","Modifica (materiali, controparete…)","Bearbeiten (Materialien, Vorsatzschale…)","Editar (materiais, forra…)","Szerkesztés (anyagok, előtétfal…)","编辑（材料、内衬…）","編集（材料、内張り…）","संपादित करें (सामग्री, लाइनिंग…)","Изменить (материалы, облицовка…)","Змінити (матеріали, облицювання…)","تحرير (المواد، التبطين…)"],
+"Champ lié (contenu automatique)":["Linked field (automatic content)","Campo vinculado (contenido automático)","Campo collegato (contenuto automatico)","Verknüpftes Feld (automatischer Inhalt)","Campo ligado (conteúdo automático)","Kapcsolt mező (automatikus tartalom)","关联字段（自动内容）","連動フィールド（自動入力）","लिंक्ड फ़ील्ड (स्वचालित सामग्री)","Связанное поле (автосодержимое)","Пов'язане поле (автовміст)","حقل مرتبط (محتوى تلقائي)"],
+"Cliquer pour changer l'échelle":["Click to change scale","Clic para cambiar la escala","Clicca per cambiare scala","Zum Ändern des Maßstabs klicken","Clicar para mudar a escala","Kattintson a lépték módosításához","点击更改比例","クリックして縮尺を変更","पैमाना बदलने हेतु क्लिक करें","Нажмите, чтобы изменить масштаб","Натисніть, щоб змінити масштаб","انقر لتغيير المقياس"],
+"Rien à mettre à jour ici.":["Nothing to update here.","Nada que actualizar aquí.","Niente da aggiornare qui.","Hier nichts zu aktualisieren.","Nada a atualizar aqui.","Itt nincs mit frissíteni.","此处无内容可更新。","ここに更新するものはありません。","यहाँ अपडेट करने को कुछ नहीं।","Здесь нечего обновлять.","Тут нема що оновлювати.","لا شيء للتحديث هنا."],
+"Valeurs par défaut indisponibles ici.":["Default values unavailable here.","Valores por defecto no disponibles aquí.","Valori predefiniti non disponibili qui.","Standardwerte hier nicht verfügbar.","Valores predefinidos indisponíveis aqui.","Az alapértékek itt nem elérhetők.","此处无默认值。","ここでは既定値を利用できません。","यहाँ डिफ़ॉल्ट मान उपलब्ध नहीं।","Значения по умолчанию здесь недоступны.","Значення за замовчуванням тут недоступні.","القيم الافتراضية غير متاحة هنا."],
+"Moteur de rendu non chargé.":["Render engine not loaded.","Motor de renderizado no cargado.","Motore di rendering non caricato.","Render-Engine nicht geladen.","Motor de renderização não carregado.","A renderelő motor nincs betöltve.","渲染引擎未加载。","レンダリングエンジンが未読み込みです。","रेंडर इंजन लोड नहीं हुआ।","Движок рендеринга не загружен.","Рушій рендерингу не завантажено.","محرك العرض غير محمّل."],
+"Ombres et soleil : moteur WebGL requis (bouton « WebGL »).":["Shadows and sun: WebGL engine required (WebGL button).","Sombras y sol: se requiere motor WebGL (botón WebGL).","Ombre e sole: motore WebGL richiesto (pulsante WebGL).","Schatten und Sonne: WebGL-Engine erforderlich (Schaltfläche WebGL).","Sombras e sol: motor WebGL necessário (botão WebGL).","Árnyékok és nap: WebGL motor szükséges (WebGL gomb).","阴影与阳光：需要 WebGL 引擎（WebGL 按钮）。","影と太陽：WebGLエンジンが必要（WebGLボタン）。","छाया और सूर्य: WebGL इंजन आवश्यक (WebGL बटन)।","Тени и солнце: нужен движок WebGL (кнопка WebGL).","Тіні та сонце: потрібен рушій WebGL (кнопка WebGL).","الظلال والشمس: يلزم محرك WebGL (زر WebGL)."],
+"Contact — BPO":["Contact — BPO","Contacto — BPO","Contatti — BPO","Kontakt — BPO","Contacto — BPO","Kapcsolat — BPO","联系 — BPO","お問い合わせ — BPO","संपर्क — BPO","Контакт — BPO","Контакт — BPO","اتصال — BPO"],
+"Des questions, des problèmes de fonctionnement, un commentaire, des idées de configurateurs ? C'est ici :":["Questions, technical issues, a comment, ideas for configurators? Right here:","¿Preguntas, problemas de funcionamiento, un comentario, ideas de configuradores? Es aquí:","Domande, problemi di funzionamento, un commento, idee per configuratori? È qui:","Fragen, Funktionsprobleme, ein Kommentar, Ideen für Konfiguratoren? Genau hier:","Perguntas, problemas de funcionamento, um comentário, ideias de configuradores? É aqui:","Kérdések, működési hibák, észrevétel, konfigurátor-ötletek? Itt a helye:","有疑问、功能问题、意见或配置器创意？就在这里：","質問、不具合、コメント、コンフィギュレーターのアイデアは？こちらへ：","प्रश्न, कार्य संबंधी समस्याएँ, टिप्पणी, कॉन्फ़िगरेटर के विचार? यहीं:","Вопросы, проблемы в работе, комментарий, идеи конфигураторов? Вам сюда:","Питання, проблеми в роботі, коментар, ідеї конфігураторів? Вам сюди:","أسئلة، مشكلات تشغيل، تعليق، أفكار لمُكوِّنات؟ من هنا:"],
+"Type de message":["Message type","Tipo de mensaje","Tipo di messaggio","Nachrichtentyp","Tipo de mensagem","Üzenet típusa","消息类型","メッセージの種類","संदेश प्रकार","Тип сообщения","Тип повідомлення","نوع الرسالة"],
+"Question":["Question","Pregunta","Domanda","Frage","Pergunta","Kérdés","问题","質問","प्रश्न","Вопрос","Питання","سؤال"],
+"Problème de fonctionnement":["Technical issue","Problema de funcionamiento","Problema di funzionamento","Funktionsproblem","Problema de funcionamento","Működési hiba","功能问题","不具合","कार्य समस्या","Проблема в работе","Проблема в роботі","مشكلة تشغيل"],
+"Commentaire":["Comment","Comentario","Commento","Kommentar","Comentário","Észrevétel","评论","コメント","टिप्पणी","Комментарий","Коментар","تعليق"],
+"Idée de configurateur":["Configurator idea","Idea de configurador","Idea per configuratore","Konfigurator-Idee","Ideia de configurador","Konfigurátor-ötlet","配置器创意","コンフィギュレーターの提案","कॉन्फ़िगरेटर विचार","Идея конфигуратора","Ідея конфігуратора","فكرة مُكوِّن"],
+"Votre nom":["Your name","Su nombre","Il tuo nome","Ihr Name","O seu nome","Az Ön neve","您的姓名","お名前","आपका नाम","Ваше имя","Ваше ім'я","اسمك"],
+"Votre e-mail":["Your e-mail","Su correo","La tua e-mail","Ihre E-Mail","O seu e-mail","Az Ön e-mailje","您的邮箱","メールアドレス","आपका ई-मेल","Ваш e-mail","Ваш e-mail","بريدك الإلكتروني"],
+"Message":["Message","Mensaje","Messaggio","Nachricht","Mensagem","Üzenet","消息","メッセージ","संदेश","Сообщение","Повідомлення","رسالة"],
+"Envoyer ✉":["Send ✉","Enviar ✉","Invia ✉","Senden ✉","Enviar ✉","Küldés ✉","发送 ✉","送信 ✉","भेजें ✉","Отправить ✉","Надіслати ✉","إرسال ✉"],
+"Fermer":["Close","Cerrar","Chiudi","Schließen","Fechar","Bezárás","关闭","閉じる","बंद करें","Закрыть","Закрити","إغلاق"],
+"Votre messagerie s'est ouverte, pré-remplie. Merci !":["Your mail app has opened, pre-filled. Thank you!","Su cliente de correo se ha abierto, ya rellenado. ¡Gracias!","Il tuo client di posta si è aperto, precompilato. Grazie!","Ihr Mailprogramm wurde geöffnet und ausgefüllt. Danke!","O seu cliente de e-mail abriu, pré-preenchido. Obrigado!","A levelezője megnyílt, előre kitöltve. Köszönjük!","您的邮件程序已打开并预填。谢谢！","メールアプリが入力済みで開きました。ありがとうございます！","आपका मेल ऐप पूर्व-भरित खुल गया। धन्यवाद!","Ваш почтовый клиент открыт и заполнен. Спасибо!","Ваш поштовий клієнт відкрито й заповнено. Дякуємо!","تم فتح بريدك معبأً مسبقًا. شكرًا!"],
+"Le bouton ouvre votre logiciel de messagerie, pré-rempli vers al@architecture-al.com. Rien n'est envoyé automatiquement.":["The button opens your mail app, pre-filled to al@architecture-al.com. Nothing is sent automatically.","El botón abre su cliente de correo, ya rellenado a al@architecture-al.com. No se envía nada automáticamente.","Il pulsante apre il client di posta, precompilato verso al@architecture-al.com. Nulla viene inviato automaticamente.","Die Schaltfläche öffnet Ihr Mailprogramm, ausgefüllt an al@architecture-al.com. Es wird nichts automatisch gesendet.","O botão abre o seu cliente de e-mail, pré-preenchido para al@architecture-al.com. Nada é enviado automaticamente.","A gomb megnyitja a levelezőjét, előre kitöltve az al@architecture-al.com címre. Semmi sem kerül automatikusan elküldésre.","此按钮会打开您的邮件程序并预填至 al@architecture-al.com。不会自动发送任何内容。","ボタンはメールアプリを al@architecture-al.com 宛に入力済みで開きます。自動送信はされません。","यह बटन आपका मेल ऐप al@architecture-al.com पर पूर्व-भरित खोलता है। कुछ भी स्वतः नहीं भेजा जाता।","Кнопка открывает почтовый клиент, заполненный на al@architecture-al.com. Ничего не отправляется автоматически.","Кнопка відкриває поштовий клієнт, заповнений на al@architecture-al.com. Нічого не надсилається автоматично.","يفتح الزر تطبيق بريدك معبأً إلى al@architecture-al.com. لا يُرسل شيء تلقائيًا."]
+};
+(function(){ for(var fr in I18N_ADD27){ var t=I18N_ADD27[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* ============================================================================
+   I18N_ADD28 — batch 3 : tooltips longs, prompts, alertes fixes, messages du
+   moteur de rendu, et préfixes des libellés concaténés. Ordre I18N_ORDER7.
+   ============================================================================ */
+var I18N_ADD28={
+"Choisis l'étage affiché en vue de dessus (coupe à 1 m). « Volume » = toit/aucune coupe.":["Choose the storey shown in top view (section at 1 m). « Volume » = roof/no section.","Elige la planta mostrada en vista superior (corte a 1 m). « Volumen » = cubierta/sin corte.","Scegli il piano in vista dall'alto (sezione a 1 m). « Volume » = tetto/nessuna sezione.","Wählen Sie das in der Draufsicht gezeigte Geschoss (Schnitt bei 1 m). « Volumen » = Dach/kein Schnitt.","Escolhe o piso mostrado em vista de topo (corte a 1 m). « Volume » = telhado/sem corte.","Válaszd ki a felülnézetben látott szintet (metszet 1 m-nél). « Tömeg » = tető/nincs metszet.","选择俯视图中显示的楼层（1 米处剖切）。« 体量 » = 屋顶/不剖切。","上面図に表示する階を選択（1 m で切断）。「ボリューム」= 屋根／切断なし。","शीर्ष दृश्य में दिखाई गई मंज़िल चुनें (1 मीटर पर काट)। « आयतन » = छत/कोई काट नहीं।","Выберите этаж в виде сверху (сечение на 1 м). « Объём » = крыша/без сечения.","Виберіть поверх у вигляді зверху (переріз на 1 м). « Об'єм » = дах/без перерізу.","اختر الطابق المعروض في المنظر العلوي (مقطع عند 1 م). « الحجم » = السقف/بدون مقطع."],
+"Masque des familles à l'affichage (l'export IFC reste complet).":["Hides families from the view (IFC export stays complete).","Oculta familias de la vista (la exportación IFC sigue completa).","Nasconde le famiglie dalla vista (l'esportazione IFC resta completa).","Blendet Familien in der Ansicht aus (IFC-Export bleibt vollständig).","Oculta famílias na vista (a exportação IFC continua completa).","Elrejti a családokat a nézetből (az IFC-export teljes marad).","从视图中隐藏族（IFC 导出仍完整）。","ビューからファミリを隠す（IFC 書き出しは完全なまま）。","दृश्य से फ़ैमिली छिपाता है (IFC निर्यात पूर्ण रहता है)।","Скрывает семейства из вида (экспорт IFC остаётся полным).","Приховує родини з вигляду (експорт IFC лишається повним).","يخفي العائلات من العرض (يبقى تصدير IFC كاملاً)."],
+"Image scannée (JPG / PNG / PDF) à mettre à l'échelle":["Scanned image (JPG / PNG / PDF) to scale","Imagen escaneada (JPG / PNG / PDF) para escalar","Immagine scansionata (JPG / PNG / PDF) da scalare","Gescanntes Bild (JPG / PNG / PDF) zum Skalieren","Imagem digitalizada (JPG / PNG / PDF) para escalar","Beolvasott kép (JPG / PNG / PDF) méretezéshez","待缩放的扫描图像（JPG / PNG / PDF）","縮尺調整するスキャン画像（JPG / PNG / PDF）","स्केल हेतु स्कैन की गई छवि (JPG / PNG / PDF)","Сканированное изображение (JPG / PNG / PDF) для масштабирования","Скановане зображення (JPG / PNG / PDF) для масштабування","صورة ممسوحة (JPG / PNG / PDF) للقياس"],
+"Insérer comme un seul objet (groupe) dans l'assemblage courant":["Insert as a single object (group) into the current assembly","Insertar como un único objeto (grupo) en el ensamblaje actual","Inserisci come singolo oggetto (gruppo) nell'assieme corrente","Als einzelnes Objekt (Gruppe) in die aktuelle Baugruppe einfügen","Inserir como um único objeto (grupo) na montagem atual","Beszúrás egyetlen objektumként (csoport) az aktuális összeállításba","作为单个对象（组）插入当前组合","現在のアセンブリに単一オブジェクト（グループ）として挿入","वर्तमान असेंबली में एकल वस्तु (समूह) के रूप में डालें","Вставить как один объект (группу) в текущую сборку","Вставити як один об'єкт (групу) в поточну збірку","إدراج ككائن واحد (مجموعة) في التجميع الحالي"],
+"Mettre à jour cette scène avec l'assemblage actuel":["Update this scene with the current assembly","Actualizar esta escena con el ensamblaje actual","Aggiorna questa scena con l'assieme corrente","Diese Szene mit der aktuellen Baugruppe aktualisieren","Atualizar esta cena com a montagem atual","Jelenet frissítése az aktuális összeállítással","用当前组合更新此场景","現在のアセンブリでこのシーンを更新","इस दृश्य को वर्तमान असेंबली से अपडेट करें","Обновить эту сцену текущей сборкой","Оновити цю сцену поточною збіркою","تحديث هذا المشهد بالتجميع الحالي"],
+"Distance des cotes au bord du dessin, en cm sur la feuille":["Dimension offset from the drawing edge, in cm on the sheet","Distancia de las cotas al borde del dibujo, en cm sobre la lámina","Distanza delle quote dal bordo del disegno, in cm sul foglio","Abstand der Maße zum Zeichnungsrand, in cm auf dem Blatt","Distância das cotas à borda do desenho, em cm na folha","Méretek távolsága a rajz szélétől, cm-ben a lapon","标注到图纸边缘的距离（图纸上以厘米计）","図面端から寸法までの距離（用紙上、cm）","आरेखण किनारे से आयाम की दूरी, शीट पर सेमी में","Отступ размеров от края чертежа, в см на листе","Відступ розмірів від краю креслення, у см на аркуші","مسافة الأبعاد عن حافة الرسم، بالسنتيمتر على الورقة"],
+"Glissez pour déplacer le logo":["Drag to move the logo","Arrastre para mover el logo","Trascina per spostare il logo","Zum Verschieben des Logos ziehen","Arraste para mover o logótipo","Húzza a logó mozgatásához","拖动以移动标志","ドラッグしてロゴを移動","लोगो हिलाने हेतु खींचें","Перетащите, чтобы переместить логотип","Перетягніть, щоб перемістити логотип","اسحب لتحريك الشعار"],
+"Configs, scènes, planches, cartouche… stockées dans CE navigateur uniquement. Exportez un fichier pour sauvegarder / transférer.":["Configs, scenes, sheets, title block… stored in THIS browser only. Export a file to save / transfer.","Configuraciones, escenas, láminas, cajetín… almacenadas SOLO en ESTE navegador. Exporte un archivo para guardar / transferir.","Configurazioni, scene, tavole, cartiglio… memorizzati SOLO in QUESTO browser. Esporta un file per salvare / trasferire.","Konfigurationen, Szenen, Blätter, Schriftfeld… nur in DIESEM Browser gespeichert. Exportieren Sie eine Datei zum Speichern / Übertragen.","Configurações, cenas, pranchas, legenda… guardadas SÓ NESTE navegador. Exporte um ficheiro para guardar / transferir.","Konfigurációk, jelenetek, lapok, pecsét… CSAK EBBEN a böngészőben tárolva. Exportáljon fájlt a mentéshez / átvitelhez.","配置、场景、图纸、图签……仅存储于本浏览器。导出文件以保存/转移。","構成・シーン・図面・表題欄…はこのブラウザーのみに保存。保存／転送はファイルを書き出してください。","विन्यास, दृश्य, शीट, शीर्षक ब्लॉक… केवल इसी ब्राउज़र में संग्रहीत। सहेजने/स्थानांतरण हेतु फ़ाइल निर्यात करें।","Конфигурации, сцены, листы, штамп… хранятся ТОЛЬКО в ЭТОМ браузере. Экспортируйте файл для сохранения / переноса.","Конфігурації, сцени, аркуші, штамп… зберігаються ЛИШЕ в ЦЬОМУ браузері. Експортуйте файл для збереження / перенесення.","الإعدادات، المشاهد، اللوحات، خانة العنوان… مخزّنة في هذا المتصفح فقط. صدّر ملفًا للحفظ / النقل."],
+"Distance réelle entre les 2 points (cm) :":["Real distance between the 2 points (cm):","Distancia real entre los 2 puntos (cm):","Distanza reale tra i 2 punti (cm):","Reale Distanz zwischen den 2 Punkten (cm):","Distância real entre os 2 pontos (cm):","A 2 pont közötti valós távolság (cm):","两点之间的实际距离（厘米）：","2 点間の実距離（cm）：","2 बिंदुओं के बीच वास्तविक दूरी (सेमी):","Реальное расстояние между 2 точками (см):","Реальна відстань між 2 точками (см):","المسافة الحقيقية بين النقطتين (سم):"],
+"Renommer le dossier :":["Rename folder:","Renombrar carpeta:","Rinomina cartella:","Ordner umbenennen:","Renomear pasta:","Mappa átnevezése:","重命名文件夹：","フォルダー名を変更：","फ़ोल्डर का नाम बदलें:","Переименовать папку:","Перейменувати теку:","إعادة تسمية المجلد:"],
+"Nom du template :":["Template name:","Nombre de la plantilla:","Nome del modello:","Vorlagenname:","Nome do modelo:","Sablon neve:","模板名称：","テンプレート名：","टेम्पलेट नाम:","Название шаблона:","Назва шаблону:","اسم القالب:"],
+"Texte (vide = utiliser le champ lié) :":["Text (empty = use the linked field):","Texto (vacío = usar el campo vinculado):","Testo (vuoto = usa il campo collegato):","Text (leer = verknüpftes Feld verwenden):","Texto (vazio = usar o campo ligado):","Szöveg (üres = a kapcsolt mező):","文本（留空 = 使用关联字段）：","テキスト（空欄 = 連動フィールドを使用）：","पाठ (खाली = लिंक्ड फ़ील्ड उपयोग करें):","Текст (пусто = использовать связанное поле):","Текст (порожньо = використати пов'язане поле):","نص (فارغ = استخدام الحقل المرتبط):"],
+"Cet objet ne peut pas être enregistré ici (catégorie non paramétrique).":["This object cannot be saved here (non-parametric category).","Este objeto no se puede guardar aquí (categoría no paramétrica).","Questo oggetto non può essere salvato qui (categoria non parametrica).","Dieses Objekt kann hier nicht gespeichert werden (nicht-parametrische Kategorie).","Este objeto não pode ser guardado aqui (categoria não paramétrica).","Ez az objektum itt nem menthető (nem paraméteres kategória).","此对象无法在此保存（非参数化类别）。","このオブジェクトはここに保存できません（非パラメトリックのカテゴリ）。","यह वस्तु यहाँ सहेजी नहीं जा सकती (गैर-पैरामीट्रिक श्रेणी)।","Этот объект нельзя сохранить здесь (непараметрическая категория).","Цей об'єкт не можна зберегти тут (непараметрична категорія).","لا يمكن حفظ هذا الكائن هنا (فئة غير بارامترية)."],
+"Restaurer cette sauvegarde ? Les données actuelles de ce navigateur seront remplacées.":["Restore this backup? The current data in this browser will be replaced.","¿Restaurar esta copia? Los datos actuales de este navegador se reemplazarán.","Ripristinare questo backup? I dati attuali di questo browser saranno sostituiti.","Diese Sicherung wiederherstellen? Die aktuellen Daten dieses Browsers werden ersetzt.","Restaurar esta cópia de segurança? Os dados atuais deste navegador serão substituídos.","Visszaállítja ezt a mentést? A böngésző jelenlegi adatai felülíródnak.","恢复此备份？本浏览器中的当前数据将被替换。","このバックアップを復元しますか？このブラウザーの現在のデータは置き換えられます。","इस बैकअप को पुनर्स्थापित करें? इस ब्राउज़र का वर्तमान डेटा बदल दिया जाएगा।","Восстановить эту резервную копию? Текущие данные в этом браузере будут заменены.","Відновити цю резервну копію? Поточні дані в цьому браузері будуть замінені.","استعادة هذه النسخة الاحتياطية؟ سيتم استبدال البيانات الحالية في هذا المتصفح."],
+"Maillage pas encore chargé. Patientez une seconde puis rouvrez la finition.":["Mesh not loaded yet. Wait a second then reopen the finish.","La malla aún no se ha cargado. Espere un segundo y reabra el acabado.","Mesh non ancora caricata. Attendi un secondo e riapri la finitura.","Netz noch nicht geladen. Warten Sie einen Moment und öffnen Sie die Oberfläche erneut.","Malha ainda não carregada. Aguarde um segundo e reabra o acabamento.","A háló még nem töltődött be. Várjon egy másodpercet, majd nyissa meg újra a felületet.","网格尚未加载。请稍候再重新打开饰面。","メッシュがまだ読み込まれていません。少し待って仕上げを開き直してください。","जाल अभी लोड नहीं हुआ। एक क्षण रुककर फ़िनिश दोबारा खोलें।","Сетка ещё не загружена. Подождите секунду и снова откройте отделку.","Сітка ще не завантажена. Зачекайте секунду й знову відкрийте оздоблення.","لم تُحمّل الشبكة بعد. انتظر لحظة ثم أعد فتح التشطيب."],
+"La capture de planche fonctionne sur les objets paramétriques (pas les produits fabricants importés).":["Sheet capture works on parametric objects (not imported manufacturer products).","La captura de lámina funciona con objetos paramétricos (no con productos de fabricante importados).","L'acquisizione della tavola funziona sugli oggetti parametrici (non sui prodotti di produttori importati).","Die Blatterfassung funktioniert bei parametrischen Objekten (nicht bei importierten Herstellerprodukten).","A captura de prancha funciona em objetos paramétricos (não em produtos de fabricante importados).","A laprögzítés paraméteres objektumokon működik (nem importált gyártói termékeken).","图纸捕获适用于参数化对象（不适用于导入的厂商产品）。","図面キャプチャはパラメトリックオブジェクトで機能します（インポートしたメーカー製品は不可）。","शीट कैप्चर पैरामीट्रिक वस्तुओं पर काम करता है (आयातित निर्माता उत्पादों पर नहीं)।","Захват листа работает с параметрическими объектами (не с импортированными продуктами производителей).","Захоплення аркуша працює з параметричними об'єктами (не з імпортованими продуктами виробників).","التقاط اللوحة يعمل على الكائنات البارامترية (وليس منتجات الشركات المستوردة)."],
+"Impossible de charger le lecteur PDF (hors ligne ?). Convertis le PDF en JPG/PNG et réimporte.":["Cannot load the PDF reader (offline?). Convert the PDF to JPG/PNG and re-import.","No se puede cargar el lector PDF (¿sin conexión?). Convierte el PDF a JPG/PNG y reimporta.","Impossibile caricare il lettore PDF (offline?). Converti il PDF in JPG/PNG e reimporta.","PDF-Reader kann nicht geladen werden (offline?). Konvertieren Sie das PDF in JPG/PNG und importieren Sie erneut.","Não é possível carregar o leitor de PDF (offline?). Converte o PDF em JPG/PNG e reimporta.","A PDF-olvasó nem tölthető be (offline?). Alakítsd a PDF-et JPG/PNG-vé és importáld újra.","无法加载 PDF 阅读器（离线？）。请将 PDF 转为 JPG/PNG 后重新导入。","PDF リーダーを読み込めません（オフライン？）。PDF を JPG/PNG に変換して再インポートしてください。","PDF रीडर लोड नहीं हो सका (ऑफ़लाइन?)। PDF को JPG/PNG में बदलें और पुनः आयात करें।","Не удаётся загрузить средство чтения PDF (офлайн?). Преобразуйте PDF в JPG/PNG и импортируйте снова.","Не вдається завантажити засіб читання PDF (офлайн?). Перетворіть PDF на JPG/PNG і імпортуйте знову.","تعذّر تحميل قارئ PDF (غير متصل؟). حوّل PDF إلى JPG/PNG وأعد الاستيراد."],
+"Aucune polyligne trouvée (LWPOLYLINE / POLYLINE / LINE pour DXF, polyline/polygon/path pour SVG).":["No polyline found (LWPOLYLINE / POLYLINE / LINE for DXF, polyline/polygon/path for SVG).","No se encontró ninguna polilínea (LWPOLYLINE / POLYLINE / LINE para DXF, polyline/polygon/path para SVG).","Nessuna polilinea trovata (LWPOLYLINE / POLYLINE / LINE per DXF, polyline/polygon/path per SVG).","Keine Polylinie gefunden (LWPOLYLINE / POLYLINE / LINE für DXF, polyline/polygon/path für SVG).","Nenhuma polilinha encontrada (LWPOLYLINE / POLYLINE / LINE para DXF, polyline/polygon/path para SVG).","Nem található polivonal (LWPOLYLINE / POLYLINE / LINE DXF-hez, polyline/polygon/path SVG-hez).","未找到多段线（DXF 用 LWPOLYLINE / POLYLINE / LINE，SVG 用 polyline/polygon/path）。","ポリラインが見つかりません（DXF は LWPOLYLINE / POLYLINE / LINE、SVG は polyline/polygon/path）。","कोई पॉलीलाइन नहीं मिली (DXF हेतु LWPOLYLINE / POLYLINE / LINE, SVG हेतु polyline/polygon/path)।","Полилиния не найдена (LWPOLYLINE / POLYLINE / LINE для DXF, polyline/polygon/path для SVG).","Полілінію не знайдено (LWPOLYLINE / POLYLINE / LINE для DXF, polyline/polygon/path для SVG).","لم يُعثر على متعدد خطوط (LWPOLYLINE / POLYLINE / LINE لـ DXF، polyline/polygon/path لـ SVG)."],
+"Le rendu photo nécessite WebGPU (application BPO desktop, ou Chrome/Edge récent).":["Photo rendering requires WebGPU (BPO desktop app, or recent Chrome/Edge).","El renderizado fotográfico requiere WebGPU (app BPO de escritorio o Chrome/Edge reciente).","Il rendering fotografico richiede WebGPU (app BPO desktop o Chrome/Edge recente).","Foto-Rendering erfordert WebGPU (BPO-Desktop-App oder aktuelles Chrome/Edge).","A renderização fotográfica requer WebGPU (app BPO de secretária ou Chrome/Edge recente).","A fotórenderelés WebGPU-t igényel (BPO asztali alkalmazás vagy friss Chrome/Edge).","照片级渲染需要 WebGPU（BPO 桌面应用，或较新的 Chrome/Edge）。","フォトレンダリングには WebGPU が必要です（BPO デスクトップアプリ、または最新の Chrome/Edge）。","फोटो रेंडरिंग हेतु WebGPU आवश्यक (BPO डेस्कटॉप ऐप, या हालिया Chrome/Edge)।","Фотореалистичный рендер требует WebGPU (десктоп-приложение BPO или свежий Chrome/Edge).","Фотореалістичний рендер потребує WebGPU (десктоп-застосунок BPO або свіжий Chrome/Edge).","يتطلب العرض الواقعي WebGPU (تطبيق BPO لسطح المكتب، أو Chrome/Edge حديث)."],
+"Sol/ciel visibles en rendu WebGL. D'autres réglages à venir.":["Ground/sky visible in WebGL rendering. More settings to come.","Suelo/cielo visibles en render WebGL. Más ajustes por venir.","Suolo/cielo visibili nel rendering WebGL. Altre impostazioni in arrivo.","Boden/Himmel im WebGL-Rendering sichtbar. Weitere Einstellungen folgen.","Solo/céu visíveis no render WebGL. Mais definições em breve.","Talaj/ég látható a WebGL renderben. További beállítások hamarosan.","地面/天空在 WebGL 渲染中可见。更多设置即将推出。","地面／空は WebGL レンダリングで表示。設定は今後追加予定。","भूमि/आकाश WebGL रेंडर में दृश्यमान। और सेटिंग्स जल्द।","Земля/небо видны в рендере WebGL. Другие настройки скоро.","Земля/небо видно в рендері WebGL. Інші налаштування згодом.","الأرض/السماء مرئيان في عرض WebGL. مزيد من الإعدادات قريبًا."],
+"Soleil sous l'horizon : lumière d'ambiance utilisée.":["Sun below the horizon: ambient light used.","Sol bajo el horizonte: se usa luz ambiental.","Sole sotto l'orizzonte: usata luce ambientale.","Sonne unter dem Horizont: Umgebungslicht verwendet.","Sol abaixo do horizonte: usada luz ambiente.","Nap a horizont alatt: környezeti fény használva.","太阳低于地平线：使用环境光。","太陽が地平線下：環境光を使用。","सूर्य क्षितिज के नीचे: परिवेश प्रकाश उपयोग।","Солнце за горизонтом: используется рассеянный свет.","Сонце за горизонтом: використано розсіяне світло.","الشمس تحت الأفق: يُستخدم الضوء المحيط."],
+"✓ Rendu prêt.":["✓ Render ready.","✓ Render listo.","✓ Render pronto.","✓ Rendering fertig.","✓ Render pronto.","✓ A render kész.","✓ 渲染完成。","✓ レンダリング完了。","✓ रेंडर तैयार।","✓ Рендер готов.","✓ Рендер готовий.","✓ اكتمل العرض."],
+"⚠︎ Impossible de capturer la vue.":["⚠︎ Cannot capture the view.","⚠︎ No se puede capturar la vista.","⚠︎ Impossibile acquisire la vista.","⚠︎ Ansicht kann nicht erfasst werden.","⚠︎ Não é possível capturar a vista.","⚠︎ A nézet nem rögzíthető.","⚠︎ 无法捕获视图。","⚠︎ ビューをキャプチャできません。","⚠︎ दृश्य कैप्चर नहीं हो सका।","⚠︎ Не удаётся захватить вид.","⚠︎ Не вдається захопити вигляд.","⚠︎ تعذّر التقاط العرض."],
+"⚠︎ Renseigne d'abord ta clé API.":["⚠︎ Enter your API key first.","⚠︎ Introduce primero tu clave API.","⚠︎ Inserisci prima la tua chiave API.","⚠︎ Geben Sie zuerst Ihren API-Schlüssel ein.","⚠︎ Introduza primeiro a sua chave API.","⚠︎ Először add meg az API-kulcsodat.","⚠︎ 请先输入你的 API 密钥。","⚠︎ 先に API キーを入力してください。","⚠︎ पहले अपनी API कुंजी दर्ज करें।","⚠︎ Сначала введите ваш API-ключ.","⚠︎ Спершу введіть ваш API-ключ.","⚠︎ أدخل مفتاح API أولاً."],
+"⏳ Liste des modèles…":["⏳ Listing models…","⏳ Listando modelos…","⏳ Elenco modelli…","⏳ Modelle werden aufgelistet…","⏳ A listar modelos…","⏳ Modellek listázása…","⏳ 正在列出模型…","⏳ モデル一覧を取得中…","⏳ मॉडल सूची…","⏳ Список моделей…","⏳ Список моделей…","⏳ قائمة النماذج…"],
+"OpenAI gpt-image-1 (moteur type Copilot / ChatGPT — payant)":["OpenAI gpt-image-1 (Copilot / ChatGPT-type engine — paid)","OpenAI gpt-image-1 (motor tipo Copilot / ChatGPT — de pago)","OpenAI gpt-image-1 (motore tipo Copilot / ChatGPT — a pagamento)","OpenAI gpt-image-1 (Engine wie Copilot / ChatGPT — kostenpflichtig)","OpenAI gpt-image-1 (motor tipo Copilot / ChatGPT — pago)","OpenAI gpt-image-1 (Copilot / ChatGPT típusú motor — fizetős)","OpenAI gpt-image-1（Copilot / ChatGPT 类引擎 — 付费）","OpenAI gpt-image-1（Copilot / ChatGPT 系エンジン — 有料）","OpenAI gpt-image-1 (Copilot / ChatGPT प्रकार इंजन — सशुल्क)","OpenAI gpt-image-1 (движок типа Copilot / ChatGPT — платный)","OpenAI gpt-image-1 (рушій типу Copilot / ChatGPT — платний)","OpenAI gpt-image-1 (محرك من نوع Copilot / ChatGPT — مدفوع)"],
+"Finition Flos choisie ci-dessus (modèle / variante / métal).":["Flos finish chosen above (model / variant / metal).","Acabado Flos elegido arriba (modelo / variante / metal).","Finitura Flos scelta sopra (modello / variante / metallo).","Oben gewählte Flos-Oberfläche (Modell / Variante / Metall).","Acabamento Flos escolhido acima (modelo / variante / metal).","A fent választott Flos felület (modell / változat / fém).","上方所选的 Flos 饰面（型号/款式/金属）。","上で選択した Flos 仕上げ（モデル／バリエーション／メタル）。","ऊपर चुना गया Flos फ़िनिश (मॉडल / वेरिएंट / धातु)।","Выбранная выше отделка Flos (модель / вариант / металл).","Обране вище оздоблення Flos (модель / варіант / метал).","تشطيب Flos المختار أعلاه (الطراز / النوع / المعدن)."],
+"Définition (segments)":["Definition (segments)","Definición (segmentos)","Definizione (segmenti)","Auflösung (Segmente)","Definição (segmentos)","Felbontás (szegmensek)","精度（分段）","分割数（セグメント）","परिभाषा (खंड)","Детализация (сегменты)","Деталізація (сегменти)","الدقة (المقاطع)"],
+"Central (fût)":["Central (shaft)","Central (fuste)","Centrale (fusto)","Zentral (Schaft)","Central (fuste)","Központi (törzs)","中央（柱身）","中央（柱身）","केंद्रीय (शाफ्ट)","Центральный (ствол)","Центральний (стовбур)","مركزي (ساق)"],
+"Glisser dans la vue —":["Drag into the view —","Arrastrar a la vista —","Trascina nella vista —","In die Ansicht ziehen —","Arrastar para a vista —","Húzza a nézetbe —","拖入视图 —","ビューへドラッグ —","दृश्य में खींचें —","Перетащить в вид —","Перетягнути у вигляд —","اسحب إلى العرض —"],
+"Éditer la forme libre de":["Edit the free shape of","Editar la forma libre de","Modifica la forma libera di","Freie Form bearbeiten von","Editar a forma livre de","Szabad forma szerkesztése:","编辑自由形状 —","自由形状を編集 —","मुक्त आकृति संपादित करें —","Правка свободной формы:","Правка вільної форми:","تحرير الشكل الحر لـ"],
+"Rechercher un code RAL…":["Search a RAL code…","Buscar un código RAL…","Cerca un codice RAL…","RAL-Code suchen…","Procurar um código RAL…","RAL-kód keresése…","搜索 RAL 代码…","RAL コードを検索…","RAL कोड खोजें…","Поиск кода RAL…","Пошук коду RAL…","ابحث عن رمز RAL…"]
+};
+(function(){ for(var fr in I18N_ADD28){ var t=I18N_ADD28[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* ============================================================================
+   I18N_ADD29 — batch 4 : préfixes des dialogues concaténés (routés via trI18N)
+   + messages du rendu IA. Ordre I18N_ORDER7.
+   ============================================================================ */
+var I18N_ADD29={
+"Ambiance":["Ambience","Ambiente","Atmosfera","Stimmung","Ambiente","Hangulat","氛围","ムード","माहौल","Атмосфера","Атмосфера","الأجواء"],
+"Chaud":["Warm","Cálido","Caldo","Warm","Quente","Meleg","暖色","暖色","गर्म","Тёплый","Теплий","دافئ"],
+"Froid":["Cool","Frío","Freddo","Kühl","Frio","Hideg","冷色","寒色","ठंडा","Холодный","Холодний","بارد"],
+"Bâtiment - Site":["Building - Site","Edificio - Emplazamiento","Edificio - Sito","Gebäude - Gelände","Edifício - Local","Épület - Telek","建筑 - 场地","建物 - 敷地","भवन - स्थल","Здание - Участок","Будівля - Ділянка","المبنى - الموقع"],
+"Enregistrer configuration":["Save configuration","Guardar configuración","Salva configurazione","Konfiguration speichern","Guardar configuração","Konfiguráció mentése","保存配置","構成を保存","विन्यास सहेजें","Сохранить конфигурацию","Зберегти конфігурацію","حفظ التكوين"],
+"Rendu photo":["Photo render","Render fotográfico","Render fotografico","Foto-Rendering","Render fotográfico","Fotórenderelés","照片级渲染","フォトレンダリング","फोटो रेंडर","Фоторендер","Фоторендер","عرض واقعي"],
+"🎞 Rendu photo":["🎞 Photo render","🎞 Render fotográfico","🎞 Render fotografico","🎞 Foto-Rendering","🎞 Render fotográfico","🎞 Fotórenderelés","🎞 照片级渲染","🎞 フォトレンダリング","🎞 फोटो रेंडर","🎞 Фоторендер","🎞 Фоторендер","🎞 عرض واقعي"],
+"Lampes":["Lamps","Lámparas","Lampade","Lampen","Lâmpadas","Lámpák","灯光","ランプ","लैम्प","Лампы","Лампи","مصابيح"],
+"— éclairage du rendu photo":["— photo render lighting","— iluminación del render fotográfico","— illuminazione del rendering fotografico","— Beleuchtung des Foto-Renderings","— iluminação do render fotográfico","— a fotórenderelés világítása","— 照片渲染照明","— フォトレンダリングの照明","— फोटो रेंडर प्रकाश","— освещение фоторендера","— освітлення фоторендера","— إضاءة العرض الواقعي"],
+"Ombres & soleil":["Shadows & sun","Sombras y sol","Ombre e sole","Schatten & Sonne","Sombras e sol","Árnyékok és nap","阴影与阳光","影と太陽","छाया और सूर्य","Тени и солнце","Тіні та сонце","الظلال والشمس"],
+"+ Ajouter une lampe":["+ Add a lamp","+ Añadir una lámpara","+ Aggiungi una lampada","+ Lampe hinzufügen","+ Adicionar uma lâmpada","+ Lámpa hozzáadása","+ 添加灯光","+ ランプを追加","+ लैम्प जोड़ें","+ Добавить лампу","+ Додати лампу","+ إضافة مصباح"],
+"— Ctrl/⌘+clic : multi · Ctrl/⌘+A : tout · Échap : rien":["— Ctrl/⌘+click: multi · Ctrl/⌘+A: all · Esc: none","— Ctrl/⌘+clic: múltiple · Ctrl/⌘+A: todo · Esc: nada","— Ctrl/⌘+clic: multi · Ctrl/⌘+A: tutto · Esc: niente","— Ctrl/⌘+Klick: Mehrfach · Ctrl/⌘+A: alle · Esc: keine","— Ctrl/⌘+clique: múltiplo · Ctrl/⌘+A: tudo · Esc: nada","— Ctrl/⌘+kattintás: több · Ctrl/⌘+A: mind · Esc: semmi","— Ctrl/⌘+点击：多选 · Ctrl/⌘+A：全选 · Esc：取消","— Ctrl/⌘+クリック：複数 · Ctrl/⌘+A：全選択 · Esc：解除","— Ctrl/⌘+क्लिक: बहु · Ctrl/⌘+A: सभी · Esc: कोई नहीं","— Ctrl/⌘+клик: несколько · Ctrl/⌘+A: все · Esc: ничего","— Ctrl/⌘+клік: кілька · Ctrl/⌘+A: усі · Esc: нічого","— Ctrl/⌘+نقر: متعدد · Ctrl/⌘+A: الكل · Esc: لا شيء"],
+"Aucune lampe. « + » en place une chaude au centre, à 2,5 m — réglez position et intensité. (Le bouton « Intérieur » du rendu ajoute en plus des lampes auto au plafond.)":["No lamp. « + » places a warm one at the centre, 2.5 m up — adjust position and intensity. (The render's « Interior » button also adds automatic ceiling lamps.)","Sin lámpara. « + » coloca una cálida en el centro, a 2,5 m — ajusta posición e intensidad. (El botón « Interior » del render añade además lámparas automáticas en el techo.)","Nessuna lampada. « + » ne posiziona una calda al centro, a 2,5 m — regola posizione e intensità. (Il pulsante « Interni » del rendering aggiunge anche lampade automatiche a soffitto.)","Keine Lampe. « + » platziert eine warme in der Mitte, 2,5 m hoch — Position und Intensität einstellen. (Die Schaltfläche « Innen » des Renderings fügt zusätzlich automatische Deckenlampen hinzu.)","Sem lâmpada. « + » coloca uma quente no centro, a 2,5 m — ajusta a posição e a intensidade. (O botão « Interior » do render adiciona ainda lâmpadas automáticas no teto.)","Nincs lámpa. A « + » egy meleg fényűt helyez középre, 2,5 m magasra — állítsd be a helyzetet és az erősséget. (A render « Belső » gombja automatikus mennyezeti lámpákat is hozzáad.)","无灯光。« + » 在中央 2.5 米高处放置一盏暖光灯 — 调整位置与强度。（渲染的「室内」按钮还会自动添加吸顶灯。）","ランプなし。「+」で中央・高さ 2.5 m に暖色を1つ配置 — 位置と強さを調整。（レンダリングの「室内」ボタンで天井の自動ランプも追加されます。）","कोई लैम्प नहीं। « + » केंद्र में 2.5 मीटर ऊँचाई पर एक गर्म लैम्प रखता है — स्थिति और तीव्रता समायोजित करें। (रेंडर का « इनडोर » बटन छत पर स्वचालित लैम्प भी जोड़ता है।)","Нет ламп. « + » ставит тёплую в центре на высоте 2,5 м — настройте положение и яркость. (Кнопка « Интерьер » рендера дополнительно добавляет автоматические потолочные лампы.)","Немає ламп. « + » ставить теплу в центрі на висоті 2,5 м — налаштуйте положення та яскравість. (Кнопка « Інтер'єр » рендера додатково додає автоматичні стельові лампи.)","لا يوجد مصباح. « + » يضع مصباحًا دافئًا في المنتصف على ارتفاع 2.5 م — اضبط الموضع والشدة. (زر « داخلي » في العرض يضيف أيضًا مصابيح سقفية تلقائية.)"],
+"La config":["The config","La config","La config","Die Konfig","A config","A konfig","此配置","この構成","यह विन्यास","Конфигурация","Конфігурація","التكوين"],
+"est d'un autre type que l'objet courant. Remplacer quand même ?":["is of a different type than the current object. Replace anyway?","es de un tipo distinto al del objeto actual. ¿Reemplazar igualmente?","è di tipo diverso dall'oggetto corrente. Sostituire comunque?","hat einen anderen Typ als das aktuelle Objekt. Trotzdem ersetzen?","é de um tipo diferente do objeto atual. Substituir mesmo assim?","eltérő típusú, mint az aktuális objektum. Mégis lecseréli?","与当前对象类型不同。仍要替换吗？","現在のオブジェクトと型が異なります。置き換えますか？","वर्तमान वस्तु से भिन्न प्रकार का है। फिर भी बदलें?","имеет тип, отличный от текущего объекта. Всё равно заменить?","має тип, відмінний від поточного об'єкта. Усе одно замінити?","من نوع مختلف عن الكائن الحالي. استبدال على أي حال؟"],
+"Supprimer le dossier":["Delete folder","Eliminar carpeta","Elimina cartella","Ordner löschen","Eliminar pasta","Mappa törlése","删除文件夹","フォルダーを削除","फ़ोल्डर हटाएँ","Удалить папку","Видалити теку","حذف المجلد"],
+"Son contenu remonte au niveau supérieur.":["Its contents move up one level.","Su contenido sube al nivel superior.","Il suo contenuto risale al livello superiore.","Sein Inhalt rückt eine Ebene nach oben.","O seu conteúdo sobe um nível.","A tartalma egy szinttel feljebb kerül.","其内容上移一级。","内容は一つ上の階層に移動します。","इसकी सामग्री एक स्तर ऊपर चली जाती है।","Его содержимое поднимается на уровень выше.","Його вміст піднімається на рівень вище.","ينتقل محتواه إلى المستوى الأعلى."],
+"Fichier DWG binaire détecté":["Binary DWG file detected","Archivo DWG binario detectado","Rilevato file DWG binario","Binäre DWG-Datei erkannt","Ficheiro DWG binário detetado","Bináris DWG-fájl észlelve","检测到二进制 DWG 文件","バイナリ DWG ファイルを検出","बाइनरी DWG फ़ाइल मिली","Обнаружен двоичный файл DWG","Виявлено двійковий файл DWG","تم اكتشاف ملف DWG ثنائي"],
+"Le format DWG est propriétaire et ne peut pas être décodé de façon fiable dans le navigateur. Exporte-le en DXF depuis ton logiciel (commande DXFOUT, ou « Enregistrer sous → DXF ») puis réimporte le .dxf : les polylignes seront lues sans problème.":["The DWG format is proprietary and cannot be decoded reliably in the browser. Export it to DXF from your software (DXFOUT command, or « Save as → DXF ») then re-import the .dxf: the polylines will be read without trouble.","El formato DWG es propietario y no puede decodificarse de forma fiable en el navegador. Expórtalo a DXF desde tu software (comando DXFOUT, o « Guardar como → DXF ») y reimporta el .dxf: las polilíneas se leerán sin problema.","Il formato DWG è proprietario e non può essere decodificato in modo affidabile nel browser. Esportalo in DXF dal tuo software (comando DXFOUT, o « Salva con nome → DXF ») e reimporta il .dxf: le polilinee saranno lette senza problemi.","Das DWG-Format ist proprietär und kann im Browser nicht zuverlässig dekodiert werden. Exportieren Sie es aus Ihrer Software nach DXF (Befehl DXFOUT oder « Speichern unter → DXF ») und importieren Sie die .dxf erneut: Die Polylinien werden problemlos gelesen.","O formato DWG é proprietário e não pode ser descodificado de forma fiável no navegador. Exporta-o para DXF a partir do teu software (comando DXFOUT, ou « Guardar como → DXF ») e reimporta o .dxf: as polilinhas serão lidas sem problema.","A DWG formátum zárt, és a böngészőben nem dekódolható megbízhatóan. Exportáld DXF-be a szoftveredből (DXFOUT parancs, vagy « Mentés másként → DXF »), majd importáld újra a .dxf-et: a polivonalak gond nélkül beolvashatók.","DWG 是专有格式，无法在浏览器中可靠解码。请从你的软件导出为 DXF（DXFOUT 命令，或「另存为 → DXF」），再重新导入 .dxf：多段线将被正常读取。","DWG は独自形式で、ブラウザーで確実にデコードできません。お使いのソフトから DXF に書き出し（DXFOUT コマンド、または「名前を付けて保存 → DXF」）、.dxf を再インポートしてください。ポリラインは問題なく読み込まれます。","DWG प्रारूप स्वामित्व वाला है और ब्राउज़र में विश्वसनीय रूप से डिकोड नहीं हो सकता। इसे अपने सॉफ़्टवेयर से DXF में निर्यात करें (DXFOUT कमांड, या « इस रूप में सहेजें → DXF ») फिर .dxf पुनः आयात करें: पॉलीलाइनें बिना किसी समस्या के पढ़ी जाएँगी।","Формат DWG проприетарный и не может быть надёжно декодирован в браузере. Экспортируйте его в DXF из вашей программы (команда DXFOUT или « Сохранить как → DXF »), затем импортируйте .dxf снова: полилинии будут прочитаны без проблем.","Формат DWG пропрієтарний і не може бути надійно декодований у браузері. Експортуйте його в DXF зі свого ПЗ (команда DXFOUT або « Зберегти як → DXF »), потім імпортуйте .dxf знову: полілінії буде прочитано без проблем.","صيغة DWG مملوكة ولا يمكن فك ترميزها بموثوقية في المتصفح. صدّرها إلى DXF من برنامجك (الأمر DXFOUT، أو « حفظ باسم → DXF ») ثم أعد استيراد ملف .dxf: ستُقرأ الخطوط المتعددة دون مشكلة."],
+"Ce modèle contient":["This model contains","Este modelo contiene","Questo modello contiene","Dieses Modell enthält","Este modelo contém","Ez a modell tartalmaz","此模型包含","このモデルには","इस मॉडल में","Эта модель содержит","Ця модель містить","يحتوي هذا النموذج على"],
+"L'export sera très lourd et peut prendre du temps.":["The export will be very heavy and may take time.","La exportación será muy pesada y puede tardar.","L'esportazione sarà molto pesante e può richiedere tempo.","Der Export wird sehr groß und kann dauern.","A exportação será muito pesada e pode demorar.","Az exportálás nagyon nagy lesz, és eltarthat egy ideig.","导出将非常庞大，可能需要一些时间。","書き出しは非常に重く、時間がかかる場合があります。","निर्यात बहुत भारी होगा और समय ले सकता है।","Экспорт будет очень тяжёлым и может занять время.","Експорт буде дуже важким і може зайняти час.","سيكون التصدير ثقيلاً جدًا وقد يستغرق وقتًا."],
+"Continuer ?":["Continue?","¿Continuar?","Continuare?","Fortfahren?","Continuar?","Folytatja?","继续吗？","続行しますか？","जारी रखें?","Продолжить?","Продовжити?","المتابعة؟"],
+"Renseigne ta clé API":["Enter your API key","Introduce tu clave API","Inserisci la tua chiave API","Geben Sie Ihren API-Schlüssel ein","Introduza a sua chave API","Add meg az API-kulcsodat","请输入你的 API 密钥","API キーを入力してください","अपनी API कुंजी दर्ज करें","Введите ваш API-ключ","Введіть ваш API-ключ","أدخل مفتاح API"],
+"Supprimer le template":["Delete template","Eliminar plantilla","Elimina modello","Vorlage löschen","Eliminar modelo","Sablon törlése","删除模板","テンプレートを削除","टेम्पलेट हटाएँ","Удалить шаблон","Видалити шаблон","حذف القالب"],
+"File d'attente AI Horde (gratuit)… position":["AI Horde queue (free)… position","Cola de AI Horde (gratis)… posición","Coda AI Horde (gratis)… posizione","AI-Horde-Warteschlange (kostenlos)… Position","Fila AI Horde (grátis)… posição","AI Horde várólista (ingyenes)… pozíció","AI Horde 队列（免费）…位置","AI Horde キュー（無料）…順位","AI Horde कतार (मुफ़्त)… स्थान","Очередь AI Horde (бесплатно)… позиция","Черга AI Horde (безкоштовно)… позиція","طابور AI Horde (مجاني)… الموضع"],
+"⚠︎ Filtre AI Horde (faux positif) — nouvelle tentative avec une autre graine…":["⚠︎ AI Horde filter (false positive) — retrying with another seed…","⚠︎ Filtro de AI Horde (falso positivo) — reintentando con otra semilla…","⚠︎ Filtro AI Horde (falso positivo) — nuovo tentativo con un altro seed…","⚠︎ AI-Horde-Filter (Fehlalarm) — neuer Versuch mit anderem Seed…","⚠︎ Filtro AI Horde (falso positivo) — a repetir com outra seed…","⚠︎ AI Horde szűrő (téves találat) — újrapróbálkozás másik maggal…","⚠︎ AI Horde 过滤器（误报）— 用另一随机种子重试…","⚠︎ AI Horde フィルター（誤検出）— 別のシードで再試行…","⚠︎ AI Horde फ़िल्टर (गलत पहचान) — दूसरे सीड से पुनः प्रयास…","⚠︎ Фильтр AI Horde (ложное срабатывание) — повтор с другим сидом…","⚠︎ Фільтр AI Horde (хибне спрацювання) — повтор з іншим сідом…","⚠︎ مرشّح AI Horde (إيجابية خاطئة) — إعادة المحاولة ببذرة أخرى…"],
+"Envoi à AI Horde (gratuit, file d'attente commune)…":["Sending to AI Horde (free, shared queue)…","Enviando a AI Horde (gratis, cola común)…","Invio ad AI Horde (gratis, coda condivisa)…","Senden an AI Horde (kostenlos, gemeinsame Warteschlange)…","A enviar para AI Horde (grátis, fila comum)…","Küldés az AI Horde-nak (ingyenes, közös várólista)…","正在发送到 AI Horde（免费，公共队列）…","AI Horde に送信中（無料・共有キュー）…","AI Horde को भेजा जा रहा है (मुफ़्त, साझा कतार)…","Отправка в AI Horde (бесплатно, общая очередь)…","Надсилання до AI Horde (безкоштовно, спільна черга)…","الإرسال إلى AI Horde (مجاني، طابور مشترك)…"],
+"Génération en cours… (10–30 s)":["Generating… (10–30 s)","Generando… (10–30 s)","Generazione… (10–30 s)","Wird generiert… (10–30 s)","A gerar… (10–30 s)","Generálás… (10–30 s)","生成中…（10–30 秒）","生成中…（10–30 秒）","बन रहा है… (10–30 से)","Генерация… (10–30 с)","Генерація… (10–30 с)","جارٍ التوليد… (10–30 ث)"],
+"Le filtre automatique d'AI Horde a censuré le rendu (faux positif récurrent). Change légèrement la vue et réessaie, ou passe sur Gemini / OpenAI.":["AI Horde's automatic filter censored the render (recurring false positive). Slightly change the view and try again, or switch to Gemini / OpenAI.","El filtro automático de AI Horde censuró el render (falso positivo recurrente). Cambia ligeramente la vista y reinténtalo, o pásate a Gemini / OpenAI.","Il filtro automatico di AI Horde ha censurato il rendering (falso positivo ricorrente). Cambia leggermente la vista e riprova, oppure passa a Gemini / OpenAI.","Der automatische Filter von AI Horde hat das Rendering zensiert (wiederkehrender Fehlalarm). Ändern Sie die Ansicht leicht und versuchen Sie es erneut, oder wechseln Sie zu Gemini / OpenAI.","O filtro automático da AI Horde censurou o render (falso positivo recorrente). Muda ligeiramente a vista e tenta de novo, ou passa para o Gemini / OpenAI.","Az AI Horde automatikus szűrője cenzúrázta a renderelést (visszatérő téves találat). Változtasd meg kissé a nézetet és próbáld újra, vagy válts Geminire / OpenAI-ra.","AI Horde 的自动过滤器审查了渲染（反复误报）。请稍微改变视角后重试，或改用 Gemini / OpenAI。","AI Horde の自動フィルターがレンダリングを検閲しました（誤検出の再発）。視点を少し変えて再試行するか、Gemini / OpenAI に切り替えてください。","AI Horde के स्वचालित फ़िल्टर ने रेंडर को सेंसर किया (बार-बार गलत पहचान)। दृश्य को थोड़ा बदलकर पुनः प्रयास करें, या Gemini / OpenAI पर जाएँ।","Автоматический фильтр AI Horde зацензурил рендер (повторяющееся ложное срабатывание). Немного измените вид и повторите попытку или переключитесь на Gemini / OpenAI.","Автоматичний фільтр AI Horde зацензурував рендер (повторюване хибне спрацювання). Трохи змініть вигляд і повторіть спробу або перейдіть на Gemini / OpenAI.","قام المرشّح التلقائي لـ AI Horde بحجب العرض (إيجابية خاطئة متكررة). غيّر المنظر قليلاً وأعد المحاولة، أو انتقل إلى Gemini / OpenAI."]
+};
+(function(){ for(var fr in I18N_ADD29){ var t=I18N_ADD29[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
 /* Langues sorties du monolithe (data/i18n-nordic.js). Fusionnées en dernier, donc
    elles ne peuvent rien écraser ici ; et si le fichier manque, l'app tourne quand
    même : les trois langues disparaissent simplement du sélecteur. */
@@ -22658,7 +22893,19 @@ function translateDOM(){
     if(LANG!=='fr'){ var tr=D[k]; if(tr!=null) out=base.replace(raw,tr); }
     if(n.nodeValue!==out) n.nodeValue=out;
   }
-  var rc=document.getElementById('recenter'); if(rc){ if(rc.__frt===undefined) rc.__frt=rc.title; rc.title=(LANG!=='fr'&&D[rc.__frt])||rc.__frt; }
+  /* attributs traduisibles : placeholder (champs) + title (infobulles) — non couverts
+     par la passe sur les nœuds texte. Mémorise le FR d'origine (__frph/__frt) puis applique. */
+  var els=root.querySelectorAll('[placeholder],[title]');
+  for(var e=0;e<els.length;e++){ var el=els[e];
+    if(el.hasAttribute('placeholder')){ if(el.__frph===undefined) el.__frph=el.getAttribute('placeholder')||'';
+      var pk=el.__frph.trim().replace(/’/g,"'"), pv=(LANG!=='fr'&&pk&&D[pk])||el.__frph; if(el.getAttribute('placeholder')!==pv) el.setAttribute('placeholder',pv); }
+    if(el.hasAttribute('title')){ if(el.__frt===undefined) el.__frt=el.getAttribute('title')||'';
+      var tk=el.__frt.trim().replace(/’/g,"'"), tv=(LANG!=='fr'&&tk&&D[tk])||el.__frt; if(el.getAttribute('title')!==tv) el.setAttribute('title',tv); }
+  }
+  /* Boutons « Rendu photo » (module de rendu + export) : recréés hors passe texte,
+     réécrits explicitement ici (anti-boucle : seulement si le libellé diffère). */
+  var _ptl='🎞 '+((LANG!=='fr'&&D['Rendu photo'])||'Rendu photo');
+  ['bpo-pt-btn','exp-photorender'].forEach(function(id){ var _b=document.getElementById(id); if(_b && _b.textContent!==_ptl) _b.innerHTML=_ptl; });
   document.documentElement.lang=LANG; document.documentElement.dir=(LANG==='ar')?'rtl':'ltr'; setFlag();
   if(mo){ mo.takeRecords(); mo.observe(root,{childList:true,subtree:true,characterData:true}); }
 }
@@ -22778,7 +23025,7 @@ var INTRO_HOP={
   if(M.hop) for(var b in M.hop){ if(INTRO_HOP[b]===undefined) INTRO_HOP[b]=M.hop[b]; }
 })();
 /* Écran d'introduction à l'outil (toutes langues sauf hongrois). Clic pour passer. */
-function playIntro(l){
+function playIntro(l, onClose){
   var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsIntro') || document.getElementById('gsTribute')) return;
   if(getComputedStyle(vp).position==='static') vp.style.position='relative';
   var msg=INTRO_MSG[l]||INTRO_MSG.en, hop=INTRO_HOP[l]||INTRO_HOP.en;
@@ -22826,9 +23073,61 @@ function playIntro(l){
   vp.appendChild(ov);
   requestAnimationFrame(function(){ ov.style.opacity='1'; });
   animSoundStart();
-  var timer=setTimeout(close, 15600);
-  function close(){ clearTimeout(timer); animSoundStop(); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
+  var timer=setTimeout(close, 15600), closed=false;
+  function close(){ if(closed) return; closed=true; clearTimeout(timer); animSoundStop(); ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); if(typeof onClose==='function') try{ onClose(); }catch(e){} }, 550); }
   ov.addEventListener('click', close);
+}
+/* Formulaire de contact affiché dans le viewer après l'animation « À propos ». Aucun
+   backend : « Envoyer » ouvre le logiciel de messagerie du visiteur, pré-rempli vers
+   al@architecture-al.com. Rien n'est transmis automatiquement. */
+function showContactForm(){
+  var vp=document.getElementById('vp'); if(!vp || document.getElementById('bpoContact')) return;
+  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
+  var ov=document.createElement('div'); ov.id='bpoContact';
+  ov.style.cssText='position:absolute;inset:0;z-index:9998;overflow:auto;display:flex;align-items:center;justify-content:center;'+
+    'background:radial-gradient(ellipse at 50% 22%,#241a12 0%,#14100e 60%,#0a0708 100%);font-family:system-ui,sans-serif;opacity:0;transition:opacity .4s;';
+  ov.innerHTML='<style>'+
+    '#bpoContact .card{width:min(560px,90%);max-height:90%;overflow:auto;background:rgba(28,22,16,0.88);border:1px solid rgba(255,196,150,0.25);border-radius:14px;padding:24px 24px 18px;box-shadow:0 12px 50px rgba(0,0,0,.6);color:#f3e8dd;}'+
+    '#bpoContact h2{font-size:16px;margin:0 0 6px;color:#ffc79a;font-weight:700;letter-spacing:.02em;}'+
+    '#bpoContact .intro{font-size:13px;line-height:1.62;color:#e8dccf;margin:0 0 14px;}'+
+    '#bpoContact label{display:block;font-size:11px;color:#c9a889;margin:11px 0 3px;letter-spacing:.04em;}'+
+    '#bpoContact input,#bpoContact select,#bpoContact textarea{width:100%;background:rgba(255,246,236,0.06);border:1px solid rgba(255,196,150,0.28);border-radius:7px;color:#f6ede2;font-size:13px;padding:8px 9px;font-family:inherit;outline:none;}'+
+    '#bpoContact textarea{min-height:120px;resize:vertical;}'+
+    '#bpoContact input:focus,#bpoContact select:focus,#bpoContact textarea:focus{border-color:#ff8a3d;}'+
+    '#bpoContact .row{display:flex;gap:16px;justify-content:space-between;align-items:center;margin-top:18px;}'+
+    '#bpoContact .send{background:#ff8a3d;color:#201812;border:0;border-radius:8px;font-size:13px;font-weight:700;padding:9px 18px;cursor:pointer;}'+
+    '#bpoContact .send:hover{background:#ffa055;}'+
+    '#bpoContact .close{background:transparent;border:1px solid rgba(255,196,150,0.35);color:#e8dccf;border-radius:8px;font-size:12px;padding:8px 14px;cursor:pointer;}'+
+    '#bpoContact .hintline{font-size:10.5px;color:#9c8570;margin-top:12px;line-height:1.5;}'+
+    '#bpoContact .ok{font-size:12px;color:#8fd39a;margin-top:10px;display:none;}'+
+    '</style>'+
+    '<div class="card">'+
+    '<h2>Contact — BPO</h2>'+
+    '<p class="intro">Des questions, des problèmes de fonctionnement, un commentaire, des idées de configurateurs ? C\'est ici :</p>'+
+    '<label>Type de message</label>'+
+    '<select id="bpoCType"><option>Question</option><option>Problème de fonctionnement</option><option>Commentaire</option><option>Idée de configurateur</option></select>'+
+    '<label>Votre nom</label><input id="bpoCName" type="text" placeholder="Prénom Nom">'+
+    '<label>Votre e-mail</label><input id="bpoCMail" type="email" placeholder="vous@exemple.com">'+
+    '<label>Message</label><textarea id="bpoCMsg" placeholder="Votre message…"></textarea>'+
+    '<div class="row"><button class="close" id="bpoCClose">Fermer</button><button class="send" id="bpoCSend">Envoyer ✉</button></div>'+
+    '<div class="ok" id="bpoCOk">Votre messagerie s\'est ouverte, pré-remplie. Merci !</div>'+
+    '<div class="hintline">Le bouton ouvre votre logiciel de messagerie, pré-rempli vers al@architecture-al.com. Rien n\'est envoyé automatiquement.</div>'+
+    '</div>';
+  vp.appendChild(ov);
+  requestAnimationFrame(function(){ ov.style.opacity='1'; });
+  function cclose(){ if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); },350); }
+  ov.querySelector('#bpoCClose').onclick=cclose;
+  ov.addEventListener('click',function(e){ if(e.target===ov) cclose(); });
+  ov.querySelector('#bpoCSend').onclick=function(){
+    var g=function(id){ return (ov.querySelector('#'+id)||{}).value||''; };
+    var t=g('bpoCType'), n=g('bpoCName').trim(), m=g('bpoCMail').trim(), msg=g('bpoCMsg').trim();
+    var subject='[BPO] '+t+(n?(' — '+n):'');
+    var body=(msg||'')+'\n\n—\n'+(n?('Nom : '+n+'\n'):'')+(m?('E-mail : '+m+'\n'):'')+'Type : '+t;
+    var url='mailto:al@architecture-al.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    var a=document.createElement('a'); a.href=url; a.style.display='none'; document.body.appendChild(a); a.click();
+    setTimeout(function(){ if(a.parentNode) a.parentNode.removeChild(a); },200);
+    var ok=ov.querySelector('#bpoCOk'); if(ok) ok.style.display='block';
+  };
 }
 function setLang(l){ LANG=(l==='fr'||I18N[l]||(typeof FLAGS!=='undefined'&&FLAGS[l]))?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
   var sel=document.getElementById('langsel'); if(sel) sel.value=LANG; translateDOM();
@@ -22842,7 +23141,7 @@ function start(){
   try{ applyPrefs(); }catch(e){}
 }
 if(document.readyState!=='loading') setTimeout(start,60); else document.addEventListener('DOMContentLoaded',function(){ setTimeout(start,60); });
-window.playAbout=function(){ try{ var l=(document.getElementById('langsel')||{}).value||(typeof LANG!=='undefined'?LANG:'fr'); if(l==='hu'){ if(typeof playGraphisoftTribute==='function') playGraphisoftTribute(); } else if(typeof playIntro==='function'){ playIntro(l); } }catch(e){} };
+window.playAbout=function(){ try{ var l=(document.getElementById('langsel')||{}).value||(typeof LANG!=='undefined'?LANG:'fr'); if(l==='hu'){ if(typeof playGraphisoftTribute==='function') playGraphisoftTribute(); setTimeout(function(){ if(typeof showContactForm==='function') showContactForm(); }, 600); } else if(typeof playIntro==='function'){ playIntro(l, showContactForm); } }catch(e){} };
 window.SOUND_ON=true;   /* son joué pendant les animations (intro langue / À propos) */
 })();
 </script>
