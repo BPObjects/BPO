@@ -91,6 +91,54 @@ html.metal .sig,    body.metal .sig{ color:#455a6e; }
 html.metal input, html.metal select, html.metal textarea,
 body.metal input, body.metal select, body.metal textarea{ background:rgba(244,247,250,0.55); }
 
+/* ------------------------------------------------------------------
+   THÈME BOIS CLAIR — chêne clair. Variante claire (pose AUSSI `.light`).
+   Veinage vertical procédural : bruit anisotrope + fines veines + reflet doux.
+   Aucune image externe. ------------------------------------------------------------------ */
+html.boisclair, body.boisclair{
+  --bg:#d8ba8c; --pn:rgba(255,245,225,0.34); --p2:rgba(120,82,42,0.10);
+  --ln:rgba(110,76,38,0.30); --tx:#2c2012; --dm:#6b5330; --am:#9c581d; --cy:#2b6483;
+}
+html.boisclair body, body.boisclair{
+  background-color:#d8ba8c;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='240'%3E%3Cfilter id='wl'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.02 0.9' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='240' filter='url(%23wl)' opacity='0.20'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(0deg, rgba(120,80,40,0.10) 0 2px, rgba(190,150,100,0.05) 2px 6px, transparent 6px 13px),
+    radial-gradient(120% 90% at 50% 0%, rgba(255,240,214,0.20), rgba(150,105,55,0.10));
+  background-blend-mode:multiply,normal,normal;
+}
+html.boisclair .vp-btn, body.boisclair .vp-btn,
+html.boisclair .vp-bar, body.boisclair .vp-bar{ background:rgba(245,230,205,0.90); }
+html.boisclair .cat-ic, body.boisclair .cat-ic{ color:#5a3e1c; }
+html.boisclair .hint,   body.boisclair .hint{ color:#7a6038; }
+html.boisclair .sig,    body.boisclair .sig{ color:#7d4a16; }
+html.boisclair input, html.boisclair select, html.boisclair textarea,
+body.boisclair input, body.boisclair select, body.boisclair textarea{ background:rgba(255,247,230,0.55); }
+
+/* ------------------------------------------------------------------
+   THÈME BOIS FONCÉ — noyer. Variante SOMBRE (base :root sombre, pas de `.light`).
+   Veinage vertical procédural sur bois foncé + reflet chaud.
+   ------------------------------------------------------------------ */
+html.boisfonce, body.boisfonce{
+  --bg:#3a2a1b; --pn:rgba(66,46,28,0.44); --p2:rgba(255,228,196,0.06);
+  --ln:rgba(255,220,178,0.15); --tx:#f0e3d0; --dm:#b89a76; --am:#e2883b; --cy:#6bb7e6;
+}
+html.boisfonce body, body.boisfonce{
+  background-color:#3a2a1b;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='240'%3E%3Cfilter id='wd'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.02 0.9' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='240' filter='url(%23wd)' opacity='0.22'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(0deg, rgba(20,12,6,0.22) 0 2px, rgba(120,84,48,0.10) 2px 6px, transparent 6px 13px),
+    radial-gradient(120% 90% at 50% 0%, rgba(210,150,90,0.14), rgba(20,12,6,0.30));
+  background-blend-mode:overlay,normal,normal;
+}
+html.boisfonce .vp-btn, body.boisfonce .vp-btn,
+html.boisfonce .vp-bar, body.boisfonce .vp-bar{ background:rgba(58,42,28,0.88); }
+html.boisfonce .cat-ic, body.boisfonce .cat-ic{ color:#e0c49a; }
+html.boisfonce .hint,   body.boisfonce .hint{ color:#b89a76; }
+html.boisfonce .sig,    body.boisfonce .sig{ color:#d59a5a; }
+html.boisfonce input, html.boisfonce select, html.boisfonce textarea,
+body.boisfonce input, body.boisfonce select, body.boisfonce textarea{ background:rgba(30,20,12,0.45); color:#f0e3d0; }
+
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--tx);
   font-family:system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent;}
@@ -138,7 +186,7 @@ header{display:flex;align-items:center;justify-content:space-between;
 .vp-btn{position:absolute;top:var(--tbT);right:10px;height:var(--tbH);display:inline-flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;font-size:11px;background:rgba(38,43,52,.9);border:1px solid var(--ln);color:var(--tx);border-radius:6px;padding:0 10px;line-height:1;cursor:pointer;z-index:6;}
 .vp-btn:hover{border-color:var(--am);color:var(--am);}
 .vp-bar{position:absolute;top:var(--tbT);right:128px;height:var(--tbH);z-index:6;display:flex;align-items:center;gap:3px;background:rgba(38,43,52,.9);border:1px solid var(--ln);border-radius:6px;padding:0 3px;}
-.vp-bar button{font-family:system-ui,sans-serif;font-size:10px;height:calc(var(--tbH) - 8px);display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;color:var(--tx);border-radius:4px;padding:0 8px;cursor:pointer;white-space:nowrap;}
+.vp-bar button{font-family:system-ui,sans-serif;font-size:11px;height:calc(var(--tbH) - 8px);display:inline-flex;align-items:center;background:transparent;border:1px solid transparent;color:var(--tx);border-radius:4px;padding:0 8px;cursor:pointer;white-space:nowrap;}
 .vp-bar button:hover{border-color:var(--am);color:var(--am);}
 .vp-bar button.on{border-color:var(--cy);color:var(--cy);background:rgba(94,184,255,.12);}
 @media(max-width:760px){.vp-bar{display:none;}}
@@ -385,9 +433,9 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
   background-color:var(--bg);
   background-image:linear-gradient(var(--pn),var(--pn));
   margin:calc(-1 * var(--tbT)) -14px 11px;
-  padding:var(--tbT) 14px 10px;
+  padding:2px 14px 10px;
   border-bottom:1px solid var(--ln);}
-#panel-tabs button{flex:1;height:var(--tbH);font-size:12px;padding:0 4px;background:var(--p2);color:var(--dm);border:1px solid var(--ln);border-radius:6px;cursor:pointer;}
+#panel-tabs button{flex:1;height:var(--tbH);font-size:11px;padding:0 4px;background:var(--p2);color:var(--dm);border:1px solid var(--ln);border-radius:6px;cursor:pointer;}
 #panel-tabs button.on{background:var(--am);color:#1a1d23;border-color:var(--am);font-weight:700;}
 #panel.mep-on #obj-controls,#panel.mep-on #shape-sel,#panel.mep-on #todo-msg{display:none!important;}
 #ps-info{color:var(--dm);font-size:11px;flex:1;}
@@ -613,7 +661,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script src="data/fabricants.js?v=20260710b"></script>
 <script src="data/textured-objects.js?v=20260710b"></script>
 <script src="bpo-raytrace.js?v=20260712h"></script>
-<script src="bpo-render-hook.js?v=20260712o"></script>
+<script src="bpo-render-hook.js?v=20260712p"></script>
 <script src="bpo-import.js?v=20260712b"></script>
 <script src="bpo-terrain.js?v=20260712m"></script>
 <script>
@@ -3558,9 +3606,11 @@ function applyPrefs(){
   /* `kraft` est une variante claire : on pose AUSSI la classe `light`, dont il
      hérite l'encre sombre, puis les règles `.kraft` surchargent le papier. */
   if(PREFS.theme){
-    UIKRAFT=(PREFS.theme==='kraft'); UIMETAL=(PREFS.theme==='metal'); UILIGHT=(PREFS.theme!=='dark');
+    UIKRAFT=(PREFS.theme==='kraft'); UIMETAL=(PREFS.theme==='metal');
+    var UIBOISC=(PREFS.theme==='boisclair'), UIBOISF=(PREFS.theme==='boisfonce');
+    UILIGHT=(PREFS.theme!=='dark' && PREFS.theme!=='boisfonce');   /* bois foncé = variante sombre */
     [document.documentElement, document.body].forEach(function(el){
-      if(!el) return; el.classList.toggle('light',UILIGHT); el.classList.toggle('kraft',UIKRAFT); el.classList.toggle('metal',UIMETAL);
+      if(!el) return; el.classList.toggle('light',UILIGHT); el.classList.toggle('kraft',UIKRAFT); el.classList.toggle('metal',UIMETAL); el.classList.toggle('boisclair',UIBOISC); el.classList.toggle('boisfonce',UIBOISF);
     });
   }
   var rs=document.documentElement.style;
@@ -3576,8 +3626,8 @@ function prefsUI(){
   function row(label){ var d=document.createElement('div'); d.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;font-size:12px;'; var s=document.createElement('span'); s.textContent=label; s.style.opacity='.9'; d.appendChild(s); return d; }
   function colorCtl(val,def,on){ var c=document.createElement('input'); c.type='color'; c.value=val||def; c.style.cssText='width:40px;height:24px;padding:0;border:1px solid #3a4653;border-radius:4px;background:none;cursor:pointer;'; c.oninput=function(){ on(c.value); }; return c; }
   /* Thème */
-  var rT=row('Thème'); var wr=document.createElement('div'); wr.style.cssText='display:flex;gap:4px;'; var cur=(PREFS.theme||(UILIGHT?'light':'dark'));
-  [['light','Blanc'],['dark','Noir'],['kraft','Kraft'],['metal','Métal']].forEach(function(o){ var b=document.createElement('button'); b.textContent=o[1]; var on=(cur===o[0]); b.style.cssText='font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(on?'#ff8a3d':'#232a34')+';color:'+(on?'#141821':'#cdd6e0')+';'; b.onclick=function(){ PREFS.theme=o[0]; prefsSave(); applyPrefs(); prefsUI(); }; wr.appendChild(b); });
+  var rT=row('Thème'); var wr=document.createElement('div'); wr.style.cssText='display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;'; var cur=(PREFS.theme||(UILIGHT?'light':'dark'));
+  [['light','Blanc'],['dark','Noir'],['kraft','Kraft'],['metal','Métal'],['boisclair','Bois clair'],['boisfonce','Bois foncé']].forEach(function(o){ var b=document.createElement('button'); b.textContent=o[1]; var on=(cur===o[0]); b.style.cssText='font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(on?'#ff8a3d':'#232a34')+';color:'+(on?'#141821':'#cdd6e0')+';'; b.onclick=function(){ PREFS.theme=o[0]; prefsSave(); applyPrefs(); prefsUI(); }; wr.appendChild(b); });
   rT.appendChild(wr); p.appendChild(rT);
   /* Couleur des polices */
   var rF=row('Couleur des polices'); rF.appendChild(colorCtl(PREFS.fontColor,'#e8e9ec',function(v){ PREFS.fontColor=v; prefsSave(); applyPrefs(); })); p.appendChild(rF);
@@ -14145,7 +14195,7 @@ document.addEventListener('mousedown', function(ev){ if(_edgeMenu && !_edgeMenu.
   /* ◐ : cycle noir → blanc → kraft. L'application des classes passe par applyPrefs(),
      seul endroit qui sait que kraft implique aussi `light`. */
   var tb=document.getElementById('themeBtn'); if(tb) tb.onclick=function(){
-    var seq=['dark','light','kraft','metal'], cur=PREFS.theme||(UILIGHT?'light':'dark');
+    var seq=['dark','light','kraft','metal','boisclair','boisfonce'], cur=PREFS.theme||(UILIGHT?'light':'dark');
     PREFS.theme=seq[(seq.indexOf(cur)+1)%seq.length];
     prefsSave(); applyPrefs(); if(document.getElementById('prefsPanel') && document.getElementById('prefsPanel').style.display==='block') prefsUI();
   };
