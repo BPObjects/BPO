@@ -65,6 +65,32 @@ html.kraft .sig,    body.kraft .sig{ color:#7d4a16; }
 html.kraft input, html.kraft select, html.kraft textarea,
 body.kraft input, body.kraft select, body.kraft textarea{ background:rgba(255,246,228,0.55); }
 
+/* ------------------------------------------------------------------
+   THÈME MÉTAL BROSSÉ — variante claire sur fond acier. 100% procédural
+   (aucune image externe) : bruit ANISOTROPE (baseFrequency X faible / Y forte
+   -> stries horizontales longues = brossage) + fines lignes + bande lumineuse
+   verticale (comme un reflet studio sur tôle).
+   ------------------------------------------------------------------ */
+html.metal, body.metal{
+  --bg:#b9bdc2; --pn:rgba(238,241,244,0.30); --p2:rgba(58,64,72,0.10);
+  --ln:rgba(66,74,84,0.32); --tx:#242a31; --dm:#5a626b; --am:#c46a2a; --cy:#2b6483;
+}
+html.metal body, body.metal{
+  background-color:#b9bdc2;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='120'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='240' height='120' filter='url(%23m)' opacity='0.16'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0 1px, rgba(30,34,40,0.05) 1px 2px, transparent 2px 3px),
+    linear-gradient(0deg, rgba(30,34,40,0.20) 0%, rgba(226,230,234,0.12) 46%, rgba(240,243,246,0.16) 54%, rgba(30,34,40,0.20) 100%);
+  background-blend-mode:overlay,normal,normal;
+}
+html.metal .vp-btn, body.metal .vp-btn,
+html.metal .vp-bar, body.metal .vp-bar{ background:rgba(226,230,234,0.88); }
+html.metal .cat-ic, body.metal .cat-ic{ color:#3a4048; }
+html.metal .hint,   body.metal .hint{ color:#5a626b; }
+html.metal .sig,    body.metal .sig{ color:#455a6e; }
+html.metal input, html.metal select, html.metal textarea,
+body.metal input, body.metal select, body.metal textarea{ background:rgba(244,247,250,0.55); }
+
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--tx);
   font-family:system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent;}
@@ -348,8 +374,19 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 #ps-tpl button{font-size:11px;padding:5px 9px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:5px;cursor:pointer;font-weight:400;}
 #ps-tpl button.on{background:var(--am);color:#1a1d23;border-color:var(--am);font-weight:600;}
 #ps-tpl select,#ps-tpl input{background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:5px;font-size:11px;padding:4px;}
-/* Onglets du panneau droit : Paramètres / Mise en page */
-#panel-tabs{display:flex;gap:5px;margin-bottom:11px;}
+/* Onglets du panneau droit : Paramètres / Scène / Mise en page.
+   Fixés en haut (sticky) : le contenu du panneau défile DESSOUS. Les marges
+   négatives + padding recouvrent le padding du #panel pour que rien ne dépasse
+   au-dessus des onglets pendant le défilement. */
+#panel-tabs{display:flex;gap:5px;position:sticky;top:0;z-index:20;
+  /* fond OPAQUE (sinon le contenu défile en transparence dessous) : base --bg
+     opaque + teinte --pn par-dessus, pour rester cohérent avec le panneau même
+     quand --pn est translucide (thèmes kraft / métal). */
+  background-color:var(--bg);
+  background-image:linear-gradient(var(--pn),var(--pn));
+  margin:calc(-1 * var(--tbT)) -14px 11px;
+  padding:var(--tbT) 14px 10px;
+  border-bottom:1px solid var(--ln);}
 #panel-tabs button{flex:1;height:var(--tbH);font-size:12px;padding:0 4px;background:var(--p2);color:var(--dm);border:1px solid var(--ln);border-radius:6px;cursor:pointer;}
 #panel-tabs button.on{background:var(--am);color:#1a1d23;border-color:var(--am);font-weight:700;}
 #panel.mep-on #obj-controls,#panel.mep-on #shape-sel,#panel.mep-on #todo-msg{display:none!important;}
@@ -426,7 +463,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     <button class="vp-btn" id="redoBtn" title="Refaire (Ctrl+Y)" style="left:48px;right:auto;width:34px;padding:0;font-size:16px;">↷</button>
     <button class="vp-btn" id="resetBtn" title="Réinitialiser l'objet (valeurs par défaut) — annulable" style="left:87px;right:auto;width:34px;padding:0;font-size:15px;">↺</button>
     <button class="vp-btn" id="layoutBtn" title="4 vues (Perspective / Dessus / Face / Droite) — double-clic sur une vue pour l'agrandir" style="left:87px;right:auto;width:34px;padding:0;font-size:15px;">⊞</button>
-    <button class="vp-btn" id="themeBtn" title="Thème clair / sombre / kraft" style="left:126px;right:auto;width:34px;padding:0;font-size:14px;">◐</button>
+    <button class="vp-btn" id="themeBtn" title="Thème clair / sombre / kraft / métal" style="left:126px;right:auto;width:34px;padding:0;font-size:14px;">◐</button>
     <div id="viewOverlay" style="position:absolute;top:var(--tbT);left:165px;height:var(--tbH);z-index:30;display:none;align-items:center;gap:5px;background:rgba(24,28,36,0.88);border:1px solid #33404d;border-radius:6px;padding:0 7px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
     <div id="floorBar" style="position:absolute;bottom:52px;left:50%;transform:translateX(-50%);z-index:30;display:none;align-items:center;gap:6px;background:rgba(24,28,36,0.9);border:1px solid #33404d;border-radius:7px;padding:4px 10px;font-size:11px;color:#cdd6e0;box-shadow:0 4px 14px rgba(0,0,0,.4);"></div>
     <button class="vp-btn" id="recenter" title="Recentrer la vue" style="top:auto;right:auto;bottom:14px;left:50%;transform:translateX(-50%);">⊕ Recentrer</button>
@@ -576,7 +613,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script src="data/fabricants.js?v=20260710b"></script>
 <script src="data/textured-objects.js?v=20260710b"></script>
 <script src="bpo-raytrace.js?v=20260712f"></script>
-<script src="bpo-render-hook.js?v=20260712j"></script>
+<script src="bpo-render-hook.js?v=20260712k"></script>
 <script src="bpo-import.js?v=20260711v"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
@@ -3365,6 +3402,7 @@ var ENGINE = 'soft';
 var ORTHO = false;   /* projection orthographique (élévations / IGH) */
 var UILIGHT = false;       /* thème clair (UI) — NE PAS confondre avec LIGHT (direction lumière) */
 var UIKRAFT = false;       /* thème kraft : variante CLAIRE (UILIGHT reste vrai) au fond papier */
+var UIMETAL = false;       /* thème métal brossé : variante CLAIRE au fond acier */
 
 /* Fond du viewport 2D. En kraft, un motif de canvas remplace l'aplat : cannelures
    verticales + grain, mêmes teintes que le CSS. Le motif est mis en cache — le
@@ -3384,7 +3422,27 @@ function kraftPattern(ctx){
   _KRAFT_PAT=ctx.createPattern(t,'repeat');
   return _KRAFT_PAT;
 }
-function uiBgStyle(ctx){ return UIKRAFT ? kraftPattern(ctx) : (UILIGHT?'#e9edf2':'#1a1d23'); }
+/* Fond métal brossé du viewport : stries HORIZONTALES longues (marche aléatoire
+   lissée le long de chaque ligne) sur un gris acier, mêmes teintes que le CSS. */
+var _METAL_PAT=null;
+function metalPattern(ctx){
+  if(_METAL_PAT) return _METAL_PAT;
+  var W=256,H=128,t=document.createElement('canvas'); t.width=W; t.height=H; var c=t.getContext('2d');
+  c.fillStyle='#b9bdc2'; c.fillRect(0,0,W,H);
+  var im=c.getImageData(0,0,W,H), d=im.data, x,y;
+  for(y=0;y<H;y++){
+    var base=(Math.random()-0.5)*10, v=0;      /* décalage de ligne + brossage */
+    for(x=0;x<W;x++){
+      v+=(Math.random()-0.5)*8; v*=0.72;        /* marche aléatoire lissée -> stries longues */
+      var n=base+v, o=(y*W+x)*4;
+      d[o]+=n; d[o+1]+=n; d[o+2]+=n;
+    }
+  }
+  c.putImageData(im,0,0);
+  _METAL_PAT=ctx.createPattern(t,'repeat');
+  return _METAL_PAT;
+}
+function uiBgStyle(ctx){ return UIKRAFT ? kraftPattern(ctx) : (UIMETAL ? metalPattern(ctx) : (UILIGHT?'#e9edf2':'#1a1d23')); }
 
 /* ===== PRÉFÉRENCES DE PRÉSENTATION (persistées) : thème, polices, ciel/sol WebGL, trame ===== */
 var PREFS_KEY='BPO_PREFS_v1';
@@ -3488,9 +3546,9 @@ function applyPrefs(){
   /* `kraft` est une variante claire : on pose AUSSI la classe `light`, dont il
      hérite l'encre sombre, puis les règles `.kraft` surchargent le papier. */
   if(PREFS.theme){
-    UIKRAFT=(PREFS.theme==='kraft'); UILIGHT=(PREFS.theme!=='dark');
+    UIKRAFT=(PREFS.theme==='kraft'); UIMETAL=(PREFS.theme==='metal'); UILIGHT=(PREFS.theme!=='dark');
     [document.documentElement, document.body].forEach(function(el){
-      if(!el) return; el.classList.toggle('light',UILIGHT); el.classList.toggle('kraft',UIKRAFT);
+      if(!el) return; el.classList.toggle('light',UILIGHT); el.classList.toggle('kraft',UIKRAFT); el.classList.toggle('metal',UIMETAL);
     });
   }
   var rs=document.documentElement.style;
@@ -3507,7 +3565,7 @@ function prefsUI(){
   function colorCtl(val,def,on){ var c=document.createElement('input'); c.type='color'; c.value=val||def; c.style.cssText='width:40px;height:24px;padding:0;border:1px solid #3a4653;border-radius:4px;background:none;cursor:pointer;'; c.oninput=function(){ on(c.value); }; return c; }
   /* Thème */
   var rT=row('Thème'); var wr=document.createElement('div'); wr.style.cssText='display:flex;gap:4px;'; var cur=(PREFS.theme||(UILIGHT?'light':'dark'));
-  [['light','Blanc'],['dark','Noir'],['kraft','Kraft']].forEach(function(o){ var b=document.createElement('button'); b.textContent=o[1]; var on=(cur===o[0]); b.style.cssText='font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(on?'#ff8a3d':'#232a34')+';color:'+(on?'#141821':'#cdd6e0')+';'; b.onclick=function(){ PREFS.theme=o[0]; prefsSave(); applyPrefs(); prefsUI(); }; wr.appendChild(b); });
+  [['light','Blanc'],['dark','Noir'],['kraft','Kraft'],['metal','Métal']].forEach(function(o){ var b=document.createElement('button'); b.textContent=o[1]; var on=(cur===o[0]); b.style.cssText='font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(on?'#ff8a3d':'#232a34')+';color:'+(on?'#141821':'#cdd6e0')+';'; b.onclick=function(){ PREFS.theme=o[0]; prefsSave(); applyPrefs(); prefsUI(); }; wr.appendChild(b); });
   rT.appendChild(wr); p.appendChild(rT);
   /* Couleur des polices */
   var rF=row('Couleur des polices'); rF.appendChild(colorCtl(PREFS.fontColor,'#e8e9ec',function(v){ PREFS.fontColor=v; prefsSave(); applyPrefs(); })); p.appendChild(rF);
@@ -13878,7 +13936,7 @@ document.addEventListener('mousedown', function(ev){ if(_edgeMenu && !_edgeMenu.
   /* ◐ : cycle noir → blanc → kraft. L'application des classes passe par applyPrefs(),
      seul endroit qui sait que kraft implique aussi `light`. */
   var tb=document.getElementById('themeBtn'); if(tb) tb.onclick=function(){
-    var seq=['dark','light','kraft'], cur=PREFS.theme||(UILIGHT?'light':'dark');
+    var seq=['dark','light','kraft','metal'], cur=PREFS.theme||(UILIGHT?'light':'dark');
     PREFS.theme=seq[(seq.indexOf(cur)+1)%seq.length];
     prefsSave(); applyPrefs(); if(document.getElementById('prefsPanel') && document.getElementById('prefsPanel').style.display==='block') prefsUI();
   };
