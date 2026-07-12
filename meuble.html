@@ -614,7 +614,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script src="data/textured-objects.js?v=20260710b"></script>
 <script src="bpo-raytrace.js?v=20260712f"></script>
 <script src="bpo-render-hook.js?v=20260712k"></script>
-<script src="bpo-import.js?v=20260711v"></script>
+<script src="bpo-import.js?v=20260712a"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
 /* WEBGL_OBJECTS -> data/ */
@@ -13550,11 +13550,14 @@ function fabLabel(pid){
   }catch(e){}
   return pid;
 }
-function scnAddFab(pid, x, z){
+function scnAddFab(pid, x, z, sy){
   SCENE.instances.push({ mode:'fabprod', prod:pid, name:fabLabel(pid), label:fabLabel(pid),
     x:Math.round((x||0)*100), z:Math.round((z||0)*100), y:0, rotY:0 });
-  scnSelSingle(SCENE.instances.length-1);
-  fabDecode(pid, function(){ if(MODE==='scene'){ try{ build(); scnSnapY(SCENE.sel); build(); }catch(e){} DIRTY=true; if(typeof buildSceneUI==='function') buildSceneUI(); } });
+  var idx=SCENE.instances.length-1;
+  scnSelSingle(idx);
+  /* sy fourni (drop sur une surface sous le curseur) -> on cale la base sur cette
+     hauteur ; sinon repli sur l'ancien comportement (empilement sur le plus haut). */
+  fabDecode(pid, function(){ if(MODE==='scene'){ try{ build(); if(sy!=null) scnSnapToY(idx,sy); else scnSnapY(idx); build(); }catch(e){} DIRTY=true; if(typeof buildSceneUI==='function') buildSceneUI(); } });
 }
 /* Rendu scène WebGL fluide : chaque meuble a son tampon GPU LOCAL (mis en cache,
    reconstruit seulement si sa géométrie change), et sa position/rotation passe par
@@ -13682,10 +13685,12 @@ function buildScene(){
   if(all.length && SCENE.decor && (SCENE.decor.sol||SCENE.decor.eau||SCENE.decor.arbres)) scnDecor(mnx,mny,mnz,mxx,mxy,mxz);
   return DIMS;
 }
-function scnAddInstance(cfg, x, z){
+function scnAddInstance(cfg, x, z, sy){
   SCENE.instances.push({ cfgId:cfg.id, mode:cfg.mode, name:cfg.name, label:cfg.label||cfg.mode,
     params:JSON.parse(JSON.stringify(cfg.params)), x:Math.round((x||0)*100), z:Math.round((z||0)*100), y:0, rotY:0 });
-  scnSelSingle(SCENE.instances.length-1);
+  var idx=SCENE.instances.length-1;
+  scnSelSingle(idx);
+  if(sy!=null){ try{ scnSnapToY(idx, sy); }catch(e){} }   /* pose la base sur la surface sous le curseur */
 }
 /* insère une scène enregistrée comme UN SEUL objet (groupe) dans la scène courante. */
 function scnAddGroup(scene, x, z){
@@ -13699,6 +13704,9 @@ function scnYbounds(inst){ if(inst.mode==='fabprod'){ if(typeof TEX_OBJECTS!=='u
 function scnSnapY(idx){ var inst=SCENE.instances[idx]; if(!inst) return; var base=scnYbounds(inst).mn;   /* accrochage : pose la base sur le niveau le plus haut des autres (ou le sol) */
   var target=0; SCENE.instances.forEach(function(o,j){ if(j!==idx){ var t=scnYbounds(o).mx; if(t>target) target=t; } });
   inst.y += Math.round((target-base)*100); }
+/* Cale la base de l'instance idx sur une hauteur monde donnée (mètres) — utilisé
+   au drop pour poser l'objet sur la surface horizontale sous le curseur. */
+function scnSnapToY(idx, sy){ var inst=SCENE.instances[idx]; if(!inst) return; var base=scnYbounds(inst).mn; inst.y += Math.round(((sy||0)-base)*100); }
 function scnDup(idx){ var s=SCENE.instances[idx]; if(!s) return; var c=JSON.parse(JSON.stringify(s)); c.x+=60; SCENE.instances.splice(idx+1,0,c); scnSelSingle(idx+1); }
 /* duplique TOUS les objets sélectionnés (décalés), et sélectionne les copies */
 function scnDupSel(){ var sel=scnSel(); if(!sel.length) return; var copies=[]; sel.forEach(function(i){ var c=JSON.parse(JSON.stringify(SCENE.instances[i], (typeof _scnRep!=='undefined')?_scnRep:undefined)); c.x+=60; SCENE.instances.push(c); copies.push(SCENE.instances.length-1); }); SCENE.selSet=copies; SCENE.sel=copies[copies.length-1]; }
@@ -17151,17 +17159,44 @@ function scnDropGround(e){   /* point sol sous le curseur — caméra WebGL si a
     var r=cv.getBoundingClientRect(); return unprojGround(e.clientX-r.left, e.clientY-r.top, cv.width, cv.height, getCam());
   }catch(_e){ return null; }
 }
+/* Surface horizontale sous le curseur : on lance un rayon depuis la caméra à travers
+   le curseur et on garde le PREMIER plan horizontal touché — le sol (y=0) OU le
+   dessus (AABB) d'un objet de la scène. Renvoie {x,z,y} en mètres (y = hauteur de
+   pose). Repli sur le sol si pas de WebGL. Permet de déposer « là où on pointe »,
+   y compris sur une table/étagère, au lieu d'empiler au hasard. */
+function scnDropSurface(e){
+  try{
+    if(!(WGL.gActive && typeof wglVP==='function')){ var gg=scnDropGround(e); return gg?{x:gg[0],z:gg[1],y:0}:{x:0,z:0,y:0}; }
+    var vpv=wglVP(), gz=document.getElementById('gizov')||cv, rr=gz.getBoundingClientRect();
+    var sx=e.clientX-rr.left, sy=e.clientY-rr.top, eye=vpv.eye, tgt=vpv.tgt;
+    var fwd=[tgt[0]-eye[0],tgt[1]-eye[1],tgt[2]-eye[2]], fl=Math.hypot(fwd[0],fwd[1],fwd[2])||1; fwd=[fwd[0]/fl,fwd[1]/fl,fwd[2]/fl];
+    var right=[-fwd[2],0,fwd[0]], rl=Math.hypot(right[0],right[2])||1; right=[right[0]/rl,0,right[2]/rl];
+    var up=[right[1]*fwd[2]-right[2]*fwd[1], right[2]*fwd[0]-right[0]*fwd[2], right[0]*fwd[1]-right[1]*fwd[0]];
+    var tf=Math.tan(vpv.fov/2), nx=(sx/vpv.W*2-1)*tf*vpv.as, ny=(1-sy/vpv.H*2)*tf;
+    var dir=[fwd[0]+right[0]*nx+up[0]*ny, fwd[1]+right[1]*nx+up[1]*ny, fwd[2]+right[2]*nx+up[2]*ny];
+    if(Math.abs(dir[1])<1e-6){ var g0=scnDropGround(e); return g0?{x:g0[0],z:g0[1],y:0}:{x:0,z:0,y:0}; }
+    var best=null;
+    var kg=-eye[1]/dir[1]; if(kg>0) best={t:kg, x:eye[0]+dir[0]*kg, y:0, z:eye[2]+dir[2]*kg};   /* sol y=0 */
+    (SCENE.instances||[]).forEach(function(inst){ try{
+      var top=scnYbounds(inst).mx, k=(top-eye[1])/dir[1]; if(k<=0) return;
+      var hx=eye[0]+dir[0]*k, hz=eye[2]+dir[2]*k, bb=scnBBox(inst), pad=0.002;
+      if(hx>=bb.x0-pad && hx<=bb.x1+pad && hz>=bb.z0-pad && hz<=bb.z1+pad){ if(!best || k<best.t) best={t:k, x:hx, y:top, z:hz}; }
+    }catch(_e){} });
+    if(best) return {x:best.x, z:best.z, y:best.y};
+  }catch(_e){}
+  var gf=scnDropGround(e); return gf?{x:gf[0],z:gf[1],y:0}:{x:0,z:0,y:0};
+}
 function scnBindDrop(){ if(SCN_DROP_BOUND) return; var vp=document.getElementById('vp'); if(!vp) return; SCN_DROP_BOUND=true;
   vp.addEventListener('dragover', function(e){ if(MODE==='scene' || SCN_DRAG_CFG || SCN_DRAG_FAB){ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='copy'; } });
   vp.addEventListener('drop', function(e){
     var raw=(e.dataTransfer&&e.dataTransfer.getData('text/plain'))||'';
     /* produit fabricant glissé depuis le catalogue */
     var fabId=SCN_DRAG_FAB||(raw.indexOf('fab:')===0?raw.slice(4):null); SCN_DRAG_FAB=null;
-    if(fabId){ e.preventDefault(); if(MODE!=='scene') enterSceneMode(); var gf=scnDropGround(e); scnAddFab(fabId, gf?gf[0]:0, gf?gf[1]:0); refreshView(); return; }
+    if(fabId){ e.preventDefault(); if(MODE!=='scene') enterSceneMode(); var hf=scnDropSurface(e); scnAddFab(fabId, hf.x, hf.z, hf.y); refreshView(); return; }
     var cfg=SCN_DRAG_CFG||cfgLoad().filter(function(c){return c.id===raw;})[0]; SCN_DRAG_CFG=null; if(!cfg) return; e.preventDefault();
     if(MODE!=='scene') enterSceneMode();
-    var g=scnDropGround(e);
-    scnAddInstance(cfg, g?g[0]:0, g?g[1]:0); refreshView(); });
+    var h=scnDropSurface(e);
+    scnAddInstance(cfg, h.x, h.z, h.y); refreshView(); });
   /* clic droit sur une instance (mode Scène) → menu « placer à l'étage » */
   if(typeof cv!=='undefined' && cv) cv.addEventListener('contextmenu', function(e){
     if(MODE!=='scene' || !SCENE.instances || !SCENE.instances.length) return;
