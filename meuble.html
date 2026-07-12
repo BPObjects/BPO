@@ -1028,6 +1028,9 @@ WGL.loadTextured=function(D,id){
     for(var k in D.tex){ if(!WGL.txt[k]) WGL.makeTex(k,D.tex[k]); }
     (D.groups||[]).forEach(function(g){ if(g.tex && !WGL.txt[g.tex]){ var s=(D.tex&&D.tex[g.tex])||_pool[g.tex]; if(s) WGL.makeTex(g.tex, s); } });
     WGL.cam.r=Math.hypot(mt.dim[0],mt.dim[1],mt.dim[2])*1.05;
+    /* Recentre la VISÉE sur l'origine : en venant de la navigation scène (fly mode),
+       cam.tx/tz pointaient loin -> l'objet (à l'origine) restait hors champ (viewer noir). */
+    WGL.cam.tx=0; WGL.cam.tz=0;
     WGL.cam.ty=mt.dim[1]/2; WGL.cam.th=0.7; WGL.cam.ph=1.05;
     WGL.ready=true; WGL.txActive=true;
     WGL.resize(); WGL.render();
