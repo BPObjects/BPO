@@ -123,7 +123,7 @@
       const m = mats[i], o = i * 12, e = m.emissive || [0, 0, 0];
       matBuf[o] = m.albedo[0]; matBuf[o + 1] = m.albedo[1]; matBuf[o + 2] = m.albedo[2]; matBuf[o + 3] = m.metal || 0;
       matBuf[o + 4] = (m.rough == null ? 0.5 : m.rough); matBuf[o + 5] = (m.alpha == null ? 1 : m.alpha);
-      matBuf[o + 6] = m.ior || 1.5; matBuf[o + 7] = m.grass ? 1 : 0;   /* drapeau herbe procédurale */
+      matBuf[o + 6] = m.ior || 1.5; matBuf[o + 7] = (m.grass || 0);   /* mode sol : 0 aplat, 1 herbe, 2 béton */
       matBuf[o + 8] = e[0]; matBuf[o + 9] = e[1]; matBuf[o + 10] = e[2]; matBuf[o + 11] = 0;
     }
     // nœuds BVH : 2 vec4 chacun (min+left, max+count) + enfant droit dans buffer u32 séparé
@@ -147,6 +147,7 @@ struct Uniforms {
   skyTop : vec4f,
   skyHor : vec4f,
   skyGround : vec4f,       // rgb + skyIntensity
+  lightN : vec4f,          // x = nombre de lampes ponctuelles
 };
 @group(0) @binding(0) var<uniform> U : Uniforms;
 @group(0) @binding(1) var<storage, read> tris : array<vec4f>;
@@ -154,6 +155,7 @@ struct Uniforms {
 @group(0) @binding(3) var<storage, read> nodes : array<vec4f>;   // 2 vec4 par nœud
 @group(0) @binding(4) var<storage, read> rights : array<i32>;
 @group(0) @binding(5) var<storage, read_write> accum : array<vec4f>;
+@group(0) @binding(6) var<storage, read> lights : array<vec4f>;  // 2 vec4 / lampe : (pos.xyz, rayon) (col.rgb, intensité)
 
 const PI = 3.14159265;
 const INF = 1e30;
@@ -212,6 +214,18 @@ fn grassColor(pp : vec3f) -> vec3f {
   // valeur : brins (dominant, près) + micro-grain, tous continus → pas de damier
   col = col * (0.86 + 0.10 * (med - 0.5) + fade * (0.34 * (fine - 0.5) + 0.16 * (micro - 0.5)));
   return max(col, vec3f(0.0));
+}
+/* Béton procédural : gris moucheté multi-échelle (dalles + granulat fin), continu. */
+fn concreteColor(pp : vec3f) -> vec3f {
+  let p = pp.xz;
+  let base = vec3f(0.52, 0.52, 0.51);
+  let n1 = vnoise(p * 0.32);
+  let n2 = vnoise(p * 1.7 + vec2f(11.0, 3.0));
+  let n3 = vnoise(p * 6.5 + vec2f(2.0, 7.0));
+  var c = base * (0.86 + 0.16 * n1);
+  c = mix(c, base * 0.76, smoothstep(0.55, 0.86, n2) * 0.5);   // nuances / coulures
+  c = c * (0.93 + 0.13 * (n3 - 0.5));                          // grain fin (granulat)
+  return max(c, vec3f(0.0));
 }
 /* Ciel : dégradé horizon->zénith + halo chaud autour du soleil (comme le viewer). */
 fn skyColor(d : vec3f) -> vec3f {
@@ -329,7 +343,8 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
     var n = ng; if (dot(n, rd) > 0.0) { n = -n; }
     let m0 = mats[u32(h.mat) * 3u]; let m1 = mats[u32(h.mat) * 3u + 1u]; let m2 = mats[u32(h.mat) * 3u + 2u];
     var albedo = m0.rgb; let metal = m0.w; let rough = m1.x; let alpha = m1.y; let ior = m1.z;
-    if (m1.w > 0.5) { albedo = grassColor(h.p); }   // sol herbe procédurale
+    if (m1.w > 1.5) { albedo = concreteColor(h.p); }        // sol béton procédural
+    else if (m1.w > 0.5) { albedo = grassColor(h.p); }      // sol herbe procédurale
     L = L + thr * m2.rgb;                        // émissif
     let p = h.p + n * 1e-3;
 
@@ -338,7 +353,7 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
     if (alpha < 0.999) {
       let nl = select(-ng, ng, dot(rd, ng) < 0.0);
       let cosI = clamp(dot(-rd, nl), 0.0, 1.0);
-      let F = 0.04 + 0.96 * pow(1.0 - cosI, 5.0);
+      let F = 0.08 + 0.92 * pow(1.0 - cosI, 5.0);   // reflet un peu plus présent (verre archi)
       if (rnd() < F) {
         rd = reflect(rd, nl); ro = h.p + nl * 1e-3;      // reflet du ciel / environnement
       } else {
@@ -355,6 +370,24 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
       let sh = traverse(p, ldir, INF, true);
       if (!sh.hit) {
         L = L + thr * albedo * (1.0 - metal) * ndl * U.sunCol.rgb * U.sunCol.w * (1.0 / PI);
+      }
+    }
+    // --- éclairage direct des LAMPES ponctuelles (NEE, atténuation quadratique) ---
+    let nL = u32(U.lightN.x + 0.5);
+    for (var li = 0u; li < nL; li = li + 1u) {
+      let La = lights[li * 2u]; let Lb = lights[li * 2u + 1u];
+      let toL = La.xyz - p;
+      let dist = length(toL);
+      if (dist > 1e-4) {
+        let ldir2 = toL / dist;
+        let ndl2 = dot(n, ldir2);
+        if (ndl2 > 0.0) {
+          let sh2 = traverse(p, ldir2, dist - 1e-2, true);
+          if (!sh2.hit) {
+            let atten = 1.0 / (dist * dist + La.w * La.w);
+            L = L + thr * albedo * (1.0 - metal) * ndl2 * Lb.rgb * Lb.w * atten * (1.0 / PI);
+          }
+        }
       }
     }
 
@@ -459,7 +492,7 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       primitive: { topology: 'triangle-list' }
     });
 
-    R.uni = device.createBuffer({ size: 10 * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    R.uni = device.createBuffer({ size: 11 * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     R.puni = device.createBuffer({ size: 2 * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 
     function mkStorage(arr, extraUsage) {
@@ -467,6 +500,9 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       device.queue.writeBuffer(b, 0, arr);
       return b;
     }
+    /* Lampes ponctuelles : buffer par défaut vide (1 vec4 factice) ; setLights le remplit. */
+    R.nLights = 0;
+    R.buffers.lights = mkStorage(new Float32Array(4));
 
     R.setScene = function (scene) {
       const P = packScene(scene);
@@ -495,7 +531,8 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
           { binding: 2, resource: { buffer: R.buffers.mats } },
           { binding: 3, resource: { buffer: R.buffers.nodes } },
           { binding: 4, resource: { buffer: R.buffers.rights } },
-          { binding: 5, resource: { buffer: R.buffers.accum } }
+          { binding: 5, resource: { buffer: R.buffers.accum } },
+          { binding: 6, resource: { buffer: R.buffers.lights } }
         ]
       });
       R.pbind = device.createBindGroup({
@@ -509,6 +546,21 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
 
     R.setCamera = function (c) { R.cam = c; R.reset(); };
     R.setEnv = function (e) { R.env = e; R.reset(); };
+    /* Lampes ponctuelles : liste de { pos:[x,y,z], radius, color:[r,g,b], intensity }.
+       Chaque lampe = 2 vec4f : (pos.xyz, rayon) puis (couleur.rgb, intensité). */
+    R.setLights = function (list) {
+      list = list || [];
+      var n = list.length, buf = new Float32Array(Math.max(1, n) * 8);
+      for (var i = 0; i < n; i++) {
+        var L = list[i], p = L.pos || [0, 0, 0], c = L.color || [1, 1, 1];
+        buf[i * 8] = p[0]; buf[i * 8 + 1] = p[1]; buf[i * 8 + 2] = p[2]; buf[i * 8 + 3] = (L.radius == null ? 0.15 : L.radius);
+        buf[i * 8 + 4] = c[0]; buf[i * 8 + 5] = c[1]; buf[i * 8 + 6] = c[2]; buf[i * 8 + 7] = (L.intensity == null ? 30 : L.intensity);
+      }
+      if (R.buffers.lights) R.buffers.lights.destroy();
+      R.buffers.lights = mkStorage(buf);
+      R.nLights = n;
+      R._makeBinds(); R.reset();
+    };
     R.setOpts = function (o) { Object.assign(R.opts, o || {}); R.reset(); };
     R.onProgress = function (fn) { R._prog = fn; };
 
@@ -526,7 +578,7 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       const right = norm(cross(fwd, c.up || [0, 1, 0]));
       const up = cross(right, fwd);
       const tan = Math.tan((c.fovY || 0.95) * 0.5);
-      const u = new Float32Array(40);
+      const u = new Float32Array(44);
       u.set([c.origin[0], c.origin[1], c.origin[2], tan], 0);
       u.set([right[0], right[1], right[2], c.aspect || (R.W / R.H)], 4);
       u.set([up[0], up[1], up[2], 0], 8);
@@ -538,6 +590,7 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       u.set([e.skyTop[0], e.skyTop[1], e.skyTop[2], 0], 28);
       u.set([e.skyHor[0], e.skyHor[1], e.skyHor[2], 0], 32);
       u.set([e.skyGround[0], e.skyGround[1], e.skyGround[2], e.skyInt == null ? 1.0 : e.skyInt], 36);
+      u.set([R.nLights || 0, 0, 0, 0], 40);
       device.queue.writeBuffer(R.uni, 0, u);
       const pu = new Float32Array(8);
       pu.set([R.W, R.H, 0, 0], 0);
