@@ -3159,7 +3159,7 @@ var FINISH = {
   hbeton:   [165, 165, 160],  /* hangar : fondations / parpaing */
   sol:      [235, 232, 224],  /* dalle : sol fini (dallage blanc cassé) */
   fauxplaf: [238, 238, 236],   /* dalle : faux plafond BA13 */
-  imdalle:[176,176,172], impoteau:[164,164,162], impoutre:[150,150,148], imvoile:[158,158,156],
+  imdalle:[176,176,172], impoteau:[164,164,162], impoutre:[150,150,148], imvoile:[158,158,156], imcloison:[236,236,232],
   tcadre:[64,67,71], touvrant:[64,67,71], tpoignee:[120,124,130], vcadre:[210,200,180], vouvrant:[210,200,180],
   kcaisson:[232,231,227], kfacade:[244,244,240], kplan:[58,60,64], kmetal:[176,180,186],
   /* --- objets génériques : une finition par élément, cf. FINISH_ON --- */
@@ -3217,7 +3217,7 @@ var FINISH_TEX = {
   pstruct:null,                    /* structure : parpaing / béton banché (posé selon le type) */
   rampsurf:null, rampstruct:null,  /* rampe PMR */
   pmargelle:null, pplage:null, vstruct:null, vsoub:null, vsoubExt:null, vsoubInt:null, chab:null,
-  imdalle:null, impoteau:null, impoutre:null, imvoile:null, chtub:null,
+  imdalle:null, impoteau:null, impoutre:null, imvoile:null, imcloison:null, chtub:null,
   tcadre:null, touvrant:null, tpoignee:null, vcadre:null, vouvrant:null,
   corps:null, etagere:null, porte:null, forme:null, objet:null, bati:null, panneau:null, poignee:null, fcadre:null, fouvrant:null, fpoignee:null, cwframe:null, cwspandrel:null, cwvent:null, fstruct:null, fgarn:null, hossature:null, hbardage:null, hcorner:null, hbeton:null, sol:'dallage_blanc', fauxplaf:null,
   kcaisson:null, kfacade:null, kplan:null, kmetal:null,
@@ -3373,6 +3373,7 @@ var FINISH_ELEMS_IMMEUBLE = [
   {id:'impoteau', l:'Poteaux'},
   {id:'impoutre', l:'Poutres'},
   {id:'imvoile',  l:'Voiles'},
+  {id:'imcloison',l:'Cloisons'},
   {id:'vitrage',  l:'Vitrage'}
 ];
 var FINISH_ELEMS_TECHNAL = [
@@ -4093,6 +4094,10 @@ var PIM = {
   vitrTint:'clair', allege:100, winH:150, montEntr:150, travEntr:120,
   /* mur-rideau : allège opaque puis bande vitrée. rideauH = 0 → pleine hauteur d'étage. */
   rideauAllege:0, rideauH:0,
+  /* hauteur TOTALE de la façade rideau (cm depuis le sol de l'étage ; 0 = pleine
+     hauteur d'étage). Plafonne le HAUT de la façade → permet de la faire passer
+     SOUS la poutre. Global + surcharge par côté (N/S/E/O ; 0 = suit le global). */
+  rideauTop:0, rideauTopN:0, rideauTopS:0, rideauTopE:0, rideauTopO:0,
   setbackN:0, setbackD:200, coreOn:0, coreW:400, coreD:400, facOffset:0,
   nBasement:0, basementH:280, basementWalls:1, basementSlab:1,
   foundOn:1, foundType:'filante', foundH:60, foundW:60,   /* fondations : filantes (semelles continues) ou massifs (sous poteaux) */
@@ -6998,6 +7003,17 @@ function partCommitDist(){ if(!PART_CUR||!PART_CUR.length||!PART_HOVER) return f
 /* --- matériaux de cloison (couleur RAL/hex ou texture) --- */
 function hexToRgb(h){ var m=/^#?([0-9a-fA-F]{6})$/.exec(h||''); if(!m)return null; var n=parseInt(m[1],16); return [(n>>16)&255,(n>>8)&255,n&255]; }
 function partMat(m, defCol){ if(m){ if(m.tex) return {col:[205,205,205], tex:m.tex}; if(m.col){ var c=hexToRgb(m.col); if(c) return {col:c, tex:null}; } } return {col:defCol, tex:null}; }
+/* Comme partMat mais, à défaut de matériau propre à la cloison, applique la
+   FINITION GLOBALE « Cloisons » (FINISH/FINISH_TEX.imcloison) du panneau Finitions.
+   La couleur globale ne s'impose que si l'utilisateur l'a réglée (FINISH_SET),
+   pour ne pas écraser la teinte native brique/refend par défaut. */
+function partMatDef(m, coreCol){
+  if(m && (m.tex||m.col)) return partMat(m, coreCol);
+  var gt=(typeof FINISH_TEX!=='undefined')?FINISH_TEX.imcloison:null;
+  var gcSet=(typeof FINISH_SET!=='undefined') && FINISH_SET.imcloison;
+  var gc=(gcSet && typeof FINISH!=='undefined' && FINISH.imcloison)?FINISH.imcloison:coreCol;
+  return {col: gt?[205,205,205]:gc, tex: gt||null};
+}
 var _TEX_FLAT=null;
 function texFlat(){ if(_TEX_FLAT) return _TEX_FLAT; _TEX_FLAT=[]; (typeof TEXTURE_FAMILIES!=='undefined'?TEXTURE_FAMILIES:[]).forEach(function(fam){ (fam.items||[]).forEach(function(it){ _TEX_FLAT.push({id:it.id, label:(fam.label+' · '+(it.n||it.label||it.id))}); }); }); return _TEX_FLAT; }
 /* aimant aux MURS : projette le point sur le contour du bâtiment ou une cloison existante (étage courant). */
@@ -7419,7 +7435,7 @@ function buildImmeuble(){
       var dxN=b[0]-a[0], dzN=b[1]-a[1], LN=Math.hypot(dxN,dzN)||1, nX=dzN/LN, nZ=-dxN/LN;
       if(((a[0]+b[0])/2-cx)*nX + ((a[1]+b[1])/2-cz)*nZ < 0){ nX=-nX; nZ=-nZ; }   /* normale extérieure */
       var _door=(PIM.imDoorOn && s===1 && ft==='rideau' && o===(PIM.imDoorFac||'S'));   /* porte : RDC, côté choisi, façade rideau */
-      facadeEdge(botPoly[ei],botPoly[(ei+1)%nEf], topPoly[ei],topPoly[(ei+1)%nEf], levelY[s-1], fy1, ft, nX,nZ, _door);
+      facadeEdge(botPoly[ei],botPoly[(ei+1)%nEf], topPoly[ei],topPoly[(ei+1)%nEf], levelY[s-1], fy1, ft, nX,nZ, _door, o);
       if(ft&&ft!=='none'){ var rcf={ax:a[0],az:a[1],bx:b[0],bz:b[1],y0:levelY[s-1],y1:fy1,st:Math.min(s-1,N-1)};
         if(ft==='rideau'){ rcf.ent='IFCCURTAINWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.06; rcf.col=glassCol(); rcf.al=glassAl(); rcf.nm='Mur-rideau'; }
         else if(ft==='mur'){ rcf.ent='IFCWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.16; rcf.col=[202,200,195]; rcf.al=1; rcf.nm='Mur'; }
@@ -7451,7 +7467,7 @@ function buildImmeuble(){
       pt=pt||{};
       var coreCol=(ty==='brique')?[190,182,172]:(ty==='refend')?[172,174,178]:[236,236,232];
       var dA=pt.doublA&&pt.doublA.on, dB=pt.doublB&&pt.doublB.on;
-      wallCore(a,b,y0,y1,t, dA?{col:coreCol}:partMat(pt.matA,coreCol), dB?{col:coreCol}:partMat(pt.matB,coreCol), partMat(pt.matE,coreCol));
+      wallCore(a,b,y0,y1,t, dA?{col:coreCol}:partMatDef(pt.matA,coreCol), dB?{col:coreCol}:partMatDef(pt.matB,coreCol), partMatDef(pt.matE,coreCol));
       var dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz)||1,ux=dx/L,uz=dz/L,nx=-uz,nz=ux,half=t/2;
       function doubl(d,sgn,faceMat){ if(!d||!d.on)return;
         var fin=d.fin||'ba13', ep=Math.max(0.3,(d.ep||(fin==='brique'?5.5:fin==='carrelage'?1:1.3))/100), iso=!!d.iso, isoEp=iso?Math.max(1,(d.isoEp||5)/100):0;
@@ -7488,8 +7504,13 @@ function buildImmeuble(){
         sd.forEach(function(d){ var w=Math.max(0.5,(d.w||83)/100), dc=Math.max(w/2,Math.min(Ls-w/2,(d.t||0.5)*Ls)), os=dc-w/2, oe=dc+w/2;
           var sp=(cur===0)?aE:[a[0]+ux*cur,a[1]+uz*cur];
           if(os-cur>0.01) partWall(sp,[a[0]+ux*os,a[1]+uz*os],y0,y1,t,ty,pt);
-          var doorH=Math.min(y1-y0-0.02,2.04), wcol=(ty==='brique')?[190,182,172]:[236,236,232];
-          beamSeg(a[0]+ux*os,a[1]+uz*os, a[0]+ux*oe,a[1]+uz*oe, y0+doorH, y1, t, wcol,1);   /* linteau */
+          var doorH=Math.min(y1-y0-0.02,2.04);
+          /* Linteau (allège au-dessus de la porte) : MÊME matière que la cloison
+             (couleur + texture via partMatDef), pas une couleur figée. */
+          var _lcore=(ty==='brique')?[190,182,172]:(ty==='refend')?[172,174,178]:[236,236,232];
+          var _lm=partMatDef(pt.matA,_lcore), _lsv=_CURTEX; _CURTEX=_lm.tex||null;
+          beamSeg(a[0]+ux*os,a[1]+uz*os, a[0]+ux*oe,a[1]+uz*oe, y0+doorH, y1, t, _lm.col,1);   /* linteau */
+          _CURTEX=_lsv;
           var hinge=d.hinge?oe:os, Hx=a[0]+ux*hinge, Hz=a[1]+uz*hinge, cd=d.hinge?[-ux,-uz]:[ux,uz];
           var ang=(d.open!=null?d.open:80)*Math.PI/180*(d.swing?1:-1), ca=Math.cos(ang), sa=Math.sin(ang);
           var ldx=cd[0]*ca-cd[1]*sa, ldz=cd[0]*sa+cd[1]*ca;
@@ -7531,9 +7552,13 @@ function _orient(ax,az,bx,bz,cx,cz){
 /* facadeEdge() : enveloppe d'une arête sur un étage. Extrémités PIED (A0,B0) et TÊTE (At,Bt)
    fournies explicitement (déjà mitrées aux angles) → les cadres de façades perpendiculaires
    se rejoignent proprement, même inclinées. nX,nZ = normale extérieure (épaisseur/profondeur). */
-function facadeEdge(A0,B0, At,Bt, y0,y1, type, nX,nZ, door){
+function facadeEdge(A0,B0, At,Bt, y0,y1, type, nX,nZ, door, side){
   if(!type||type==='none') return;
   nX=nX||0; nZ=nZ||0; var H=(y1-y0)||1;
+  /* Hauteur TOTALE de façade rideau : surcharge par côté sinon global (cm ; 0=plein).
+     Plafonne le haut de la façade (sous la poutre). Ignorée sur la baie de porte. */
+  var _rTopCm = (side && PIM['rideauTop'+side]>0) ? PIM['rideauTop'+side] : (PIM.rideauTop||0);
+  var yTop = (_rTopCm>0 && !door) ? Math.max(y0+0.3, Math.min(y1, y0+_rTopCm/100)) : y1;
   /* point du panneau à la fraction horizontale t (A→B) et verticale fr (0=pied,1=tête) */
   function PT(t,fr){ var bx=A0[0]+(B0[0]-A0[0])*t, bz=A0[1]+(B0[1]-A0[1])*t, tx=At[0]+(Bt[0]-At[0])*t, tz=At[1]+(Bt[1]-At[1])*t; return [bx+(tx-bx)*fr, bz+(tz-bz)*fr]; }
   /* Le vitrage est un élément de finition à part entière : teinte ET opacité.
@@ -7609,13 +7634,14 @@ function facadeEdge(A0,B0, At,Bt, y0,y1, type, nX,nZ, door){
       /* Allège opaque, puis bande vitrée de hauteur `rideauH` (0 = pleine hauteur
          d'étage). Le reste au-dessus est une retombée opaque. Montants, traverses
          et vitrage sont tous bornés à la bande : le châssis descend d'un bloc. */
-      var alR=Math.max(0, Math.min((PIM.rideauAllege||0)/100, H-0.20));
-      var hR=(PIM.rideauH>0) ? Math.min(PIM.rideauH/100, H-alR) : (H-alR);
+      var hAv=Math.max(0.2, yTop-y0);                                            /* hauteur DISPONIBLE de façade (plafonnée) */
+      var alR=Math.max(0, Math.min((PIM.rideauAllege||0)/100, hAv-0.20));
+      var hR=(PIM.rideauH>0) ? Math.min(PIM.rideauH/100, hAv-alR) : (hAv-alR);
       var yg0=y0+alR, yg1=yg0+hR;
-      var f0=(yg0-y0)/H, f1=(yg1-y0)/H;
+      var f0=(yg0-y0)/H, f1=(yg1-y0)/H, fT=(yTop-y0)/H;
       if(alR>0.02) slabQ(A0,B0, aP(f0),bP(f0), y0,yg0, 0.10, pan, 1);            /* allège */
       slabQ(aP(f0),bP(f0), aP(f1),bP(f1), yg0,yg1, 0.06, glass, gA);             /* vitrage */
-      if(yg1<y1-0.02) slabQ(aP(f1),bP(f1), At,Bt, yg1,y1, 0.10, pan, 1);         /* retombée */
+      if(yg1<yTop-0.02) slabQ(aP(f1),bP(f1), aP(fT),bP(fT), yg1,yTop, 0.10, pan, 1);   /* retombée, haut plafonné sous la poutre */
       /* traverses sur la seule bande vitrée, châssis à la hauteur exacte demandée */
       traverseYs(yg0,yg1).forEach(function(yy){ band(yy, 0.035, 0.10, frame, 1); });
       var step=Math.max(0.4,(PIM.montEntr||150)/100), nM=Math.max(1,Math.round(L/step));
@@ -16376,6 +16402,12 @@ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.innerHT
   slider('Hauteur du châssis (rideau)','cm','travEntr',40,400,5);
   slider('Allège (rideau)','cm','rideauAllege',0,200,5);
   slider('Hauteur vitrage (rideau)','cm','rideauH',0,600,5);
+  slider('Hauteur façade rideau (0 = pleine hauteur)','cm','rideauTop',0,1200,5);
+  (function(){ var n=document.createElement('div'); n.className='exp-note'; n.style.marginTop='2px'; n.textContent='Plafonne le HAUT de la façade rideau (0 = pleine hauteur d’étage) → permet de la faire passer SOUS la poutre. Surcharge par côté ci-dessous (0 = suit le global).'; target.appendChild(n); })();
+  slider('Hauteur façade — Nord','cm','rideauTopN',0,1200,5);
+  slider('Hauteur façade — Sud','cm','rideauTopS',0,1200,5);
+  slider('Hauteur façade — Est','cm','rideauTopE',0,1200,5);
+  slider('Hauteur façade — Ouest','cm','rideauTopO',0,1200,5);
   (function(){
     var n=document.createElement('div'); n.className='exp-note'; n.style.marginTop='2px';
     var hEt=((PIM.heights&&PIM.heights[0]!=null)?PIM.heights[0]:300)/100;
@@ -18774,6 +18806,13 @@ var ICONS={
 /* Repli des listes de produits d'un fabricant (Haworth en compte 38). Par défaut
    la liste est ouverte, comme avant ; l'état ne survit pas au rechargement. */
 var FAB_OPEN={};
+/* Ordre des GROUPES du menu de gauche (réordonnable par glisser). Persisté. */
+var CATGRP_ORDER_KEY='BPO_CATGRP_ORDER_v1', CATGRP_DRAG=null;
+var CATGRP_ALL=['batiment','construction','mobilier','biblio'];
+function catgrpOrder(){ var o=null; try{ o=JSON.parse(localStorage.getItem(CATGRP_ORDER_KEY)); }catch(e){}
+  if(!Array.isArray(o)) o=[]; o=o.filter(function(x){return CATGRP_ALL.indexOf(x)>=0;});
+  CATGRP_ALL.forEach(function(id){ if(o.indexOf(id)<0) o.push(id); }); return o; }
+function catgrpOrderSave(o){ try{ localStorage.setItem(CATGRP_ORDER_KEY, JSON.stringify(o)); }catch(e){} }
 function buildCatList(){
   var host=document.getElementById('cat-list');
   host.innerHTML='';
@@ -18803,41 +18842,41 @@ function buildCatList(){
   var _cats=CATALOG[BRANCH].cats;
   /* onglet Génériques : grands ensembles repliables — même mécanique que le panneau de droite */
   if(BRANCH==='generiques' && _cats.some(function(c){return c.grp;})){
-    var GROUPS=[{id:'batiment',label:'Bâtiment'},{id:'construction',label:'Éléments de construction'},{id:'mobilier',label:'Mobilier'}];
-    GROUPS.forEach(function(G){
-      var inG=_cats.filter(function(c){return (c.grp||'construction')===G.id;});
-      if(!inG.length) return;
-      var col = (CATGRP_OPEN[G.id]!==undefined) ? CATGRP_OPEN[G.id] : false;  /* déplié par défaut */
-      var hd=document.createElement('div'); hd.className='grp-hd';
+    var GDEF={ batiment:'Bâtiment', construction:'Éléments de construction', mobilier:'Mobilier', biblio:'Ma bibliothèque' };
+    function renderGroup(gid){
+      var label=GDEF[gid]; if(!label) return;
+      var inG=(gid==='biblio')?null:_cats.filter(function(c){return (c.grp||'construction')===gid;});
+      if(gid!=='biblio' && (!inG || !inG.length)) return;
+      var col = (CATGRP_OPEN[gid]!==undefined) ? CATGRP_OPEN[gid] : false;
+      var hd=document.createElement('div'); hd.className='grp-hd'; hd.setAttribute('data-grp',gid);
+      var handle=document.createElement('span'); handle.className='grp-drag'; handle.textContent='⠿'; handle.title='Glisser pour réordonner les menus'; handle.draggable=true;
+      handle.style.cssText='cursor:grab;opacity:.45;margin-right:1px;font-size:12px;';
       var ar=document.createElement('span'); ar.className='grp-ar'; ar.textContent='▸';
-      hd.appendChild(ar); hd.appendChild(document.createTextNode(G.label));
+      hd.appendChild(handle); hd.appendChild(ar); hd.appendChild(document.createTextNode(label));
       var bd=document.createElement('div'); bd.className='grp-bd';
       function paint(){ bd.style.display=col?'none':''; hd.classList.toggle('open',!col); }
       paint();
-      hd.onclick=function(){ col=!col; CATGRP_OPEN[G.id]=col; paint(); };
+      hd.onclick=function(e){ if(e.target===handle) return; col=!col; CATGRP_OPEN[gid]=col; paint(); };
+      /* glisser-déposer pour réordonner les groupes */
+      handle.addEventListener('dragstart',function(e){ CATGRP_DRAG=gid; if(e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',gid);}catch(_e){} } });
+      handle.addEventListener('dragend',function(){ CATGRP_DRAG=null; hd.style.boxShadow=''; });
+      hd.addEventListener('dragover',function(e){ if(!CATGRP_DRAG||CATGRP_DRAG===gid) return; e.preventDefault(); hd.style.boxShadow='inset 0 3px 0 -1px var(--am)'; });
+      hd.addEventListener('dragleave',function(){ hd.style.boxShadow=''; });
+      hd.addEventListener('drop',function(e){ hd.style.boxShadow=''; if(!CATGRP_DRAG||CATGRP_DRAG===gid) return; e.preventDefault();
+        var o=catgrpOrder().filter(function(x){return x!==CATGRP_DRAG;}); var ti=o.indexOf(gid); if(ti<0)ti=o.length; o.splice(ti,0,CATGRP_DRAG); catgrpOrderSave(o); CATGRP_DRAG=null; buildCatList(); });
       host.appendChild(hd); host.appendChild(bd);
-      if(G.id==='mobilier'){
+      if(gid==='biblio'){
+        var sb=document.createElement('button'); sb.className='save-add'; sb.textContent='＋ Enregistrer la config actuelle'; sb.onclick=cfgAdd; bd.appendChild(sb);
+        var sl=document.createElement('div'); sl.id='saveList'; sl.className='save-list'; bd.appendChild(sl);
+        if(typeof cfgRender==='function'){ try{ cfgRender(); }catch(e){} }
+      } else if(gid==='mobilier'){
         inG.forEach(function(cat){ if(cat.id!=='objets') renderCat(cat, bd); });   /* Cuisine en premier */
-        renderFurnTree(bd);                                   /* puis familles (Armoires, Tables) */
+        renderFurnTree(bd);                                                        /* puis familles */
       } else {
         inG.forEach(function(cat){ renderCat(cat, bd); });
       }
-    });
-    /* Ma bibliothèque : configs + objets importés, organisable (remplace l'ancienne colonne 💾) */
-    (function(){
-      var col = (CATGRP_OPEN['biblio']!==undefined) ? CATGRP_OPEN['biblio'] : false;
-      var hd=document.createElement('div'); hd.className='grp-hd';
-      var ar=document.createElement('span'); ar.className='grp-ar'; ar.textContent='▸';
-      hd.appendChild(ar); hd.appendChild(document.createTextNode('Ma bibliothèque'));
-      var bd=document.createElement('div'); bd.className='grp-bd';
-      function paint(){ bd.style.display=col?'none':''; hd.classList.toggle('open',!col); }
-      paint();
-      hd.onclick=function(){ col=!col; CATGRP_OPEN['biblio']=col; paint(); };
-      host.appendChild(hd); host.appendChild(bd);
-      var sb=document.createElement('button'); sb.className='save-add'; sb.textContent='＋ Enregistrer la config actuelle'; sb.onclick=cfgAdd; bd.appendChild(sb);
-      var sl=document.createElement('div'); sl.id='saveList'; sl.className='save-list'; bd.appendChild(sl);
-      if(typeof cfgRender==='function'){ try{ cfgRender(); }catch(e){} }
-    })();
+    }
+    catgrpOrder().forEach(function(gid){ renderGroup(gid); });
     return;
   }
   _cats.forEach(function(cat){ renderCat(cat, host); });
