@@ -4812,10 +4812,24 @@ function cfgAdd(){
   cfgStore(list); cfgRender();
   var app=document.getElementById('app'); if(app) app.classList.add('save-open');
 }
+/* La catégorie du catalogue et le MODE moteur coïncident pour la plupart des objets
+   paramétriques (piscine, mur, poteau…), SAUF quelques exceptions : le meuble vit
+   dans la catégorie « objet » (MODE 'meuble'), le mobilier dans « objets » (MODE 'furn').
+   Sans ce mapping, selectCat(cfg.mode) ne trouve pas la catégorie et retombe sur
+   'todo' → rien ne s'affiche (ex. « table basse » enregistrée en mode 'meuble'). */
+var MODE_TO_CAT = { meuble:'objet', furn:'objets' };
 function cfgApply(cfg){
   BRANCH='generiques';
   var tabs=document.querySelectorAll('.tab'); for(var i=0;i<tabs.length;i++) tabs[i].classList.toggle('on', tabs[i].getAttribute('data-branch')==='generiques');
-  selectCat(cfg.mode);                                  /* catId === mode pour les objets paramétriques */
+  selectCat(MODE_TO_CAT[cfg.mode] || cfg.mode);         /* mode moteur -> id de catégorie */
+  /* Objet paramétrique montré seul pour édition : rendu LOGICIEL par défaut. En venant
+     de la scène, le viewer est en WebGL — or l'objet n'y est pas poussé, donc le
+     viewport resterait vide. On rebascule en logiciel (WebGL reste dispo au clic). */
+  if(typeof ENGINE!=='undefined' && ENGINE==='webgl'){
+    ENGINE='soft'; try{ WGL.hide(); }catch(_e){}
+    if(typeof buildRenderRow==='function') buildRenderRow();
+    if(typeof buildRenderBanner==='function') buildRenderBanner();
+  }
   var o=undoParams(); if(o){ for(var k in cfg.params) o[k]=JSON.parse(JSON.stringify(cfg.params[k])); }
   CUR_POLY=null; POLY_TARGET=null;                      /* le contour libre est reconstruit par build() */
   buildCatList(); refreshView();
@@ -13676,8 +13690,12 @@ function scnSnapXZ(idx){ var inst=SCENE.instances[idx]; if(!inst) return;
 /* Resynchronise chaque instance sur la dernière version de sa config (par id, sinon par type+nom) et rattache l'id. */
 function scnResync(){ var cfgs=cfgLoad(); function res(list){ (list||[]).forEach(function(inst){
     if(inst.group){ if(inst._fp)delete inst._fp; res(inst.children); return; }
-    var c=cfgs.filter(function(x){return x.id===inst.cfgId;})[0] || cfgs.filter(function(x){return x.mode===inst.mode && x.name===inst.name;})[0];
-    if(c){ inst.cfgId=c.id; inst.mode=c.mode; inst.label=c.label||c.mode; inst.params=JSON.parse(JSON.stringify(c.params)); } }); }
+    /* On ne resynchronise que les objets PARAMÉTRIQUES : les objets importés sont
+       stockés comme configs sans `.params` (ils référencent un maillage). Sans le
+       filtre `x.params`, un tel match donnait JSON.parse(JSON.stringify(undefined))
+       -> JSON.parse("undefined") -> SyntaxError, qui cassait tout le handler. */
+    var c=cfgs.filter(function(x){return x.id===inst.cfgId && x.params;})[0] || cfgs.filter(function(x){return x.mode===inst.mode && x.name===inst.name && x.params;})[0];
+    if(c && c.params){ inst.cfgId=c.id; inst.mode=c.mode; inst.label=c.label||c.mode; inst.params=JSON.parse(JSON.stringify(c.params)); } }); }
   res(SCENE.instances); }
 
 function build(){
