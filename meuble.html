@@ -3048,14 +3048,13 @@ function texPhotoInvalidate(id){
 function ensureTexPhoto(id){
   if(!TEX_PHOTO.enabled || TEX_PHOTO.map===null) return;   /* manifest pas encore résolu */
   if(TEX_PHOTO.state[id]) return;                          /* déjà tenté/en cours/abouti */
-  var file;
-  if(TEX_PHOTO.hasManifest){
-    if(!TEX_PHOTO.map[id]){ TEX_PHOTO.state[id]='none'; return; }
-    file=TEX_PHOTO.map[id];
-  } else {
-    if(id==='sitemap'||id==='imgcad'||/^perf_/.test(id)){ TEX_PHOTO.state[id]='none'; return; }
-    file=id+'.jpg';   /* mode probe */
-  }
+  /* Photos UNIQUEMENT via le manifest (liste blanche). Pas de "probe" : sinon on
+     bombarde le serveur de 404, pour chaque texture non fournie ET surtout pour
+     chaque clé de matériau d'objet importé (des hash, jamais des photos).
+     Manifest absent => aucun appel réseau, on garde le procédural. */
+  if(!TEX_PHOTO.hasManifest){ TEX_PHOTO.state[id]='none'; return; }
+  if(!TEX_PHOTO.map[id]){ TEX_PHOTO.state[id]='none'; return; }
+  var file=TEX_PHOTO.map[id];
   TEX_PHOTO.state[id]='loading';
   var img=new Image();
   img.onload=function(){
