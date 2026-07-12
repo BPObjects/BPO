@@ -70,7 +70,8 @@
       var arr = (window.SCENE && SCENE.lights) ? SCENE.lights : [];
       for (var i = 0; i < arr.length; i++) {
         var L = arr[i]; if (!L || L.on === false) continue;
-        out.push({ pos: [(L.x || 0) / 100, (L.y || 0) / 100, (L.z || 0) / 100], radius: (L.radius || 0.2), color: (L.color || [1.0, 0.86, 0.66]), intensity: (L.intensity == null ? 30 : L.intensity) });
+        var c = L.color || [255, 220, 170];   // RVB 0-255 (sRGB) -> linéaire 0-1
+        out.push({ pos: [(L.x || 0) / 100, (L.y || 0) / 100, (L.z || 0) / 100], radius: (L.radius || 0.2), color: [srgb2lin(c[0] / 255), srgb2lin(c[1] / 255), srgb2lin(c[2] / 255)], intensity: (L.intensity == null ? 30 : L.intensity) });
       }
     } catch (e) {}
     return out;
