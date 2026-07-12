@@ -613,7 +613,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script src="data/fabricants.js?v=20260710b"></script>
 <script src="data/textured-objects.js?v=20260710b"></script>
 <script src="bpo-raytrace.js?v=20260712h"></script>
-<script src="bpo-render-hook.js?v=20260712n"></script>
+<script src="bpo-render-hook.js?v=20260712o"></script>
 <script src="bpo-import.js?v=20260712a"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
@@ -14471,24 +14471,43 @@ function wglGround(vpv,sx,sy){
   var k=-eye[1]/dir[1]; if(k<0) return null;
   return [eye[0]+dir[0]*k, eye[2]+dir[2]*k];
 }
+/* Comme wglGround mais sur un plan horizontal à la hauteur h (m) — pour déplacer
+   une lampe dans son plan sans qu'elle « tombe » au sol. */
+function wglGroundH(vpv,sx,sy,h){
+  var eye=vpv.eye, tgt=vpv.tgt, fwd=[tgt[0]-eye[0],tgt[1]-eye[1],tgt[2]-eye[2]], fl=Math.hypot(fwd[0],fwd[1],fwd[2])||1; fwd=[fwd[0]/fl,fwd[1]/fl,fwd[2]/fl];
+  var right=[-fwd[2],0,fwd[0]], rl=Math.hypot(right[0],right[2])||1; right=[right[0]/rl,0,right[2]/rl];
+  var up=[right[1]*fwd[2]-right[2]*fwd[1], right[2]*fwd[0]-right[0]*fwd[2], right[0]*fwd[1]-right[1]*fwd[0]];
+  var t=Math.tan(vpv.fov/2), nx=(sx/vpv.W*2-1)*t*vpv.as, ny=(1-sy/vpv.H*2)*t;
+  var dir=[fwd[0]+right[0]*nx+up[0]*ny, fwd[1]+right[1]*nx+up[1]*ny, fwd[2]+right[2]*nx+up[2]*ny];
+  if(Math.abs(dir[1])<1e-6) return null;
+  var k=((h||0)-eye[1])/dir[1]; if(k<0) return null;
+  return [eye[0]+dir[0]*k, eye[2]+dir[2]*k];
+}
 function drawGizov(){
   var gz=document.getElementById('gizov'); if(!gz) return;
   var W=vp.clientWidth, H=vp.clientHeight; if(gz.width!==W||gz.height!==H){ gz.width=W; gz.height=H; }
   var g=gz.getContext('2d'); g.clearRect(0,0,W,H);
   SCN_GIZ=null; SCN_GIZS=[];
-  /* Marqueurs des LAMPES (toujours visibles en mode Scène, même sans sélection) :
-     petit halo + point, couleur chaude si allumée. Repère de pose pour le rendu. */
+  /* Marqueurs + GIZMO des LAMPES (toujours visibles en mode Scène, même sans
+     sélection) : point = déplacement au sol à la hauteur de la lampe ; bouton du
+     haut = poignée de hauteur ; fil pointillé = repère vertical vers le sol. */
+  SCN_LIGHT_HITS=[];
   if(MODE==='scene' && WGL.gActive && SCENE.lights && SCENE.lights.length && typeof wglProjPt==='function'){
     var _lv=wglVP();
-    SCENE.lights.forEach(function(L){ if(!L) return;
-      var sp=wglProjPt(_lv,[(L.x||0)/100,(L.y||0)/100,(L.z||0)/100]); if(!sp) return;
+    SCENE.lights.forEach(function(L,li){ if(!L) return;
+      var wy=(L.y||0)/100, sp=wglProjPt(_lv,[(L.x||0)/100, wy, (L.z||0)/100]); if(!sp) return;
       var on=(L.on!==false), col=on?'#ffcf6a':'#8a8a8a';
       g.save();
+      var gpt=wglProjPt(_lv,[(L.x||0)/100, 0, (L.z||0)/100]);
+      if(gpt){ g.setLineDash([3,3]); g.strokeStyle='rgba(255,207,106,0.35)'; g.lineWidth=1; g.beginPath(); g.moveTo(sp.x,sp.y); g.lineTo(gpt.x,gpt.y); g.stroke(); g.setLineDash([]); }
       g.globalAlpha=on?0.30:0.18; g.fillStyle=col; g.beginPath(); g.arc(sp.x,sp.y,11,0,6.283); g.fill();
-      g.globalAlpha=1; g.fillStyle=col; g.beginPath(); g.arc(sp.x,sp.y,4,0,6.283); g.fill();
-      g.lineWidth=1; g.strokeStyle='rgba(0,0,0,0.55)'; g.stroke();
-      g.font='9px system-ui'; g.textAlign='center'; g.fillStyle=col; g.fillText(L.name||'Lampe',sp.x,sp.y-13);
+      g.globalAlpha=1; g.fillStyle=col; g.beginPath(); g.arc(sp.x,sp.y,5,0,6.283); g.fill(); g.lineWidth=1.5; g.strokeStyle='#fff'; g.stroke();
+      var hy=sp.y-26;
+      g.strokeStyle=col; g.lineWidth=2; g.beginPath(); g.moveTo(sp.x,sp.y-6); g.lineTo(sp.x,hy+5); g.stroke();
+      g.fillStyle=col; g.beginPath(); g.arc(sp.x,hy,5,0,6.283); g.fill(); g.lineWidth=1.5; g.strokeStyle='#fff'; g.stroke();
+      g.font='9px system-ui'; g.textAlign='center'; g.fillStyle=col; g.fillText(L.name||'Lampe',sp.x,sp.y+17);
       g.restore();
+      SCN_LIGHT_HITS.push({i:li, sx:sp.x, sy:sp.y, hx:sp.x, hy:hy});
     });
   }
   if(MODE!=='scene'||!WGL.gActive||!SCENE.instances||SCENE.sel<0||SCENE.sel>=SCENE.instances.length){ return; }
@@ -14554,6 +14573,15 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
       pang={x:e.clientX, y:e.clientY}; e.preventDefault(); return;
     }
     var m=rel(e), vpv=wglVP(), multi=(e.ctrlKey||e.metaKey||e.shiftKey);
+    /* GIZMO LAMPE (priorité) : bouton du haut = hauteur, point = déplacement au sol. */
+    if((e.button||0)===0 && !multi && SCN_LIGHT_HITS.length){
+      for(var _lh=0;_lh<SCN_LIGHT_HITS.length;_lh++){ var LH=SCN_LIGHT_HITS[_lh], Ll=SCENE.lights&&SCENE.lights[LH.i]; if(!Ll) continue;
+        if(Math.hypot(LH.hx-m.x,LH.hy-m.y)<12){ var pA=wglProjPt(vpv,[Ll.x/100,(Ll.y/100)||0,Ll.z/100]), pB=wglProjPt(vpv,[Ll.x/100,((Ll.y/100)||0)+1,Ll.z/100]); var ppm=(pA&&pB)?Math.max(8,Math.abs(pA.y-pB.y)):60;
+          SCN_LDRAG={i:LH.i, mode:'y', my:e.clientY, y0:Ll.y||0, ppm:ppm}; GB='ly'; e.preventDefault(); return; }
+        if(Math.hypot(LH.sx-m.x,LH.sy-m.y)<13){ var g0=wglGroundH(vpv,m.x,m.y,(Ll.y||0)/100);
+          SCN_LDRAG={i:LH.i, mode:'xz', g0:g0, x0:Ll.x||0, z0:Ll.z||0}; GB='lm'; e.preventDefault(); return; }
+      }
+    }
     if((e.button||0)===0 && SCENE.instances.length){
       /* poignées de gizmo (hauteur / rotation) — teste TOUS les objets sélectionnés ; agit sur toute la sélection */
       if(!multi){ for(var _gi=0;_gi<SCN_GIZS.length;_gi++){ var G=SCN_GIZS[_gi];
@@ -14585,6 +14613,11 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
       WGL.pan(e.clientX-pang.x, e.clientY-pang.y, gz.clientHeight||600);
       pang.x=e.clientX; pang.y=e.clientY; scnRenderRAF(); e.preventDefault(); return;
     }
+    /* déplacement d'une LAMPE (indépendant de la sélection d'objets) */
+    if((GB==='lm'||GB==='ly') && SCN_LDRAG){ var mL=rel(e), vpvL=wglVP(), Ld=SCENE.lights&&SCENE.lights[SCN_LDRAG.i]; if(!Ld){ GB=null; SCN_LDRAG=null; return; }
+      if(GB==='lm'){ var gh=wglGroundH(vpvL,mL.x,mL.y,(Ld.y||0)/100); if(gh&&SCN_LDRAG.g0){ Ld.x=Math.round(SCN_LDRAG.x0+(gh[0]-SCN_LDRAG.g0[0])*100); Ld.z=Math.round(SCN_LDRAG.z0+(gh[1]-SCN_LDRAG.g0[1])*100); } }
+      else { var dyv=(SCN_LDRAG.my-e.clientY)/(SCN_LDRAG.ppm||60), nyL=Math.round(SCN_LDRAG.y0+dyv*100); if(!e.shiftKey)nyL=Math.round(nyL/5)*5; Ld.y=nyL; }
+      DIRTY=true; if(typeof drawGizov==='function') drawGizov(); e.preventDefault(); return; }
     if(GB){ var m=rel(e), vpv=wglVP(); if(!scnSel().length){GB=null;return;}
       if(GB==='v'){ var dyv=(SCN_VDRAG.my-e.clientY)/(SCN_VDRAG.ppm||60), dY=Math.round(dyv*100);
         SCN_VDRAG.base.forEach(function(b){ var it=SCENE.instances[b.i]; if(!it)return; var ny=b.y+dY; if(!e.shiftKey)ny=Math.round(ny/5)*5; it.y=ny; }); }
@@ -14602,7 +14635,7 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
     }
     if(orb){ WGL.cam.th-=(e.clientX-orb.x)*0.01; WGL.cam.ph-=(e.clientY-orb.y)*0.01; WGL.cam.ph=Math.max(0.15,Math.min(2.9,WGL.cam.ph)); orb.x=e.clientX; orb.y=e.clientY; scnRenderRAF(); }
   });
-  window.addEventListener('mouseup', function(){ if(GB){ GB=null; SCN_DRAG=SCN_ROT=SCN_VDRAG=null; if(MODE==='scene'){ if(typeof scnDragCommit==='function') scnDragCommit(); if(typeof buildSceneUI==='function') buildSceneUI(); } } orb=null; pang=null; });
+  window.addEventListener('mouseup', function(){ if(GB){ var wasL=(GB==='lm'||GB==='ly'); GB=null; SCN_DRAG=SCN_ROT=SCN_VDRAG=null; SCN_LDRAG=null; if(MODE==='scene'){ if(!wasL && typeof scnDragCommit==='function') scnDragCommit(); if(typeof buildSceneUI==='function') buildSceneUI(); if(wasL && typeof drawGizov==='function') drawGizov(); } } orb=null; pang=null; });
   gz.addEventListener('wheel', function(e){
     if(MODE!=='scene'||!WGL.gActive) return; e.preventDefault();
     var r=gz.getBoundingClientRect();
@@ -17128,6 +17161,7 @@ function buildToitureUI(){
 }
 /* ── SCÈNE : glisser-déposer de configs + gizmo curseurs + sauvegarde ── */
 var SCN_DROP_BOUND=false, SCN_DRAG_CFG=null, SCN_DRAG_FAB=null, SCN_DRAG=null, SCN_CUR=null, SCN_ROT=null, SCN_GIZ=null, SCN_GIZS=[], SCN_VDRAG=null;
+var SCN_LDRAG=null, SCN_LIGHT_HITS=[];   /* déplacement de lampe (gizmo) + zones cliquables des lampes */
 /* entre en mode Scène (assemblage) par programmation (ex. après un glisser-déposer) */
 function enterSceneMode(){ try{
   if(typeof MODE!=='undefined' && MODE!=='scene') window._preSceneMode=MODE;

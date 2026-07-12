@@ -237,15 +237,25 @@
     overlay.style.cssText = 'max-width:100%;max-height:100%;box-shadow:0 8px 50px rgba(0,0,0,.6);';
     host.appendChild(overlay);
 
+    /* Barre COMPACTE : juste l'échantillonnage + « Options ▾ » + Fermer. Tout le
+       reste (export, sol, intérieur, ciel, curseurs) est dans un menu déroulant. */
     panel = document.createElement('div');
     panel.style.cssText = 'position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;' +
       'background:rgba(26,29,35,.92);border:1px solid #343a45;border-radius:10px;padding:8px 12px;color:#e8e9ec;font:12px system-ui;';
-    var lbl = document.createElement('span'); lbl.textContent = tr('Rendu photo') + ' — 0 ' + tr('échantillons');
-    lbl.style.cssText = 'min-width:180px;';
-    var bPng = mkBtn('⬇ ' + tr('Exporter PNG'));
+    var lbl = document.createElement('span'); lbl.textContent = '0 ' + tr('échantillons');
+    lbl.style.cssText = 'min-width:120px;text-align:center;';
+    var bOpts = mkBtn('⚙ Options ▾');
     var bClose = mkBtn('✕ ' + tr('Fermer'));
-    panel.appendChild(lbl); panel.appendChild(bPng); panel.appendChild(bClose);
+    panel.appendChild(lbl); panel.appendChild(bOpts); panel.appendChild(bClose);
     host.appendChild(panel);
+    /* Menu déroulant des options (masqué par défaut, ouvert au clic sur « Options »). */
+    var menu = document.createElement('div');
+    menu.style.cssText = 'position:absolute;top:58px;left:50%;transform:translateX(-50%);display:none;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:center;max-width:min(92vw,880px);' +
+      'background:rgba(26,29,35,.97);border:1px solid #343a45;border-radius:10px;padding:11px 15px;color:#e8e9ec;font:12px system-ui;box-shadow:0 10px 34px rgba(0,0,0,.55);';
+    host.appendChild(menu);
+    var bPng = mkBtn('⬇ ' + tr('Exporter PNG')); menu.appendChild(bPng);
+    var _menuOpen = false;
+    bOpts.onclick = function () { _menuOpen = !_menuOpen; menu.style.display = _menuOpen ? 'flex' : 'none'; bOpts.style.background = _menuOpen ? 'rgba(255,138,61,.95)' : '#242a33'; bOpts.style.color = _menuOpen ? '#151515' : '#e8e9ec'; bOpts.style.borderColor = _menuOpen ? '#ff8a3d' : '#3a4150'; };
     vp.appendChild(host);
 
     try {
@@ -277,7 +287,7 @@
     /* Sélecteur de SOL : change le mode du matériau sol et recharge la scène
        (rebuild BVH + reset accumulateur). herbe / béton / aplat. */
     var groundMat = null; for (var _gi = 0; _gi < sc.materials.length; _gi++) { if (sc.materials[_gi]._ground) groundMat = sc.materials[_gi]; }
-    panel.appendChild(mkGroundSelect(function (mode) {
+    menu.appendChild(mkGroundSelect(function (mode) {
       GROUND_MODE = mode;
       if (groundMat) { groundMat.grass = mode; renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
     }));
@@ -289,22 +299,22 @@
     function updIntBtn() { bInt.style.background = INTERIOR_ON ? 'rgba(255,138,61,.95)' : '#242a33'; bInt.style.color = INTERIOR_ON ? '#151515' : '#e8e9ec'; bInt.style.borderColor = INTERIOR_ON ? '#ff8a3d' : '#3a4150'; }
     updIntBtn();
     bInt.onclick = function () { INTERIOR_ON = !INTERIOR_ON; updIntBtn(); applyLights(); };
-    panel.appendChild(bInt);
+    menu.appendChild(bInt);
     /* Sélecteur d'AMBIANCE DE CIEL : applique un preset (dégradé + soleil) et
        resynchronise les curseurs soleil/hauteur/ambiance. */
-    panel.appendChild(mkSkySelect(function (p) {
+    menu.appendChild(mkSkySelect(function (p) {
       env.skyTop = p.top.slice(); env.skyHor = p.hor.slice(); env.skyGround = p.gnd.slice(); env.skyInt = p.skyInt;
       env.sunIntensity = p.sun; env.sunAngle = p.ang; env.warm = p.warm; el = p.el;
       env.sunColor = sunTint(el); env.sunDir = dirFromAzEl(az, el);
       renderer.setEnv(env);
       setSliderVal(sSun, p.sun); setSliderVal(sEl, p.el); setSliderVal(sAmb, p.warm);
     }));
-    panel.appendChild(sSun);
-    panel.appendChild(mkSlider('⟳', 0, 360, 1, az, function (v) { az = v; applySun(); }));        // azimut
-    panel.appendChild(sEl);
-    panel.appendChild(mkSlider(tr('Expo'), 0.1, 2, 0.05, env.expo, function (v) { env.expo = v; }));
-    panel.appendChild(sAmb);
-    renderer.onProgress(function (n) { lbl.textContent = tr('Rendu photo') + ' — ' + n + ' ' + tr('échantillons'); });
+    menu.appendChild(sSun);
+    menu.appendChild(mkSlider('⟳', 0, 360, 1, az, function (v) { az = v; applySun(); }));        // azimut
+    menu.appendChild(sEl);
+    menu.appendChild(mkSlider(tr('Expo'), 0.1, 2, 0.05, env.expo, function (v) { env.expo = v; }));
+    menu.appendChild(sAmb);
+    renderer.onProgress(function (n) { lbl.textContent = n + ' ' + tr('échantillons'); });
     bPng.onclick = function () { var a = document.createElement('a'); a.download = 'BPO-rendu.png'; a.href = renderer.toPNG(); a.click(); };
     bClose.onclick = close;
     renderer.start();
