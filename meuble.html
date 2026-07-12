@@ -1114,7 +1114,11 @@ WGL.renderT=function(){
   gl.uniform1i(gl.getUniformLocation(P,'tex0'),0);
   gl.uniform2f(gl.getUniformLocation(P,'mrp'),0.0,0.55);
   var ulUV=gl.getUniformLocation(P,'uvScale'), ulUR=gl.getUniformLocation(P,'uvRot');
-  function bind(nm,b,sz){var l=gl.getAttribLocation(P,nm);if(l<0)return;gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,sz,gl.FLOAT,false,0,0);}
+  /* Purge les attributs de vertex laissés ACTIVÉS par un autre programme (rendu de
+     scène) : sinon ils restent enabled sans buffer lié -> drawElements: "no buffer
+     bound to enabled attribute", et l'objet importé ne s'affiche pas (viewer noir). */
+  for(var _da=0; _da<8; _da++) gl.disableVertexAttribArray(_da);
+  function bind(nm,b,sz){var l=gl.getAttribLocation(P,nm);if(l<0||!b)return;gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,sz,gl.FLOAT,false,0,0);}
   bind('p',WGL.tbuf.pos,3); bind('n',WGL.tbuf.nrm,3); bind('uv',WGL.tbuf.uv,2);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,WGL.tbuf.idx);
   var ulUse=gl.getUniformLocation(P,'useTex'), ulBase=gl.getUniformLocation(P,'baseCol');
