@@ -507,6 +507,9 @@
     [['dxf', 'Depuis DXF'], ['shape', 'Créer une forme']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if (PTERR.src === o[0]) b.className = 'on';
       b.onclick = function () { PTERR.src = o[0]; MESH = null; if (typeof glob.build === 'function') { try { glob.build(); } catch (e) {} } if (typeof glob.fitCamera === 'function') { try { glob.fitCamera(glob.DIMS); } catch (e) {} } glob.DIRTY = true; buildUI(host); }; srcTg.appendChild(b); });
     host.appendChild(srcTg);
+    var bcad = doc.createElement('button'); bcad.className = 'save-add'; bcad.textContent = '⭳ Importer cadastre (fond de plan)'; bcad.style.margin = '2px 0 8px';
+    bcad.onclick = function () { if (glob.BPO_cadastre) glob.BPO_cadastre.open(); else glob.alert('Module cadastre non chargé (recharge la page).'); };
+    host.appendChild(bcad);
     if (PTERR.src === 'shape') { buildShapeUI(host); return; }
     var card = doc.createElement('div'); card.className = 'fld';
     card.innerHTML = '<div class="fh"><span>Terrain — MNT depuis DXF</span></div>' +
