@@ -7777,6 +7777,14 @@ function buildImmeuble(){
         if(ft==='rideau'){ rcf.ent='IFCCURTAINWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.06; rcf.col=glassCol(); rcf.al=glassAl(); rcf.nm='Mur-rideau'; }
         else if(ft==='mur'){ rcf.ent='IFCWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.16; rcf.col=[202,200,195]; rcf.al=1; rcf.nm='Mur'; }
         else { rcf.ent='IFCWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.12; rcf.col=[172,170,166]; rcf.al=1; rcf.nm='Bardage'; }
+        /* menuiseries posées sur ce pan → pour l'export IFC (IfcDoor/IfcWindow + baie) */
+        var _wins=[], _cfgsW=(PIM.imOpenings&&PIM.imOpenings.length&&typeof cfgLoad==='function')?cfgLoad():[];
+        (PIM.imOpenings||[]).forEach(function(op){
+          if(!op || op.fac!==o || (op.floor|0)!==s || (op.seg||0)!==_segIdx || !op.cfgId) return;
+          var cfg=_cfgsW.filter(function(c){return c.id===op.cfgId;})[0]; if(!cfg||cfg.mode!==op.kind) return;
+          var sz=(typeof imOpSize==='function')?imOpSize(cfg,op):null; if(!sz) return;
+          _wins.push({kind:op.kind, t:(op.pos!=null?op.pos:50)/100, w:sz.w, h:sz.h, sill:(op.sill||0)/100+(sz.y0||0)}); });
+        if(_wins.length) rcf.wins=_wins;
         IMM_STRUCT.facades.push(rcf); } } } }
   var rp=polyAt(N), rxs=rp.map(function(p){return p[0];}), rzs=rp.map(function(p){return p[1];});
   var rx0=Math.min.apply(null,rxs), rx1=Math.max.apply(null,rxs), rz0=Math.min.apply(null,rzs), rz1=Math.max.apply(null,rzs);
@@ -20674,7 +20682,38 @@ function exportIFC(schema){
       var pts=[P2(ax-nx,az-nz),P2(bx-nx,bz-nz),P2(bx+nx,bz+nz),P2(ax+nx,az+nz)]; var line=E("IFCPOLYLINE(("+pts.join(',')+","+pts[0]+"))"); var prof=E("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,"+line+")");
       var pos=E("IFCAXIS2PLACEMENT3D("+P3(0,0,y0)+",$,$)"); return E("IFCEXTRUDEDAREASOLID("+prof+","+pos+","+D3(0,0,1)+","+num(y1-y0)+")"); }
     function styleSolid(solid,rgb,al){ var col=E("IFCCOLOURRGB($,"+num(rgb[0]/255)+","+num(rgb[1]/255)+","+num(rgb[2]/255)+")"); var tr=(al<1)?(1-al).toFixed(2):'0.'; var rd=E("IFCSURFACESTYLERENDERING("+col+","+tr+",$,$,$,$,$,$,.FLAT.)"); var ss=E("IFCSURFACESTYLE($,.BOTH.,("+rd+"))"); var stl=v23?E("IFCPRESENTATIONSTYLEASSIGNMENT(("+ss+"))"):ss; E("IFCSTYLEDITEM("+solid+",("+stl+"),$)"); }
-    function emit(ent,tail,name,st,solid,repType,rgb,al){ styleSolid(solid,rgb,al); var sr=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','"+repType+"',("+solid+"))"); var pds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+sr+"))"); var opl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")"); var el=E(fixEnt(ent)+"('"+guid()+"',"+owner+",'"+name+"','Immeuble BPO - (c) 2026 Antoine Lacronique, architecte',$,"+opl+","+pds+fixTail(ent,tail)+")"); st=Math.min(Math.max(0,st),nSt-1); (byStorey[st]=byStorey[st]||[]).push(el); }
+    function emit(ent,tail,name,st,solid,repType,rgb,al){ styleSolid(solid,rgb,al); var sr=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','"+repType+"',("+solid+"))"); var pds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+sr+"))"); var opl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")"); var el=E(fixEnt(ent)+"('"+guid()+"',"+owner+",'"+name+"','Immeuble BPO - (c) 2026 Antoine Lacronique, architecte',$,"+opl+","+pds+fixTail(ent,tail)+")"); st=Math.min(Math.max(0,st),nSt-1); (byStorey[st]=byStorey[st]||[]).push(el); return el; }
+    /* MENUISERIES DE FAÇADE : IfcDoor / IfcWindow logés dans le pan, avec percement
+       réel (IfcOpeningElement + IfcRelVoidsElement) dans les murs pleins/bardages ;
+       posés tels quels dans le mur-rideau (décomposé, pas de vide). */
+    function emitWinFill(wn, ax,az,bx,bz, y0,y1, st){
+      var thin=(wn.kind==='porte')?0.05:0.06, col=(wn.kind==='porte')?[156,120,78]:[150,200,235], al=(wn.kind==='porte')?1:0.5;
+      var sol=panelSolid(ax,az,bx,bz, y0, y1, thin); if(!sol) return null; styleSolid(sol,col,al);
+      var sr=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','SweptSolid',("+sol+"))"), pds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+sr+"))"), pl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")");
+      var h=wn.h, w=wn.w, el;
+      if(wn.kind==='porte'){ var dtail=v23?(',$,'+num(h)+','+num(w)):(',$,'+num(h)+','+num(w)+',.DOOR.,.SINGLE_SWING_LEFT.,$');
+        el=E("IFCDOOR('"+guid()+"',"+owner+",'Porte façade N"+st+"','Porte - (c) 2026 Antoine Lacronique, architecte',$,"+pl+","+pds+dtail+")"); }
+      else { var wtail=v23?(',$,'+num(h)+','+num(w)):(',$,'+num(h)+','+num(w)+',.WINDOW.,.NOTDEFINED.,$');
+        el=E("IFCWINDOW('"+guid()+"',"+owner+",'Fenêtre façade N"+st+"','Fenetre - (c) 2026 Antoine Lacronique, architecte',$,"+pl+","+pds+wtail+")"); }
+      (byStorey[st]=byStorey[st]||[]).push(el); return el;
+    }
+    function emitFacadeWins(f, wallRef){
+      if(!f.wins||!f.wins.length) return;
+      var dx=f.bx-f.ax, dz=f.bz-f.az, L=Math.hypot(dx,dz)||1, ux=dx/L, uz=dz/L, st=Math.min(Math.max(0,f.st),nSt-1);
+      f.wins.forEach(function(wn){
+        var dc=Math.max(wn.w/2, Math.min(L-wn.w/2, wn.t*L));
+        var ax=f.ax+ux*(dc-wn.w/2), az=f.az+uz*(dc-wn.w/2), bx=f.ax+ux*(dc+wn.w/2), bz=f.az+uz*(dc+wn.w/2);
+        var y0=f.y0+wn.sill, y1=y0+wn.h;
+        if(wallRef){ var osol=panelSolid(ax,az,bx,bz, y0, y1, (f.thk||0.16)+0.10);
+          if(osol){ var opl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")"),
+              osr=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','SweptSolid',("+osol+"))"), opds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+osr+"))");
+            var opening=E("IFCOPENINGELEMENT('"+guid()+"',"+owner+",'Baie',$,$,"+opl+","+opds+",$"+(v23?'':',.OPENING.')+")");
+            E("IFCRELVOIDSELEMENT('"+guid()+"',"+owner+",$,$,"+wallRef+","+opening+")");
+            var fill=emitWinFill(wn, ax,az,bx,bz, y0,y1, st); if(fill) E("IFCRELFILLSELEMENT('"+guid()+"',"+owner+",$,$,"+opening+","+fill+")");
+            return; } }
+        emitWinFill(wn, ax,az,bx,bz, y0,y1, st);   /* mur-rideau / pas de vide */
+      });
+    }
     /* mur-rideau natif : IfcCurtainWall (sans géométrie propre) décomposé en IfcPlate (le panneau) → reconnu comme mur-rideau par ArchiCAD/Revit */
     function emitCW(name,st,solid,rgb,al){ styleSolid(solid,rgb,al);
       var sr=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','SweptSolid',("+solid+"))"); var pds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+sr+"))");
@@ -20749,7 +20788,8 @@ function exportIFC(schema){
         for(var tt=0;tt<=nT;tt++){ var yy=f.y0+H*tt/nT, ts=panelSolid(f.ax,f.az,f.bx,f.bz, yy-0.035, yy+0.035, 0.10); if(ts) emit('IFCMEMBER',',$,.TRANSOM.','Traverse N'+f.st, f.st, ts, 'SweptSolid', fr, 1); }
         var mStep=Math.max(0.4,(PIM.montEntr||150)/100), nM=Math.max(1,Math.round(L/mStep));
         for(var mm=0;mm<=nM;mm++){ var t2=mm/nM, px=f.ax+dx*t2, pz=f.az+dz*t2, ms=panelSolid(px-ux*0.04,pz-uz*0.04, px+ux*0.04,pz+uz*0.04, f.y0,f.y1, 0.10); if(ms) emit('IFCMEMBER',',$,.MULLION.','Montant N'+f.st, f.st, ms, 'SweptSolid', fr, 1); }
-      } else { var sol=panelSolid(f.ax,f.az,f.bx,f.bz,f.y0,f.y1,f.thk); if(sol) emit(f.ent,f.tail,f.nm+' N'+f.st,f.st,sol,'SweptSolid',f.col,f.al); }
+        emitFacadeWins(f, null);   /* menuiseries dans le mur-rideau (sans vide) */
+      } else { var sol=panelSolid(f.ax,f.az,f.bx,f.bz,f.y0,f.y1,f.thk); if(sol){ var wref=emit(f.ent,f.tail,f.nm+' N'+f.st,f.st,sol,'SweptSolid',f.col,f.al); emitFacadeWins(f, wref); } }
     });
     IS.acro.forEach(function(w){ var sol=panelSolid(w.ax,w.az,w.bx,w.bz,w.y0,w.y1,w.t); if(sol) emit('IFCWALL',',$,.NOTDEFINED.','Acrotere',nSt-1,sol,'SweptSolid',[176,176,172],1); });
     /* CLOISONS + PORTES : IfcWall natif, avec réservation (IfcOpeningElement) et porte (IfcDoor) */
