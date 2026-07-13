@@ -20504,7 +20504,8 @@ function _aiRun(){
    Repère : notre moteur a Y=haut, Z=profondeur. IFC veut Z=haut. On convertit
    chaque sommet (x,y,z) -> (x, z, y) : X reste, Y_ifc=profondeur, Z_ifc=hauteur.
    ============================================================================ */
-function exportIFC(schema){
+function exportIFC(schema){ exportBuildFull(function(){ _exportIFCnow(schema); }); }   /* force la construction complète des faces (scène en WebGL) comme OBJ/DAE */
+function _exportIFCnow(schema){
   schema=(schema==='IFC2X3')?'IFC2X3':'IFC4'; var v23=(schema==='IFC2X3');
   /* IFC2X3 : certaines entités n'ont pas de PredefinedType (ajouté en IFC4) → on adapte le suffixe.
      IfcLightFixture n'existe pas en 2x3 → proxy. */
@@ -20512,7 +20513,8 @@ function exportIFC(schema){
   function fixTail(e,t){ if(!v23) return t; if(e==='IFCLIGHTFIXTURE') return ',$,.ELEMENT.';
     if(e==='IFCWALL'||e==='IFCCOLUMN'||e==='IFCBEAM'||e==='IFCCURTAINWALL'||e==='IFCPLATE'||e==='IFCMEMBER'||e==='IFCFURNISHINGELEMENT') return ',$';
     if(e==='IFCDOOR'||e==='IFCWINDOW') return ',$,$,$'; return t; }
-  build();
+  /* FC déjà construite (complète) par exportBuildFull ; ne pas rebuild ici (viderait
+     la scène en WebGL). */
   var groups=matGroups();
   var nm=curName();
 
@@ -20529,7 +20531,7 @@ function exportIFC(schema){
     return out;
   }
   /* conversion sommet moteur (x=largeur,y=hauteur,z=profondeur) -> IFC (Z=haut) */
-  function cv(p){ return [p[0], p[2], p[1]]; }
+  function cv(p){ return [p[0], -p[2], p[1]]; }   /* Y-haut moteur → Z-haut IFC par ROTATION (pas échange, qui miroiterait) */
   function num(v){ return (Math.abs(v)<1e-9?0:v).toFixed(5); }
 
   /* --- contexte géométrique + repères --- */
@@ -20566,6 +20568,7 @@ function exportIFC(schema){
   if(_geo && !v23){ var _crs=E("IFCPROJECTEDCRS('EPSG:3857','WGS 84 / Pseudo-Mercator',$,$,$,$,$)"); var _mx=SITE.lon*20037508.34/180, _my=Math.log(Math.tan((90+SITE.lat)*Math.PI/360))*20037508.34/Math.PI, _rot=SITE.north*Math.PI/180; E("IFCMAPCONVERSION("+ctx+","+_crs+","+num(_mx)+","+num(_my)+","+num(SITE.alt)+","+num(Math.cos(_rot))+","+num(Math.sin(_rot))+",1.)"); }
   var _boff=(typeof SITE!=="undefined"&&SITE.on)?E("IFCAXIS2PLACEMENT3D("+E("IFCCARTESIANPOINT(("+num(SITE.posX)+","+num(SITE.posZ)+","+num(SITE.posY)+"))")+",$,$)"):wcs;
   var bldPl=E("IFCLOCALPLACEMENT("+sitePl+","+_boff+")");
+  var _BLDPL0=bldPl;   /* placement bâtiment de référence (pour bâtir les placements d'instance en scène) */
   var bld=E("IFCBUILDING('"+guid()+"',"+owner+",'Building',$,$,"+bldPl+",$,$,.ELEMENT.,$,$,$)");
   if(MODE!=='immeuble' || !IMM_INFO){
   var stPl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")");
@@ -20576,6 +20579,82 @@ function exportIFC(schema){
   E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+site+",("+bld+"))");
   E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+bld+",("+storey+"))");
 
+  /* Émetteur de maillage : un IfcBuildingElementProxy (breps groupés par matériau)
+     à partir d'une liste de faces. Sert à découper la scène par instance. */
+  function _emitMesh(faces, nm2, dsc2, ent2, tail2){
+    ent2=ent2||'IFCBUILDINGELEMENTPROXY'; tail2=tail2||',$,.ELEMENT.';
+    if(!faces || !faces.length) return null;
+    var byKey={}, grps=[];
+    faces.forEach(function(f){ if(!f||!f.verts) return; var _c=f.col||[180,180,180], key=(f.tex?('t'+f.tex):('c'+_c.join('_')))+'_'+(f.al==null?1:f.al);
+      var g=byKey[key]; if(!g){ g={rgb:_c, al:(f.al==null?1:f.al), faces:[]}; byKey[key]=g; grps.push(g); } g.faces.push(f); });
+    var brepRefs=[];
+    grps.forEach(function(g){ var ptMap={};
+      function ptRef(p){ var q=cv(p), k=num(q[0])+'|'+num(q[1])+'|'+num(q[2]); if(ptMap[k]) return ptMap[k]; var r=E("IFCCARTESIANPOINT(("+num(q[0])+","+num(q[1])+","+num(q[2])+"))"); ptMap[k]=r; return r; }
+      var faceRefs=[];
+      g.faces.forEach(function(f){ var loop=[]; for(var v=0;v<f.verts.length;v++) loop.push(ptRef(f.verts[v])); faceRefs.push(E("IFCFACE(("+E("IFCFACEOUTERBOUND("+E("IFCPOLYLOOP(("+loop.join(',')+"))")+",.T.)")+"))")); });
+      var brep=E("IFCFACETEDBREP("+E("IFCCLOSEDSHELL(("+faceRefs.join(',')+"))")+")"); brepRefs.push(brep);
+      var col=E("IFCCOLOURRGB($,"+num(g.rgb[0]/255)+","+num(g.rgb[1]/255)+","+num(g.rgb[2]/255)+")");
+      var rend=E("IFCSURFACESTYLERENDERING("+col+","+((g.al<1)?(1-g.al).toFixed(2):'0.')+",$,$,$,$,$,$,.FLAT.)");
+      var sstyle=E("IFCSURFACESTYLE($,.BOTH.,("+rend+"))"), stl2=v23?E("IFCPRESENTATIONSTYLEASSIGNMENT(("+sstyle+"))"):sstyle;
+      E("IFCSTYLEDITEM("+brep+",("+stl2+"),$)");
+    });
+    var shapeRep=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','Brep',("+brepRefs.join(',')+"))");
+    var prodShape=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+shapeRep+"))");
+    var objPl=E("IFCLOCALPLACEMENT("+stPl+","+wcs+")");
+    var el=E(fixEnt(ent2)+"('"+guid()+"',"+owner+",'"+stepEsc(nm2)+"','"+stepEsc(dsc2)+" - (c) 2026 Antoine Lacronique, architecte',$,"+objPl+","+prodShape+fixTail(ent2,tail2)+")");
+    E("IFCRELCONTAINEDINSPATIALSTRUCTURE('"+guid()+"',"+owner+",$,$,("+el+"),"+storey+")");
+    return el;
+  }
+  /* Dalle de scène en VRAIE extrusion (IfcSlab natif éditable) : empreinte = face
+     supérieure horizontale (la plus grande), épaisseur = étendue verticale. */
+  function _emitSlabExtruded(faces, nm2){
+    var minY=1e18,maxY=-1e18;
+    faces.forEach(function(f){ if(!f||!f.verts)return; f.verts.forEach(function(p){ if(p[1]<minY)minY=p[1]; if(p[1]>maxY)maxY=p[1]; }); });
+    var thk=maxY-minY; if(!(thk>0.002)) return false;
+    var best=null,bestA=-1,bestCol=[176,176,172];
+    faces.forEach(function(f){ var n=f.n; if(!n||n[1]<0.85||!f.verts||f.verts.length<3) return;
+      var v=f.verts, a=0, ay=0; for(var i=0;i<v.length;i++){ var p=v[i],q=v[(i+1)%v.length]; a+=p[0]*q[2]-q[0]*p[2]; ay+=p[1]; } a=Math.abs(a)/2; ay/=v.length;
+      if(ay>maxY-thk*0.3 && a>bestA){ bestA=a; best=f; bestCol=f.col||bestCol; } });
+    if(!best) return false;
+    var pts=best.verts.map(function(p){ return E("IFCCARTESIANPOINT(("+num(p[0])+","+num(-p[2])+"))"); });
+    var prof=E("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,"+E("IFCPOLYLINE(("+pts.join(',')+","+pts[0]+"))")+")");
+    var solid=E("IFCEXTRUDEDAREASOLID("+prof+","+E("IFCAXIS2PLACEMENT3D("+E("IFCCARTESIANPOINT((0.,0.,"+num(minY)+"))")+",$,$)")+","+E("IFCDIRECTION((0.,0.,1.))")+","+num(thk)+")");
+    var col=E("IFCCOLOURRGB($,"+num(bestCol[0]/255)+","+num(bestCol[1]/255)+","+num(bestCol[2]/255)+")");
+    var rend=E("IFCSURFACESTYLERENDERING("+col+",0.,$,$,$,$,$,$,.FLAT.)");
+    var sst=E("IFCSURFACESTYLE($,.BOTH.,("+rend+"))"), stl=v23?E("IFCPRESENTATIONSTYLEASSIGNMENT(("+sst+"))"):sst;
+    E("IFCSTYLEDITEM("+solid+",("+stl+"),$)");
+    var sr=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','SweptSolid',("+solid+"))"), pds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+sr+"))");
+    var opl=E("IFCLOCALPLACEMENT("+stPl+","+wcs+")");
+    var el=E("IFCSLAB('"+guid()+"',"+owner+",'"+stepEsc(nm2)+"','Dalle - (c) 2026 Antoine Lacronique, architecte',$,"+opl+","+pds+fixTail('IFCSLAB',',$,.FLOOR.')+")");
+    E("IFCRELCONTAINEDINSPATIALSTRUCTURE('"+guid()+"',"+owner+",$,$,("+el+"),"+storey+")");
+    return true;
+  }
+  /* type IFC d'une instance de scène selon sa nature (dalle→IfcSlab, poteau→IfcColumn…) */
+  function _entForMode(m){ return ({
+    mur:['IFCWALL',',$,.NOTDEFINED.'], dalle:['IFCSLAB',',$,.FLOOR.'], poteau:['IFCCOLUMN',',$,.COLUMN.'],
+    poutre:['IFCBEAM',',$,.BEAM.'], gardecorps:['IFCRAILING',',$,.NOTDEFINED.'], murrideau:['IFCPLATE',',$,.CURTAIN_PANEL.'],
+    escalier:['IFCSTAIR',',$,.NOTDEFINED.'], rampe:['IFCRAMP',',$,.NOTDEFINED.'],
+    porte:['IFCDOOR',',$,$,$,.DOOR.,.NOTDEFINED.,$'], fenetre:['IFCWINDOW',',$,$,$,.WINDOW.,.NOTDEFINED.,$'],
+    technal:['IFCWINDOW',',$,$,$,.WINDOW.,.NOTDEFINED.,$'], velux:['IFCWINDOW',',$,$,$,.WINDOW.,.NOTDEFINED.,$']
+  })[m]||['IFCBUILDINGELEMENTPROXY',',$,.ELEMENT.']; }
+  /* SCÈNE : un objet IFC par instance posée (pavillon, chaises…) au lieu d'un bloc unique. */
+  var _sceneDone=false;
+  if(MODE==='scene' && typeof SCENE!=='undefined' && SCENE.instances && SCENE.instances.length){
+    _sceneDone=true;
+    SCENE.instances.forEach(function(inst,ii){ if(!inst) return;
+      if(inst.mode==='immeuble' && inst.params){   /* immeuble posé → export STRUCTURÉ (dalles/poteaux/murs/menuiseries) à sa position dans la scène */
+        var _sPIM=PIM,_sIS=IMM_STRUCT,_sII=IMM_INFO,_sMODE=MODE,_sFC=FC;
+        try{ PIM=inst.params; MODE='immeuble'; build();
+          var _r=(inst.rotY||0)*Math.PI/180;
+          exportImmStruct(IMM_STRUCT, {ox:(inst.x||0)/100, oz:(inst.z||0)/100, oy:(inst.y||0)/100, c:Math.cos(_r), s:Math.sin(_r)});
+        }catch(_e){}
+        PIM=_sPIM; IMM_STRUCT=_sIS; IMM_INFO=_sII; MODE=_sMODE; FC=_sFC; return; }
+      var fs; try{ fs=instanceFaces(inst); }catch(e){ fs=null; }
+      if(fs&&fs.length){ var _nm=(inst.name||inst.mode||('Objet '+(ii+1)));
+        if(inst.mode==='dalle'){ var _ok=false; try{ _ok=_emitSlabExtruded(fs, _nm); }catch(e){} if(_ok) return; }   /* dalle → IfcSlab extrudé natif */
+        var _em=_entForMode(inst.mode); _emitMesh(fs, _nm, 'Objet de scene', _em[0], _em[1]); } });
+  }
+  if(!_sceneDone){
   /* --- géométrie : un IfcFacetedBrep par matériau, + style couleur --- */
   var brepRefs=[];      /* représentations shape items */
   var styledLink=[];    /* (styleditem) à lier */
@@ -20663,11 +20742,24 @@ function exportIFC(schema){
     var pset=E("IFCPROPERTYSET('"+guid()+"',"+owner+",'BPO_Parking',$,("+pv.join(',')+"))");
     E("IFCRELDEFINESBYPROPERTIES('"+guid()+"',"+owner+",$,$,("+furn+"),"+pset+")");
   }
+  }   /* fin objet unique (non-scène) */
   } else {
     /* === IMMEUBLE STRUCTURÉ : solides extrudés natifs, un étage par niveau === */
     E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+proj+",("+site+"))");
     E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+site+",("+bld+"))");
-    var IS=IMM_STRUCT, lev=IS.levelY, nSt=lev.length, storeys=[];
+    exportImmStruct(IMM_STRUCT, null);
+  }
+  /* Émetteur structuré immeuble, réutilisable : export immeuble direct (xf=null) OU
+     chaque instance d'immeuble d'une scène (xf = transformation de l'instance). */
+  function exportImmStruct(IS, xf){
+    /* placement des éléments : le bâtiment (export direct) ou un placement d'instance
+       (scène) — position + rotation rotY — la géométrie restant en coords locales. */
+    var bldPl=_BLDPL0;
+    if(xf){ var _loc=E("IFCCARTESIANPOINT(("+num(xf.ox)+","+num(-xf.oz)+","+num(xf.oy)+"))"),
+        _rd=E("IFCDIRECTION(("+num(xf.c)+","+num(-xf.s)+",0.))"), _zd=E("IFCDIRECTION((0.,0.,1.))"),
+        _ax=E("IFCAXIS2PLACEMENT3D("+_loc+","+_zd+","+_rd+")");
+      bldPl=E("IFCLOCALPLACEMENT("+_BLDPL0+","+_ax+")"); }
+    var lev=IS.levelY, nSt=lev.length, storeys=[];
     for(var si=0; si<nSt; si++){
       var spl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")");
       var snm=(si<nSt-1)?('Niveau '+si):'Toiture';
@@ -20675,8 +20767,8 @@ function exportIFC(schema){
     }
     E("IFCRELAGGREGATES('"+guid()+"',"+owner+",$,$,"+bld+",("+storeys.join(',')+"))");
     var byStorey={};
-    function P2(x,y){ return E("IFCCARTESIANPOINT(("+num(x)+","+num(y)+"))"); }
-    function P3(x,y,z){ return E("IFCCARTESIANPOINT(("+num(x)+","+num(y)+","+num(z)+"))"); }
+    function P2(x,y){ return E("IFCCARTESIANPOINT(("+num(x)+","+num(-y)+"))"); }               /* profondeur moteur → -y (rotation, pas miroir) */
+    function P3(x,y,z){ return E("IFCCARTESIANPOINT(("+num(x)+","+num(-y)+","+num(z)+"))"); }
     function D3(x,y,z){ return E("IFCDIRECTION(("+num(x)+","+num(y)+","+num(z)+"))"); }
     function panelSolid(ax,az,bx,bz,y0,y1,thk){ var dx=bx-ax,dz=bz-az,Lp=Math.hypot(dx,dz); if(Lp<1e-6) return null; var nx=-dz/Lp*(thk/2), nz=dx/Lp*(thk/2);
       var pts=[P2(ax-nx,az-nz),P2(bx-nx,bz-nz),P2(bx+nx,bz+nz),P2(ax+nx,az+nz)]; var line=E("IFCPOLYLINE(("+pts.join(',')+","+pts[0]+"))"); var prof=E("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,"+line+")");
@@ -20692,9 +20784,9 @@ function exportIFC(schema){
       var sr=E("IFCSHAPEREPRESENTATION("+bodyCtx+",'Body','SweptSolid',("+sol+"))"), pds=E("IFCPRODUCTDEFINITIONSHAPE($,$,("+sr+"))"), pl=E("IFCLOCALPLACEMENT("+bldPl+","+wcs+")");
       var h=wn.h, w=wn.w, el;
       if(wn.kind==='porte'){ var dtail=v23?(',$,'+num(h)+','+num(w)):(',$,'+num(h)+','+num(w)+',.DOOR.,.SINGLE_SWING_LEFT.,$');
-        el=E("IFCDOOR('"+guid()+"',"+owner+",'Porte façade N"+st+"','Porte - (c) 2026 Antoine Lacronique, architecte',$,"+pl+","+pds+dtail+")"); }
+        el=E("IFCDOOR('"+guid()+"',"+owner+",'Porte facade N"+st+"','Porte - (c) 2026 Antoine Lacronique, architecte',$,"+pl+","+pds+dtail+")"); }
       else { var wtail=v23?(',$,'+num(h)+','+num(w)):(',$,'+num(h)+','+num(w)+',.WINDOW.,.NOTDEFINED.,$');
-        el=E("IFCWINDOW('"+guid()+"',"+owner+",'Fenêtre façade N"+st+"','Fenetre - (c) 2026 Antoine Lacronique, architecte',$,"+pl+","+pds+wtail+")"); }
+        el=E("IFCWINDOW('"+guid()+"',"+owner+",'Fenetre facade N"+st+"','Fenetre - (c) 2026 Antoine Lacronique, architecte',$,"+pl+","+pds+wtail+")"); }
       (byStorey[st]=byStorey[st]||[]).push(el); return el;
     }
     function emitFacadeWins(f, wallRef){
@@ -20731,12 +20823,28 @@ function exportIFC(schema){
       var top=(sl.st===nSt-1);
       emit('IFCSLAB', top?',$,.ROOF.':',$,.FLOOR.', (top?'Toiture':'Dalle N'+sl.st), sl.st, solid, 'SweptSolid', [176,176,172], 1);
     });
-    /* POTEAUX :
-       - IFC4 : type partagé (IfcColumnType) + représentation mappée (IfcRepresentationMap/IfcMappedItem),
-         instances placées par ObjectPlacement et reliées via IfcRelDefinesByType
-         → Revit crée UNE famille par section/hauteur (au lieu d'une par poteau).
-       - IFC2X3 : extrusion absolue par poteau (fallback compatible, IfcColumnType moins fiable). */
-    if(!v23){
+    /* PROFILS ACIER RÉELS : section IFC normée (I/U/rond/tube) pour poteaux et poutres.
+       Renvoie {ref, h} ou null (→ section carrée/rectangulaire par défaut). */
+    function _steelProf2D(serie, sz, rot){
+      var p2 = rot ? E("IFCAXIS2PLACEMENT2D("+E("IFCCARTESIANPOINT((0.,0.))")+","+E("IFCDIRECTION((0.,1.))")+")")
+                   : E("IFCAXIS2PLACEMENT2D("+E("IFCCARTESIANPOINT((0.,0.))")+",$)");
+      if(serie==='rond'){ var d=Math.max(0.02,(sz||300)/1000); return {ref:E("IFCCIRCLEPROFILEDEF(.AREA.,$,"+p2+","+num(d/2)+")"), h:d}; }
+      if(serie==='tubeCarre'){ var s=Math.max(0.02,(sz||300)/1000); return {ref:E("IFCRECTANGLEPROFILEDEF(.AREA.,$,"+p2+","+num(s)+","+num(s)+")"), h:s}; }
+      if(typeof STEEL_PROFILES!=='undefined' && STEEL_PROFILES[serie]){
+        var sd=steelDims(serie,sz), d=sd.dims, h=d[0]/1000, b=d[1]/1000, tw=d[2]/1000, tf=d[3]/1000;
+        if(sd.type==='U') return {ref:E("IFCUSHAPEPROFILEDEF(.AREA.,$,"+p2+","+num(h)+","+num(b)+","+num(tw)+","+num(tf)+",$,$"+(v23?'':',$')+")"), h:h};
+        return {ref:E("IFCISHAPEPROFILEDEF(.AREA.,$,"+p2+","+num(b)+","+num(h)+","+num(tw)+","+num(tf)+",$"+(v23?'':',$,$')+")"), h:h};   /* OverallWidth=b, OverallDepth=h */
+      }
+      return null;
+    }
+    /* POTEAUX : profil acier réel si défini ; sinon carré béton (IfcColumn typé /
+       IFC4 : type partagé IfcColumnType ; IFC2X3 : extrusion par poteau). */
+    var _colP=_steelProf2D(PIM.colType||'beton', PIM.colSize, ((PIM.colRot||0)|0)===90);
+    if(_colP){ var _ccol=(typeof STEEL_COL!=='undefined')?STEEL_COL:[120,124,130];
+      IS.cols.forEach(function(c){
+        var solid=E("IFCEXTRUDEDAREASOLID("+_colP.ref+","+E("IFCAXIS2PLACEMENT3D("+P3(c.cx,c.cz,c.y0)+",$,$)")+","+D3(0,0,1)+","+num(c.y1-c.y0)+")");
+        emit('IFCCOLUMN',',$,.COLUMN.','Poteau N'+c.st, c.st, solid, 'SweptSolid', _ccol, 1); });
+    } else if(!v23){
       var colTypes={};
       var colType=function(w,h){
         var key=w.toFixed(4)+'|'+h.toFixed(4); if(colTypes[key]) return colTypes[key];
@@ -20768,12 +20876,21 @@ function exportIFC(schema){
         emit('IFCCOLUMN',',$,.COLUMN.','Poteau N'+c.st, c.st, solid, 'SweptSolid', [164,164,162], 1);
       });
     }
-    /* POUTRES : extrusion le long de l'axe (natif IfcBeam) */
+    /* POUTRES : profil acier réel extrudé le long de l'axe (âme verticale, section
+       centrée sous l'arase), sinon boîte rectangulaire (b.w × b.h) via panelSolid. */
+    var _beamSerie=(PIM.beamType||''), _beamP=(typeof STEEL_PROFILES!=='undefined' && STEEL_PROFILES[_beamSerie]) ? _steelProf2D(_beamSerie, PIM.beamSize, ((PIM.beamRot||0)|0)===90) : null;
     IS.beams.forEach(function(b){
-      /* meme strategie que voiles/dalles : contour absolu via panelSolid (largeur b.w,
-         hauteur b.h sous le dessous de dalle) — robuste a l'import Revit. */
-      var sol=panelSolid(b.ax,b.az,b.bx,b.bz, b.yTop-b.h, b.yTop, b.w);
-      if(sol) emit('IFCBEAM',',$,.BEAM.','Poutre N'+b.st, b.st, sol, 'SweptSolid', [150,150,148], 1);
+      if(_beamP){
+        var dxi=b.bx-b.ax, dzi=b.bz-b.az, L=Math.hypot(dxi,dzi); if(L<1e-6) return;
+        var Dx=dxi/L, Dy=-dzi/L;                                    /* direction poutre en repère IFC (miroir corrigé) */
+        var loc=E("IFCCARTESIANPOINT(("+num(b.ax)+","+num(-b.az)+","+num(b.yTop-_beamP.h/2)+"))");
+        var pos=E("IFCAXIS2PLACEMENT3D("+loc+","+E("IFCDIRECTION(("+num(Dx)+","+num(Dy)+",0.))")+","+E("IFCDIRECTION(("+num(-Dy)+","+num(Dx)+",0.))")+")");
+        var solid=E("IFCEXTRUDEDAREASOLID("+_beamP.ref+","+pos+","+E("IFCDIRECTION((0.,0.,1.))")+","+num(L)+")");
+        emit('IFCBEAM',',$,.BEAM.','Poutre N'+b.st, b.st, solid, 'SweptSolid', [150,150,148], 1);
+      } else {
+        var sol=panelSolid(b.ax,b.az,b.bx,b.bz, b.yTop-b.h, b.yTop, b.w);
+        if(sol) emit('IFCBEAM',',$,.BEAM.','Poutre N'+b.st, b.st, sol, 'SweptSolid', [150,150,148], 1);
+      }
     });
     /* NOYAU / FAÇADES / ACROTÈRE : éléments natifs (extrusions) */
     IS.cores.forEach(function(w){ var sol=panelSolid(w.ax,w.az,w.bx,w.bz,w.y0,w.y1,w.t); if(sol) emit('IFCWALL',',$,.NOTDEFINED.','Voile noyau',0,sol,'SweptSolid',[150,150,148],1); });
@@ -20830,14 +20947,14 @@ function exportIFC(schema){
       return E("IFCFACETEDBREP("+E("IFCCLOSEDSHELL(("+fr.join(',')+"))")+")");
     }
     var gmap={};
-    for(var gi=0; gi<FC.length; gi++){ var tg=FC[gi].ifc; if(!tg) continue; if(tg.ty!=='roof') continue; var key=tg.st+'|'+tg.ty; (gmap[key]=gmap[key]||[]).push(gi); }
-    var TYB={facade:['IFCCURTAINWALL',',$,.NOTDEFINED.','Facade'],wall:['IFCWALL',',$,.NOTDEFINED.','Voile'],roof:['IFCROOF',',$,.NOTDEFINED.','Toiture']};
+    for(var gi=0; gi<FC.length; gi++){ var tg=FC[gi].ifc; if(!tg) continue; if(tg.ty!=='roof' && tg.ty!=='footing') continue; var key=tg.st+'|'+tg.ty; (gmap[key]=gmap[key]||[]).push(gi); }
+    var TYB={facade:['IFCCURTAINWALL',',$,.NOTDEFINED.','Facade'],wall:['IFCWALL',',$,.NOTDEFINED.','Voile'],roof:['IFCROOF',',$,.NOTDEFINED.','Toiture'],
+             footing:['IFCFOOTING',',$,'+(PIM.foundType==='massif'?'.PAD_FOOTING.':'.STRIP_FOOTING.'),'Fondation']};
     Object.keys(gmap).forEach(function(key){
       var pa=key.split('|'), st=parseInt(pa[0],10), ty=pa[1], faces=gmap[key], mp=TYB[ty], f0=FC[faces[0]];
       emit(mp[0], mp[1], mp[2]+' N'+st, st, brepOf(faces), 'Brep', f0.col, f0.al);
     });
     Object.keys(byStorey).forEach(function(st){ E("IFCRELCONTAINEDINSPATIALSTRUCTURE('"+guid()+"',"+owner+",$,$,("+byStorey[st].join(',')+"),"+storeys[st]+")"); });
-
   }
 
   /* --- assemblage du fichier STEP --- */
