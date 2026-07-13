@@ -663,7 +663,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script src="bpo-raytrace.js?v=20260712h"></script>
 <script src="bpo-render-hook.js?v=20260712p"></script>
 <script src="bpo-import.js?v=20260712b"></script>
-<script src="bpo-terrain.js?v=20260712m"></script>
+<script src="bpo-terrain.js?v=20260712n"></script>
+<script src="bpo-cadastre.js?v=20260713a"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
 /* WEBGL_OBJECTS -> data/ */
@@ -17582,7 +17583,7 @@ function buildSceneUI(){
   buildSceneLightsUI();
   var _alb=document.getElementById('scnAddLight'); if(_alb) _alb.onclick=function(){ scnAddLight(); };
   var cc=document.getElementById('scnCfgs');
-  if(cc) configs.forEach(function(cfg){ var b=document.createElement('button'); b.textContent='+ '+cfg.name; b.title=trI18N('Glisser dans la vue —')+' '+trI18N(cfg.label||cfg.mode);
+  if(cc) configs.forEach(function(cfg){ var b=document.createElement('button'); b.textContent='+ '+cfg.name; try{ b.title=trI18N('Glisser dans la vue —')+' '+trI18N(cfg.label||cfg.mode); }catch(_e){ b.title='Glisser dans la vue — '+(cfg.label||cfg.mode); }
     b.draggable=true; b.style.cssText='font-size:10px;padding:3px 7px;cursor:grab;background:var(--p2);border:1px solid var(--ln);border-radius:5px;color:var(--tx);';
     b.addEventListener('dragstart',function(e){ SCN_DRAG_CFG=cfg; if(e.dataTransfer) e.dataTransfer.setData('text/plain', cfg.id); });
     b.onclick=function(){ scnAddInstance(cfg,0,0); refreshView(); };
@@ -17604,6 +17605,7 @@ function buildSceneUI(){
   var ls=document.getElementById('scnList');
   if(ls){ if(!SCENE.instances.length) ls.innerHTML='<div style="font-size:10px;color:var(--dm);">Vide — glissez une config ci-dessus dans la vue.</div>';
     SCENE.instances.forEach(function(inst,idx){
+     try{
       var _issel=scnSelIs(idx); var d=document.createElement('div'); d.style.cssText='border:1px solid '+(idx===SCENE.sel?'var(--am)':(_issel?'#5eb8ff':'var(--ln)'))+';border-radius:6px;padding:6px 7px;margin-bottom:6px;background:'+(_issel?'rgba(94,184,255,.06)':'transparent')+';';
       var hd=document.createElement('div'); hd.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;';
       hd.innerHTML='<b style="font-size:11px;cursor:pointer;">'+cfgEsc(inst.name)+'<span style="font-weight:400;color:var(--dm);"> · '+cfgEsc(inst.label||inst.mode)+'</span></b>';
@@ -17628,6 +17630,7 @@ function buildSceneUI(){
       d.appendChild(sl('Hauteur Y','y',-500,2000,5));
       d.appendChild(sl('Rotation°','rotY',0,360,5));
       ls.appendChild(d);
+     }catch(_ei){ console.warn('scnList item',idx,_ei); }
     });
   }
   var sv=document.getElementById('scnSaved'), scenes=scnLoad(), scnFolders=scnFoldLoad();
@@ -20769,11 +20772,13 @@ function setFlag(){ var fe=document.getElementById('langflag'); if(fe) fe.innerH
 /* Helper de traduction ponctuel pour les chaînes CONSTRUITES en JS (concaténations)
    que translateDOM ne peut pas matcher. Cherche la clé FR dans I18N[LANG]. */
 function trI18N(s){ try{ if(typeof s==='string' && typeof LANG!=='undefined' && LANG!=='fr' && typeof I18N!=='undefined' && I18N[LANG]){ var k=s.replace(/’/g,"'"); if(I18N[LANG][k]!=null) return I18N[LANG][k]; } }catch(e){} return s; }
+window.trI18N=trI18N;   /* accès global garanti (appelé depuis d'autres blocs/scopes : buildSceneUI, confirmations, messages IA…) */
 (function(){
-  var _al=window.alert, _cf=window.confirm, _pr=window.prompt;
-  window.alert=function(s){ return _al.call(window, trI18N(s)); };
-  window.confirm=function(s){ return _cf.call(window, trI18N(s)); };
-  window.prompt=function(s,d){ return _pr.call(window, trI18N(s), d); };
+  var _al=window.alert, _cf=window.confirm;
+  window.alert=function(s){ try{ return _al.call(window, trI18N(s)); }catch(e){ return _al.call(window, s); } };
+  window.confirm=function(s){ try{ return _cf.call(window, trI18N(s)); }catch(e){ return _cf.call(window, s); } };
+  /* prompt NON enrobé : renvoie exactement le natif (sauvegardes scène/config le
+     réutilisent — pas de risque de régression sur leur valeur de retour). */
 })();
 /* Complément de traductions (menu gauche + panneau Mise en page + fond de plan + barre de coupe).
    Format objet {en,es,it,de,pt,hu,zh,ja,hi,ar} — fusionné dans I18N[langue] pour les clés encore vides. */
