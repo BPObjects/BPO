@@ -415,6 +415,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 /* ---- Espace papier (plein cadre dans le viewport) ---- */
 #paperspace{position:absolute;inset:0;display:none;flex-direction:column;background:#3a3f47;z-index:7;}
 #paperspace.on{display:flex;}
+/* en Mise en page, cacher le bouton Rendu photo (module) : il chevauche « Imprimer » */
+#vp.mep-on #bpo-pt-btn,#vp.mep-on #bpo-pt-beta{display:none!important;}
 #ps-toolbar{display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(30,34,41,.96);border-bottom:1px solid #0a0c10;}
 #ps-toolbar button{font-size:12px;padding:6px 12px;background:var(--am);color:#1a1d23;border:0;border-radius:6px;cursor:pointer;font-weight:600;}
 #ps-toolbar #psModel{background:var(--p2);color:var(--tx);border:1px solid var(--ln);}
@@ -664,7 +666,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script src="bpo-render-hook.js?v=20260712p"></script>
 <script src="bpo-import.js?v=20260712b"></script>
 <script src="bpo-terrain.js?v=20260712n"></script>
-<script src="bpo-cadastre.js?v=20260713a"></script>
+<script src="bpo-cadastre.js?v=20260713c"></script>
 <script>
 /* ====== DONNÉES WEBGL DES OBJETS FABRICANTS (packagées, gzip+base64) ====== */
 /* WEBGL_OBJECTS -> data/ */
@@ -4153,6 +4155,7 @@ var PIM = {
   doorW:83, doorHinge:0, doorSwing:0, doorOpen:80,   /* portes dans cloisons */
   facN:'rideau', facS:'rideau', facE:'rideau', facO:'rideau',
   imDoorOn:0, imDoorFac:'S', imDoorW:200, imDoorH:220, imDoorPos:50, imDoorLeaves:2,   /* porte d'entrée dans façade rideau (RDC) : côté, largeur/hauteur cm, position %, nb vantaux */
+  imOpenings:[],   /* Phase 1 — menuiseries de façade posées : [{kind:'porte'|'fenetre', cfgId, fac:'N/S/E/O', floor:1.., pos:0-100 (%), sill:cm (allège), flip:0/1}] */
   vitrTint:'clair', allege:100, winH:150, montEntr:150, travEntr:120,
   /* mur-rideau : allège opaque puis bande vitrée. rideauH = 0 → pleine hauteur d'étage. */
   rideauAllege:0, rideauH:0,
@@ -4335,7 +4338,7 @@ var CATALOG = {
       {id:'hangar',     label:'Hangar métallique', status:'ready', grp:'batiment', icon:'🏭'},
       {id:'piscine',    label:'Piscine',          status:'ready', grp:'batiment', icon:'🏊'},
       {id:'veranda',    label:'Véranda',          status:'ready', grp:'batiment', icon:'🏡'},
-      {id:'terrain',    label:'Terrain (DXF)',    status:'ready', grp:'batiment', icon:'⛰️'},
+      {id:'terrain',    label:'Terrain (DXF / PDF)', status:'ready', grp:'batiment', icon:'⛰︎'},
       /* --- ÉLÉMENTS DE CONSTRUCTION --- */
       {id:'mur',        label:'Mur',              status:'ready', grp:'construction', icon:'🧱'},
       {id:'poteau',     label:'Poteau',           status:'ready', grp:'construction', icon:'🏛️'},
@@ -5498,6 +5501,7 @@ function setMEP(on){
   MEP_MODE=on;
   var mp=document.getElementById('mep-panel'); if(mp) mp.style.display=on?'block':'none';
   var p=document.getElementById('panel'); if(p) p.classList.toggle('mep-on',on);
+  var vpEl=document.getElementById('vp'); if(vpEl) vpEl.classList.toggle('mep-on',on);   /* masque le bouton Rendu photo en Mise en page (chevauche Imprimer) */
   updatePanelTabs();
   setPaperMode(on); if(on) plotRefresh(); else { TPL_EDIT=false; tplToolbar(); }
 }
@@ -7319,6 +7323,25 @@ function partFinish(){
 /* Calques immeuble : visibilité par famille d'éléments (1=visible, 0=masqué).
    Appliqué en filtrant FC en fin de build ; l'export IFC (IMM_STRUCT) n'est pas affecté. */
 var IMM_LAYERS={slab:1,column:1,beam:1,wall:1,facade:1,partition:1,roof:1};
+/* Phase 1 — MENUISERIES DE FAÇADE (poser) : place une porte/fenêtre configurée
+   enregistrée sur l'arête de façade (a→b, pied à y0, orientation o, étage floor).
+   Additif : pousse dans FC, ne perce pas le mur (le percement viendra en couche 2).
+   La géométrie de la config est réutilisée telle quelle via instanceFaces. */
+function imPlaceOpenings(a,b,y0,o,floor,nX,nZ){
+  var list=PIM.imOpenings; if(!list||!list.length) return;
+  var dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1, deg=Math.atan2(dz,dx)*180/Math.PI;
+  var cfgs=(typeof cfgLoad==='function')?cfgLoad():[];
+  list.forEach(function(op){
+    if(!op || op.fac!==o || (op.floor|0)!==(floor|0) || !op.cfgId) return;
+    var cfg=cfgs.filter(function(c){return c.id===op.cfgId;})[0];
+    if(!cfg || cfg.mode!==op.kind) return;
+    var t=Math.max(0,Math.min(1,(op.pos!=null?op.pos:50)/100)), Px=a[0]+dx*t, Pz=a[1]+dz*t, sill=(op.sill||0)/100;
+    var ox=(nX||0)*((op.off||0)/100), oz=(nZ||0)*((op.off||0)/100);   /* décalage normal optionnel */
+    var inst={mode:op.kind, params:cfg.params, x:Math.round((Px+ox)*100), y:Math.round((y0+sill)*100), z:Math.round((Pz+oz)*100), rotY:Math.round(deg+(op.flip?180:0))};
+    var fs; try{ fs=instanceFaces(inst); }catch(e){ return; }
+    if(fs) for(var i=0;i<fs.length;i++) FC.push(fs[i]);
+  });
+}
 function buildImmeuble(){
   var cl=function(v,a,b){return v<a?a:(v>b?b:v);};
   var libre=(PIM.shape==='libre'), POLY=libre?parsePoly(PIM.verts):null;
@@ -7541,6 +7564,7 @@ function buildImmeuble(){
       if(((a[0]+b[0])/2-cx)*nX + ((a[1]+b[1])/2-cz)*nZ < 0){ nX=-nX; nZ=-nZ; }   /* normale extérieure */
       var _door=(PIM.imDoorOn && s===1 && ft==='rideau' && o===(PIM.imDoorFac||'S'));   /* porte : RDC, côté choisi, façade rideau */
       facadeEdge(botPoly[ei],botPoly[(ei+1)%nEf], topPoly[ei],topPoly[(ei+1)%nEf], levelY[s-1], fy1, ft, nX,nZ, _door, o);
+      try{ imPlaceOpenings(a,b, levelY[s-1], o, s, nX, nZ); }catch(_eo){}   /* Phase 1 : menuiseries de façade posées */
       if(ft&&ft!=='none'){ var rcf={ax:a[0],az:a[1],bx:b[0],bz:b[1],y0:levelY[s-1],y1:fy1,st:Math.min(s-1,N-1)};
         if(ft==='rideau'){ rcf.ent='IFCCURTAINWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.06; rcf.col=glassCol(); rcf.al=glassAl(); rcf.nm='Mur-rideau'; }
         else if(ft==='mur'){ rcf.ent='IFCWALL'; rcf.tail=',$,.NOTDEFINED.'; rcf.thk=0.16; rcf.col=[202,200,195]; rcf.al=1; rcf.nm='Mur'; }
@@ -16524,6 +16548,17 @@ function buildImmeubleUI(){
         ms.value=cur.cfgId||'';
         ms.onchange=function(){ if(ms.value){ cur.cfgId=ms.value; cur.cfgName=(portesCfg.filter(function(c){return c.id===ms.value;})[0]||{}).name; } else { delete cur.cfgId; delete cur.cfgName; } build(); DIRTY=true; buildImmeubleUI(); };
         box.appendChild(ms);
+        /* SENS de la porte : inverser gonds / inverser ouverture (l'arc surligné en plan montre l'effet) + largeur */
+        var bf=document.createElement('div'); bf.style.cssText='display:flex;gap:4px;margin-top:5px;';
+        function _fb(t,ti,fn){ var b=document.createElement('button'); b.textContent=t; b.title=ti; b.style.cssText='flex:1;font-size:10px;padding:4px 2px;'; b.onclick=function(){ fn(); build(); DIRTY=true; buildImmeubleUI(); }; bf.appendChild(b); }
+        _fb('↔ Gonds','Changer le côté des gonds (gauche / droite)',function(){ cur.hinge=cur.hinge?0:1; });
+        _fb('⇄ Ouverture','Changer le sens d\'ouverture (intérieur / extérieur)',function(){ cur.swing=cur.swing?0:1; });
+        box.appendChild(bf);
+        var wr=document.createElement('div'); wr.style.cssText='display:flex;gap:5px;margin-top:5px;align-items:center;';
+        var wl2=document.createElement('span'); wl2.textContent='Largeur'; wl2.style.cssText='font-size:10px;color:var(--dm);';
+        var wi=document.createElement('input'); wi.type='number'; wi.min=50; wi.max=300; wi.step=1; wi.value=cur.w||83; wi.style.cssText='width:58px;font-size:10px;';
+        wi.onchange=function(){ cur.w=Math.max(50,Math.min(300,parseFloat(wi.value)||83)); build(); DIRTY=true; };
+        wr.appendChild(wl2); wr.appendChild(wi); wr.appendChild(document.createTextNode('cm')); box.appendChild(wr);
         if(!portesCfg.length){ var nn=document.createElement('div'); nn.className='exp-note'; nn.textContent='Aucune porte enregistrée. Créez-en une (menu Porte) puis 💾.'; box.appendChild(nn); }
         var ds=document.createElement('button'); ds.textContent='Désélectionner'; ds.style.cssText='width:100%;font-size:10px;margin-top:4px;'; ds.onclick=function(){ DOORSEL=null; DIRTY=true; buildImmeubleUI(); }; box.appendChild(ds);
         target.appendChild(box);
@@ -16677,6 +16712,38 @@ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.innerHT
       target.appendChild(grid);
     })();
   }
+  /* --- MENUISERIES DE FAÇADE (Phase 1 : poser des portes/fenêtres enregistrées) --- */
+  group('Menuiseries de façade');
+  (function(){
+    var nt=document.createElement('div'); nt.className='exp-note'; nt.textContent='Pose des portes/fenêtres ENREGISTRÉES dans les façades (posées ; percement à venir). Crée d\'abord une porte/fenêtre via son menu, puis 💾.'; target.appendChild(nt);
+    var all=(typeof cfgLoad==='function')?cfgLoad():[], _po=all.filter(function(c){return c.mode==='porte';}), _fe=all.filter(function(c){return c.mode==='fenetre';});
+    if(!PIM.imOpenings) PIM.imOpenings=[];
+    PIM.imOpenings.forEach(function(op,oi){
+      var bx=document.createElement('div'); bx.style.cssText='border:1px solid var(--ln);border-radius:6px;padding:6px;margin:4px 0;';
+      var hd=document.createElement('div'); hd.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:4px;';
+      var kt=document.createElement('div'); kt.className='finish-tabs'; kt.style.flex='1';
+      [['porte','Porte'],['fenetre','Fenêtre']].forEach(function(k){ var b=document.createElement('button'); b.textContent=k[1]; if((op.kind||'fenetre')===k[0])b.className='on'; b.onclick=function(){ op.kind=k[0]; op.cfgId=''; build(); DIRTY=true; buildImmeubleUI(); }; kt.appendChild(b); });
+      hd.appendChild(kt);
+      var xb=document.createElement('button'); xb.textContent='✕'; xb.style.cssText='font-size:11px;padding:1px 6px;'; xb.onclick=function(){ PIM.imOpenings.splice(oi,1); build(); DIRTY=true; buildImmeubleUI(); }; hd.appendChild(xb);
+      bx.appendChild(hd);
+      var cs=document.createElement('select'); cs.style.cssText='width:100%;font-size:11px;margin-bottom:4px;';
+      var o0=document.createElement('option'); o0.value=''; o0.textContent='— choisir une '+((op.kind==='porte')?'porte':'fenêtre')+' enregistrée —'; cs.appendChild(o0);
+      ((op.kind==='porte')?_po:_fe).forEach(function(c){ var o=document.createElement('option'); o.value=c.id; o.textContent=c.name; if(op.cfgId===c.id)o.selected=true; cs.appendChild(o); });
+      cs.onchange=function(){ op.cfgId=cs.value; build(); DIRTY=true; }; bx.appendChild(cs);
+      var r1=document.createElement('div'); r1.style.cssText='display:flex;gap:4px;margin-bottom:4px;';
+      var fac=document.createElement('select'); fac.style.cssText='flex:1;font-size:11px;'; [['N','Nord'],['S','Sud'],['E','Est'],['O','Ouest']].forEach(function(p){ var o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; if((op.fac||'S')===p[0])o.selected=true; fac.appendChild(o); }); fac.onchange=function(){ op.fac=fac.value; build(); DIRTY=true; }; r1.appendChild(fac);
+      var flo=document.createElement('select'); flo.style.cssText='flex:1;font-size:11px;'; for(var fn=1;fn<=(PIM.nFloors||1);fn++){ (function(fnn){ var o=document.createElement('option'); o.value=fnn; o.textContent='Niv '+fnn; if((op.floor||1)===fnn)o.selected=true; flo.appendChild(o); })(fn); } flo.onchange=function(){ op.floor=+flo.value; build(); DIRTY=true; }; r1.appendChild(flo);
+      bx.appendChild(r1);
+      var r2=document.createElement('div'); r2.style.cssText='display:flex;gap:6px;align-items:center;font-size:10px;color:var(--dm);';
+      function num(lbl,val,mn,mx,set){ var w=document.createElement('span'); w.style.cssText='display:flex;align-items:center;gap:3px;flex:1;'; w.appendChild(document.createTextNode(lbl)); var i=document.createElement('input'); i.type='number'; i.value=val; i.min=mn; i.max=mx; i.style.cssText='width:50px;font-size:10px;'; i.onchange=function(){ set(Math.max(mn,Math.min(mx,parseFloat(i.value)||0))); build(); DIRTY=true; }; w.appendChild(i); return w; }
+      r2.appendChild(num('Pos %', op.pos!=null?op.pos:50, 0,100, function(v){op.pos=v;}));
+      r2.appendChild(num('Allège', op.sill||0, 0,400, function(v){op.sill=v;}));
+      bx.appendChild(r2);
+      var fb2=document.createElement('button'); fb2.textContent='⇄ Retourner la face'; fb2.title='Face intérieure / extérieure'; fb2.style.cssText='width:100%;font-size:10px;margin-top:4px;'; fb2.onclick=function(){ op.flip=op.flip?0:1; build(); DIRTY=true; }; bx.appendChild(fb2);
+      target.appendChild(bx);
+    });
+    var addb=document.createElement('button'); addb.textContent='＋ Ajouter une menuiserie'; addb.className='save-add'; addb.style.cssText='width:100%;font-size:11px;margin-top:4px;'; addb.onclick=function(){ if(!PIM.imOpenings)PIM.imOpenings=[]; var dk=_po.length?'porte':'fenetre'; PIM.imOpenings.push({kind:dk,cfgId:(dk==='porte'&&_po[0]?_po[0].id:(_fe[0]?_fe[0].id:'')),fac:'S',floor:1,pos:50,sill:(dk==='porte'?0:100),flip:0}); build(); DIRTY=true; buildImmeubleUI(); }; target.appendChild(addb);
+  })();
   slider('Allège (murs)','cm','allege',0,200,5);
   slider('Hauteur fenêtre (murs)','cm','winH',40,300,5);
 
@@ -22169,6 +22236,7 @@ var I18N_ADD28={
    + messages du rendu IA. Ordre I18N_ORDER7.
    ============================================================================ */
 var I18N_ADD29={
+"Terrain (DXF / PDF)":["Terrain (DXF / PDF)","Terreno (DXF / PDF)","Terreno (DXF / PDF)","Gelände (DXF / PDF)","Terreno (DXF / PDF)","Terep (DXF / PDF)","地形 (DXF / PDF)","地形 (DXF / PDF)","भूभाग (DXF / PDF)","Рельеф (DXF / PDF)","Рельєф (DXF / PDF)","تضاريس (DXF / PDF)"],
 "Ambiance":["Ambience","Ambiente","Atmosfera","Stimmung","Ambiente","Hangulat","氛围","ムード","माहौल","Атмосфера","Атмосфера","الأجواء"],
 "Chaud":["Warm","Cálido","Caldo","Warm","Quente","Meleg","暖色","暖色","गर्म","Тёплый","Теплий","دافئ"],
 "Froid":["Cool","Frío","Freddo","Kühl","Frio","Hideg","冷色","寒色","ठंडा","Холодный","Холодний","بارد"],
