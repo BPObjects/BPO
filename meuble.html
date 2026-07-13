@@ -22651,6 +22651,37 @@ var I18N_ADD29={
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD30 — menuiseries (pavés de verre, baie libre, réglages), menu contextuel,
+   duplication. Ordre I18N_ORDER7. */
+var I18N_ADD30={
+"Pavés de verre":["Glass blocks","Bloques de vidrio","Vetromattoni","Glasbausteine","Blocos de vidro","Üvegtéglák","玻璃砖","ガラスブロック","कांच के ब्लॉक","Стеклоблоки","Склоблоки","طوب زجاجي"],
+"Baie libre":["Open bay","Vano libre","Vano libero","Freie Öffnung","Vão livre","Szabad nyílás","空洞口","開口（枠なし）","खुला खाँचा","Открытый проём","Відкритий проріз","فتحة حرة"],
+"Format pavé (L×H×ép. cm)":["Block format (W×H×th. cm)","Formato del bloque (An×Al×gr. cm)","Formato mattone (L×A×sp. cm)","Steinformat (B×H×D cm)","Formato do bloco (L×A×esp. cm)","Tégla mérete (Sz×M×v. cm)","砖块规格（宽×高×厚 cm）","ブロック寸法（幅×高×厚 cm）","ब्लॉक आकार (चौ×ऊँ×मो. cm)","Формат блока (Ш×В×толщ. см)","Формат блока (Ш×В×товщ. см)","مقاس الطوبة (عرض×ارتفاع×سمك سم)"],
+"Largeur pavé":["Block width","Ancho del bloque","Larghezza mattone","Steinbreite","Largura do bloco","Tégla szélessége","砖块宽度","ブロック幅","ब्लॉक चौड़ाई","Ширина блока","Ширина блока","عرض الطوبة"],
+"Hauteur pavé":["Block height","Alto del bloque","Altezza mattone","Steinhöhe","Altura do bloco","Tégla magassága","砖块高度","ブロック高さ","ब्लॉक ऊँचाई","Высота блока","Висота блока","ارتفاع الطوبة"],
+"Épaisseur pavé":["Block thickness","Grosor del bloque","Spessore mattone","Steindicke","Espessura do bloco","Tégla vastagsága","砖块厚度","ブロック厚さ","ब्लॉक मोटाई","Толщина блока","Товщина блока","سمك الطوبة"],
+"Joint mortier":["Mortar joint","Junta de mortero","Giunto di malta","Mörtelfuge","Junta de argamassa","Habarcshézag","砂浆缝","モルタル目地","मोर्टार जोड़","Растворный шов","Розчинний шов","فاصل الملاط"],
+"Sens du pavé":["Block orientation","Orientación del bloque","Orientamento mattone","Steinausrichtung","Orientação do bloco","Tégla tájolása","砖块方向","ブロックの向き","ब्लॉक दिशा","Ориентация блока","Орієнтація блока","اتجاه الطوبة"],
+"19×9×8 (demi)":["19×9×8 (half)","19×9×8 (medio)","19×9×8 (mezzo)","19×9×8 (halb)","19×9×8 (meio)","19×9×8 (fél)","19×9×8（半块）","19×9×8（ハーフ）","19×9×8 (आधा)","19×9×8 (половина)","19×9×8 (половина)","19×9×8 (نصف)"],
+"Huisserie":["Frame","Cerco","Telaio","Zarge","Aro","Tok","门樘","枠","चौखट","Дверная коробка","Коробка","إطار"],
+"Menuiseries de façade":["Facade joinery","Carpintería de fachada","Serramenti di facciata","Fassadenelemente","Caixilharia de fachada","Homlokzati nyílászárók","立面门窗","ファサード建具","अग्रभाग की जोड़ाई","Фасадные проёмы","Фасадні отвори","نجارة الواجهة"],
+"Larg.":["W","Anch.","Largh.","Breite","Larg.","Szél.","宽","幅","चौ.","Шир.","Шир.","عرض"],
+"Haut.":["H","Alt.","Alt.","Höhe","Alt.","Mag.","高","高","ऊँ.","Выс.","Вис.","ارتفاع"],
+"cm · 0=auto":["cm · 0=auto","cm · 0=auto","cm · 0=auto","cm · 0=auto","cm · 0=auto","cm · 0=auto","cm · 0=自动","cm · 0=自動","cm · 0=स्वतः","см · 0=авто","см · 0=авто","سم · 0=تلقائي"],
+"Horizontal":["Horizontal","Horizontal","Orizzontale","Horizontal","Horizontal","Vízszintes","水平","水平","क्षैतिज","Горизонтально","Горизонтально","أفقي"],
+"Vertical":["Vertical","Vertical","Verticale","Vertikal","Vertical","Függőleges","垂直","垂直","ऊर्ध्वाधर","Вертикально","Вертикально","رأسي"],
+"⇱ Ouverture extérieure":["⇱ Opens outward","⇱ Apertura exterior","⇱ Apertura esterna","⇱ Öffnet nach außen","⇱ Abertura exterior","⇱ Kifelé nyílik","⇱ 向外开","⇱ 外開き","⇱ बाहर की ओर","⇱ Наружу","⇱ Назовні","⇱ يفتح للخارج"],
+"⇲ Ouverture intérieure":["⇲ Opens inward","⇲ Apertura interior","⇲ Apertura interna","⇲ Öffnet nach innen","⇲ Abertura interior","⇲ Befelé nyílik","⇲ 向内开","⇲ 内開き","⇲ अंदर की ओर","⇲ Внутрь","⇲ Всередину","⇲ يفتح للداخل"],
+"⧉ Dupliquer":["⧉ Duplicate","⧉ Duplicar","⧉ Duplica","⧉ Duplizieren","⧉ Duplicar","⧉ Másolat","⧉ 复制","⧉ 複製","⧉ प्रतिलिपि","⧉ Дублировать","⧉ Дублювати","⧉ تكرار"],
+"⇄ Basculer la face":["⇄ Flip face","⇄ Voltear la cara","⇄ Inverti faccia","⇄ Seite wenden","⇄ Inverter face","⇄ Oldal váltása","⇄ 翻转面","⇄ 面を反転","⇄ फलक पलटें","⇄ Перевернуть","⇄ Перевернути","⇄ قلب الوجه"],
+"⇲ Ouverture int./ext.":["⇲ Inward/outward","⇲ Interior/exterior","⇲ Interna/esterna","⇲ Innen/außen","⇲ Interior/exterior","⇲ Befelé/kifelé","⇲ 内/外开","⇲ 内/外開き","⇲ अंदर/बाहर","⇲ Внутрь/наружу","⇲ Всередину/назовні","⇲ للداخل/للخارج"],
+"🗑 Supprimer":["🗑 Delete","🗑 Eliminar","🗑 Elimina","🗑 Löschen","🗑 Eliminar","🗑 Törlés","🗑 删除","🗑 削除","🗑 हटाएँ","🗑 Удалить","🗑 Видалити","🗑 حذف"],
+"— Ctrl/⌘+clic : multi · Ctrl/⌘+A : tout · Échap : rien · Alt+glisser : dupliquer":["— Ctrl/⌘+click: multi · Ctrl/⌘+A: all · Esc: none · Alt+drag: duplicate","— Ctrl/⌘+clic: múltiple · Ctrl/⌘+A: todo · Esc: nada · Alt+arrastrar: duplicar","— Ctrl/⌘+clic: multi · Ctrl/⌘+A: tutto · Esc: niente · Alt+trascina: duplica","— Ctrl/⌘+Klick: Mehrfach · Ctrl/⌘+A: alle · Esc: keine · Alt+Ziehen: duplizieren","— Ctrl/⌘+clique: múltiplo · Ctrl/⌘+A: tudo · Esc: nada · Alt+arrastar: duplicar","— Ctrl/⌘+kattintás: több · Ctrl/⌘+A: mind · Esc: semmi · Alt+húzás: másolat","— Ctrl/⌘+点击：多选 · Ctrl/⌘+A：全选 · Esc：取消 · Alt+拖动：复制","— Ctrl/⌘+クリック：複数 · Ctrl/⌘+A：全選択 · Esc：解除 · Alt+ドラッグ：複製","— Ctrl/⌘+क्लिक: बहु · Ctrl/⌘+A: सभी · Esc: कोई नहीं · Alt+खींचें: प्रतिलिपि","— Ctrl/⌘+клик: несколько · Ctrl/⌘+A: все · Esc: ничего · Alt+перетаскивание: дублировать","— Ctrl/⌘+клік: кілька · Ctrl/⌘+A: усі · Esc: нічого · Alt+перетягування: дублювати","— Ctrl/⌘+نقر: متعدد · Ctrl/⌘+A: الكل · Esc: لا شيء · Alt+سحب: تكرار"]
+};
+(function(){ for(var fr in I18N_ADD30){ var t=I18N_ADD30[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
 /* Langues sorties du monolithe (data/i18n-nordic.js). Fusionnées en dernier, donc
    elles ne peuvent rien écraser ici ; et si le fichier manque, l'app tourne quand
    même : les trois langues disparaissent simplement du sélecteur. */
