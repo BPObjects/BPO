@@ -649,7 +649,6 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
         <button id="exp-ifc23">↓ .IFC 2x3</button>
       </div>
       <div class="exp-note">OBJ universel · DAE pour SketchUp · IFC4 pour ArchiCAD/Revit · IFC 2x3 pour SketchUp / vieux importeurs (unités m)</div>
-      <button id="exp-photorender" style="width:100%;margin-top:8px;font-size:12px;padding:8px;font-weight:600;">🎞 Rendu photo</button>
     </div>
   </div>
 </div>
@@ -4596,7 +4595,7 @@ var _lastCamCy=null;    /* dernier centre vertical visé : ne recentre la camér
 var PLOT_CLEAN=false;   /* true pendant une capture de vue pour la mise en page (pas de grille/gizmo) */
 var COTE_INK=null, COTE_FS=10, COTE_OFF=null;   /* override couleur/taille/distance des cotes en capture */
 var CUT_Y=null;   /* plan de coupe horizontal (m) : les faces entièrement au-dessus sont masquées (plan d'étage) */
-var PLAN_STOREY=null;   /* immeuble : étage affiché en vue de dessus (null = volume/toit) */
+var PLAN_STOREY=0;   /* immeuble : étage affiché en vue plan (0 = RDC par défaut ; null = volume/toit) */
 /* Deux plans de coupe verticaux indépendants, affichables en même temps :
    transversale (axe x, vue gauche/droite) et longitudinale (axe z, vue face/arrière). */
 var CUTX={on:false,pos:0,keep:-1};   /* coupe transversale : plan à x=pos */
@@ -6247,6 +6246,8 @@ function buildDalle(){
   _CURTEX = null;
   /* surface d'emprise (pour la vignette) : contour libre ou somme des rectangles */
   setObjArea(libre?Math.abs(polyArea(POLY)):(RECTS||[]).reduce(function(s,r){return s+r.w*r.d;},0), 0, 0, total);
+  /* motif 2D sur le dessus de la dalle */
+  hatchPush(libre?POLY:outlinePoly(PD.shape, L, W, PD.lx/100, PD.lz/100, PD.lcorner||'tr', (PD.tb||150)/100, (PD.tw||200)/100, PD.ux/100, PD.uz/100), total, PD);
 
   /* --- FAUX PLAFOND suspendu (BA13) sous la dalle, distance + épaisseur réglables,
      avec ou sans isolant en plénum --- */
@@ -6795,6 +6796,8 @@ function buildPiscine(){
   })();
   /* surface du plan d'eau (emprise intérieure) pour la vignette centrée */
   (function(){ var c=_polyCen(poly); setObjArea(Math.abs(polyArea(poly)), c[0], c[1], 0); })();
+  /* motif 2D sur la PLAGE (anneau) : contour extérieur, bassin en trou */
+  if(plage>0){ hatchPush(_poolOffset(poly, twall+marg+plage, -ccw), 0.001, PPISCINE, [_poolOffset(poly, twall+marg, -ccw)]); }
   return DIMS;
 }
 function buildPiscineUI(){
@@ -6882,6 +6885,7 @@ function buildPiscineUI(){
   ];
   if(PPISCINE.shape==='libre') groups[0].fields.push({type:'verts',key:'verts'});
   buildObjUI(PPISCINE, groups, buildPiscineUI);
+  hatchUIGroup(PPISCINE, buildPiscineUI);
 }
 /* ============================ VÉRANDA ============================ */
 /* config par côté : {mode:'vitre'|'plein', bays, ouv:'aucun'|'tous'|'alt'|'centre', otype:'frappe'|'oscillo'|'porte'} */
@@ -6899,6 +6903,7 @@ function buildVeranda(){
   if(sh==='libre'){ CUR_POLY=poly; POLY_TARGET=PVERANDA; poly=arcCurve(poly, PVERANDA); }
   var ccw=polyArea(poly)>=0?1:-1, n=poly.length;
   (function(){ var c=_polyCen(poly); setObjArea(Math.abs(polyArea(poly)), c[0], c[1], 0); })();   /* surface au sol (vignette) */
+  hatchPush(poly, 0.01, PVERANDA);   /* motif de sol (vue en plan / 3D) */
   var soub=PVERANDA.soubOn?Math.max(0.1,PVERANDA.soub/100):0;
   var fT=Math.max(0.03,(PVERANDA.fThick||7)/100);
   var glass=VER_GLASS.filter(function(g){return g.id===PVERANDA.glass;})[0]||VER_GLASS[0];
@@ -7047,6 +7052,7 @@ function buildVerandaUI(){
   ];
   if(PVERANDA.shape==='libre') groups[0].fields.push({type:'verts',key:'verts'});
   buildObjUI(PVERANDA, groups, buildVerandaUI);
+  hatchUIGroup(PVERANDA, buildVerandaUI);
 }
 /* ============================ CHEMINÉE ============================ */
 /* cône vertical (chapeau chinois, collerette d'étanchéité) : anneau r0@y0 -> r1@y1 */
@@ -8166,6 +8172,12 @@ function buildImmeuble(){
     IMM_FLOOR_TOTAL=tot; IMM_FLOOR_N=nfl;
     var el=(typeof document!=='undefined')?document.getElementById('immFloorTxt'):null; if(el) el.innerHTML=immFloorStr();
   })();
+  /* motif 2D par dalle (vue en plan de l'étage) — même réglage pour tous les niveaux */
+  if(hatchGet(PIM).on){ var _Nlv=levelY.length-1;
+    (IMM_STRUCT.slabs||[]).forEach(function(sl){ if(sl.yTop<-0.01 || sl.st<0 || sl.st>_Nlv) return;
+      var holes=(sl.holes||[]).slice(); immBatiHoles(sl.st, sl.yTop).forEach(function(h){ holes.push(h); });   /* trémies + bâti */
+      hatchPush(sl.poly, sl.yTop+0.002, PIM, holes);
+      if(HATCH_FACES.length) HATCH_FACES[HATCH_FACES.length-1].st=sl.st; }); }
   if((PART_ON||PART_EDIT_TGT) && CUT_Y!=null) _pochePlan(CUT_Y);   /* poché des poteaux/voiles/cloisons coupés → visibles en plan pendant le tracé/édition */
   /* CALQUES : retire les faces des familles masquées (l'export IFC lit IMM_STRUCT, non affecté) */
   if(typeof IMM_LAYERS!=='undefined'){ FC=FC.filter(function(f){ return !(f.ifc && f.ifc.ty && IMM_LAYERS[f.ifc.ty]===0); }); }
@@ -13458,6 +13470,7 @@ function buildHangar(){
   var rise=(S/2)*Math.tan(p), ridgeY=H+rise, halfL=L/2;
   var mono=(PHANGAR.roofShape==='monopente'), HR=H+2*rise, maxY=mono?HR:ridgeY;
   setObjArea(S*L, 0, 0, 0);   /* surface au sol du hangar (vignette centrée) */
+  hatchPush([[-S/2,-L/2],[S/2,-L/2],[S/2,L/2],[-S/2,L/2]], 0.02, PHANGAR);   /* motif de sol */
   var cs=steelDims(PHANGAR.colSerie,PHANGAR.colSize).dims, bs=steelDims(PHANGAR.beamSerie,PHANGAR.beamSize).dims;
   var colH=cs[0]/1000, colB=cs[1]/1000, beamH=bs[0]/1000, beamB=bs[1]/1000;
   var colPI={h:colH,b:colB,tw:cs[2]/1000,tf:cs[3]/1000}, beamPI={h:beamH,b:beamB,tw:bs[2]/1000,tf:bs[3]/1000};
@@ -13924,6 +13937,7 @@ function buildHangarUI(){
       {type:'slider',label:'Ouverture',unit:'%',key:'secOpen',min:0,max:100,step:5}]}
   ];
   buildObjUI(P, groups, buildHangarUI);
+  hatchUIGroup(PHANGAR, buildHangarUI);
 }
 
 /* ============================================================================
@@ -14686,7 +14700,7 @@ function scnResync(){ var cfgs=cfgLoad(); function res(list){ (list||[]).forEach
   res(SCENE.instances); }
 
 function build(){
-  FC=[]; PRIMS=[]; CUR_POLY=null; _IFCTAG=null; DIMS_BB=null; IM_EDGES=[]; IM_PART_DOORS=[];
+  FC=[]; PRIMS=[]; CUR_POLY=null; _IFCTAG=null; DIMS_BB=null; IM_EDGES=[]; IM_PART_DOORS=[]; HATCH_FACES=[];
   /* Seul un objet enterré perce le sol. Remis à zéro à chaque construction :
      sans cela le trou d'une piscine survivrait au passage à un autre objet. */
   GROUND_HOLE=null;
@@ -14844,16 +14858,31 @@ document.addEventListener('mousedown', function(ev){ if(_edgeMenu && !_edgeMenu.
   document.addEventListener('keydown', function(e){
     var t=e.target&&e.target.tagName; if(t==='INPUT'||t==='TEXTAREA') return;
     var k=(e.key||'').toLowerCase();
-    /* saisie de distance pendant le tracé de cloison : 'r' ou un chiffre démarre, Entrée valide, Échap annule */
-    if(MODE==='immeuble' && PART_ON && PART_CUR && PART_CUR.length){
-      if(k==='r'){ e.preventDefault(); PART_NUM=(PART_NUM==null?'':PART_NUM); DIRTY=true; return; }
-      if(PART_NUM!=null){
-        if(e.key==='Escape'){ PART_NUM=null; DIRTY=true; e.preventDefault(); return; }
-        if(e.key==='Enter'){ if(partCommitDist()){ DIRTY=true; } PART_NUM=null; e.preventDefault(); return; }
-        if(e.key==='Backspace'){ PART_NUM=PART_NUM.slice(0,-1); DIRTY=true; e.preventDefault(); return; }
-        if(/^[0-9.]$/.test(e.key)){ PART_NUM+=e.key; DIRTY=true; e.preventDefault(); return; }
-      } else if(/^[0-9]$/.test(e.key)){ PART_NUM=e.key; DIRTY=true; e.preventDefault(); return; }
-      if(e.key==='Escape'){ PART_CUR=null; PART_HOVER=null; PART_SNAP=null; PART_GUIDES=[]; PART_NUM=null; DIRTY=true; e.preventDefault(); return; }
+    /* Outils immeuble en vue plan (tracé de cloison/trémie, portes, gomme, édition
+       de sommets). Entrée = terminer le tracé · Échap = désélectionner l'outil. */
+    if(MODE==='immeuble' && (PART_ON||PORTE_ON||ERASE_ON||PART_EDIT_TGT)){
+      var tracing=(PART_ON && PART_CUR && PART_CUR.length);
+      if(tracing){
+        /* saisie de distance : 'r' ou un chiffre démarre, Entrée valide, Retour efface */
+        if(k==='r'){ e.preventDefault(); PART_NUM=(PART_NUM==null?'':PART_NUM); DIRTY=true; return; }
+        if(PART_NUM!=null){
+          if(e.key==='Escape'){ PART_NUM=null; DIRTY=true; e.preventDefault(); return; }   /* 1er Échap : annule le nombre */
+          if(e.key==='Enter'){ if(partCommitDist()){ DIRTY=true; } PART_NUM=null; e.preventDefault(); return; }
+          if(e.key==='Backspace'){ PART_NUM=PART_NUM.slice(0,-1); DIRTY=true; e.preventDefault(); return; }
+          if(/^[0-9.]$/.test(e.key)){ PART_NUM+=e.key; DIRTY=true; e.preventDefault(); return; }
+        } else if(/^[0-9]$/.test(e.key)){ PART_NUM=e.key; DIRTY=true; e.preventDefault(); return; }
+        /* Entrée (sans nombre) : termine et valide le tracé */
+        if(e.key==='Enter'){ if(PART_CUR.length>=2){ if(PART_MODE==='tremie' && PART_CUR.length>2 && Math.hypot(PART_CUR[0][0]-PART_CUR[PART_CUR.length-1][0],PART_CUR[0][1]-PART_CUR[PART_CUR.length-1][1])<1e-3) PART_CUR.pop(); partFinish(); if(typeof buildImmeubleUI==='function') buildImmeubleUI(); } e.preventDefault(); return; }
+        /* Retour arrière : retire le dernier point posé (retoucher le tracé) */
+        if(e.key==='Backspace'){ PART_CUR.pop(); if(!PART_CUR.length){ PART_HOVER=null; } DIRTY=true; e.preventDefault(); return; }
+      }
+      /* Échap : sort de l'outil (désélectionne) — quel que soit l'état */
+      if(e.key==='Escape'){ PART_NUM=null;
+        if(PART_EDIT_TGT){ partEditStop(); }
+        else { PART_ON=false; PORTE_ON=false; ERASE_ON=false; PART_CUR=null; PART_HOVER=null; PART_SNAP=null; PART_GUIDES=[]; partExitPlanView(); }
+        if(typeof buildImmeubleUI==='function') buildImmeubleUI();
+        DIRTY=true; e.preventDefault(); return;
+      }
     }
     if((e.ctrlKey||e.metaKey)&&k==='z'){ e.preventDefault(); if(e.shiftKey) doRedo(); else doUndo(); }
     else if((e.ctrlKey||e.metaKey)&&k==='y'){ e.preventDefault(); doRedo(); }
@@ -15307,7 +15336,7 @@ function updateViewOverlay(){
   /* menu de vue général (persp + orthos) */
   ov.appendChild(span('Vue'));
   var vsel=document.createElement('select'); vsel.style.cssText=selCss;
-  [['persp','Perspective'],['top','Dessus'],['front','Face'],['back','Arrière'],['left','Gauche'],['right','Droite']].forEach(function(p){ var o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; vsel.appendChild(o); });
+  [['persp','Perspective'],['top','Plan'],['front','Face'],['back','Arrière'],['left','Gauche'],['right','Droite']].forEach(function(p){ var o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; vsel.appendChild(o); });
   vsel.value=SINGLEVIEW||'persp';
   vsel.onchange=function(){ SINGLEVIEW=vsel.value; DIRTY=true; updateViewOverlay(); };
   ov.appendChild(vsel);
@@ -15326,7 +15355,7 @@ function updateViewOverlay(){
   var fb=document.getElementById('floorBar');
   if(fb){ var _lbl='';
     if(!isQuad && SINGLEVIEW && SINGLEVIEW!=='persp'){
-      _lbl={top:(isImm&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Dessus',front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[SINGLEVIEW]||'';
+      _lbl={top:(isImm&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Plan',front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[SINGLEVIEW]||'';
       if(SINGLEVIEW!=='top' && isImm){ var _sa={front:'z',back:'z',left:'x',right:'x'}[SINGLEVIEW]; if(_sa==='x'&&CUTX.on) _lbl+=' — coupe transversale'; else if(_sa==='z'&&CUTZ.on) _lbl+=' — coupe longitudinale'; }
     }
     if(_lbl){ fb.textContent=_lbl; fb.style.color='#ff8a3d'; fb.style.fontWeight='600'; fb.style.display='block'; } else { fb.style.display='none'; }
@@ -15335,7 +15364,7 @@ function updateViewOverlay(){
 /* libellé d'un quadrant selon sa vue (avec ▾ = cliquable pour changer). */
 function quadLabelFor(kind){
   if(kind==='persp') return 'Perspective ▾';
-  if(kind==='top') return ((MODE==='immeuble'&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Dessus')+' ▾';
+  if(kind==='top') return ((MODE==='immeuble'&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Plan')+' ▾';
   var base={front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[kind]||kind;
   if(MODE==='immeuble'){ var ax={front:'z',back:'z',left:'x',right:'x'}[kind]; if(ax==='x'&&CUTX.on) base+=' — coupe transv.'; else if(ax==='z'&&CUTZ.on) base+=' — coupe longit.'; }
   return base+' ▾';
@@ -15625,7 +15654,7 @@ function frame(){
     if(SINGLEVIEW==='top'){ _withPlanStorey(function(){ renderScene(orthoCam('top'),W,H); }); }
     else { _withSection(SINGLEVIEW, function(){ renderScene(orthoCam(SINGLEVIEW),W,H); }); }
     ORTHO=_O;
-    var lbl={top:(MODE==='immeuble'&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Dessus',front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[SINGLEVIEW]||'';
+    var lbl={top:(MODE==='immeuble'&&PLAN_STOREY!=null)?('Plan '+(typeof planLabel==='function'?planLabel(PLAN_STOREY):('niv '+PLAN_STOREY))):'Plan',front:'Face',back:'Arrière',left:'Gauche',right:'Droite'}[SINGLEVIEW]||'';
     if(SINGLEVIEW!=='top' && MODE==='immeuble'){ var _sa={front:'z',back:'z',left:'x',right:'x'}[SINGLEVIEW]; if(_sa==='x'&&CUTX.on) lbl+=' — coupe transversale'; else if(_sa==='z'&&CUTZ.on) lbl+=' — coupe longitudinale'; }
     return; }   /* libellé de vue affiché dans #floorBar (en bas) via updateViewOverlay */
   if(WGL.gActive || WGL.txActive){ WGL.render(); }   /* WebGL actif : pas de rasterisation logicielle inutile (caché derrière) */
@@ -16173,9 +16202,10 @@ function drawHiddenEdges(cam, W, H, col, lw){
 }
 
 function drawCotes(cam,W,H){
+  drawHatches(cam,W,H);   /* motifs 2D (carrelage/parquet…) sur les faces à emprise */
   if(PLOT_CLEAN && !(typeof PLOT!=='undefined' && PLOT.showCotes)) return;   /* capture : cotes seulement si demandé */
   var d=DIMS, gap=coteOff(0.05), zf=d.d/2+gap, F=coteFont();
-  if(MODE==='immeuble'){ drawImmLevels(cam,W,H); drawImmAreas(cam,W,H); drawSiteGizmo(cam,W,H); if(CUR_POLY && !WGL.gActive && !WGL.txActive) drawPolyCotes(cam,W,H); return; }
+  if(MODE==='immeuble'){ drawImmOverhead(cam,W,H); drawImmLevels(cam,W,H); drawImmAreas(cam,W,H); drawSiteGizmo(cam,W,H); if(CUR_POLY && !WGL.gActive && !WGL.txActive) drawPolyCotes(cam,W,H); return; }
   drawObjArea(cam,W,H);   /* vignette de surface (dalle / hangar / piscine) */
   if(CUR_POLY && !WGL.gActive && !WGL.txActive){ drawPolyCotes(cam,W,H); return; }
   /* Les cotes ci-dessous supposent un objet centré sur l'origine, base à y = 0.
@@ -16294,12 +16324,271 @@ function drawImmAreas(cam,W,H){
   });
   ctx.restore();
 }
+/* drawImmOverhead() : en vue plan d'étage, les POUTRES du plafond (au-dessus de
+   la coupe, donc masquées en 3D) sont rappelées en POINTILLÉS — convention plan. */
+function drawImmOverhead(cam,W,H){
+  if(PLOT_CLEAN || MODE!=='immeuble' || typeof PLAN_STOREY==='undefined' || PLAN_STOREY==null) return;
+  if(Math.abs(cam.fwd[1])<0.85) return;   /* uniquement en vue plan (dessus), jamais en perspective */
+  var IS=(typeof IMM_STRUCT!=='undefined')?IMM_STRUCT:null; if(!IS||!IS.beams||!IS.beams.length) return;
+  ctx.save(); ctx.strokeStyle='rgba(120,126,134,0.85)'; ctx.lineWidth=1; ctx.setLineDash([5,4]);
+  IS.beams.forEach(function(b){ if(b.st!==PLAN_STOREY) return;
+    var poly=_wallPoly([b.ax,b.az],[b.bx,b.bz], b.w), ok=true; ctx.beginPath();
+    for(var i=0;i<poly.length;i++){ var p=proj(cam,[poly[i][0], 0, poly[i][1]],W,H); if(!p){ ok=false; break; } if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); }
+    if(ok){ ctx.closePath(); ctx.stroke(); } });
+  /* poteaux TRAVERSÉS par la coupe : dessinés PAR-DESSUS les poutres (convention :
+     l'élément coupé masque l'élément vu au-dessus). */
+  ctx.setLineDash([]); ctx.fillStyle='rgba(34,38,46,0.96)'; ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=1;
+  var seen={};
+  (IS.cols||[]).forEach(function(c){ if(!(c.st===PLAN_STOREY || c.st===PLAN_STOREY-1)) return; var k=c.cx.toFixed(2)+','+c.cz.toFixed(2); if(seen[k]) return; seen[k]=1;
+    var poly=_rectAround(c.cx,c.cz,c.w/2,c.w/2), ok=true; ctx.beginPath();
+    for(var i=0;i<4;i++){ var p=proj(cam,[poly[i][0],0,poly[i][1]],W,H); if(!p){ ok=false; break; } if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); }
+    if(ok){ ctx.closePath(); ctx.fill(); ctx.stroke(); } });
+  ctx.restore();
+}
 /* drawObjArea() : vignette de surface pour un objet mono-dalle (dalle/hangar/piscine). */
 function drawObjArea(cam,W,H){
   if(PLOT_CLEAN) return;
   if(!(OBJ_AREA>0 && OBJ_AREA_MODE===MODE)) return;
   var p=proj(cam,[OBJ_AREA_X, OBJ_AREA_Y, OBJ_AREA_Z], W, H); if(!p) return;
   drawAreaChip(p.x, p.y, null, fmtArea(OBJ_AREA));
+}
+/* ============================================================================
+   MOTIFS 2D VECTORIELS (carrelage, parquet, hachures, lignes) — posés sur la
+   face supérieure des objets à emprise, visibles en plan ET en 3D. Générés au
+   build (segments en repère objet, rognés au contour), projetés à l'écran.
+   ============================================================================ */
+var HATCH_FACES=[];   /* {poly, y, cfg, segs:{solid,dash}} */
+var HATCH_PATTERNS=[
+  {id:'carrelage', l:'Carrelage'}, {id:'parquet', l:'Parquet'},
+  {id:'lignes', l:'Lignes'}, {id:'gris', l:'Aplat gris'}
+];
+/* Trame de gris (screen tone) : pavé de tramage ordonné (Bayer 4×4) rempli à `pct`%
+   de la couleur `col`. Répété à l'écran → densité constante quel que soit le zoom. */
+var _grisCache={};
+function _grisTile(pct, col){ var key=pct+'|'+col; if(_grisCache[key]) return _grisCache[key];
+  var cv=document.createElement('canvas'); cv.width=cv.height=8; var g=cv.getContext('2d'); g.clearRect(0,0,8,8); g.fillStyle=col;
+  if(pct>=100){ g.fillRect(0,0,8,8); }
+  else { var bayer=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]], thr=Math.round(pct/100*16);
+    for(var yy=0;yy<4;yy++) for(var xx=0;xx<4;xx++){ if(bayer[yy][xx]<thr) g.fillRect(xx*2,yy*2,2,2); } }
+  var pat=ctx.createPattern(cv,'repeat'); _grisCache[key]=pat; return pat; }
+/* hatchSwatch() : dessine un APERÇU du motif dans un petit canvas (pour l'UI). */
+function hatchSwatch(cv, pat, sub, col){
+  var g=cv.getContext('2d'), W=cv.width, H=cv.height, sp=7; col=col||'#555';
+  g.clearRect(0,0,W,H); g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1; g.lineCap='round';
+  function line(x0,y0,x1,y1){ g.beginPath(); g.moveTo(x0,y0); g.lineTo(x1,y1); g.stroke(); }
+  var x,y,d;
+  if(pat==='carrelage'){ for(x=sp;x<W;x+=sp) line(x,0,x,H); for(y=sp;y<H;y+=sp) line(0,y,W,y); }
+  else if(pat==='lignes'){ if(sub==='pointilles') g.setLineDash([2,2]);
+    for(d=-H;d<W;d+=sp) line(d,H,d+H,0);   /* diagonal : représentatif (orientable) */
+    if(sub==='croisees') for(d=0;d<W+H;d+=sp) line(d,0,d-H,H);
+    g.setLineDash([]); }
+  else if(pat==='parquet'){
+    if(sub==='chevron'||sub==='hongrie'){ var a=(sub==='hongrie')?0.6:1;
+      for(y=-H;y<H*2;y+=sp*1.3){ g.beginPath(); g.moveTo(0,y+ (W/2)*a); g.lineTo(W/2,y); g.lineTo(W,y+(W/2)*a); g.stroke(); } }
+    else { for(y=sp;y<H;y+=sp) line(0,y,W,y);
+      for(var r=0,yy=0; yy<H; yy+=sp,r++){ var off=(r%2)?sp*1.5:0; for(x=off;x<W;x+=sp*3) line(x,yy,x,yy+sp); } } }
+  else if(pat==='gris'){ var pct=parseInt(sub,10); if(isNaN(pct))pct=50;
+    var bayer=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]], thr=Math.round(pct/100*16);
+    for(y=0;y<H;y+=2) for(x=0;x<W;x+=2){ if(pct>=100 || bayer[(y/2|0)%4][(x/2|0)%4]<thr) g.fillRect(x,y,2,2); } }
+}
+function hatchDefault(){ return {on:0, pat:'carrelage', sub:'droit', sp:30, sp2:0, ang:0, len:90, color:'#454b54', op:0.9, lw:1, bg:'', bgop:0.55}; }
+function hatchGet(o){ if(!o) return null; if(!o.hatch) o.hatch=hatchDefault(); else { var d=hatchDefault(); for(var k in d) if(o.hatch[k]==null) o.hatch[k]=d[k]; } return o.hatch; }
+/* Découpe un segment [a,b] (repère XZ) au contour `poly` (concave OK), en
+   soustrayant d'éventuels trous `holes` (ex. bassin sous la plage, trémies). */
+function _hatchClip(a,b,poly,holes){
+  var dx=b[0]-a[0], dz=b[1]-a[1], ts=[0,1], i;
+  function addEdges(pl){ for(var k=0;k<pl.length;k++){ var j=(k+1)%pl.length, p=pl[k], q=pl[j], ex=q[0]-p[0], ez=q[1]-p[1], den=dx*ez-dz*ex;
+    if(Math.abs(den)<1e-12) continue; var t=((p[0]-a[0])*ez-(p[1]-a[1])*ex)/den, u=((p[0]-a[0])*dz-(p[1]-a[1])*dx)/den;
+    if(t>-1e-9 && t<1+1e-9 && u>-1e-9 && u<1+1e-9) ts.push(t); } }
+  addEdges(poly); if(holes) for(i=0;i<holes.length;i++) if(holes[i]&&holes[i].length>2) addEdges(holes[i]);
+  ts.sort(function(x,y){return x-y;});
+  var out=[];
+  for(i=0;i<ts.length-1;i++){ var t0=ts[i], t1=ts[i+1]; if(t1-t0<2e-4) continue;
+    var mt=(t0+t1)/2, mx=a[0]+dx*mt, mz=a[1]+dz*mt; if(!_inPoly(mx,mz,poly)) continue;
+    var inH=false; if(holes) for(var g=0;g<holes.length;g++){ if(holes[g]&&holes[g].length>2 && _inPoly(mx,mz,holes[g])){ inH=true; break; } } if(inH) continue;
+    out.push([[a[0]+dx*t0,a[1]+dz*t0],[a[0]+dx*t1,a[1]+dz*t1]]); }
+  return out;
+}
+/* Réseau de droites parallèles couvrant un disque (centre, rayon R), direction
+   `ang`, entraxe `sp`. Renvoie des segments bruts (non rognés). */
+function _hatchPara(cx,cz,R,ang,sp,phase){
+  var c=Math.cos(ang), s=Math.sin(ang), nx=-s, nz=c, out=[], K=Math.ceil(R/sp)+1;
+  for(var k=-K;k<=K;k++){ var off=k*sp+(phase||0), mcx=cx+nx*off, mcz=cz+nz*off;
+    out.push([[mcx-c*R,mcz-s*R],[mcx+c*R,mcz+s*R]]); }
+  return out;
+}
+/* projection scalaire d'un point sur une direction (pour rogner en bandes). */
+function _hatchBand(seg, cx,cz, dir, lo, hi){
+  var a=seg[0], b=seg[1], pa=(a[0]-cx)*dir[0]+(a[1]-cz)*dir[1], pb=(b[0]-cx)*dir[0]+(b[1]-cz)*dir[1];
+  var t0=0, t1=1, d=pb-pa;
+  if(Math.abs(d)<1e-9){ return (pa>=lo&&pa<=hi)?seg:null; }
+  var ta=(lo-pa)/d, tb=(hi-pa)/d, mn=Math.min(ta,tb), mx=Math.max(ta,tb);
+  t0=Math.max(0,mn); t1=Math.min(1,mx); if(t1-t0<1e-4) return null;
+  var ax=a[0]+(b[0]-a[0])*t0, az=a[1]+(b[1]-a[1])*t0, bx=a[0]+(b[0]-a[0])*t1, bz=a[1]+(b[1]-a[1])*t1;
+  return [[ax,az],[bx,bz]];
+}
+/* Génère les segments d'un motif dans le repère objet, rognés au contour. */
+function hatchSegs(poly, cfg, holes){
+  var bb=polyBBox(poly), cx=bb.cx, cz=bb.cz, R=0.5*Math.hypot(bb.w,bb.d)+Math.max(bb.w,bb.d)*0.02+0.3;
+  var ang=(cfg.ang||0)*Math.PI/180, sp=Math.max(0.02,(cfg.sp||30)/100);
+  var sp2=Math.max(0.02,(cfg.sp2>0?cfg.sp2:cfg.sp||30)/100), L=Math.max(0.05,(cfg.len||90)/100);
+  var solid=[], dash=[], i, raw;
+  function clipAdd(list, segs){ for(i=0;i<segs.length;i++){ var pc=_hatchClip(segs[i][0],segs[i][1],poly,holes); for(var j=0;j<pc.length;j++) list.push(pc[j]); } }
+  if(cfg.pat==='lignes'){   /* lignes orientables : simple / croisées / pointillés (couvre les hachures) */
+    if(cfg.sub==='croisees'){ clipAdd(solid,_hatchPara(cx,cz,R,ang,sp,0)); clipAdd(solid,_hatchPara(cx,cz,R,ang+Math.PI/2,sp,0)); }
+    else if(cfg.sub==='pointilles'){ clipAdd(dash,_hatchPara(cx,cz,R,ang,sp,0)); }
+    else { clipAdd(solid,_hatchPara(cx,cz,R,ang,sp,0)); } }
+  else if(cfg.pat==='carrelage'){ clipAdd(solid,_hatchPara(cx,cz,R,ang,sp2,0)); clipAdd(solid,_hatchPara(cx,cz,R,ang+Math.PI/2,sp,0)); }
+  else if(cfg.pat==='parquet'){
+    if(cfg.sub==='chevron' || cfg.sub==='hongrie'){
+      /* point de Hongrie : bandes verticales (dir principale = ang), lames à ±45°
+         alternées d'une bande à l'autre → les bouts se rejoignent sur l'épine. */
+      var chev=(cfg.sub==='hongrie')?Math.PI/3:Math.PI/4;
+      var dir=[Math.cos(ang),Math.sin(ang)], colW=L, KB=Math.ceil(R/colW)+1;
+      for(var kb=-KB;kb<=KB;kb++){ var lo=kb*colW, hi=(kb+1)*colW;
+        var fa=ang+((kb&1)?-chev:chev); raw=_hatchPara(cx,cz,R,fa,sp,0);
+        for(i=0;i<raw.length;i++){ var cb=_hatchBand(raw[i],cx,cz,dir,lo,hi); if(cb){ var pc=_hatchClip(cb[0],cb[1],poly,holes); for(var jj=0;jj<pc.length;jj++) solid.push(pc[jj]); } }
+      }
+    } else {
+      /* à l'anglaise : joints longs continus (entraxe = largeur de lame) + joints
+         de bout décalés d'une demi-lame une rangée sur deux. */
+      clipAdd(solid,_hatchPara(cx,cz,R,ang,sp,0));
+      var c=[Math.cos(ang),Math.sin(ang)], nrm=[-Math.sin(ang),Math.cos(ang)];
+      var K=Math.ceil(R/sp)+1, M=Math.ceil(R/L)+1;
+      for(var k=-K;k<=K;k++){ for(var m=-M;m<=M;m++){ var pos=m*L+((k&1)?L/2:0);
+        var q0=[cx+nrm[0]*(k*sp)+c[0]*pos, cz+nrm[1]*(k*sp)+c[1]*pos];
+        var q1=[q0[0]+nrm[0]*sp, q0[1]+nrm[1]*sp];
+        var pc2=_hatchClip(q0,q1,poly,holes); for(i=0;i<pc2.length;i++) solid.push(pc2[i]); } }
+    }
+  }
+  return {solid:solid, dash:dash};
+}
+/* Empreintes du BÂTI d'un étage (poteaux, poutres, voiles/cage, cloisons) →
+   servent de trous : le motif de sol s'arrête sous la structure (reste « sous le bâti »). */
+function _rectAround(cx,cz,hw,hd){ return [[cx-hw,cz-hd],[cx+hw,cz-hd],[cx+hw,cz+hd],[cx-hw,cz+hd]]; }
+function _wallPoly(a,b,t){ var dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1, nx=-dz/L*(t/2), nz=dx/L*(t/2);
+  return [[a[0]+nx,a[1]+nz],[b[0]+nx,b[1]+nz],[b[0]-nx,b[1]-nz],[a[0]-nx,a[1]-nz]]; }
+function immBatiHoles(st, yTop){
+  var H=[], IS=(typeof IMM_STRUCT!=='undefined')?IMM_STRUCT:null; if(!IS) return H;
+  var seen={};
+  /* Convention plan (coupe ~1 m) : seuls les éléments TRAVERSÉS par le plan de
+     coupe (poteaux, voiles, cloisons — toute hauteur) évident la hachure. Les
+     POUTRES sont au-dessus (sous la dalle sup.) : elles ne coupent pas la trame,
+     elles seront dessinées en pointillés (cf. drawImmOverhead). */
+  (IS.cols||[]).forEach(function(c){ if(c.st===st || c.st===st-1){ var k=c.cx.toFixed(2)+','+c.cz.toFixed(2); if(seen[k])return; seen[k]=1; H.push(_rectAround(c.cx,c.cz,c.w/2,c.w/2)); } });
+  (IS.cores||[]).forEach(function(w){ if(w.y0-0.06<=yTop && w.y1+0.06>=yTop) H.push(_wallPoly([w.ax,w.az],[w.bx,w.bz], w.t)); });
+  (IS.parts||[]).forEach(function(p){ if(p.st!==st) return; var pts=p.pts||[]; for(var i=0;i<pts.length-1;i++) H.push(_wallPoly(pts[i],pts[i+1], p.t||0.07)); });
+  return H;
+}
+/* Pose une emprise + motif (appelé au build). Génère et met en cache les segments. */
+function hatchPush(poly, y, o, holes){ var h=o&&o.hatch; if(!(h&&h.on&&poly&&poly.length>=3)) return;
+  var P=poly.map(function(p){return [p[0],p[1]];});
+  var HL=(holes&&holes.length)?holes.filter(function(x){return x&&x.length>2;}).map(function(x){return x.map(function(p){return [p[0],p[1]];});}):null;
+  HATCH_FACES.push({poly:P, y:y||0, cfg:h, holes:HL, segs:hatchSegs(P,h,HL)}); }
+/* Rendu overlay : projette les segments en cache sur la face (y), plan et 3D. */
+function drawHatches(cam,W,H){
+  if(!HATCH_FACES.length) return;
+  var topView=Math.abs(cam.fwd[1])>0.85;
+  for(var f=0; f<HATCH_FACES.length; f++){ var F=HATCH_FACES[f], cfg=F.cfg;
+    /* dalles d'immeuble (F.st défini) : uniquement l'étage affiché, et seulement
+       en vue plan (dessus) — pas en perspective, sinon tous les niveaux se voient. */
+    if(F.st!=null && (!topView || typeof PLAN_STOREY==='undefined' || PLAN_STOREY!==F.st)) continue;
+    ctx.save();
+    /* aplat gris (screen tone) : remplissage tramé de l'emprise, trous évidés */
+    if(cfg.pat==='gris'){ var gok=true;
+      ctx.beginPath();
+      function gpath(pl){ for(var i=0;i<pl.length;i++){ var p=proj(cam,[pl[i][0],F.y,pl[i][1]],W,H); if(!p){ gok=false; return; } if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); } ctx.closePath(); }
+      gpath(F.poly); if(F.holes) F.holes.forEach(gpath);
+      if(gok){ if(cfg.bg){ ctx.globalAlpha=(cfg.bgop!=null?cfg.bgop:0.55); ctx.fillStyle=cfg.bg; ctx.fill('evenodd'); }
+        var pct=parseInt(cfg.sub,10); if(isNaN(pct))pct=50; var pat=_grisTile(pct, cfg.color||'#333');
+        if(pat){ ctx.globalAlpha=(cfg.op!=null?cfg.op:0.9); ctx.fillStyle=pat; ctx.fill('evenodd'); } }
+      ctx.restore(); continue;
+    }
+    /* fond de couleur (rempli sous le motif, trous évidés) */
+    if(cfg.bg){ var ok=true;
+      ctx.beginPath();
+      function fpath(pl){ for(var i=0;i<pl.length;i++){ var p=proj(cam,[pl[i][0],F.y,pl[i][1]],W,H); if(!p){ ok=false; return; } if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); } ctx.closePath(); }
+      fpath(F.poly); if(F.holes) F.holes.forEach(fpath);
+      if(ok){ ctx.globalAlpha=(cfg.bgop!=null?cfg.bgop:0.55); ctx.fillStyle=cfg.bg; ctx.fill('evenodd'); }
+    }
+    ctx.strokeStyle=cfg.color||'#454b54'; ctx.globalAlpha=(cfg.op!=null?cfg.op:0.9); ctx.lineWidth=Math.max(0.3,cfg.lw||1); ctx.lineCap='round';
+    function stroke(list, dashed){ if(!list.length) return; ctx.setLineDash(dashed?[3,4]:[]); ctx.beginPath();
+      for(var i=0;i<list.length;i++){ var s=list[i], pa=proj(cam,[s[0][0],F.y,s[0][1]],W,H), pb=proj(cam,[s[1][0],F.y,s[1][1]],W,H);
+        if(pa&&pb){ ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); } } ctx.stroke(); }
+    stroke(F.segs.solid,false); stroke(F.segs.dash,true);
+    ctx.setLineDash([]); ctx.restore();
+  }
+}
+/* hatchUIGroup() : panneau « Motif 2D (plan) » réutilisable, ajouté aux
+   configurateurs à emprise. obj = objet paramétrique (PD, PPISCINE…). */
+function hatchUIGroup(obj, rebuild){
+  var host=document.getElementById('params'); if(!host||!obj) return;
+  var h=hatchGet(obj), target=uiAccordion(host, 'Motif 2D (plan)');
+  var tg=document.createElement('div'); tg.className='wall-toggle';
+  tg.innerHTML='<span>Afficher un motif</span><button class="'+(h.on?'on':'')+'">'+(h.on?'Activé':'Désactivé')+'</button>';
+  tg.querySelector('button').onclick=function(){ h.on=h.on?0:1; build(); DIRTY=true; rebuild(); };
+  target.appendChild(tg);
+  if(!h.on) return;
+  /* rangée d'aperçus visuels (pas de noms) ; `label` texte optionnel (ex. % du gris) */
+  function swatchRow(title, opts){ if(title){ var l=document.createElement('div'); l.className='slbl'; l.style.marginTop='4px'; l.textContent=title; target.appendChild(l); }
+    var g=document.createElement('div'); g.className='mat-grid';
+    opts.forEach(function(o){ var b=document.createElement('button');
+      b.style.cssText='display:flex;align-items:center;justify-content:center;gap:6px;padding:5px 6px;'+(o.active?'outline:2px solid var(--am);outline-offset:-1px;':'');
+      var cv=document.createElement('canvas'); cv.width=54; cv.height=26; cv.style.cssText='background:#fff;border-radius:3px;display:block;';
+      hatchSwatch(cv, o.pat, o.sub, h.color||'#555'); b.appendChild(cv);
+      if(o.label){ var s=document.createElement('span'); s.textContent=o.label; s.style.cssText='font-size:12px;font-weight:600;'; b.appendChild(s); }
+      b.onclick=o.onClick; g.appendChild(b); });
+    target.appendChild(g); }
+  function lslider(label,key,min,max,step){ var lc=lenUnit(), toD=function(cm){return +(cm*lc.k).toFixed(lc.dec);}, toS=function(d){return Math.round((d/lc.k)*10)/10;};
+    var nMin=toD(min),nMax=toD(max),nStep=Math.max((lc.dec?Math.pow(10,-lc.dec):1),+(step*lc.k).toFixed(6)), val=h[key];
+    var fld=document.createElement('div'); fld.className='fld';
+    fld.innerHTML='<div class="fh"><label>'+label+' <span class="u">'+lc.u+'</span></label><input type="number" min="'+nMin+'" max="'+nMax+'" step="'+nStep+'" value="'+toD(val)+'"></div><input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'">';
+    var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
+    function ap(cm,rd){ cm=Math.max(min,Math.min(max,cm)); h[key]=cm; if(rd!==false)num.value=toD(cm); rng.value=cm; build(); DIRTY=true; }
+    rng.oninput=function(){ ap(+rng.value); }; num.oninput=function(){ var pv=parseFloat(num.value); if(!isNaN(pv))ap(toS(pv),false); };
+    target.appendChild(fld); }
+  function aslider(label,key){ var val=h[key], fld=document.createElement('div'); fld.className='fld';
+    fld.innerHTML='<div class="fh"><label>'+label+' <span class="u">°</span></label><input type="number" min="0" max="360" step="5" value="'+val+'"></div><input type="range" min="0" max="360" step="5" value="'+val+'">';
+    var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
+    function ap(v,rd){ v=((Math.round(v)%360)+360)%360; h[key]=v; if(rd!==false)num.value=v; rng.value=v; build(); DIRTY=true; }
+    rng.oninput=function(){ ap(+rng.value); }; num.oninput=function(){ var pv=parseFloat(num.value); if(!isNaN(pv))ap(pv,false); };
+    target.appendChild(fld); }
+  /* MOTIF : aperçus visuels, sans noms */
+  function subPreview(pid){ return pid==='parquet'?'droit':pid==='gris'?'50':''; }
+  swatchRow('Motif', HATCH_PATTERNS.map(function(p){ return { pat:p.id, sub:subPreview(p.id), active:h.pat===p.id,
+    onClick:function(){ h.pat=p.id; build(); DIRTY=true; rebuild(); } }; }));
+  function subRow(title, pat, subs){ swatchRow(title, subs.map(function(s){ return { pat:pat, sub:s.id, label:s.l||null, active:String(h.sub)===String(s.id),
+    onClick:function(){ h.sub=s.id; build(); DIRTY=true; rebuild(); } }; })); }
+  if(h.pat==='carrelage'){ lslider('Carreau — largeur','sp',5,200,1); lslider('Carreau — longueur (0=carré)','sp2',0,200,1); }
+  else if(h.pat==='parquet'){ subRow('Pose','parquet',[{id:'droit'},{id:'chevron'},{id:'hongrie'}]);
+    lslider('Largeur de lame','sp',3,50,1); lslider('Longueur de lame','len',20,240,5); }
+  else if(h.pat==='gris'){ var _dp=(['25','50','75','100'].indexOf(String(h.sub))>=0)?String(h.sub):'50'; h.sub=_dp;
+    swatchRow('Densité',[{id:'25'},{id:'50'},{id:'75'},{id:'100'}].map(function(s){ return { pat:'gris', sub:s.id, label:s.id+' %', active:_dp===s.id,
+      onClick:function(){ h.sub=s.id; build(); DIRTY=true; rebuild(); } }; })); }
+  else { if(['simple','croisees','pointilles'].indexOf(h.sub)<0) h.sub='simple';
+    subRow('Style','lignes',[{id:'simple'},{id:'croisees'},{id:'pointilles'}]);
+    lslider('Entraxe','sp',2,100,1); }
+  if(h.pat!=='gris'){ aslider('Angle','ang');
+    /* épaisseur du trait (px écran) */
+    (function(){ var val=h.lw||1, fld=document.createElement('div'); fld.className='fld';
+      fld.innerHTML='<div class="fh"><label>Épaisseur du trait <span class="u">px</span></label><input type="number" min="0.5" max="4" step="0.5" value="'+val+'"></div><input type="range" min="0.5" max="4" step="0.5" value="'+val+'">';
+      var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
+      function ap(v,rd){ v=Math.max(0.5,Math.min(4,v)); h.lw=v; if(rd!==false)num.value=v; rng.value=v; DIRTY=true; }
+      rng.oninput=function(){ ap(+rng.value); }; num.oninput=function(){ var pv=parseFloat(num.value); if(!isNaN(pv))ap(pv,false); };
+      target.appendChild(fld); })();
+  }
+  /* couleur du trait (= couleur du gris pour l'aplat) */
+  (function(){ var cr=document.createElement('div'); cr.className='fld'; cr.innerHTML='<div class="fh"><label>'+(h.pat==='gris'?'Couleur de la trame':'Couleur du trait')+'</label></div>';
+    var ci=document.createElement('input'); ci.type='color'; ci.value=h.color; ci.className='free-pick';
+    ci.oninput=function(){ h.color=ci.value; DIRTY=true; }; cr.appendChild(ci); target.appendChild(cr); })();
+  /* fond de couleur (optionnel, trous évidés) */
+  var bt=document.createElement('div'); bt.className='wall-toggle';
+  bt.innerHTML='<span>Fond de couleur</span><button class="'+(h.bg?'on':'')+'">'+(h.bg?'Activé':'Désactivé')+'</button>';
+  bt.querySelector('button').onclick=function(){ h.bg = h.bg ? '' : (h.bgLast||'#ece7dc'); DIRTY=true; rebuild(); };
+  target.appendChild(bt);
+  if(h.bg){ var bc=document.createElement('div'); bc.className='fld'; bc.innerHTML='<div class="fh"><label>Couleur de fond</label></div>';
+    var bci=document.createElement('input'); bci.type='color'; bci.value=h.bg; bci.className='free-pick';
+    bci.oninput=function(){ h.bg=bci.value; h.bgLast=bci.value; DIRTY=true; }; bc.appendChild(bci); target.appendChild(bc); }
 }
 
 
@@ -16944,6 +17233,7 @@ function buildSlabUI(){
   var totalCm=Math.round(DIMS.h*1000)/10;   /* pour la dalle, épaisseur = h */
   tot.innerHTML='Épaisseur totale <b>'+totalCm+' cm</b>';
   host.appendChild(tot);
+  hatchUIGroup(PD, buildSlabUI);
 }
 /* buildImmeubleUI() : panneau de paramètres de l'immeuble. */
 var UI_COLLAPSE={}, UI_FIRST=true;
@@ -17594,6 +17884,7 @@ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.innerHT
   info.innerHTML='<span>Hauteur totale</span> <b>'+fmtLen(DIMS.h)+'</b> · <b>'+PIM.nFloors+'</b> <span>niveaux</span><br>'+
     '<span>Surface de plancher</span> ≈ <b id="immFloorTxt">'+immFloorStr()+'</b> · <b>'+(IMM_FLOOR_N||PIM.nFloors)+'</b> <span>planchers</span>';
   target.appendChild(info);
+  hatchUIGroup(PIM, buildImmeubleUI);
 }
 
 
@@ -23345,6 +23636,64 @@ var I18N_ADD31={
 "Soubassement int.":["Base wall int.","Zócalo int.","Basamento int.","Sockel innen","Embasamento int.","Lábazat belt.","内基座","内側腰壁","आधार दीवार आंत.","Цоколь вн.","Цоколь внутр.","قاعدة داخلية"]
 };
 (function(){ for(var fr in I18N_ADD31){ var t=I18N_ADD31[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD32 — motifs 2D (carrelage/parquet/hachures). Ordre I18N_ORDER7. */
+var I18N_ADD32={
+"Motif 2D (plan)":["2D pattern (plan)","Patrón 2D (planta)","Motivo 2D (pianta)","2D-Muster (Grundriss)","Padrão 2D (planta)","2D minta (alaprajz)","二维图案（平面）","2Dパターン（平面）","2D पैटर्न (योजना)","2D-узор (план)","2D-візерунок (план)","نمط ثنائي الأبعاد (مسقط)"],
+"Afficher un motif":["Show a pattern","Mostrar un patrón","Mostra un motivo","Muster anzeigen","Mostrar um padrão","Minta megjelenítése","显示图案","パターンを表示","पैटर्न दिखाएँ","Показать узор","Показати візерунок","إظهار نمط"],
+"Motif":["Pattern","Patrón","Motivo","Muster","Padrão","Minta","图案","パターン","पैटर्न","Узор","Візерунок","النمط"],
+"Carrelage":["Tiling","Alicatado","Piastrelle","Fliesen","Ladrilho","Csempe","瓷砖","タイル","टाइल","Плитка","Плитка","بلاط"],
+"Parquet":["Parquet","Parqué","Parquet","Parkett","Parquet","Parketta","拼花地板","寄木","पार्के","Паркет","Паркет","باركيه"],
+"Hachures":["Hatching","Rayado","Tratteggio","Schraffur","Tracejado","Sraffozás","剖面线","ハッチング","हैचिंग","Штриховка","Штрихування","تظليل"],
+"Lignes":["Lines","Líneas","Linee","Linien","Linhas","Vonalak","线条","ライン","रेखाएँ","Линии","Лінії","خطوط"],
+"Pose":["Layout","Colocación","Posa","Verlegung","Assentamento","Fektetés","铺法","張り方","बिछाना","Укладка","Укладання","طريقة الرص"],
+"À l'anglaise":["Straight (broken bond)","A la inglesa","All'inglese","Englischer Verband","À inglesa","Hajópadló","错缝直铺","乱張り","सीधा (टूटा जोड़)","Вразбежку","Врозбіжку","إنجليزي"],
+"Chevron":["Chevron","Espiga (chevron)","Spina francese","Chevron","Espinha (chevron)","Halszálka (chevron)","人字（V形）","シェブロン","शेवरॉन","Ёлочка (шеврон)","Ялинка (шеврон)","شيفرون"],
+"Point de Hongrie":["Hungarian point","Punta de Hungría","Punta di Ungheria","Ungarischer Spitz","Ponto húngaro","Magyar pont","匈牙利点","ハンガリアンポイント","हंगेरियन पॉइंट","Венгерская ёлка","Угорська ялинка","نقطة مجرية"],
+"Style":["Style","Estilo","Stile","Stil","Estilo","Stílus","样式","スタイル","शैली","Стиль","Стиль","النمط"],
+"Simple":["Single","Simple","Semplice","Einfach","Simples","Egyszerű","单向","単方向","सरल","Одинарная","Одинарна","بسيط"],
+"Croisées":["Cross","Cruzado","Incrociato","Kreuz","Cruzado","Keresztezett","交叉","クロス","क्रॉस","Перекрёстная","Перехресна","متقاطع"],
+"Pointillés":["Dotted","Punteado","Punteggiato","Gepunktet","Pontilhado","Pontozott","点线","点線","बिंदुदार","Пунктир","Пунктир","منقّط"],
+"Carreau — largeur":["Tile — width","Baldosa — ancho","Piastrella — larghezza","Fliese — Breite","Ladrilho — largura","Csempe — szélesség","瓷砖—宽","タイル—幅","टाइल — चौड़ाई","Плитка — ширина","Плитка — ширина","بلاطة — العرض"],
+"Carreau — longueur (0=carré)":["Tile — length (0=square)","Baldosa — largo (0=cuadrado)","Piastrella — lunghezza (0=quadrata)","Fliese — Länge (0=quadratisch)","Ladrilho — comprimento (0=quadrado)","Csempe — hossz (0=négyzet)","瓷砖—长（0=正方形）","タイル—長さ（0=正方形）","टाइल — लंबाई (0=वर्ग)","Плитка — длина (0=квадрат)","Плитка — довжина (0=квадрат)","بلاطة — الطول (0=مربّع)"],
+"Largeur de lame":["Plank width","Ancho de lama","Larghezza doga","Diele — Breite","Largura da régua","Pallo szélessége","板条宽度","板幅","पट्टी चौड़ाई","Ширина планки","Ширина планки","عرض اللوح"],
+"Longueur de lame":["Plank length","Largo de lama","Lunghezza doga","Diele — Länge","Comprimento da régua","Pallo hossza","板条长度","板長","पट्टी लंबाई","Длина планки","Довжина планки","طول اللوح"],
+"Entraxe":["Spacing","Separación","Interasse","Abstand","Espaçamento","Osztásköz","间距","間隔","अंतराल","Шаг","Крок","التباعد"],
+"Angle":["Angle","Ángulo","Angolo","Winkel","Ângulo","Szög","角度","角度","कोण","Угол","Кут","الزاوية"],
+"Couleur du motif":["Pattern color","Color del patrón","Colore motivo","Musterfarbe","Cor do padrão","Minta színe","图案颜色","パターンの色","पैटर्न रंग","Цвет узора","Колір візерунка","لون النمط"]
+};
+(function(){ for(var fr in I18N_ADD32){ var t=I18N_ADD32[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD33 — habillage du motif 2D (trait, fond). Ordre I18N_ORDER7. */
+var I18N_ADD33={
+"Épaisseur du trait":["Line thickness","Grosor de línea","Spessore linea","Linienstärke","Espessura do traço","Vonalvastagság","线宽","線の太さ","रेखा मोटाई","Толщина линии","Товщина лінії","سماكة الخط"],
+"Couleur du trait":["Line color","Color de línea","Colore linea","Linienfarbe","Cor do traço","Vonalszín","线条颜色","線の色","रेखा रंग","Цвет линии","Колір лінії","لون الخط"],
+"Fond de couleur":["Background fill","Fondo de color","Sfondo colorato","Farbfüllung","Fundo colorido","Színes háttér","背景填充","背景色","पृष्ठभूमि भराव","Цветной фон","Кольоровий фон","تعبئة الخلفية"],
+"Couleur de fond":["Background color","Color de fondo","Colore di sfondo","Hintergrundfarbe","Cor de fundo","Háttérszín","背景颜色","背景の色","पृष्ठभूमि रंग","Цвет фона","Колір фону","لون الخلفية"]
+};
+(function(){ for(var fr in I18N_ADD33){ var t=I18N_ADD33[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD34 — aplat gris (screen tone). Ordre I18N_ORDER7. */
+var I18N_ADD34={
+"Aplat gris":["Grey tone","Trama gris","Retino grigio","Grauton","Trama cinza","Szürke tónus","灰度网点","グレースクリーン","ग्रे टोन","Серый тон","Сірий тон","درجة رمادية"],
+"Densité":["Density","Densidad","Densità","Dichte","Densidade","Sűrűség","密度","濃度","घनत्व","Плотность","Щільність","الكثافة"],
+"Couleur de la trame":["Tone color","Color de la trama","Colore del retino","Tonfarbe","Cor da trama","Tónus színe","网点颜色","スクリーンの色","टोन रंग","Цвет тона","Колір тону","لون التظليل"]
+};
+(function(){ for(var fr in I18N_ADD34){ var t=I18N_ADD34[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD35 — « Plan » (vue en plan, ex-« Dessus »). Ordre I18N_ORDER7. */
+var I18N_ADD35={
+"Plan":["Plan","Planta","Pianta","Grundriss","Planta","Alaprajz","平面","平面図","योजना","План","План","مسقط"]
+};
+(function(){ for(var fr in I18N_ADD35){ var t=I18N_ADD35[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
