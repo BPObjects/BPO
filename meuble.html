@@ -2158,12 +2158,11 @@ WGL.uploadFC=function(faces){
   var gl=WGL.gl;
   if(WGL._gbufs){ WGL._gbufs.forEach(function(b){gl.deleteBuffer(b);}); }
   WGL._gbufs=[];
-  var TS=(typeof TEX_SCALE!=='undefined')?TEX_SCALE:1.0;
   /* UV par projection planaire sur le plan dominant de la normale (comme le
-     rasteriseur logiciel), à l'échelle TEX_SCALE. */
-  var TR=(typeof TEX_ROT!=='undefined')?TEX_ROT:0, TRc=Math.cos(TR), TRs=Math.sin(TR);
-  function planarUVv(p,n){ var ax=Math.abs(n[0]),ay=Math.abs(n[1]),az=Math.abs(n[2]),u,vv;
+     rasteriseur logiciel). Échelle/orientation PAR texture (texScl/texRot). */
+  function planarUVv(p,n,tid){ var ax=Math.abs(n[0]),ay=Math.abs(n[1]),az=Math.abs(n[2]),u,vv;
     if(ax>=ay&&ax>=az){u=p[2];vv=p[1];} else if(ay>=ax&&ay>=az){u=p[0];vv=p[2];} else {u=p[0];vv=p[1];}
+    var TS=texScl(tid), TR=texRot(tid), TRc=Math.cos(TR), TRs=Math.sin(TR);
     return [(u*TRc-vv*TRs)*TS, (u*TRs+vv*TRc)*TS]; }
   var PO=[],NO=[],CO=[], PT=[],NT=[],CT=[], PG=[],UG=[], PALL=[];
   var texB={};                                   /* id texture -> {P,N,U} (opaques) */
@@ -2175,7 +2174,7 @@ WGL.uploadFC=function(faces){
     if(timg){
       var B=texB[f.tex]||(texB[f.tex]={P:[],N:[],U:[],img:timg});
       for(var k2=1;k2<v.length-1;k2++){ var oi2=[0,k2,k2+1];
-        for(var j2=0;j2<3;j2++){ var p2=v[oi2[j2]], nn2=f.vn?f.vn[oi2[j2]]:f.n, uv2=(f.uv?f.uv[oi2[j2]]:planarUVv(p2,f.n));
+        for(var j2=0;j2<3;j2++){ var p2=v[oi2[j2]], nn2=f.vn?f.vn[oi2[j2]]:f.n, uv2=(f.uv?f.uv[oi2[j2]]:planarUVv(p2,f.n,f.tex));
           B.P.push(p2[0],p2[1],p2[2]); B.N.push(nn2[0],nn2[1],nn2[2]); B.U.push(uv2[0],uv2[1]);
           PALL.push(p2[0],p2[1],p2[2]);
         } }
@@ -3266,9 +3265,15 @@ var FINISH_SET = {};
 var FINISH_SWITCHABLE = { mur:1, poteau:1, poutre:1, gardecorps:1, escalier:1, ferme:1, toiture:1, route:1, parking:1, ombriere:1, store:1, mosquito:1 };
 function finSwitch(){ return !!FINISH_SWITCHABLE[MODE]; }
 /* Couleur effective d'un élément : le natif tant que l'interrupteur est ouvert. */
-function fcol(key, native){ return FINISH_ON[key] ? FINISH[key] : native; }
+/* Une finition personnalisée prend le dessus quand :
+   - mode « switchable » (mur, poteau…) : l'interrupteur Natif/Perso est sur Perso ;
+   - mode sans interrupteur (piscine, ascenseur, rampe, store…) : dès que
+     l'utilisateur a choisi lui-même une teinte/texture (FINISH_SET). Sinon la
+     couleur/texture native du configurateur (liner, mosaïque…) est conservée. */
+function finActive(key){ return finSwitch() ? !!FINISH_ON[key] : !!FINISH_SET[key]; }
+function fcol(key, native){ return finActive(key) ? FINISH[key] : native; }
 /* Texture effective. Idem ; null = couleur unie. */
-function ftex(key, native){ return FINISH_ON[key] ? (FINISH_TEX[key]||null) : (native||null); }
+function ftex(key, native){ var t = finActive(key) ? (FINISH_TEX[key]||null) : (native||null); LAST_TEX_FOR[key]=t; return t; }
 
 /* FINISH_TEX : texture appliquée à chaque élément (id de texture, ou null = couleur unie).
    Quand une texture est active, les faces de l'élément sont rendues texturées. */
@@ -3294,7 +3299,14 @@ var FINISH_TEX = {
 var PROD_OVERRIDE = false;  /* produits fabricants : false = materiaux PBR d'origine ; true = teinte RAL globale */
 /* échelle de répétition de la texture (nombre de répétitions sur ~1 m) */
 var TEX_SCALE = 1.0;
-var TEX_ROT = 0;   /* orientation globale de la texture (radians) — objets paramétriques (planar UV) */
+var TEX_ROT = 0;   /* défaut global (radians) — repli si la texture n'a pas de réglage propre */
+/* Réglages PAR TEXTURE (id de texture) pour les objets paramétriques : chaque
+   texture garde sa propre échelle/orientation. Modifier l'une ne touche pas les autres. */
+var TEX_SCALE_BY = {};   /* id texture -> échelle */
+var TEX_ROT_BY   = {};   /* id texture -> rotation (radians) */
+var LAST_TEX_FOR = {};   /* clé finition -> id de texture effectif (pour retrouver le natif dans le panneau) */
+function texScl(id){ return (id!=null && TEX_SCALE_BY[id]!=null) ? TEX_SCALE_BY[id] : TEX_SCALE; }
+function texRot(id){ return (id!=null && TEX_ROT_BY[id]!=null) ? TEX_ROT_BY[id] : TEX_ROT; }
 
 /* Élément en cours d'édition dans le panneau finitions */
 var FINISH_TARGET = 'corps';
@@ -6349,6 +6361,27 @@ function poolSlab(poly, D, off, t, col){
    --------------------------------------------------------------------------- */
 function _ccw(p){ return (polyArea(p)>=0)?p:p.slice().reverse(); }
 function _rectPoly(x0,z0,x1,z1){ return _ccw([[x0,z0],[x1,z0],[x1,z1],[x0,z1]]); }
+/* _polyClip : découpe un polygone convexe `subj` par le contour `clip`
+   (Sutherland-Hodgman, clip supposé CCW). Sert à rogner l'escalier/la
+   banquette sur la forme intérieure de la cuve. Exact pour les cuves convexes. */
+function _polyClip(subj, clip){
+  var out=subj.slice(), cl=_ccw(clip);
+  for(var e=0;e<cl.length && out.length;e++){
+    var A=cl[e], B=cl[(e+1)%cl.length], ex=B[0]-A[0], ez=B[1]-A[1];
+    var inp=out; out=[];
+    function ins(p){ return ex*(p[1]-A[1]) - ez*(p[0]-A[0]) >= -1e-9; }
+    for(var i=0;i<inp.length;i++){
+      var P=inp[i], Q=inp[(i+1)%inp.length], Pi=ins(P), Qi=ins(Q);
+      if(Pi) out.push(P);
+      if(Pi!==Qi){
+        var dx=Q[0]-P[0], dz=Q[1]-P[1], den=dx*ez-dz*ex;
+        if(Math.abs(den)>1e-12){ var t=-((P[0]-A[0])*ez-(P[1]-A[1])*ex)/den;
+          out.push([P[0]+t*dx, P[1]+t*dz]); }
+      }
+    }
+  }
+  return out;
+}
 /* profondeurs extrêmes sous une emprise (d est affine par morceaux en u :
    ses extrema sur un polygone sont atteints en des sommets) */
 function _poolDRange(poly, D){
@@ -6380,7 +6413,7 @@ function _poolRisers(dLoc){
   if(nb*r>util) r=util/nb;                  /* jamais plus bas que le fond */
   return {nb:nb, r:r, g:Math.max(0.15,PPISCINE.escGiron/100)};
 }
-function poolStairs(bb, D, col){
+function poolStairs(bb, D, col, inner){
   var P=PPISCINE, type=P.escType;
   if(!type || type==='aucun') return;
   /* Les anciennes configurations n'avaient qu'un `escPos`. On recale un
@@ -6389,7 +6422,10 @@ function poolStairs(bb, D, col){
   if(type==='angle' && pos.indexOf('angle')!==0) pos='angle-tl';
   if(type!=='angle' && pos.indexOf('cote')!==0)  pos='cote-n';
   var x0=bb.cx-bb.w/2, x1=bb.cx+bb.w/2, z0=bb.cz-bb.d/2, z1=bb.cz+bb.d/2;
-  var W=Math.max(0.4, Math.min(P.escW/100, Math.min(bb.w,bb.d)-0.2));
+  /* largeur bornée par le côté PARALLÈLE au bord choisi (et non la plus petite
+     dimension) : sur un bassin allongé l'escalier peut occuper tout le côté. */
+  var sideLen=(pos==='cote-n'||pos==='cote-s')?bb.w:(pos==='cote-o'||pos==='cote-e')?bb.d:Math.min(bb.w,bb.d);
+  var W=Math.max(0.4, Math.min(P.escW/100, sideLen-0.2));
   var k, poly, R, top, polys=[];
   if(type==='angle'){
     var left=(pos.charAt(pos.length-1)==='l'), topC=(pos.indexOf('t')>=0);
@@ -6440,11 +6476,13 @@ function poolStairs(bb, D, col){
   R=_poolRisers(_poolDRange(polys[polys.length-1], D).min);
   for(k=0;k<polys.length;k++){
     top=-(k+1)*R.r;
-    poolPrismToFloor(polys[k], D, top, col);
+    var stp = inner ? _polyClip(polys[k], inner) : polys[k];   /* rogné sur la forme de la cuve */
+    if(!stp || stp.length<3) continue;
+    poolPrismToFloor(stp, D, top, col);
   }
 }
 /* plage immergée / banquette : palier large sous une faible hauteur d'eau */
-function poolBanquette(bb, D, col){
+function poolBanquette(bb, D, col, inner){
   var P=PPISCINE; if(!P.banqOn) return;
   var pos=P.banqCote||'cote-s';
   var x0=bb.cx-bb.w/2, x1=bb.cx+bb.w/2, z0=bb.cz-bb.d/2, z1=bb.cz+bb.d/2;
@@ -6454,6 +6492,7 @@ function poolBanquette(bb, D, col){
   var run=Math.min(P.banqW/100, (horiz?bb.d:bb.w)-0.2), far=base+sg*run;
   var poly=horiz? _rectPoly(x0, Math.min(base,far), x1, Math.max(base,far))
                 : _rectPoly(Math.min(base,far), z0, Math.max(base,far), z1);
+  if(inner){ poly=_polyClip(poly, inner); if(!poly || poly.length<3) return; }   /* rogné sur la cuve */
   /* le palier ne peut pas être plus profond que le fond sous son emprise */
   var dr=_poolDRange(poly, D);
   var yTop=-Math.min(Math.max(0.05, P.banqProf/100), Math.max(0.03, dr.min-0.02));
@@ -6504,8 +6543,8 @@ function buildPiscine(){
     face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), colBasin, 1); }
   /* escalier + banquette, revêtus comme le bassin */
   var bb0=polyBBox(poly);
-  poolStairs(bb0, D, colBasin);
-  poolBanquette(bb0, D, colBasin);
+  poolStairs(bb0, D, colBasin, inSkin);
+  poolBanquette(bb0, D, colBasin, inSkin);
   _CURTEX=null;
   /* plan d'eau translucide a -0.12 */
   var wp=_poolOffset(poly, 0.04, ccw), wtop=wp.map(function(q){return [q[0],-0.12,q[1]];}), wtri=triangulateFace(wtop,[0,1,0]);
@@ -6581,7 +6620,7 @@ function buildPiscineUI(){
            {type:'slider',label:'Contremarche',unit:'cm',key:'escContre',min:10,max:30,step:1}]
         : [],
       (PPISCINE.escType==='droit'||PPISCINE.escType==='roman')
-        ? [{type:'slider',label:'Largeur',unit:'cm',key:'escW',min:60,max:500,step:10}]
+        ? [{type:'slider',label:'Largeur',unit:'cm',key:'escW',min:60,max:1200,step:10}]
         : [],
       (PPISCINE.escType&&PPISCINE.escType!=='aucun')
         ? [{type:'note',text:'La contremarche est rabattue si la profondeur locale ne permet pas de descendre toutes les marches.'}]
@@ -15505,8 +15544,8 @@ function renderScene(cam,W,H){
       if(ax>=ay && ax>=az2){ u=p[2]; vv=p[1]; }       /* face ~X : plan ZY */
       else if(ay>=ax && ay>=az2){ u=p[0]; vv=p[2]; }  /* face ~Y : plan XZ */
       else { u=p[0]; vv=p[1]; }                        /* face ~Z : plan XY */
-      var _r=(typeof TEX_ROT!=='undefined')?TEX_ROT:0, _c=Math.cos(_r), _s=Math.sin(_r);
-      return [(u*_c-vv*_s)*TEX_SCALE, (u*_s+vv*_c)*TEX_SCALE];   /* orientation + échelle */
+      var _r=texRot(it.tex), _sc=texScl(it.tex), _c=Math.cos(_r), _s=Math.sin(_r);
+      return [(u*_c-vv*_s)*_sc, (u*_s+vv*_c)*_sc];   /* orientation + échelle PAR texture */
     }
     /* passe 1 : opaques (avec ou sans texture). Triangulation ear-clipping pour
        gérer correctement les faces concaves des objets importés. */
@@ -19466,22 +19505,29 @@ function buildFinishPanel(){
     imp.onchange=function(e){ importTexture(e.target.files[0], key); };
     host.appendChild(imp);
 
-    /* échelle de répétition */
-    var scLbl=document.createElement('div'); scLbl.className='fh'; scLbl.style.marginTop='8px';
-    scLbl.innerHTML='<label>Échelle texture</label><span class="u">×'+TEX_SCALE.toFixed(1)+'</span>';
-    host.appendChild(scLbl);
-    var sc=document.createElement('input'); sc.type='range'; sc.min='0.2'; sc.max='5'; sc.step='0.1';
-    sc.value=(5.2-TEX_SCALE); sc.style.width='100%';   /* curseur inversé : vers la droite = motif plus GRAND */
-    sc.oninput=function(){ TEX_SCALE=+(5.2-(+sc.value)).toFixed(2); scLbl.querySelector('.u').textContent='×'+TEX_SCALE.toFixed(1); build(); };
-    host.appendChild(sc);
-    /* orientation (rotation) de la texture — partout (objets paramétriques) */
-    var roLbl=document.createElement('div'); roLbl.className='fh'; roLbl.style.marginTop='8px';
-    roLbl.innerHTML='<label>Orientation texture</label><span class="u">'+Math.round((TEX_ROT||0)*180/Math.PI)+'°</span>';
-    host.appendChild(roLbl);
-    var ro=document.createElement('input'); ro.type='range'; ro.min='0'; ro.max='360'; ro.step='5';
-    ro.value=Math.round((TEX_ROT||0)*180/Math.PI); ro.style.width='100%';
-    ro.oninput=function(){ TEX_ROT=(+ro.value)*Math.PI/180; roLbl.querySelector('.u').textContent=Math.round(+ro.value)+'°'; build(); };
-    host.appendChild(ro);
+    /* Échelle / orientation PAR TEXTURE : on cible la texture effective de cet
+       élément (override choisi, sinon texture native). Régler l'une ne touche
+       pas les autres textures de la scène. */
+    var curTex = FINISH_TEX[key] || LAST_TEX_FOR[key] || null;
+    if(curTex){
+      var curScl=texScl(curTex), curRot=texRot(curTex);
+      /* échelle de répétition (curseur inversé : vers la droite = motif plus GRAND) */
+      var scLbl=document.createElement('div'); scLbl.className='fh'; scLbl.style.marginTop='8px';
+      scLbl.innerHTML='<label>Échelle texture</label><span class="u">×'+curScl.toFixed(1)+'</span>';
+      host.appendChild(scLbl);
+      var sc=document.createElement('input'); sc.type='range'; sc.min='0.2'; sc.max='5'; sc.step='0.1';
+      sc.value=(5.2-curScl); sc.style.width='100%';
+      sc.oninput=function(){ TEX_SCALE_BY[curTex]=+(5.2-(+sc.value)).toFixed(2); scLbl.querySelector('.u').textContent='×'+TEX_SCALE_BY[curTex].toFixed(1); build(); };
+      host.appendChild(sc);
+      /* orientation (rotation) de CETTE texture */
+      var roLbl=document.createElement('div'); roLbl.className='fh'; roLbl.style.marginTop='8px';
+      roLbl.innerHTML='<label>Orientation texture</label><span class="u">'+Math.round(curRot*180/Math.PI)+'°</span>';
+      host.appendChild(roLbl);
+      var ro=document.createElement('input'); ro.type='range'; ro.min='0'; ro.max='360'; ro.step='5';
+      ro.value=Math.round(curRot*180/Math.PI); ro.style.width='100%';
+      ro.oninput=function(){ TEX_ROT_BY[curTex]=(+ro.value)*Math.PI/180; roLbl.querySelector('.u').textContent=Math.round(+ro.value)+'°'; build(); };
+      host.appendChild(ro);
+    }
   }
 }
 
