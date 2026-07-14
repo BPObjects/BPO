@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>BPO — Catalogue 3D paramétrique</title>
+<title>BPO — Configurateur de composants et de bâtiments</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="alternate icon" href="favicon.ico" sizes="16x16 32x32 48x48">
@@ -14007,6 +14007,19 @@ function scnAddLight(){
   DIRTY=true; if(typeof buildSceneUI==='function') buildSceneUI(); if(typeof drawGizov==='function') drawGizov();
 }
 function scnDelLight(i){ if(SCENE.lights&&SCENE.lights[i]){ SCENE.lights.splice(i,1); DIRTY=true; buildSceneUI(); drawGizov(); } }
+function scnDupLight(i){ var L=SCENE.lights&&SCENE.lights[i]; if(!L) return; var c=JSON.parse(JSON.stringify(L)); c.x=(c.x||0)+40; if(c.name) c.name=c.name+' (copie)'; SCENE.lights.push(c); DIRTY=true; if(typeof buildSceneUI==='function')buildSceneUI(); if(typeof drawGizov==='function')drawGizov(); if(typeof WGL!=='undefined'&&WGL.gActive&&WGL.render)WGL.render(); }
+/* menu contextuel d'une lampe (clic droit sur son gizmo, mode Scène) : Dupliquer / Supprimer. */
+function scnLampMenu(px,py,idx){
+  var old=document.getElementById('scnLampCtx'); if(old&&old.parentNode)old.parentNode.removeChild(old);
+  var L=SCENE.lights&&SCENE.lights[idx]; if(!L) return;
+  var m=document.createElement('div'); m.id='scnLampCtx'; m.style.cssText='position:fixed;left:'+px+'px;top:'+py+'px;z-index:9998;background:rgba(22,26,34,0.98);border:1px solid #33404d;border-radius:7px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.5);font:12px system-ui,sans-serif;color:#cdd6e0;min-width:140px;';
+  var ttl=document.createElement('div'); ttl.textContent=(L.name||'Lampe'); ttl.style.cssText='font-size:10px;opacity:.65;padding:3px 8px 5px;'; m.appendChild(ttl);
+  function item(lbl,fn){ var b=document.createElement('div'); b.textContent=lbl; b.style.cssText='padding:5px 10px;cursor:pointer;border-radius:4px;'; b.onmouseenter=function(){b.style.background='#2a3340';}; b.onmouseleave=function(){b.style.background='';}; b.onclick=function(){ try{fn();}catch(e){} if(m.parentNode)m.parentNode.removeChild(m); }; m.appendChild(b); }
+  item('⧉ Dupliquer', function(){ scnDupLight(idx); });
+  item('🗑 Supprimer', function(){ scnDelLight(idx); });
+  document.body.appendChild(m);
+  setTimeout(function(){ document.addEventListener('mousedown', function h(ev){ if(!m.contains(ev.target)){ if(m.parentNode)m.parentNode.removeChild(m); document.removeEventListener('mousedown',h,true); } }, true); },0);
+}
 var SCN_FORCE_FC=false;   /* export : force buildScene à produire la liste FC complète (sinon vide en WebGL) */
 /* ---- multi-sélection : SCENE.sel = principal ; SCENE.selSet = tous les sélectionnés ---- */
 function scnSel(){ if(SCENE.selSet&&SCENE.selSet.length) return SCENE.selSet.filter(function(i){return i>=0&&i<SCENE.instances.length;}); return (SCENE.sel>=0&&SCENE.sel<SCENE.instances.length)?[SCENE.sel]:[]; }
@@ -15147,6 +15160,10 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
   function rel(e){ var r=gz.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
   gz.addEventListener('mousedown', function(e){
     if(MODE!=='scene'||!WGL.gActive) return;
+    /* Alt+clic gauche SUR une lampe → dupliquer (avant le panoramique). */
+    if((e.button||0)===0 && e.altKey && SCN_LIGHT_HITS.length){ var mA=rel(e);
+      for(var _al=0;_al<SCN_LIGHT_HITS.length;_al++){ var LHa=SCN_LIGHT_HITS[_al]; if(!SCENE.lights||!SCENE.lights[LHa.i]) continue;
+        if(Math.hypot((LHa.sx==null?1e9:LHa.sx)-mA.x,(LHa.sy==null?1e9:LHa.sy)-mA.y)<14 || Math.hypot((LHa.hx==null?1e9:LHa.hx)-mA.x,(LHa.hy==null?1e9:LHa.hy)-mA.y)<14){ scnDupLight(LHa.i); e.preventDefault(); return; } } }
     /* PANORAMIQUE : bouton du milieu, ou Alt + gauche. Le clic droit est pris par
        le menu « placer à l'étage », et Maj/Ctrl par la multi-sélection. */
     if((e.button||0)===1 || ((e.button||0)===0 && e.altKey)){
@@ -15222,7 +15239,11 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
     WGL.wheelZoom(e.deltaY, (e.clientX-r.left)-r.width/2, (e.clientY-r.top)-r.height/2, r.height||600);
     WGL.render(); drawGizov();
   }, {passive:false});
-  gz.addEventListener('contextmenu', function(e){ if(MODE!=='scene'||!WGL.gActive) return; e.preventDefault(); if(!SCENE.instances.length) return;
+  gz.addEventListener('contextmenu', function(e){ if(MODE!=='scene'||!WGL.gActive) return; e.preventDefault();
+    var mc=rel(e);
+    for(var _lc=0;_lc<SCN_LIGHT_HITS.length;_lc++){ var LHc=SCN_LIGHT_HITS[_lc]; if(!SCENE.lights||!SCENE.lights[LHc.i]) continue;   /* clic droit sur une lampe → menu lampe */
+      if(Math.hypot((LHc.sx==null?1e9:LHc.sx)-mc.x,(LHc.sy==null?1e9:LHc.sy)-mc.y)<16 || Math.hypot((LHc.hx==null?1e9:LHc.hx)-mc.x,(LHc.hy==null?1e9:LHc.hy)-mc.y)<16){ if(typeof scnLampMenu==='function') scnLampMenu(e.clientX,e.clientY,LHc.i); return; } }
+    if(!SCENE.instances.length) return;
     var m=rel(e), vpv=wglVP(), bst=-1,bdd=40*40;
     for(var si=0;si<SCENE.instances.length;si++){ var it=SCENE.instances[si], sp=wglProjPt(vpv,[it.x/100,(it.y/100)||0,it.z/100]); if(sp){ var dd=(sp.x-m.x)*(sp.x-m.x)+(sp.y-m.y)*(sp.y-m.y); if(dd<bdd){bdd=dd;bst=si;} } }
     if(bst<0) return; scnSelSingle(bst); if(typeof buildSceneUI==='function')buildSceneUI(); drawGizov(); if(typeof scnStoreyMenu==='function') scnStoreyMenu(e.clientX,e.clientY,bst);
@@ -16294,10 +16315,10 @@ function buildWallUI(){
       '<input type="number" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'"></div>'+
       '<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'">';
     var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
-    function apply(v){ v=Math.max(min,Math.min(max,v)); PM[key]=v; num.value=v; rng.value=v; build(); updateDims(); }
+    function apply(v, redisplay){ v=Math.max(min,Math.min(max,v)); PM[key]=v; if(redisplay!==false) num.value=v; rng.value=v; build(); updateDims(); }
     rng.oninput=function(){ apply(+rng.value); };
-    num.oninput=function(){ if(!isNaN(parseFloat(num.value))) apply(parseFloat(num.value)); };
-    num.onblur =function(){ apply(isNaN(parseFloat(num.value))?val:parseFloat(num.value)); };
+    num.oninput=function(){ var pv=parseFloat(num.value); if(!isNaN(pv)) apply(pv, false); };   /* pas de réécriture pendant la frappe */
+    num.onblur =function(){ var pv=parseFloat(num.value); apply(isNaN(pv)?(PM[key]!=null?PM[key]:val):pv); };
     host.appendChild(fld);
   }
 
@@ -16429,10 +16450,10 @@ function buildSlabUI(){
       '<input type="number" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'"></div>'+
       '<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'">';
     var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
-    function apply(v){ v=Math.max(min,Math.min(max,v)); PD[key]=v; num.value=v; rng.value=v; build(); updateDims(); }
+    function apply(v, redisplay){ v=Math.max(min,Math.min(max,v)); PD[key]=v; if(redisplay!==false) num.value=v; rng.value=v; build(); updateDims(); }
     rng.oninput=function(){ apply(+rng.value); };
-    num.oninput=function(){ if(!isNaN(parseFloat(num.value))) apply(parseFloat(num.value)); };
-    num.onblur =function(){ apply(isNaN(parseFloat(num.value))?val:parseFloat(num.value)); };
+    num.oninput=function(){ var pv=parseFloat(num.value); if(!isNaN(pv)) apply(pv, false); };   /* pas de réécriture pendant la frappe */
+    num.onblur =function(){ var pv=parseFloat(num.value); apply(isNaN(pv)?(PD[key]!=null?PD[key]:val):pv); };
     host.appendChild(fld);
   }
   function toggle(label, key){
@@ -16566,10 +16587,12 @@ function buildImmeubleUI(){
       '<input type="number" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'"></div>'+
       '<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'">';
     var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]');
-    function apply(v){ v=Math.max(min,Math.min(max,v)); PIM[key]=v; num.value=v; rng.value=v; build(); updateDims(); }
+    /* redisplay=false pendant la frappe : on met à jour la géométrie mais on NE
+       réécrit PAS le champ (sinon le clamp mid-saisie efface ce qu'on tape). */
+    function apply(v, redisplay){ v=Math.max(min,Math.min(max,v)); PIM[key]=v; if(redisplay!==false) num.value=v; rng.value=v; build(); updateDims(); }
     rng.oninput=function(){ apply(+rng.value); };
-    num.oninput=function(){ if(!isNaN(parseFloat(num.value))) apply(parseFloat(num.value)); };
-    num.onblur =function(){ apply(isNaN(parseFloat(num.value))?val:parseFloat(num.value)); };
+    num.oninput=function(){ var pv=parseFloat(num.value); if(!isNaN(pv)) apply(pv, false); };
+    num.onblur =function(){ var pv=parseFloat(num.value); apply(isNaN(pv)?(PIM[key]!=null?PIM[key]:val):pv); };   /* normalise/clamp à la validation */
     target.appendChild(fld);
   }
   function toggle(label,key){
@@ -17186,11 +17209,11 @@ function buildObjUI(params, groups, rebuildUI){
       '<input type="range" min="'+f.min+'" max="'+f.max+'" step="'+f.step+'" value="'+val+'">';
     var num=fld.querySelector('input[type=number]'), rng=fld.querySelector('input[type=range]'), sfx=fld.querySelector('.sfx');
     function upd(){ if(f.suffix&&sfx) sfx.textContent=f.suffix(params[f.key]); }
-    function apply(v){ v=Math.max(f.min,Math.min(f.max,v)); params[f.key]=v; num.value=v; rng.value=v; upd(); build(); updateDims(); }
+    function apply(v, redisplay){ v=Math.max(f.min,Math.min(f.max,v)); params[f.key]=v; if(redisplay!==false) num.value=v; rng.value=v; upd(); build(); updateDims(); }
     upd();
     rng.oninput=function(){ apply(+rng.value); };
-    num.oninput=function(){ if(!isNaN(parseFloat(num.value))) apply(parseFloat(num.value)); };
-    num.onblur =function(){ apply(isNaN(parseFloat(num.value))?val:parseFloat(num.value)); };
+    num.oninput=function(){ var pv=parseFloat(num.value); if(!isNaN(pv)) apply(pv, false); };   /* pas de réécriture pendant la frappe → saisie fluide */
+    num.onblur =function(){ var pv=parseFloat(num.value); apply(isNaN(pv)?(params[f.key]!=null?params[f.key]:val):pv); };
     target.appendChild(fld);
   }
   function matSel(f){
