@@ -2161,9 +2161,10 @@ WGL.uploadFC=function(faces){
   var TS=(typeof TEX_SCALE!=='undefined')?TEX_SCALE:1.0;
   /* UV par projection planaire sur le plan dominant de la normale (comme le
      rasteriseur logiciel), à l'échelle TEX_SCALE. */
+  var TR=(typeof TEX_ROT!=='undefined')?TEX_ROT:0, TRc=Math.cos(TR), TRs=Math.sin(TR);
   function planarUVv(p,n){ var ax=Math.abs(n[0]),ay=Math.abs(n[1]),az=Math.abs(n[2]),u,vv;
     if(ax>=ay&&ax>=az){u=p[2];vv=p[1];} else if(ay>=ax&&ay>=az){u=p[0];vv=p[2];} else {u=p[0];vv=p[1];}
-    return [u*TS, vv*TS]; }
+    return [(u*TRc-vv*TRs)*TS, (u*TRs+vv*TRc)*TS]; }
   var PO=[],NO=[],CO=[], PT=[],NT=[],CT=[], PG=[],UG=[], PALL=[];
   var texB={};                                   /* id texture -> {P,N,U} (opaques) */
   for(var i=0;i<faces.length;i++){
@@ -3293,6 +3294,7 @@ var FINISH_TEX = {
 var PROD_OVERRIDE = false;  /* produits fabricants : false = materiaux PBR d'origine ; true = teinte RAL globale */
 /* échelle de répétition de la texture (nombre de répétitions sur ~1 m) */
 var TEX_SCALE = 1.0;
+var TEX_ROT = 0;   /* orientation globale de la texture (radians) — objets paramétriques (planar UV) */
 
 /* Élément en cours d'édition dans le panneau finitions */
 var FINISH_TARGET = 'corps';
@@ -15503,7 +15505,8 @@ function renderScene(cam,W,H){
       if(ax>=ay && ax>=az2){ u=p[2]; vv=p[1]; }       /* face ~X : plan ZY */
       else if(ay>=ax && ay>=az2){ u=p[0]; vv=p[2]; }  /* face ~Y : plan XZ */
       else { u=p[0]; vv=p[1]; }                        /* face ~Z : plan XY */
-      return [u*TEX_SCALE, vv*TEX_SCALE];
+      var _r=(typeof TEX_ROT!=='undefined')?TEX_ROT:0, _c=Math.cos(_r), _s=Math.sin(_r);
+      return [(u*_c-vv*_s)*TEX_SCALE, (u*_s+vv*_c)*TEX_SCALE];   /* orientation + échelle */
     }
     /* passe 1 : opaques (avec ou sans texture). Triangulation ear-clipping pour
        gérer correctement les faces concaves des objets importés. */
@@ -19468,9 +19471,17 @@ function buildFinishPanel(){
     scLbl.innerHTML='<label>Échelle texture</label><span class="u">×'+TEX_SCALE.toFixed(1)+'</span>';
     host.appendChild(scLbl);
     var sc=document.createElement('input'); sc.type='range'; sc.min='0.2'; sc.max='5'; sc.step='0.1';
-    sc.value=TEX_SCALE; sc.style.width='100%';
-    sc.oninput=function(){ TEX_SCALE=+sc.value; scLbl.querySelector('.u').textContent='×'+TEX_SCALE.toFixed(1); build(); };
+    sc.value=(5.2-TEX_SCALE); sc.style.width='100%';   /* curseur inversé : vers la droite = motif plus GRAND */
+    sc.oninput=function(){ TEX_SCALE=+(5.2-(+sc.value)).toFixed(2); scLbl.querySelector('.u').textContent='×'+TEX_SCALE.toFixed(1); build(); };
     host.appendChild(sc);
+    /* orientation (rotation) de la texture — partout (objets paramétriques) */
+    var roLbl=document.createElement('div'); roLbl.className='fh'; roLbl.style.marginTop='8px';
+    roLbl.innerHTML='<label>Orientation texture</label><span class="u">'+Math.round((TEX_ROT||0)*180/Math.PI)+'°</span>';
+    host.appendChild(roLbl);
+    var ro=document.createElement('input'); ro.type='range'; ro.min='0'; ro.max='360'; ro.step='5';
+    ro.value=Math.round((TEX_ROT||0)*180/Math.PI); ro.style.width='100%';
+    ro.oninput=function(){ TEX_ROT=(+ro.value)*Math.PI/180; roLbl.querySelector('.u').textContent=Math.round(+ro.value)+'°'; build(); };
+    host.appendChild(ro);
   }
 }
 
