@@ -16353,7 +16353,7 @@ function drawImmOverhead(cam,W,H){
    rotation. Persisté dans le navigateur. Barre d'outils flottante.
    ========================================================================== */
 var ANNOT={ items:[], tool:'select', sel:-1, drag:null, draw:null,
-  col:'#e5352b', lw:2, arr:0, size:18, font:'system-ui,sans-serif', ls:'plain' };
+  col:'#e5352b', lw:2, arr:0, size:18, font:'system-ui,sans-serif', ls:'plain', hfPat:'none' };
 var ANNOT_LS=[['plain','──'],['dash','- -'],['double','═'],['zigzag','/\\/\\'],['wavy','∿'],['cloud','☁']];
 var ANNOT_FONTS=[['system-ui,sans-serif','Système'],['Arial,sans-serif','Arial'],['"Helvetica Neue",Helvetica,sans-serif','Helvetica'],['"Segoe UI",sans-serif','Segoe UI'],['Verdana,sans-serif','Verdana'],['Tahoma,Geneva,sans-serif','Tahoma'],['"Trebuchet MS",sans-serif','Trebuchet'],['Calibri,sans-serif','Calibri'],['Georgia,serif','Georgia'],['"Times New Roman",serif','Times'],['"Courier New",monospace','Courier'],['monospace','Mono'],['Impact,sans-serif','Impact'],['"Comic Sans MS",cursive','Comic Sans'],['"Brush Script MT",cursive','Script']];
 var ANNOT_SYSFONTS=null;   /* polices système énumérées (Local Font Access) */
@@ -16363,6 +16363,10 @@ function _annRect(a,b){ return [[a[0],a[1]],[b[0],a[1]],[b[0],b[1]],[a[0],b[1]]]
 (function(){ try{ var d=JSON.parse(localStorage.getItem('BPO_ANNOT_v1')); if(Array.isArray(d)) ANNOT.items=d; }catch(e){} })();
 function annotStore(){ try{ localStorage.setItem('BPO_ANNOT_v1', JSON.stringify(ANNOT.items)); }catch(e){} }
 function annotActive(){ return (typeof LAYOUT!=='undefined'&&LAYOUT==='single') && (typeof SINGLEVIEW!=='undefined'&&SINGLEVIEW==='top') && !(MODE==='immeuble'&&(PART_ON||PORTE_ON||ERASE_ON||PART_EDIT_TGT)); }
+/* étage courant du plan (immeuble) ; 0 pour les objets sans étages. */
+function annotFloor(){ return (MODE==='immeuble' && typeof PLAN_STOREY!=='undefined' && PLAN_STOREY!=null) ? PLAN_STOREY : 0; }
+/* un élément est-il visible sur l'étage courant ? floor : null(hérité)/'all'/n/[n,…]. */
+function annotVisible(it){ var f=annotFloor(); if(it.floor==null||it.floor==='all') return true; if(Array.isArray(it.floor)) return it.floor.indexOf(f)>=0; return it.floor===f; }
 function _annCam(){ return orthoCam('top'); }
 function _annP(x,z){ var _o=ORTHO; ORTHO=true; var p=proj(_annCam(),[x,0,z],cv.width,cv.height); ORTHO=_o; return p; }   /* force ortho : cohérent avec le rendu plan */
 function _annXY(e){ var r=cv.getBoundingClientRect(), _o=ORTHO; ORTHO=true; var res=unprojGround(e.clientX-r.left,e.clientY-r.top,cv.width,cv.height,_annCam()); ORTHO=_o; return res; }
@@ -16377,23 +16381,34 @@ function annotHit(mx,my){
   var s=annotSel();
   if(s){ var rc=_annRotH(s); if(rc && Math.hypot(rc.x-mx,rc.y-my)<10) return {i:ANNOT.sel,part:'rot'};
     if(s.t==='line'){ for(var k=0;k<s.pts.length;k++){ var p=_annP(s.pts[k][0],s.pts[k][1]); if(p&&Math.hypot(p.x-mx,p.y-my)<9) return {i:ANNOT.sel,part:'v'+k}; } }
-    if(s.t==='circle'){ var e=_annP(s.cx+s.r,s.cz); if(e&&Math.hypot(e.x-mx,e.y-my)<9) return {i:ANNOT.sel,part:'rad'}; } }
-  for(var i=ANNOT.items.length-1;i>=0;i--){ var it=ANNOT.items[i];
+    if(s.t==='circle'){ var e=_annP(s.cx+s.r,s.cz); if(e&&Math.hypot(e.x-mx,e.y-my)<9) return {i:ANNOT.sel,part:'rad'}; }
+    if(s.holes){ for(var hi=0;hi<s.holes.length;hi++){ for(var vi=0;vi<s.holes[hi].length;vi++){ var hp=_annP(s.holes[hi][vi][0],s.holes[hi][vi][1]); if(hp&&Math.hypot(hp.x-mx,hp.y-my)<9) return {i:ANNOT.sel,part:'hv:'+hi+':'+vi}; } } }
+    var bt=_annBendTargets(s); for(var bi=0;bi<bt.length;bi++){ var bp=_annP(bt[bi].p[0],bt[bi].p[1]); if(bp&&Math.hypot(bp.x-mx,bp.y-my)<8) return {i:ANNOT.sel,part:bt[bi].key}; } }
+  for(var i=ANNOT.items.length-1;i>=0;i--){ var it=ANNOT.items[i]; if(!annotVisible(it)) continue;
     if(it.t==='line'){ for(var j=0;j<it.pts.length-1;j++){ var a=_annP(it.pts[j][0],it.pts[j][1]),b=_annP(it.pts[j+1][0],it.pts[j+1][1]); if(a&&b&&_segDist(mx,my,a.x,a.y,b.x,b.y)<7) return {i:i,part:'body'}; } }
     else if(it.t==='circle'){ var c=_annP(it.cx,it.cz),e2=_annP(it.cx+it.r,it.cz); if(c&&e2){ var R=Math.hypot(e2.x-c.x,e2.y-c.y); if(Math.abs(Math.hypot(mx-c.x,my-c.y)-R)<7) return {i:i,part:'body'}; } }
     else if(it.t==='text'){ var t2=_annP(it.x,it.z); if(t2){ var w=(it.s||'').length*(it.size||18)*0.55; if(mx>t2.x-6&&mx<t2.x+w+6&&my>t2.y-(it.size||18)&&my<t2.y+6) return {i:i,part:'body'}; } } }
   return null;
 }
-function _annMove(s,snap,dx,dz){ if(s.t==='line'){ for(var k=0;k<s.pts.length;k++){ s.pts[k][0]=snap.pts[k][0]+dx; s.pts[k][1]=snap.pts[k][1]+dz; } } else if(s.t==='circle'){ s.cx=snap.cx+dx; s.cz=snap.cz+dz; } else { s.x=snap.x+dx; s.z=snap.z+dz; } }
-function _annRot(s,snap,c,da){ if(s.t==='line'){ var ca=Math.cos(da),sa=Math.sin(da); for(var k=0;k<s.pts.length;k++){ var ox=snap.pts[k][0]-c[0], oz=snap.pts[k][1]-c[1]; s.pts[k][0]=c[0]+ox*ca-oz*sa; s.pts[k][1]=c[1]+ox*sa+oz*ca; } } else if(s.t==='text'){ s.ang=(snap.ang||0)+da; } }
+function _annMoveHoles(s,snap,dx,dz){ if(s.holes && snap.holes){ for(var i=0;i<s.holes.length;i++){ var sh=snap.holes[i]; if(!sh)continue; for(var j=0;j<s.holes[i].length;j++){ s.holes[i][j]=[sh[j][0]+dx, sh[j][1]+dz]; } } } }
+function _annRotHoles(s,snap,c,ca,sa){ if(s.holes && snap.holes){ for(var i=0;i<s.holes.length;i++){ var sh=snap.holes[i]; if(!sh)continue; for(var j=0;j<s.holes[i].length;j++){ var ox=sh[j][0]-c[0], oz=sh[j][1]-c[1]; s.holes[i][j]=[c[0]+ox*ca-oz*sa, c[1]+ox*sa+oz*ca]; } } } }
+function _annMove(s,snap,dx,dz){ if(s.t==='line'){ for(var k=0;k<s.pts.length;k++){ s.pts[k][0]=snap.pts[k][0]+dx; s.pts[k][1]=snap.pts[k][1]+dz; } } else if(s.t==='circle'){ s.cx=snap.cx+dx; s.cz=snap.cz+dz; } else { s.x=snap.x+dx; s.z=snap.z+dz; } _annMoveHoles(s,snap,dx,dz); }
+function _annRot(s,snap,c,da){ var ca=Math.cos(da),sa=Math.sin(da); if(s.t==='line'){ for(var k=0;k<s.pts.length;k++){ var ox=snap.pts[k][0]-c[0], oz=snap.pts[k][1]-c[1]; s.pts[k][0]=c[0]+ox*ca-oz*sa; s.pts[k][1]=c[1]+ox*sa+oz*ca; } } else if(s.t==='text'){ s.ang=(snap.ang||0)+da; } _annRotHoles(s,snap,c,ca,sa); }
 function annotDown(e){ if((e.button||0)!==0) return false; var m=_annM(e), w=_annXY(e); if(!w) return false;
-  if(ANNOT.tool==='line'){ if(!ANNOT.draw) ANNOT.draw={item:{t:'line',pts:[[w[0],w[1]],[w[0],w[1]]],arr:ANNOT.arr,col:ANNOT.col,lw:ANNOT.lw,ls:ANNOT.ls}}; else ANNOT.draw.item.pts.push([w[0],w[1]]); DIRTY=true; return true; }
-  if(ANNOT.tool==='rect'){ ANNOT.draw={item:{t:'line',closed:true,pts:_annRect([w[0],w[1]],[w[0],w[1]]),arr:0,col:ANNOT.col,lw:ANNOT.lw,ls:ANNOT.ls}, drag:'rect', c0:[w[0],w[1]]}; DIRTY=true; return true; }
-  if(ANNOT.tool==='circle'){ ANNOT.draw={item:{t:'circle',cx:w[0],cz:w[1],r:0.02,col:ANNOT.col,lw:ANNOT.lw,ls:ANNOT.ls},drag:true}; DIRTY=true; return true; }
-  if(ANNOT.tool==='text'){ var s=prompt('Texte :',''); if(s){ ANNOT.items.push({t:'text',x:w[0],z:w[1],s:s,col:ANNOT.col,size:ANNOT.size,font:ANNOT.font,ang:0}); ANNOT.sel=ANNOT.items.length-1; annotStore(); } ANNOT.tool='select'; annotBar(); DIRTY=true; return true; }
+  if(ANNOT.tool==='line'){ if(!ANNOT.draw) ANNOT.draw={item:{t:'line',pts:[[w[0],w[1]],[w[0],w[1]]],arr:ANNOT.arr,col:ANNOT.col,lw:ANNOT.lw,ls:ANNOT.ls,floor:annotFloor()}}; else ANNOT.draw.item.pts.push([w[0],w[1]]); DIRTY=true; return true; }
+  if(ANNOT.tool==='rect'){ ANNOT.draw={item:{t:'line',closed:true,pts:_annRect([w[0],w[1]],[w[0],w[1]]),arr:0,col:ANNOT.col,lw:ANNOT.lw,ls:ANNOT.ls,hf:_annHFPreset(ANNOT.hfPat,ANNOT.col),floor:annotFloor()}, drag:'rect', c0:[w[0],w[1]]}; DIRTY=true; return true; }
+  if(ANNOT.tool==='circle'){ ANNOT.draw={item:{t:'circle',cx:w[0],cz:w[1],r:0.02,col:ANNOT.col,lw:ANNOT.lw,ls:ANNOT.ls,hf:_annHFPreset(ANNOT.hfPat,ANNOT.col),floor:annotFloor()},drag:true}; DIRTY=true; return true; }
+  if(ANNOT.tool==='hole'){ var host=annotSel(); if(!(host && ((host.t==='line'&&host.closed)||host.t==='circle'))){ ANNOT.tool='select'; annotBar(); return true; }
+    if(!ANNOT.draw) ANNOT.draw={item:{t:'line',closed:true,pts:[[w[0],w[1]],[w[0],w[1]]],col:host.col,lw:1,ls:'plain'}, holeFor:ANNOT.sel}; else ANNOT.draw.item.pts.push([w[0],w[1]]); DIRTY=true; return true; }
+  if(ANNOT.tool==='text'){ var s=prompt('Texte :',''); if(s){ ANNOT.items.push({t:'text',x:w[0],z:w[1],s:s,col:ANNOT.col,size:ANNOT.size,font:ANNOT.font,ang:0,floor:annotFloor()}); ANNOT.sel=ANNOT.items.length-1; annotStore(); } ANNOT.tool='select'; annotBar(); DIRTY=true; return true; }
   var hit=annotHit(m.x,m.y);
   if(hit){ ANNOT.sel=hit.i; var it=annotSel();
     if(hit.part==='rot'){ var c=_annCen(it); ANNOT.drag={mode:'rot',c:c,a0:Math.atan2(w[1]-c[1],w[0]-c[0]),snap:JSON.parse(JSON.stringify(it))}; }
+    else if(hit.part.slice(0,4)==='hed:'){ var pe=hit.part.split(':'); ANNOT.drag={mode:'bend', hole:+pe[1], seg:+pe[2]}; }
+    else if(hit.part.slice(0,3)==='ed:'){ ANNOT.drag={mode:'bend', hole:null, seg:parseInt(hit.part.slice(3),10)}; }
+    else if(hit.part.slice(0,3)==='hv:'){ var pp=hit.part.split(':'), hhi=+pp[1], hvi=+pp[2];
+      if(e.altKey){ var hole=it.holes[hhi]; if(hole.length>3) hole.splice(hvi,1); else it.holes.splice(hhi,1); if(!it.holes.length) delete it.holes; annotStore(); ANNOT.drag=null; }
+      else ANNOT.drag={mode:'hvertex', hi:hhi, vi:hvi}; }
     else if(hit.part.charAt(0)==='v'){ var vi=parseInt(hit.part.slice(1),10); if(e.altKey && it.pts.length>2){ it.pts.splice(vi,1); annotStore(); ANNOT.drag=null; } else ANNOT.drag={mode:'vertex',vi:vi}; }
     else if(hit.part==='rad'){ ANNOT.drag={mode:'rad'}; }
     else ANNOT.drag={mode:'move',w0:w,snap:JSON.parse(JSON.stringify(it))};
@@ -16408,6 +16423,8 @@ function annotMoveEv(e){ var w=_annXY(e); if(!w) return false;
     else if(it.t==='circle') it.r=Math.max(0.02,Math.hypot(w[0]-it.cx,w[1]-it.cz)); DIRTY=true; return true; }
   if(ANNOT.drag){ var s=annotSel(); if(!s) return false; var d=ANNOT.drag;
     if(d.mode==='vertex') s.pts[d.vi]=[w[0],w[1]];
+    else if(d.mode==='hvertex'){ if(s.holes&&s.holes[d.hi]) s.holes[d.hi][d.vi]=[w[0],w[1]]; }
+    else if(d.mode==='bend'){ var arr=(d.hole!=null)?(s.holes&&s.holes[d.hole]):s.pts; if(arr){ var a=arr[d.seg], b=arr[(d.seg+1)%arr.length], mxx=(a[0]+b[0])/2, mzz=(a[1]+b[1])/2, dxx=b[0]-a[0], dzz=b[1]-a[1], hh=Math.hypot(dxx,dzz)/2||1, un=[-dzz/(2*hh), dxx/(2*hh)], kk=Math.max(-4,Math.min(4,((w[0]-mxx)*un[0]+(w[1]-mzz)*un[1])/hh)); _annSetBulge(s,{hole:d.hole,seg:d.seg},kk); } }
     else if(d.mode==='rad') s.r=Math.max(0.02,Math.hypot(w[0]-s.cx,w[1]-s.cz));
     else if(d.mode==='move') _annMove(s,d.snap,w[0]-d.w0[0],w[1]-d.w0[1]);
     else if(d.mode==='rot') _annRot(s,d.snap,d.c,Math.atan2(w[1]-d.c[1],w[0]-d.c[0])-d.a0);
@@ -16416,9 +16433,17 @@ function annotMoveEv(e){ var w=_annXY(e); if(!w) return false;
 }
 function annotUpEv(){ if(ANNOT.draw && ANNOT.draw.drag){ var it=ANNOT.draw.item; var ok=(it.t==='circle')? it.r>0.03 : true; if(ok){ ANNOT.items.push(it); ANNOT.sel=ANNOT.items.length-1; } ANNOT.draw=null; ANNOT.tool='select'; annotStore(); annotBar(); DIRTY=true; return true; }
   if(ANNOT.drag){ ANNOT.drag=null; annotStore(); DIRTY=true; return true; } return false; }
-function _annFinishLine(){ var it=ANNOT.draw&&ANNOT.draw.item; if(it&&it.t==='line'){ it.pts.pop(); if(it.pts.length>=2){ ANNOT.items.push(it); ANNOT.sel=ANNOT.items.length-1; } } ANNOT.draw=null; ANNOT.tool='select'; annotStore(); annotBar(); }
+function _annFinishLine(){ var d=ANNOT.draw; if(d&&d.item.t==='line'){ var it=d.item; it.pts.pop();
+    if(d.holeFor!=null && it.pts.length>=3){ var host=ANNOT.items[d.holeFor]; if(host){ if(!host.holes)host.holes=[]; host.holes.push(it.pts); ANNOT.sel=d.holeFor; } }
+    else if(d.holeFor==null && it.pts.length>=2){ ANNOT.items.push(it); ANNOT.sel=ANNOT.items.length-1; } }
+  ANNOT.draw=null; ANNOT.tool='select'; annotStore(); annotBar(); }
 function annotDblEv(e){ if(ANNOT.draw && ANNOT.draw.item.t==='line'){ _annFinishLine(); DIRTY=true; return true; }
-  var m=_annM(e), hit=annotHit(m.x,m.y); if(!hit) return false; var it=ANNOT.items[hit.i]; ANNOT.sel=hit.i;
+  var m=_annM(e);
+  /* double-clic sur une arête de TROU (forme sélectionnée) : insère un sommet */
+  var sh=annotSel(); if(sh && sh.holes){ for(var hi=0;hi<sh.holes.length;hi++){ var hole=sh.holes[hi], bi=-1, bd=8;
+    for(var j=0;j<hole.length;j++){ var a=_annP(hole[j][0],hole[j][1]), b=_annP(hole[(j+1)%hole.length][0],hole[(j+1)%hole.length][1]); if(a&&b){ var dd=_segDist(m.x,m.y,a.x,a.y,b.x,b.y); if(dd<bd){ bd=dd; bi=j; } } }
+    if(bi>=0){ var wh=_annXY(e); hole.splice(bi+1,0,[wh[0],wh[1]]); annotStore(); DIRTY=true; return true; } } }
+  var hit=annotHit(m.x,m.y); if(!hit) return false; var it=ANNOT.items[hit.i]; ANNOT.sel=hit.i;
   if(it.t==='text'){ var ns=prompt('Texte :', it.s); if(ns!=null){ it.s=ns; annotStore(); } annotBar(); DIRTY=true; return true; }
   if(it.t==='line'){ var w=_annXY(e), bi=_annNearSeg(it,m.x,m.y); if(w&&bi>=0){ it.pts.splice(bi+1,0,[w[0],w[1]]); annotStore(); DIRTY=true; return true; } }
   return false;
@@ -16455,25 +16480,112 @@ function _annStyled(pts, ls, closed){ if(!pts||pts.length<2) return;
   if(ls==='wavy'){ _annPolyPath(_annWavePts(pts,closed,'sin'), false); return; }
   if(ls==='cloud'){ _annCloudPath(pts,closed); return; }
   _annPolyPath(pts,closed); }
+/* --- courbure des bords : chaque segment peut devenir un arc (bulge = flèche/demi-corde) --- */
+function _annArcSeg(a,b,k){ if(Math.abs(k)<1e-3) return [[a[0],a[1]],[b[0],b[1]]];
+  var mx=(a[0]+b[0])/2, mz=(a[1]+b[1])/2, dx=b[0]-a[0], dz=b[1]-a[1], h=Math.hypot(dx,dz)/2; if(h<1e-6) return [[a[0],a[1]],[b[0],b[1]]];
+  var un=[-dz/(2*h), dx/(2*h)], s=k*h, R=(h*h+s*s)/(2*Math.abs(s)), sg=(s>=0?1:-1);
+  var cx=mx-un[0]*sg*(R-Math.abs(s)), cz=mz-un[1]*sg*(R-Math.abs(s));
+  var a0=Math.atan2(a[1]-cz,a[0]-cx), a1=Math.atan2(b[1]-cz,b[0]-cx), da=a1-a0; while(da>Math.PI)da-=6.2831853; while(da<-Math.PI)da+=6.2831853;
+  var N=Math.max(4,Math.round(Math.abs(da)/0.25)), out=[]; for(var t=0;t<=N;t++){ var ang=a0+da*t/N; out.push([cx+R*Math.cos(ang), cz+R*Math.sin(ang)]); } return out; }
+function _annArced(pts, bulge, closed){ var n=pts.length, last=closed?n:n-1, out=[]; for(var i=0;i<last;i++){ var seg=_annArcSeg(pts[i], pts[(i+1)%n], bulge[i]||0); for(var j=0;j<seg.length-1;j++) out.push(seg[j]); } if(!closed) out.push([pts[n-1][0],pts[n-1][1]]); return out; }
+function _annEdgeApex(a,b,k){ var dx=b[0]-a[0], dz=b[1]-a[1]; return [(a[0]+b[0])/2 - dz*(k||0)/2, (a[1]+b[1])/2 + dx*(k||0)/2]; }
+function _annOutline(it){ if(it.t!=='line') return it.pts; if(it.bulge && it.bulge.some(function(k){return Math.abs(k||0)>1e-3;})) return _annArced(it.pts, it.bulge, !!it.closed); if(it.closed && it.round) return _annRoundPoly(it.pts, it.round||0); return it.pts; }
+function _annHoleOutline(it,hi){ var h=it.holes[hi], bg=it.holeBulge&&it.holeBulge[hi]; if(bg && bg.some(function(k){return Math.abs(k||0)>1e-3;})) return _annArced(h, bg, true); return h; }
+function _annHolesArced(it){ return it.holes? it.holes.map(function(h,hi){ return _annHoleOutline(it,hi); }) : null; }
+/* poignées de courbure : une par arête (contour + trous). key = 'ed:i' ou 'hed:hi:j'. */
+function _annBendTargets(it){ var out=[], i, j, hi;
+  if(it.t==='line'){ var n=it.pts.length, last=it.closed?n:n-1; for(i=0;i<last;i++){ var k=(it.bulge&&it.bulge[i])||0; out.push({key:'ed:'+i, p:_annEdgeApex(it.pts[i], it.pts[(i+1)%n], k)}); } }
+  if(it.holes){ for(hi=0;hi<it.holes.length;hi++){ var h=it.holes[hi]; for(j=0;j<h.length;j++){ var kk=(it.holeBulge&&it.holeBulge[hi]&&it.holeBulge[hi][j])||0; out.push({key:'hed:'+hi+':'+j, p:_annEdgeApex(h[j], h[(j+1)%h.length], kk)}); } } }
+  return out; }
+function _annBendHandles(it,cam,W,H){ var t=_annBendTargets(it); ctx.save(); ctx.strokeStyle='#5eb8ff'; ctx.fillStyle='#0b1220'; ctx.lineWidth=1.5; t.forEach(function(o){ var p=proj(cam,[o.p[0],0,o.p[1]],W,H); if(p){ ctx.beginPath(); ctx.arc(p.x,p.y,4,0,6.2831853); ctx.fill(); ctx.stroke(); } }); ctx.restore(); }
+/* segment (contour ou trou) le plus proche du curseur — pour ajouter un point / courber. */
+function _annNearSegAny(it,mx,my){ var best=null,bd=10;
+  function scan(arr,hole){ for(var j=0;j<arr.length;j++){ var a=_annP(arr[j][0],arr[j][1]), b=_annP(arr[(j+1)%arr.length][0],arr[(j+1)%arr.length][1]); if(a&&b){ var d=_segDist(mx,my,a.x,a.y,b.x,b.y); if(d<bd){ bd=d; best={hole:hole, seg:j}; } } } }
+  if(it.t==='line'){ var open=!it.closed; var arr=it.pts; for(var j=0;j<arr.length-(open?1:0);j++){ var a=_annP(arr[j][0],arr[j][1]), b=_annP(arr[(j+1)%arr.length][0],arr[(j+1)%arr.length][1]); if(a&&b){ var d=_segDist(mx,my,a.x,a.y,b.x,b.y); if(d<bd){ bd=d; best={hole:null,seg:j}; } } } }
+  if(it.holes) for(var hi=0;hi<it.holes.length;hi++) scan(it.holes[hi],hi);
+  return best; }
+function _annSetBulge(it,tg,k){ if(tg.hole!=null){ if(!it.holeBulge)it.holeBulge=[]; if(!it.holeBulge[tg.hole])it.holeBulge[tg.hole]=[]; it.holeBulge[tg.hole][tg.seg]=k; } else { if(!it.bulge)it.bulge=[]; it.bulge[tg.seg]=k; } }
+function _annInsertPt(it,tg,w){ if(tg.hole!=null){ it.holes[tg.hole].splice(tg.seg+1,0,[w[0],w[1]]); if(it.holeBulge&&it.holeBulge[tg.hole]) it.holeBulge[tg.hole].splice(tg.seg+1,0,0); } else { it.pts.splice(tg.seg+1,0,[w[0],w[1]]); if(it.bulge) it.bulge.splice(tg.seg+1,0,0); } }
+/* --- arrondi des angles (repère monde) : bézier quadratique à chaque sommet --- */
+function _annRoundPoly(pts, r){ if(!(r>0)||pts.length<3) return pts; var n=pts.length, out=[];
+  for(var i=0;i<n;i++){ var p0=pts[(i-1+n)%n], p1=pts[i], p2=pts[(i+1)%n];
+    var v1x=p0[0]-p1[0], v1z=p0[1]-p1[1], v2x=p2[0]-p1[0], v2z=p2[1]-p1[1];
+    var L1=Math.hypot(v1x,v1z)||1, L2=Math.hypot(v2x,v2z)||1, rr=Math.min(r,L1/2,L2/2);
+    var ax=p1[0]+v1x/L1*rr, az=p1[1]+v1z/L1*rr, bx=p1[0]+v2x/L2*rr, bz=p1[1]+v2z/L2*rr, K=6;
+    for(var k=0;k<=K;k++){ var t=k/K, u=1-t; out.push([u*u*ax+2*u*t*p1[0]+t*t*bx, u*u*az+2*u*t*p1[1]+t*t*bz]); } }
+  return out; }
+/* --- remplissage par hachure d'une forme fermée (réutilise le moteur Motif 2D) --- */
+var ANNOT_HF=[['none','∅'],['carrelage','▦'],['parquet','▤'],['lignes','⁄⁄'],['gris','▒']];
+function _annHFPreset(pat, col){ if(!pat||pat==='none') return null;
+  if(pat==='gris') return {pat:'gris', sub:'50', col:col};
+  if(pat==='parquet') return {pat:'parquet', sub:'droit', sp:12, len:90, ang:0, col:col, lw:1};
+  if(pat==='carrelage') return {pat:'carrelage', sub:'', sp:30, sp2:0, ang:0, col:col, lw:1};
+  return {pat:'lignes', sub:'simple', sp:18, ang:45, col:col, lw:1}; }
+function _annHatchFill(it, wp, cam, W, H){ var hf=it.hf; if(!hf) return; var holes=_annHolesArced(it);
+  ctx.save(); ctx.strokeStyle=hf.col||it.col; ctx.fillStyle=hf.col||it.col; ctx.lineWidth=hf.lw||1; ctx.globalAlpha=(hf.op!=null?hf.op:0.85);
+  if(hf.pat==='gris'){ var okp=true; function pth(pl){ var pr=pl.map(function(p){return proj(cam,[p[0],0,p[1]],W,H);}); pr.forEach(function(p){if(!p)okp=false;}); if(!okp)return; ctx.moveTo(pr[0].x,pr[0].y); for(var i=1;i<pr.length;i++) ctx.lineTo(pr[i].x,pr[i].y); ctx.closePath(); }
+    ctx.beginPath(); pth(wp); if(holes) holes.forEach(function(h){ if(h&&h.length>2) pth(h); });
+    if(okp){ var pat=_grisTile(parseInt(hf.sub,10)||50, hf.col||it.col); if(pat){ ctx.fillStyle=pat; ctx.fill('evenodd'); } } }
+  else { var r=hatchSegs(wp, hf, holes); function dl(list,dash){ ctx.setLineDash(dash?[3,4]:[]); ctx.beginPath(); for(var i=0;i<list.length;i++){ var s=list[i], a=proj(cam,[s[0][0],0,s[0][1]],W,H), b=proj(cam,[s[1][0],0,s[1][1]],W,H); if(a&&b){ ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); } } ctx.stroke(); } dl(r.solid,false); dl(r.dash,true); ctx.setLineDash([]); }
+  ctx.restore(); }
 function _annDrawItem(it,cam,W,H,sel){
   ctx.save(); ctx.strokeStyle=it.col||'#e5352b'; ctx.fillStyle=it.col||'#e5352b'; ctx.lineWidth=(it.lw||2); ctx.lineJoin='round'; ctx.lineCap='round'; ctx.setLineDash([]);
-  if(it.t==='line'){ var pr=it.pts.map(function(p){return proj(cam,[p[0],0,p[1]],W,H);}); var okp=true; pr.forEach(function(p){ if(!p) okp=false; }); if(!okp){ ctx.restore(); return; }
+  if(it.t==='line'){ var wp = _annOutline(it);
+    var pr=wp.map(function(p){return proj(cam,[p[0],0,p[1]],W,H);}); var okp=true; pr.forEach(function(p){ if(!p) okp=false; }); if(!okp){ ctx.restore(); return; }
+    if(it.closed && it.hf) _annHatchFill(it, wp, cam, W, H);
     _annStyled(pr, it.ls||'plain', !!it.closed);
     if(!it.closed){ if(it.arr&1) _annArrow(pr[pr.length-2],pr[pr.length-1]); if(it.arr&2) _annArrow(pr[1],pr[0]); }
-    if(sel){ for(var v=0;v<pr.length;v++) _annHandle(pr[v].x,pr[v].y); }
+    if(it.holes){ ctx.strokeStyle=it.col; ctx.lineWidth=(it.lw||2); it.holes.forEach(function(h,hi){ var oh=_annHoleOutline(it,hi), hp=oh.map(function(p){return proj(cam,[p[0],0,p[1]],W,H);}); if(hp.every(function(p){return p;})) _annPolyPath(hp,true); }); }
+    if(sel){ for(var v=0;v<it.pts.length;v++){ var hpn=proj(cam,[it.pts[v][0],0,it.pts[v][1]],W,H); if(hpn) _annHandle(hpn.x,hpn.y); } _annBendHandles(it,cam,W,H); }
   } else if(it.t==='circle'){ var c=proj(cam,[it.cx,0,it.cz],W,H), e=proj(cam,[it.cx+it.r,0,it.cz],W,H); if(!c||!e){ ctx.restore(); return; }
-    var Ns=48, sp=[]; for(var q=0;q<=Ns;q++){ var aa=q/Ns*6.2831853, sp2=proj(cam,[it.cx+it.r*Math.cos(aa),0,it.cz+it.r*Math.sin(aa)],W,H); if(sp2) sp.push(sp2); }
-    _annStyled(sp, it.ls||'plain', true); if(sel){ _annHandle(e.x,e.y); }
+    var Ns=48, sp=[], wpc=[]; for(var q=0;q<=Ns;q++){ var aa=q/Ns*6.2831853, wx=it.cx+it.r*Math.cos(aa), wz=it.cz+it.r*Math.sin(aa); wpc.push([wx,wz]); var sp2=proj(cam,[wx,0,wz],W,H); if(sp2) sp.push(sp2); }
+    if(it.hf) _annHatchFill(it, wpc, cam, W, H);
+    _annStyled(sp, it.ls||'plain', true);
+    if(it.holes){ ctx.strokeStyle=it.col; ctx.lineWidth=(it.lw||2); it.holes.forEach(function(h,hi){ var oh=_annHoleOutline(it,hi), hp=oh.map(function(p){return proj(cam,[p[0],0,p[1]],W,H);}); if(hp.every(function(p){return p;})) _annPolyPath(hp,true); }); }
+    if(sel){ _annHandle(e.x,e.y); _annBendHandles(it,cam,W,H); }
   } else if(it.t==='text'){ var t=proj(cam,[it.x,0,it.z],W,H); if(!t){ ctx.restore(); return; } ctx.save(); ctx.translate(t.x,t.y); ctx.rotate(it.ang||0); ctx.font=(it.size||18)+'px '+(it.font||'system-ui,sans-serif'); ctx.textBaseline='alphabetic'; ctx.fillText(it.s||'',0,0); ctx.restore();
     if(sel){ ctx.strokeStyle='#ff8a3d'; ctx.lineWidth=1; ctx.strokeRect(t.x-3,t.y-(it.size||18),(it.s||'').length*(it.size||18)*0.55+6,(it.size||18)+5); } }
+  if(sel && it.holes){ it.holes.forEach(function(h){ h.forEach(function(p){ var hp=proj(cam,[p[0],0,p[1]],W,H); if(hp) _annHandle(hp.x,hp.y); }); }); }   /* points chauds des trous */
   if(sel && it.t!=='circle'){ var cs=proj(cam,(function(){var cc=_annCen(it);return [cc[0],0,cc[1]];})(),W,H); if(cs){ ctx.strokeStyle='#ff8a3d'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(cs.x,cs.y); ctx.lineTo(cs.x,cs.y-30); ctx.stroke(); ctx.fillStyle='#ff8a3d'; ctx.beginPath(); ctx.arc(cs.x,cs.y-30,5,0,6.2831853); ctx.fill(); } }
   ctx.restore();
 }
-function drawAnnots(cam,W,H){ if(Math.abs(cam.fwd[1])<0.95) return; for(var i=0;i<ANNOT.items.length;i++) _annDrawItem(ANNOT.items[i],cam,W,H,i===ANNOT.sel); if(ANNOT.draw) _annDrawItem(ANNOT.draw.item,cam,W,H,false); }
+function drawAnnots(cam,W,H){ if(Math.abs(cam.fwd[1])<0.95) return; for(var i=0;i<ANNOT.items.length;i++){ if(!annotVisible(ANNOT.items[i])) continue; _annDrawItem(ANNOT.items[i],cam,W,H,i===ANNOT.sel); } if(ANNOT.draw) _annDrawItem(ANNOT.draw.item,cam,W,H,false); }
+/* popup à cases à cocher : sur quels étages l'élément s'affiche. */
+function _annFloorPopup(s, anchor){
+  var old=document.getElementById('annotFloorPop'); if(old){ old.remove(); return; }
+  var vp=document.getElementById('vp'); if(!vp || typeof planStoreyList!=='function') return;
+  var lst=planStoreyList();
+  var pop=document.createElement('div'); pop.id='annotFloorPop'; pop.style.cssText='position:absolute;z-index:60;background:rgba(22,26,34,0.98);border:1px solid #3a4653;border-radius:6px;padding:6px 9px;font-family:system-ui,sans-serif;font-size:12px;color:#cdd6e0;max-height:240px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.55);';
+  function curArr(){ if(s.floor==='all') return lst.slice(); if(Array.isArray(s.floor)) return s.floor.slice(); if(typeof s.floor==='number') return [s.floor]; return [annotFloor()]; }
+  function setFrom(arr){ arr=arr.filter(function(v,i){return arr.indexOf(v)===i;}); s.floor = (arr.length>=lst.length)?'all':(arr.length?arr:[annotFloor()]); annotStore(); DIRTY=true; }
+  function row(label, checked, fn){ var r=document.createElement('label'); r.style.cssText='display:flex;align-items:center;gap:7px;padding:3px 2px;cursor:pointer;white-space:nowrap;'; var cb=document.createElement('input'); cb.type='checkbox'; cb.checked=checked; cb.onchange=function(){ fn(cb.checked); }; r.appendChild(cb); var sp=document.createElement('span'); sp.textContent=label; r.appendChild(sp); pop.appendChild(r); }
+  row('Tous les étages', s.floor==='all', function(c){ if(c) s.floor='all'; else s.floor=[annotFloor()]; annotStore(); DIRTY=true; pop.remove(); annotBar(); });
+  var sepd=document.createElement('div'); sepd.style.cssText='height:1px;background:#3a4653;margin:4px 0;'; pop.appendChild(sepd);
+  lst.forEach(function(idx){ var a=curArr(); row((typeof planLabel==='function'?planLabel(idx):('niv '+idx)), a.indexOf(idx)>=0, function(c){ var arr=curArr(); var p=arr.indexOf(idx); if(c){ if(p<0) arr.push(idx); } else { if(p>=0) arr.splice(p,1); } setFrom(arr); if(anchor){ anchor.textContent='▤ '+(s.floor==='all'?'Tous':(Array.isArray(s.floor)?s.floor.length+' ét.':'')); } }); });
+  vp.appendChild(pop);
+  var ar=anchor.getBoundingClientRect(), vr=vp.getBoundingClientRect();
+  pop.style.left=Math.max(4,ar.left-vr.left)+'px'; pop.style.bottom=(vr.bottom-ar.top+5)+'px';
+  setTimeout(function(){ document.addEventListener('mousedown', function h(e){ if(!pop.contains(e.target) && e.target!==anchor){ pop.remove(); document.removeEventListener('mousedown',h,true); } }, true); },0);
+}
+/* menu contextuel (clic droit) : ajouter/supprimer un point, courber/redresser le bord. */
+function _annCtxMenu(e){ var old=document.getElementById('annotCtx'); if(old) old.remove();
+  var m=_annM(e), hit=annotHit(m.x,m.y); if(hit){ ANNOT.sel=hit.i; annotBar(); }
+  var s=annotSel(); if(!s) return; var w=_annXY(e), tg=_annNearSegAny(s,m.x,m.y), items=[];
+  if(tg && w) items.push(['➕ Ajouter un point', function(){ _annInsertPt(s,tg,w); }]);
+  if(hit && hit.part && hit.part.charAt(0)==='v'){ var vi=parseInt(hit.part.slice(1),10); items.push(['🗑 Supprimer le point', function(){ if(s.pts.length>2){ s.pts.splice(vi,1); if(s.bulge)s.bulge.splice(vi,1); } }]); }
+  else if(hit && hit.part && hit.part.slice(0,3)==='hv:'){ var pp=hit.part.split(':'), hi=+pp[1], vi2=+pp[2]; items.push(['🗑 Supprimer le point', function(){ var hole=s.holes[hi]; if(hole.length>3){ hole.splice(vi2,1); if(s.holeBulge&&s.holeBulge[hi])s.holeBulge[hi].splice(vi2,1); } else { s.holes.splice(hi,1); } }]); }
+  if(tg){ items.push(['◡ Courber le bord', function(){ _annSetBulge(s,tg,0.4); }]); items.push(['— Rendre droit', function(){ _annSetBulge(s,tg,0); }]); }
+  if(!items.length) return;
+  var menu=document.createElement('div'); menu.id='annotCtx'; menu.style.cssText='position:fixed;z-index:200;background:rgba(22,26,34,0.98);border:1px solid #3a4653;border-radius:6px;padding:4px;font-family:system-ui,sans-serif;font-size:12px;color:#cdd6e0;box-shadow:0 8px 24px rgba(0,0,0,.5);';
+  items.forEach(function(o){ var b=document.createElement('div'); b.textContent=o[0]; b.style.cssText='padding:5px 12px;cursor:pointer;border-radius:4px;white-space:nowrap;'; b.onmouseenter=function(){b.style.background='#2c3542';}; b.onmouseleave=function(){b.style.background='';}; b.onclick=function(){ o[1](); annotStore(); DIRTY=true; menu.remove(); }; menu.appendChild(b); });
+  document.body.appendChild(menu); menu.style.left=e.clientX+'px'; menu.style.top=e.clientY+'px';
+  setTimeout(function(){ document.addEventListener('mousedown', function h(ev){ if(!menu.contains(ev.target)){ menu.remove(); document.removeEventListener('mousedown',h,true); } }, true); },0);
+}
 function annotBar(){ var vp=document.getElementById('vp'); if(!vp) return; var bar=document.getElementById('annotBar');
   if(!annotActive()){ if(bar) bar.style.display='none'; return; }
   if(!bar){ bar=document.createElement('div'); bar.id='annotBar'; bar.style.cssText='position:absolute;left:50%;bottom:78px;transform:translateX(-50%);z-index:40;display:flex;gap:4px;align-items:center;flex-wrap:nowrap;justify-content:flex-start;background:rgba(22,26,34,0.95);border:1px solid #33404d;border-radius:7px;padding:3px 6px;font-family:system-ui,sans-serif;'; vp.appendChild(bar); }
   bar.style.display='flex'; bar.innerHTML=''; var s=annotSel();
+  if(s && !annotVisible(s)){ ANNOT.sel=-1; s=null; }   /* la sélection quitte l'étage affiché */
   /* poignée de déplacement de la palette */
   var grip=document.createElement('span'); grip.textContent='⠿'; grip.title='Déplacer la palette'; grip.style.cssText='cursor:move;color:#8a93a0;font-size:15px;padding:0 3px;user-select:none;'; bar.appendChild(grip);
   grip.onmousedown=function(ev){ ev.preventDefault(); ev.stopPropagation(); var r=bar.getBoundingClientRect(), vpr=vp.getBoundingClientRect(), ox=ev.clientX-r.left, oy=ev.clientY-r.top;
@@ -16487,6 +16599,13 @@ function annotBar(){ var vp=document.getElementById('vp'); if(!vp) return; var b
     var lss=document.createElement('select'); lss.title='Type de trait'; lss.style.cssText='font-size:13px;padding:3px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;';
     ANNOT_LS.forEach(function(o){ var op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; lss.appendChild(op); });
     lss.value=(s&&s.ls)||ANNOT.ls; lss.onchange=function(){ ANNOT.ls=lss.value; if(s&&(s.t==='line'||s.t==='circle')){ s.ls=lss.value; annotStore(); } DIRTY=true; }; bar.appendChild(lss); }
+  var closedSel = s && ((s.t==='line'&&s.closed)||s.t==='circle');
+  if(closedSel || ANNOT.tool==='rect' || ANNOT.tool==='circle'){
+    var hsel=document.createElement('select'); hsel.title='Remplissage (hachure)'; hsel.style.cssText='font-size:13px;padding:3px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;';
+    ANNOT_HF.forEach(function(o){ var op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; hsel.appendChild(op); });
+    hsel.value=(s&&s.hf)?s.hf.pat:(ANNOT.hfPat||'none'); hsel.onchange=function(){ ANNOT.hfPat=hsel.value; if(closedSel){ s.hf=_annHFPreset(hsel.value,s.col); annotStore(); } DIRTY=true; annotBar(); }; bar.appendChild(hsel); }
+  if(s && s.t==='line' && s.closed){ var rd=document.createElement('input'); rd.type='number'; rd.min=0; rd.max=500; rd.step=5; rd.title='Arrondi des angles (cm)'; rd.value=Math.round((s.round||0)*100); rd.style.cssText='width:50px;font-size:12px;padding:3px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;'; rd.oninput=function(){ s.round=Math.max(0,parseFloat(rd.value)||0)/100; annotStore(); DIRTY=true; }; bar.appendChild(rd); }
+  if(closedSel){ var hob=document.createElement('button'); hob.textContent='⊘'; hob.title='Percer un trou (dessine à l’intérieur, double-clic/Entrée pour finir)'; hob.style.cssText='font-size:13px;padding:4px 7px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(ANNOT.tool==='hole'?'#ff8a3d':'#232a34')+';color:'+(ANNOT.tool==='hole'?'#141821':'#cdd6e0')+';'; hob.onclick=function(){ ANNOT.tool=(ANNOT.tool==='hole'?'select':'hole'); annotBar(); DIRTY=true; }; bar.appendChild(hob); }
   var ci=document.createElement('input'); ci.type='color'; ci.value=(s&&s.col)||ANNOT.col; ci.title='Couleur'; ci.style.cssText='width:28px;height:24px;border:1px solid #3a4653;border-radius:4px;background:none;cursor:pointer;'; ci.oninput=function(){ ANNOT.col=ci.value; if(s){ s.col=ci.value; annotStore(); } DIRTY=true; }; bar.appendChild(ci);
   var lw=document.createElement('input'); lw.type='number'; lw.min=1; lw.max=10; lw.step=0.5; lw.value=(s&&s.lw)||ANNOT.lw; lw.title='Épaisseur du trait'; lw.style.cssText='width:46px;font-size:12px;padding:3px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;'; lw.oninput=function(){ var v=parseFloat(lw.value)||2; ANNOT.lw=v; if(s&&s.lw!=null){ s.lw=v; annotStore(); } DIRTY=true; }; bar.appendChild(lw);
   if((s&&s.t==='line')||ANNOT.tool==='line'){ var ar=document.createElement('select'); ar.title='Flèches'; ar.style.cssText='font-size:13px;padding:3px;background:#141821;color:#cdd6e0;border:1px solid #3a4653;border-radius:4px;'; [['0','—'],['1','→'],['2','←'],['3','↔']].forEach(function(o){ var op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; ar.appendChild(op); }); ar.value=String((s&&s.t==='line'?s.arr:ANNOT.arr)||0); ar.onchange=function(){ var v=parseInt(ar.value,10); ANNOT.arr=v; if(s&&s.t==='line'){ s.arr=v; annotStore(); } DIRTY=true; }; bar.appendChild(ar); }
@@ -16498,6 +16617,14 @@ function annotBar(){ var vp=document.getElementById('vp'); if(!vp) return; var b
     if(!has){ var oc=document.createElement('option'); oc.value=cur; oc.textContent=(cur.replace(/["']/g,'').split(',')[0]); fo.insertBefore(oc,fo.firstChild); }
     fo.value=cur; fo.onchange=function(){ ANNOT.font=fo.value; if(s&&s.t==='text'){ s.font=fo.value; annotStore(); } DIRTY=true; }; bar.appendChild(fo);
     var lf=document.createElement('button'); lf.textContent='🔤'; lf.title='Charger les polices installées sur le système'; lf.style.cssText='font-size:12px;padding:4px 6px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:'+(ANNOT_SYSFONTS?'#ff8a3d':'#232a34')+';color:'+(ANNOT_SYSFONTS?'#141821':'#cdd6e0')+';'; lf.onclick=function(){ annotLoadFonts(); }; bar.appendChild(lf); }
+  if(s && MODE==='immeuble' && typeof planStoreyList==='function'){
+    var sep2=document.createElement('span'); sep2.style.cssText='width:1px;height:20px;background:#3a4653;'; bar.appendChild(sep2);
+    var fb=document.createElement('button'); var _lbl=(s.floor==='all'||s.floor==null)?'Tous':(Array.isArray(s.floor)?(s.floor.length+' ét.'):(typeof planLabel==='function'?planLabel(s.floor):('niv '+s.floor)));
+    fb.textContent='▤ '+_lbl; fb.title='Cocher les étages où afficher'; fb.style.cssText='font-size:12px;padding:4px 8px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:#232a34;color:#cdd6e0;';
+    fb.onclick=function(ev){ ev.stopPropagation(); _annFloorPopup(s, fb); }; bar.appendChild(fb);
+    var cu=document.createElement('button'); cu.textContent='⧉↑'; cu.title='Copier vers l’étage au-dessus'; cu.style.cssText='font-size:12px;padding:4px 6px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:#232a34;color:#cdd6e0;';
+    cu.onclick=function(){ var lst=planStoreyList(), mx=Math.max.apply(null,lst); var base=(s.floor==='all'||s.floor==null)?annotFloor():s.floor; var nf=Math.min(mx, base+1); if(nf===base) return; var cp=JSON.parse(JSON.stringify(s)); cp.floor=nf; ANNOT.items.push(cp); ANNOT.sel=ANNOT.items.length-1; PLAN_STOREY=nf; annotStore(); if(typeof buildImmeubleUI==='function') buildImmeubleUI(); annotBar(); DIRTY=true; }; bar.appendChild(cu);
+  }
   if(s){ var db=document.createElement('button'); db.textContent='🗑'; db.title='Supprimer'; db.style.cssText='font-size:12px;padding:4px 7px;border-radius:5px;border:1px solid #3a4653;cursor:pointer;background:#232a34;color:#cdd6e0;'; db.onclick=function(){ ANNOT.items.splice(ANNOT.sel,1); ANNOT.sel=-1; annotStore(); annotBar(); DIRTY=true; }; bar.appendChild(db); }
   bar.title='Ligne : clique les points, double-clic/Entrée pour finir · Sélection : glisse les poignées · Alt+clic sur un point le retire · double-clic sur un segment ajoute un point · poignée orange = rotation · Suppr efface';
 }
@@ -16507,6 +16634,7 @@ function annotBar(){ var vp=document.getElementById('vp'); if(!vp) return; var b
   cv.addEventListener('mousemove', function(e){ if(annotActive() && (ANNOT.draw||ANNOT.drag)){ if(annotMoveEv(e)) e.stopImmediatePropagation(); } }, true);
   window.addEventListener('mouseup', function(e){ if(ANNOT.draw||ANNOT.drag){ if(annotUpEv()) e.stopImmediatePropagation(); } }, true);
   cv.addEventListener('dblclick', function(e){ if(annotActive() && annotDblEv(e)){ e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  cv.addEventListener('contextmenu', function(e){ if(annotActive()){ var m=_annM(e); if(annotHit(m.x,m.y)||annotSel()){ e.preventDefault(); e.stopImmediatePropagation(); _annCtxMenu(e); } } }, true);
   document.addEventListener('keydown', annotKeyEv, true);
 })();
 /* drawObjArea() : vignette de surface pour un objet mono-dalle (dalle/hangar/piscine). */
