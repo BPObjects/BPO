@@ -3549,6 +3549,10 @@ function lenUnit(){
   if(mu==='m')  return {u:'m',  k:0.01, dec:3};
   return {u:'cm', k:1, dec:0};
 }
+/* T() : traduction d'une chaîne dessinée au CANVAS (hors portée de translateDOM). */
+function T(fr){ if(typeof LANG==='undefined'||LANG==='fr'||!fr) return fr;
+  var d=(typeof I18N!=='undefined'&&I18N[LANG])||null; if(!d) return fr;
+  var v=d[(''+fr).replace(/’/g,"'")]; return (v!=null)?v:fr; }
 /* surface : m² (métrique) ou ft² (impérial) */
 function fmtArea(m2){
   if(m2==null||isNaN(m2)) m2=0;
@@ -3561,7 +3565,7 @@ var OBJ_AREA=0, OBJ_AREA_X=0, OBJ_AREA_Z=0, OBJ_AREA_Y=0, OBJ_AREA_MODE=null;
 function setObjArea(a,x,z,y){ OBJ_AREA=a||0; OBJ_AREA_X=x||0; OBJ_AREA_Z=z||0; OBJ_AREA_Y=(y==null?0:y); OBJ_AREA_MODE=(typeof MODE!=='undefined')?MODE:null; }
 /* Immeuble : surface de plancher cumulée (RDC + étages, hors toiture et sous-sols). */
 var IMM_FLOOR_TOTAL=0, IMM_FLOOR_N=0;
-function immFloorStr(){ return fmtArea(IMM_FLOOR_TOTAL||0)+' — '+(IMM_FLOOR_N||0)+' plancher'+((IMM_FLOOR_N||0)>1?'s':''); }
+function immFloorStr(){ return fmtArea(IMM_FLOOR_TOTAL||0); }
 /* volume : eau (litres/gallons) ou béton (m³/yd³) selon le système */
 function fmtVol(m3, kind){
   if(m3==null||isNaN(m3)) m3=0;
@@ -6872,8 +6876,8 @@ function buildPiscineUI(){
         : []
     )},
     {title:'Métrés', fields:[
-      {type:'note',text:'Volume d’eau ≈ <b id="piscineVolTxt">'+piscineVolStr()+'</b> — d’après l’emprise et le profil de fond, hors escalier/banquette.'},
-      {type:'note',text:'Béton structure ≈ <b id="piscineBetonTxt">'+piscineBetonStr()+'</b> — radier + parois (hors margelle, plage, goulotte).'}
+      {type:'note',text:'<span>Volume d’eau</span> ≈ <b id="piscineVolTxt">'+piscineVolStr()+'</b> <span>— d’après l’emprise et le profil de fond, hors escalier/banquette.</span>'},
+      {type:'note',text:'<span>Béton structure</span> ≈ <b id="piscineBetonTxt">'+piscineBetonStr()+'</b> <span>— radier + parois (hors margelle, plage, goulotte).</span>'}
     ]}
   ];
   if(PPISCINE.shape==='libre') groups[0].fields.push({type:'verts',key:'verts'});
@@ -6894,6 +6898,7 @@ function buildVeranda(){
   if(!poly || poly.length<3) poly=outlinePoly('rect',A,B);
   if(sh==='libre'){ CUR_POLY=poly; POLY_TARGET=PVERANDA; poly=arcCurve(poly, PVERANDA); }
   var ccw=polyArea(poly)>=0?1:-1, n=poly.length;
+  (function(){ var c=_polyCen(poly); setObjArea(Math.abs(polyArea(poly)), c[0], c[1], 0); })();   /* surface au sol (vignette) */
   var soub=PVERANDA.soubOn?Math.max(0.1,PVERANDA.soub/100):0;
   var fT=Math.max(0.03,(PVERANDA.fThick||7)/100);
   var glass=VER_GLASS.filter(function(g){return g.id===PVERANDA.glass;})[0]||VER_GLASS[0];
@@ -10495,6 +10500,8 @@ function buildRoute(){
   var P=pr.P, segCol=pr.col, segTex=pr.tex||[], n=cl.n, thick=PROUTE.thick/100, i, k;
   var minY=1e9; P.forEach(function(p){ if(p[1]<minY)minY=p[1]; });
   var yBot=minY-thick, leftO=P[0][0], rightO=P[P.length-1][0], conc=fcol('rbeton',_hexRGB(PROUTE.colConc));
+  (function(){ var len=(cl.S&&cl.S.length)?cl.S[cl.S.length-1]:0, mid=cl.pts[Math.floor(n/2)]||[0,0];
+    setObjArea((rightO-leftO)*len, mid[0], mid[1], 0.12); })();   /* surface revêtue (vignette) */
   function W(i,o,y){ var rp=cl.rp[i], c=cl.pts[i], oo=o*(cl.sc?cl.sc[i]:1); return [ c[0]+rp[0]*oo, cl.baseY[i]+y, c[1]+rp[1]*oo ]; }
   function quad(A,B,C,D,col){ var ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2], vx=D[0]-A[0],vy=D[1]-A[1],vz=D[2]-A[2];
     var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx, L=Math.hypot(nx,ny,nz)||1; face([A,B,C,D],[nx/L,ny/L,nz/L],col); }
@@ -10827,6 +10834,7 @@ function buildParking(){
   for(_q=1;_q<=_st;_q++) _os.push((a+dR)*_q/_st);
   _os.forEach(function(o){ P.push([o, roadY(o)]); });
   var leftO=P[0][0], rightO=P[P.length-1][0];
+  (function(){ var mid=cl.pts[Math.floor(n/2)]||[0,0]; setObjArea((rightO-leftO)*Stot, mid[0], mid[1], 0.12); })();   /* surface revêtue (vignette) */
 
   /* Bride l'offset pour qu'il ne franchisse pas le centre de courbure local. */
   var MARGIN=0.15, clamped=false;
@@ -16265,7 +16273,7 @@ function drawImmAreas(cam,W,H){
     var poly=sl.poly; if(!poly||poly.length<3) return;
     var ar=Math.abs(polyArea(poly)); (sl.holes||[]).forEach(function(h){ if(h&&h.length>2) ar-=Math.abs(polyArea(h)); });
     if(ar<=0.01) return;
-    var title=(sl.st===0)?'RDC':(sl.st>=N?'Toiture':'Étage '+sl.st);
+    var title=(sl.st===0)?T('RDC'):(sl.st>=N?T('Toiture'):T('Étage')+' '+sl.st);
     byst[sl.st]={st:sl.st, title:title, area:fmtArea(ar)};   /* 1 ligne par niveau */
   });
   var rows=Object.keys(byst).map(function(k){return byst[k];}); if(!rows.length) return;
@@ -16274,11 +16282,12 @@ function drawImmAreas(cam,W,H){
   var padX=9, rowH=19, headH=20, gap=16;
   ctx.font='11px system-ui,sans-serif';
   var tw=0, aw=0; rows.forEach(function(r){ tw=Math.max(tw,ctx.measureText(r.title).width); aw=Math.max(aw,ctx.measureText(r.area).width); });
-  ctx.font='bold 10px system-ui,sans-serif'; var hw=ctx.measureText('SURFACES DE PLANCHER').width;
+  var head=T('Surfaces de plancher').toUpperCase();
+  ctx.font='bold 10px system-ui,sans-serif'; var hw=ctx.measureText(head).width;
   var bw=Math.max(tw+gap+aw, hw)+padX*2, bh=headH+rows.length*rowH+6, x=W-bw-10, y=62;
   ctx.fillStyle='rgba(18,22,30,0.85)'; ctx.fillRect(x,y,bw,bh);
   ctx.strokeStyle='rgba(255,138,61,0.9)'; ctx.lineWidth=1; ctx.strokeRect(x+0.5,y+0.5,bw-1,bh-1);
-  ctx.fillStyle='#ffb877'; ctx.textAlign='left'; ctx.font='bold 10px system-ui,sans-serif'; ctx.fillText('SURFACES DE PLANCHER', x+padX, y+headH/2+2);
+  ctx.fillStyle='#ffb877'; ctx.textAlign='left'; ctx.font='bold 10px system-ui,sans-serif'; ctx.fillText(head, x+padX, y+headH/2+2);
   rows.forEach(function(r,i){ var ry=y+headH+rowH*i+rowH/2;
     ctx.font='11px system-ui,sans-serif'; ctx.fillStyle='#bcd2e8'; ctx.textAlign='left'; ctx.fillText(r.title, x+padX, ry);
     ctx.fillStyle='#ffd9ad'; ctx.textAlign='right'; ctx.fillText(r.area, x+bw-padX, ry);
@@ -17582,8 +17591,8 @@ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.innerHT
 
   group('Métrés');
   var info=document.createElement('div'); info.className='wall-total';
-  info.innerHTML='Hauteur totale <b>'+fmtLen(DIMS.h)+'</b> · '+PIM.nFloors+' niveaux<br>'+
-    'Surface de plancher ≈ <b id="immFloorTxt">'+immFloorStr()+'</b>';
+  info.innerHTML='<span>Hauteur totale</span> <b>'+fmtLen(DIMS.h)+'</b> · <b>'+PIM.nFloors+'</b> <span>niveaux</span><br>'+
+    '<span>Surface de plancher</span> ≈ <b id="immFloorTxt">'+immFloorStr()+'</b> · <b>'+(IMM_FLOOR_N||PIM.nFloors)+'</b> <span>planchers</span>';
   target.appendChild(info);
 }
 
@@ -19768,7 +19777,7 @@ function buildFinishPanel(){
         var cell=document.createElement('div');
         cell.style.background=r.h; cell.title=r.c;
         if(current[0]===rgb[0]&&current[1]===rgb[1]&&current[2]===rgb[2]) cell.className='on';
-        cell.onclick=function(){ FINISH[key]=rgb; FINISH_SET[key]=true; build(); buildFinishPanel(); };
+        cell.onclick=function(){ FINISH[key]=rgb; FINISH_SET[key]=true; FINISH_TEX[key]=null; build(); buildFinishPanel(); };   /* RAL = teinte unie : retire la texture (ex. mosaïque native du bassin) */
         grid.appendChild(cell);
       });
       gridHost.appendChild(grid);
@@ -19784,7 +19793,7 @@ function buildFinishPanel(){
     pickLbl.textContent='Couleur libre'; host.appendChild(pickLbl);
     var ci=document.createElement('input'); ci.type='color'; ci.className='free-pick';
     ci.value='#'+current.map(function(x){var s=x.toString(16);return s.length<2?'0'+s:s;}).join('');
-    ci.oninput=function(e){ FINISH[key]=hexToRgb(e.target.value); FINISH_SET[key]=true; build(); };
+    ci.oninput=function(e){ FINISH[key]=hexToRgb(e.target.value); FINISH_SET[key]=true; FINISH_TEX[key]=null; build(); };
     host.appendChild(ci);
   } else {
     /* bouton "Aucune" (revenir à la couleur unie) */
@@ -23292,6 +23301,50 @@ var I18N_ADD30={
 "Créer une nouvelle scène vierge ? Les objets et lampes de la scène actuelle seront retirés (enregistrez-la avant si besoin).":["Create a new blank scene? The objects and lamps of the current scene will be removed (save it first if needed).","¿Crear una nueva escena en blanco? Los objetos y lámparas de la escena actual se eliminarán (guárdela antes si es necesario).","Creare una nuova scena vuota? Gli oggetti e le lampade della scena attuale verranno rimossi (salvala prima se necessario).","Eine neue leere Szene erstellen? Die Objekte und Lampen der aktuellen Szene werden entfernt (vorher speichern, falls nötig).","Criar uma nova cena vazia? Os objetos e lâmpadas da cena atual serão removidos (guarde-a antes se necessário).","Új üres jelenet létrehozása? Az aktuális jelenet objektumai és lámpái eltávolításra kerülnek (előbb mentsd el, ha kell).","创建一个新的空白场景？当前场景的对象和灯光将被移除（如需请先保存）。","新しい空のシーンを作成しますか？現在のシーンのオブジェクトとランプは削除されます（必要なら先に保存してください）。","एक नया खाली दृश्य बनाएँ? वर्तमान दृश्य की वस्तुएँ और लैंप हटा दिए जाएँगे (आवश्यक हो तो पहले सहेजें)।","Создать новую пустую сцену? Объекты и лампы текущей сцены будут удалены (при необходимости сохраните её заранее).","Створити нову порожню сцену? Об'єкти та лампи поточної сцени буде видалено (за потреби збережіть її заздалегідь).","إنشاء مشهد فارغ جديد؟ ستُزال كائنات ومصابيح المشهد الحالي (احفظه أولاً إذا لزم)."]
 };
 (function(){ for(var fr in I18N_ADD30){ var t=I18N_ADD30[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD31 — métrés (surfaces/volumes), piscine à débordement, unités, textures,
+   soubassements véranda. Ordre I18N_ORDER7. */
+var I18N_ADD31={
+"Métrés":["Quantities","Mediciones","Computi","Mengen","Quantidades","Mennyiségek","工程量","数量","मात्रा","Объёмы","Обсяги","الكميات"],
+"Surfaces de plancher":["Floor areas","Superficies de planta","Superfici dei solai","Geschossflächen","Áreas de piso","Szintterületek","楼层面积","床面積","फर्श क्षेत्र","Площади этажей","Площі поверхів","مساحات الطوابق"],
+"Surface de plancher":["Floor area","Superficie de planta","Superficie del solaio","Geschossfläche","Área de piso","Szintterület","楼层面积","床面積","फर्श क्षेत्र","Площадь этажа","Площа поверху","مساحة الطابق"],
+"planchers":["floors","plantas","solai","Geschosse","pisos","szint","层","階","मंज़िलें","этажей","поверхів","طوابق"],
+"niveaux":["levels","niveles","livelli","Ebenen","níveis","szint","层","階層","स्तर","уровней","рівнів","مستويات"],
+"Toiture":["Roof","Cubierta","Copertura","Dach","Cobertura","Tető","屋顶","屋根","छत","Кровля","Дах","السطح"],
+"Étage":["Floor","Planta","Piano","Etage","Piso","Emelet","楼层","階","मंज़िल","Этаж","Поверх","طابق"],
+"Volume d'eau":["Water volume","Volumen de agua","Volume d'acqua","Wasservolumen","Volume de água","Víztérfogat","水量","水量","जल आयतन","Объём воды","Об'єм води","حجم الماء"],
+"Béton structure":["Structural concrete","Hormigón estructural","Calcestruzzo strutturale","Konstruktionsbeton","Betão estrutural","Szerkezeti beton","结构混凝土","構造コンクリート","संरचनात्मक कंक्रीट","Конструкционный бетон","Конструкційний бетон","خرسانة إنشائية"],
+"— d'après l'emprise et le profil de fond, hors escalier/banquette.":["— from the footprint and floor profile, excluding stairs/bench.","— según la huella y el perfil del fondo, sin escalera/banco.","— in base all'impronta e al profilo del fondo, esclusi scala/panca.","— aus Grundriss und Bodenprofil, ohne Treppe/Bank.","— com base na implantação e no perfil do fundo, exceto escada/banco.","— az alaprajz és a fenékprofil alapján, lépcső/pad nélkül.","— 依据平面轮廓与池底剖面，不含楼梯/座台。","— 平面形状と底面プロファイルに基づく（階段・ベンチ除く）。","— फुटप्रिंट और तल प्रोफ़ाइल से, सीढ़ी/बेंच को छोड़कर।","— по контуру и профилю дна, без лестницы/скамьи.","— за контуром і профілем дна, без сходів/лави.","— بناءً على المسقط وملف القاع، دون السلّم/المقعد."],
+"— radier + parois (hors margelle, plage, goulotte).":["— raft + walls (excluding coping, deck, channel).","— losa + muros (sin coronación, playa, canal).","— platea + pareti (esclusi bordo, spiaggia, canaletta).","— Bodenplatte + Wände (ohne Randstein, Strand, Rinne).","— laje + paredes (exceto coroamento, praia, caleira).","— lemezalap + falak (perem, part, vályú nélkül).","— 底板+池壁（不含压顶、池畔、溢水槽）。","— 底盤＋壁（天端・デッキ・溝を除く）。","— राफ्ट + दीवारें (कोपिंग, डेक, नाली को छोड़कर)।","— плита + стены (без копинга, пляжа, лотка).","— плита + стіни (без копінга, пляжу, лотка).","— لبشة + جدران (دون الحافة، الشاطئ، المجرى)."],
+"Débordement":["Infinity edge","Desbordante","A sfioro","Überlaufkante","Transbordante","Túlfolyós","无边溢水","インフィニティエッジ","इनफिनिटी किनारा","Переливной край","Переливний край","حافة لا نهائية"],
+"Côté A (Nord)":["Side A (North)","Lado A (Norte)","Lato A (Nord)","Seite A (Nord)","Lado A (Norte)","A oldal (észak)","A边（北）","A面（北）","भुजा A (उत्तर)","Сторона A (Север)","Сторона A (Північ)","الجانب A (شمال)"],
+"Côté B (Est)":["Side B (East)","Lado B (Este)","Lato B (Est)","Seite B (Ost)","Lado B (Este)","B oldal (kelet)","B边（东）","B面（東）","भुजा B (पूर्व)","Сторона B (Восток)","Сторона B (Схід)","الجانب B (شرق)"],
+"Côté C (Sud)":["Side C (South)","Lado C (Sur)","Lato C (Sud)","Seite C (Süd)","Lado C (Sul)","C oldal (dél)","C边（南）","C面（南）","भुजा C (दक्षिण)","Сторона C (Юг)","Сторона C (Південь)","الجانب C (جنوب)"],
+"Côté D (Ouest)":["Side D (West)","Lado D (Oeste)","Lato D (Ovest)","Seite D (West)","Lado D (Oeste)","D oldal (nyugat)","D边（西）","D面（西）","भुजा D (पश्चिम)","Сторона D (Запад)","Сторона D (Захід)","الجانب D (غرب)"],
+"Longueur A":["Length A","Longitud A","Lunghezza A","Länge A","Comprimento A","A hossz","长度A","長さA","लंबाई A","Длина A","Довжина A","الطول A"],
+"Longueur B":["Length B","Longitud B","Lunghezza B","Länge B","Comprimento B","B hossz","长度B","長さB","लंबाई B","Длина B","Довжина B","الطول B"],
+"Longueur C":["Length C","Longitud C","Lunghezza C","Länge C","Comprimento C","C hossz","长度C","長さC","लंबाई C","Длина C","Довжина C","الطول C"],
+"Longueur D":["Length D","Longitud D","Lunghezza D","Länge D","Comprimento D","D hossz","长度D","長さD","लंबाई D","Длина D","Довжина D","الطول D"],
+"Largeur goulotte":["Channel width","Ancho del canal","Larghezza canaletta","Rinnenbreite","Largura da caleira","Vályú szélessége","溢水槽宽度","溝の幅","नाली चौड़ाई","Ширина лотка","Ширина лотка","عرض المجرى"],
+"Profondeur goulotte":["Channel depth","Profundidad del canal","Profondità canaletta","Rinnentiefe","Profundidade da caleira","Vályú mélysége","溢水槽深度","溝の深さ","नाली गहराई","Глубина лотка","Глибина лотка","عمق المجرى"],
+"Débord sur bassin":["Overhang over pool","Voladizo sobre vaso","Sporgenza sulla vasca","Überstand zum Becken","Saliência sobre o tanque","Túlnyúlás a medence fölé","伸入池内","プール側の張り出し","पूल पर ओवरहैंग","Свес над чашей","Звис над чашею","بروز فوق الحوض"],
+"Profil du nez":["Edge profile","Perfil del borde","Profilo del bordo","Kantenprofil","Perfil da borda","Élprofil","边缘轮廓","エッジ形状","किनारा प्रोफ़ाइल","Профиль кромки","Профіль кромки","شكل الحافة"],
+"Arrondi":["Bullnose","Redondeado","Arrotondato","Gerundet","Arredondado","Lekerekített","圆边","丸み","गोल","Закруглённый","Заокруглений","مدور"],
+"Talon":["Rebated (L)","Con talón","Con risvolto","Mit Falz","Com rebaixo","Visszahajtott","L形滴水","垂れ付き","एल-किनारा","С каблуком (L)","З каблуком (L)","بحافة L"],
+"Lame débordante + goulotte sur les côtés choisis (côtés rectilignes : rect, L, U, T, couloir…). Longueur 0 = pleine longueur du côté.":["Overflow weir + channel on the chosen sides (straight sides: rect, L, U, T, lane…). Length 0 = full side length.","Lámina desbordante + canal en los lados elegidos (lados rectos: rect, L, U, T, calle…). Longitud 0 = lado completo.","Lama tracimante + canaletta sui lati scelti (lati diritti: rett, L, U, T, corsia…). Lunghezza 0 = intero lato.","Überlaufkante + Rinne an den gewählten Seiten (gerade Seiten: Rechteck, L, U, T, Bahn…). Länge 0 = volle Seite.","Lâmina transbordante + caleira nos lados escolhidos (lados retos: ret, L, U, T, raia…). Comprimento 0 = lado inteiro.","Túlfolyó él + vályú a kiválasztott oldalakon (egyenes oldalak: tégla, L, U, T, sáv…). Hossz 0 = teljes oldal.","所选边的溢流堰+溢水槽（直边：矩形、L、U、T、泳道…）。长度0=整条边。","選択した辺に越流エッジ＋溝（直線辺：矩形・L・U・T・レーン…）。長さ0＝辺全体。","चुने हुए किनारों पर ओवरफ़्लो वियर + नाली (सीधे किनारे: आयत, L, U, T, लेन…)। लंबाई 0 = पूरा किनारा।","Переливная кромка + лоток на выбранных сторонах (прямые стороны: прямоуг., L, U, T, дорожка…). Длина 0 = вся сторона.","Переливна кромка + лоток на вибраних сторонах (прямі сторони: прямок., L, U, T, доріжка…). Довжина 0 = уся сторона.","حافة فائضة + مجرى على الجوانب المختارة (جوانب مستقيمة: مستطيل، L، U، T، ممر…). الطول 0 = الجانب كامل."],
+"Unités":["Units","Unidades","Unità","Einheiten","Unidades","Egységek","单位","単位","इकाइयाँ","Единицы","Одиниці","الوحدات"],
+"Système":["System","Sistema","Sistema","System","Sistema","Rendszer","制式","単位系","प्रणाली","Система","Система","النظام"],
+"Métrique":["Metric","Métrico","Metrico","Metrisch","Métrico","Metrikus","公制","メートル法","मीट्रिक","Метрическая","Метрична","متري"],
+"Impérial":["Imperial","Imperial","Imperiale","Imperial","Imperial","Angolszász","英制","ヤード・ポンド法","इम्पीरियल","Имперская","Імперська","إمبراطوري"],
+"Affichage métrique":["Metric display","Visualización métrica","Visualizzazione metrica","Metrische Anzeige","Exibição métrica","Metrikus megjelenítés","公制显示","メートル表示","मीट्रिक प्रदर्शन","Метрический показ","Метричне відображення","عرض متري"],
+"Orientation texture":["Texture orientation","Orientación de textura","Orientamento texture","Texturausrichtung","Orientação da textura","Textúra tájolása","纹理方向","テクスチャの向き","बनावट दिशा","Ориентация текстуры","Орієнтація текстури","اتجاه الملمس"],
+"Échelle texture":["Texture scale","Escala de textura","Scala texture","Texturskalierung","Escala da textura","Textúra lépték","纹理比例","テクスチャの倍率","बनावट स्केल","Масштаб текстуры","Масштаб текстури","مقياس الملمس"],
+"Soubassement ext.":["Base wall ext.","Zócalo ext.","Basamento est.","Sockel außen","Embasamento ext.","Lábazat kült.","外基座","外側腰壁","आधार दीवार बाह.","Цоколь нар.","Цоколь зовн.","قاعدة خارجية"],
+"Soubassement int.":["Base wall int.","Zócalo int.","Basamento int.","Sockel innen","Embasamento int.","Lábazat belt.","内基座","内側腰壁","आधार दीवार आंत.","Цоколь вн.","Цоколь внутр.","قاعدة داخلية"]
+};
+(function(){ for(var fr in I18N_ADD31){ var t=I18N_ADD31[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
