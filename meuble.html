@@ -18007,6 +18007,7 @@ function buildSceneUI(){
   var configs=cfgLoad().filter(function(c){ return paramObjFor(c.mode); });
   var wrap=document.createElement('div'); wrap.className='fld';
   wrap.innerHTML='<div class="fh"><span>Scène — assemblage</span></div>'+
+    '<button id="scnNew" style="width:100%;margin:2px 0 8px;font-size:11px;padding:6px;">＋ Nouvelle scène</button>'+
     '<div class="slbl" style="font-size:10px;margin:4px 0 3px;">Scènes enregistrées</div><div id="scnSaved"></div>'+
     '<button id="scnSave" style="width:100%;margin:2px 0 10px;font-size:11px;padding:6px;">💾 Enregistrer cette scène</button>'+
     '<div style="font-size:10.5px;color:var(--dm);line-height:1.5;margin:2px 0 8px;">Glissez une configuration dans la vue pour l\'ajouter (elle se pose au sol au point visé), ou cliquez « + ». Sélectionnez un élément puis réglez Position / Hauteur / Rotation.</div>'+
@@ -18023,6 +18024,12 @@ function buildSceneUI(){
     '<div id="scnSunRow"></div>';
   host.appendChild(wrap);
   buildSceneLightsUI();
+  var _nsb=document.getElementById('scnNew'); if(_nsb) _nsb.onclick=function(){
+    var _has=(SCENE.instances&&SCENE.instances.length)||(SCENE.lights&&SCENE.lights.length);
+    if(_has && !confirm('Créer une nouvelle scène vierge ? Les objets et lampes de la scène actuelle seront retirés (enregistrez-la avant si besoin).')) return;
+    SCENE.instances=[]; SCENE.lights=[]; SCENE.sel=-1; SCENE.selSet=[]; SCN_CUR=null;
+    build(); DIRTY=true; buildSceneUI(); if(typeof WGL!=='undefined' && WGL.gActive) WGL.render();
+  };
   var _alb=document.getElementById('scnAddLight'); if(_alb) _alb.onclick=function(){ scnAddLight(); };
   var cc=document.getElementById('scnCfgs');
   if(cc) configs.forEach(function(cfg){ var b=document.createElement('button'); b.textContent='+ '+cfg.name; try{ b.title=trI18N('Glisser dans la vue —')+' '+trI18N(cfg.label||cfg.mode); }catch(_e){ b.title='Glisser dans la vue — '+(cfg.label||cfg.mode); }
@@ -22833,7 +22840,9 @@ var I18N_ADD30={
 "⇄ Basculer la face":["⇄ Flip face","⇄ Voltear la cara","⇄ Inverti faccia","⇄ Seite wenden","⇄ Inverter face","⇄ Oldal váltása","⇄ 翻转面","⇄ 面を反転","⇄ फलक पलटें","⇄ Перевернуть","⇄ Перевернути","⇄ قلب الوجه"],
 "⇲ Ouverture int./ext.":["⇲ Inward/outward","⇲ Interior/exterior","⇲ Interna/esterna","⇲ Innen/außen","⇲ Interior/exterior","⇲ Befelé/kifelé","⇲ 内/外开","⇲ 内/外開き","⇲ अंदर/बाहर","⇲ Внутрь/наружу","⇲ Всередину/назовні","⇲ للداخل/للخارج"],
 "🗑 Supprimer":["🗑 Delete","🗑 Eliminar","🗑 Elimina","🗑 Löschen","🗑 Eliminar","🗑 Törlés","🗑 删除","🗑 削除","🗑 हटाएँ","🗑 Удалить","🗑 Видалити","🗑 حذف"],
-"— Ctrl/⌘+clic : multi · Ctrl/⌘+A : tout · Échap : rien · Alt+glisser : dupliquer":["— Ctrl/⌘+click: multi · Ctrl/⌘+A: all · Esc: none · Alt+drag: duplicate","— Ctrl/⌘+clic: múltiple · Ctrl/⌘+A: todo · Esc: nada · Alt+arrastrar: duplicar","— Ctrl/⌘+clic: multi · Ctrl/⌘+A: tutto · Esc: niente · Alt+trascina: duplica","— Ctrl/⌘+Klick: Mehrfach · Ctrl/⌘+A: alle · Esc: keine · Alt+Ziehen: duplizieren","— Ctrl/⌘+clique: múltiplo · Ctrl/⌘+A: tudo · Esc: nada · Alt+arrastar: duplicar","— Ctrl/⌘+kattintás: több · Ctrl/⌘+A: mind · Esc: semmi · Alt+húzás: másolat","— Ctrl/⌘+点击：多选 · Ctrl/⌘+A：全选 · Esc：取消 · Alt+拖动：复制","— Ctrl/⌘+クリック：複数 · Ctrl/⌘+A：全選択 · Esc：解除 · Alt+ドラッグ：複製","— Ctrl/⌘+क्लिक: बहु · Ctrl/⌘+A: सभी · Esc: कोई नहीं · Alt+खींचें: प्रतिलिपि","— Ctrl/⌘+клик: несколько · Ctrl/⌘+A: все · Esc: ничего · Alt+перетаскивание: дублировать","— Ctrl/⌘+клік: кілька · Ctrl/⌘+A: усі · Esc: нічого · Alt+перетягування: дублювати","— Ctrl/⌘+نقر: متعدد · Ctrl/⌘+A: الكل · Esc: لا شيء · Alt+سحب: تكرار"]
+"— Ctrl/⌘+clic : multi · Ctrl/⌘+A : tout · Échap : rien · Alt+glisser : dupliquer":["— Ctrl/⌘+click: multi · Ctrl/⌘+A: all · Esc: none · Alt+drag: duplicate","— Ctrl/⌘+clic: múltiple · Ctrl/⌘+A: todo · Esc: nada · Alt+arrastrar: duplicar","— Ctrl/⌘+clic: multi · Ctrl/⌘+A: tutto · Esc: niente · Alt+trascina: duplica","— Ctrl/⌘+Klick: Mehrfach · Ctrl/⌘+A: alle · Esc: keine · Alt+Ziehen: duplizieren","— Ctrl/⌘+clique: múltiplo · Ctrl/⌘+A: tudo · Esc: nada · Alt+arrastar: duplicar","— Ctrl/⌘+kattintás: több · Ctrl/⌘+A: mind · Esc: semmi · Alt+húzás: másolat","— Ctrl/⌘+点击：多选 · Ctrl/⌘+A：全选 · Esc：取消 · Alt+拖动：复制","— Ctrl/⌘+クリック：複数 · Ctrl/⌘+A：全選択 · Esc：解除 · Alt+ドラッグ：複製","— Ctrl/⌘+क्लिक: बहु · Ctrl/⌘+A: सभी · Esc: कोई नहीं · Alt+खींचें: प्रतिलिपि","— Ctrl/⌘+клик: несколько · Ctrl/⌘+A: все · Esc: ничего · Alt+перетаскивание: дублировать","— Ctrl/⌘+клік: кілька · Ctrl/⌘+A: усі · Esc: нічого · Alt+перетягування: дублювати","— Ctrl/⌘+نقر: متعدد · Ctrl/⌘+A: الكل · Esc: لا شيء · Alt+سحب: تكرار"],
+"＋ Nouvelle scène":["＋ New scene","＋ Nueva escena","＋ Nuova scena","＋ Neue Szene","＋ Nova cena","＋ Új jelenet","＋ 新场景","＋ 新規シーン","＋ नया दृश्य","＋ Новая сцена","＋ Нова сцена","＋ مشهد جديد"],
+"Créer une nouvelle scène vierge ? Les objets et lampes de la scène actuelle seront retirés (enregistrez-la avant si besoin).":["Create a new blank scene? The objects and lamps of the current scene will be removed (save it first if needed).","¿Crear una nueva escena en blanco? Los objetos y lámparas de la escena actual se eliminarán (guárdela antes si es necesario).","Creare una nuova scena vuota? Gli oggetti e le lampade della scena attuale verranno rimossi (salvala prima se necessario).","Eine neue leere Szene erstellen? Die Objekte und Lampen der aktuellen Szene werden entfernt (vorher speichern, falls nötig).","Criar uma nova cena vazia? Os objetos e lâmpadas da cena atual serão removidos (guarde-a antes se necessário).","Új üres jelenet létrehozása? Az aktuális jelenet objektumai és lámpái eltávolításra kerülnek (előbb mentsd el, ha kell).","创建一个新的空白场景？当前场景的对象和灯光将被移除（如需请先保存）。","新しい空のシーンを作成しますか？現在のシーンのオブジェクトとランプは削除されます（必要なら先に保存してください）。","एक नया खाली दृश्य बनाएँ? वर्तमान दृश्य की वस्तुएँ और लैंप हटा दिए जाएँगे (आवश्यक हो तो पहले सहेजें)।","Создать новую пустую сцену? Объекты и лампы текущей сцены будут удалены (при необходимости сохраните её заранее).","Створити нову порожню сцену? Об'єкти та лампи поточної сцени буде видалено (за потреби збережіть її заздалегідь).","إنشاء مشهد فارغ جديد؟ ستُزال كائنات ومصابيح المشهد الحالي (احفظه أولاً إذا لزم)."]
 };
 (function(){ for(var fr in I18N_ADD30){ var t=I18N_ADD30[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
