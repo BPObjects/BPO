@@ -12096,7 +12096,7 @@ var PPORTE = {
   frame:true, fw:6, fd:12,
   panel:'plein', mv:1, mh:1, nPan:4, pcols:1,
   imposteOn:false, imposte:40,
-  handle:true, handleType:'bequille', handleH:105,
+  handle:true, handleType:'bequille', handleH:105, serrure:'cylindre',
   hScale:1, hRotX:0, hRotY:0, hRotZ:0, hOff:0,
   chambranle:0, chambranleW:6, seuil:'aucun',
   volet:'aucun', voletType:'plein', voletOpen:150, voletDown:0, voletPos:'ext', voletJeu:2, voletQuinc:1,   /* volets (porte-fenêtre) ; voletJeu = dégagement devant le dormant (cm) */
@@ -12241,6 +12241,7 @@ function buildFramedLeaf(T, x0,x1,y0,y1,zc,lt,style,colL,colP,colG,colH, handleE
   }
   _CURTEX=null;
   if(handle) buildHandle(T, x0,x1, handleEdge, handleY, zc, lt, colH, PPORTE.handleType);
+  if(handle) buildSerrure(T, x0,x1, handleEdge, handleY, zc, lt, colH, PPORTE.serrure, (PPORTE.open||0)<1);
 }
 /* Poignées : plusieurs types (béquille, bouton, barre de tirage, cuvette). */
 /* ===== Béquille importée (DAE Glutz) — maillage embarqué ===== */
@@ -12292,6 +12293,16 @@ function buildHandle(T, x0,x1, handleEdge, handleY, zc, lt, colH, type){
   } else if(type==='cuvette'){
     leafBox(T, roseX,handleY,zc+lt/2-0.004, 0.04,0.14,0.012, colH,1);
     leafBox(T, roseX,handleY,zc-lt/2+0.004, 0.04,0.14,0.012, colH,1);
+  } else if(type==='plaque'){
+    /* béquille sur plaque : longue têtière de propreté portant le levier et l'entrée de clé */
+    [1,-1].forEach(function(sgn){
+      leafBox(T, roseX, handleY-0.05, zc+sgn*(lt/2+0.003), 0.05, 0.26, 0.006, colH,1);
+      leafBox(T, roseX, handleY-0.15, zc+sgn*(lt/2+0.008), 0.018,0.018,0.01, colH,1);   /* entrée de clé */
+    });
+    _CURTEX=null;
+    var hmp=(handleEdge>0?-1:1);
+    meshHandle(T, roseX, handleY, zc+lt/2+0.008, +1, colH, hmp);
+    meshHandle(T, roseX, handleY, zc-lt/2-0.008, -1, colH, hmp);
   } else {
     _CURTEX=null;                                  /* bequille importee : metal de base, sans texture */
     /* Sens du levier. Le maillage part de la rosace (x=0) et s'etend vers +x sur
@@ -12301,6 +12312,26 @@ function buildHandle(T, x0,x1, handleEdge, handleY, zc, lt, colH, type){
     var hm=(handleEdge>0?-1:1);
     meshHandle(T, roseX, handleY, zc+lt/2+0.002, +1, colH, hm);   /* face avant (2mm proud anti z-fight) */
     meshHandle(T, roseX, handleY, zc-lt/2-0.002, -1, colH, hm);   /* face arriere */
+  }
+  _CURTEX=null;
+}
+/* Serrure visible : têtière sur le chant de fermeture, pêne sorti quand la porte
+   est fermée, et cylindre européen traversant (entrée de clé sur les deux faces).
+   'type' : 'aucune' | 'tetiere' | 'cylindre' | 'complete'. */
+function buildSerrure(T, x0,x1, handleEdge, handleY, zc, lt, colH, type, closed){
+  if(!type || type==='aucune') return;
+  var clX=(handleEdge>0)?x1:x0, dir=(handleEdge>0)?1:-1;
+  _CURTEX=null;
+  if(type==='tetiere' || type==='complete'){
+    leafBox(T, clX-dir*0.004, handleY-0.03, zc, 0.008, 0.24, lt*0.92, colH,1);   /* têtière */
+    if(closed) leafBox(T, clX+dir*0.008, handleY-0.05, zc, 0.016, 0.028, lt*0.34, colH,1);  /* pêne demi-tour */
+  }
+  if(type==='cylindre' || type==='complete'){
+    var cyX=(handleEdge>0)? clX-0.08 : clX+0.08;
+    [1,-1].forEach(function(sgn){
+      leafBox(T, cyX, handleY-0.15, zc+sgn*(lt/2+0.004), 0.042,0.042,0.008, colH,1);  /* rosace */
+      leafBox(T, cyX, handleY-0.15, zc+sgn*(lt/2+0.012), 0.017,0.030,0.012, colH,1);  /* nez de cylindre */
+    });
   }
   _CURTEX=null;
 }
@@ -12404,9 +12435,11 @@ var PFEN = {
   type:'battant', sizeMode:'std', w:120, h:140, nv:2,
   fw:5, fd:10, sw:5,
   cvert:0, choriz:0,
+  boisPreset:'libre', boisCarreau:30, boisW:22, boisPose:'colle',                /* petits bois : trame, carreau (cm), section (mm), pose */
   sill:true, sillD:5,
   sens:'int',                                                                    /* ouverture : 'int' = à la française, 'ext' = à l'anglaise */
   meneau:'auto',                                                                 /* montant central : auto (absent en battants) / oui / non */
+  cintre:'aucun', cintreH:40, cintreBois:0,                                      /* imposte cintrée : aucun/plein/segmentaire/anse, flèche (cm), petits bois rayonnants */
   volet:'aucun', voletType:'plein', voletOpen:150, voletDown:0, voletPos:'ext', voletJeu:2, voletQuinc:1,   /* volets : aucun/battant/persienne/roulant ; posé ext ou int ; voletJeu = dégagement devant le dormant (cm) */
   tabInt:0, tabIntD:20, tabIntEp:3,                                /* TABLETTE intérieure (menuiserie) */
   appuiExt:0, appuiExtMat:'beton', appuiExtD:12, appuiExtH:6, appuiExtPente:8, appuiExtLat:8,   /* APPUI extérieur maçonné (rejingot/pente) */
@@ -12425,6 +12458,70 @@ var PAVE_STD=[
   ['14.6x14.6x8','14,6×14,6×8',14.6,14.6,8],['19x9x8','19×9×8 (demi)',19,9,8],
   ['24x11.5x8','24×11,5×8',24,11.5,8],['30x30x10','30×30×10',30,30,10],['libre','Sur-mesure',0,0,0]
 ];
+/* --- CINTRES -----------------------------------------------------------------
+   Points d'un arc de tête, de la naissance gauche (-hw, y0) à la droite (+hw, y0).
+   'plein'/'segmentaire' : arc de cercle passant par les naissances et la clé.
+   'anse' : anse de panier, approchée par une demi-ellipse.
+   'off' dilate l'arc radialement (pour l'épaisseur du dormant). */
+function _arcPts(hw, y0, rise, kind, n, off){
+  off=off||0; var pts=[], i;
+  if(kind==='anse'){
+    var ax=hw+off, ay=rise+off;
+    for(i=0;i<=n;i++){ var t=Math.PI*(1-i/n); pts.push([ax*Math.cos(t), y0+ay*Math.sin(t)]); }
+  } else {
+    var R=(hw*hw+rise*rise)/(2*rise), cy=y0+rise-R, Ro=R+off,
+        aL=Math.atan2(y0-cy,-hw), aR=Math.atan2(y0-cy,hw);
+    /* Le balayage doit passer par la clé (angle π/2). Dès que la flèche dépasse la
+       demi-largeur (arc surhaussé), le centre remonte au-dessus des naissances et
+       atan2 renvoie des angles négatifs : sans recalage, l'arc se creuserait vers le bas. */
+    if(aL<Math.PI/2) aL+=2*Math.PI;
+    if(aR>Math.PI/2) aR-=2*Math.PI;
+    for(i=0;i<=n;i++){ var a=aL+(aR-aL)*i/n; pts.push([Ro*Math.cos(a), cy+Ro*Math.sin(a)]); }
+  }
+  return pts;
+}
+function _cintreRise(P, hw){
+  if(P.cintre==='plein') return hw;
+  return Math.max(0.05, Math.min(hw*2.5, (P.cintreH||40)/100));
+}
+/* Imposte cintrée posée au-dessus du tableau : tympan vitré, dormant en arc
+   facetté, et petits bois rayonnants optionnels. */
+function buildCintreFen(W, H, fw, fd, P, colC, colG){
+  var hw=W/2, rise=_cintreRise(P,hw), kind=P.cintre, N=Math.max(14, Math.round(hw*26));
+  var inner=_arcPts(hw, H, rise, kind, N, 0);
+  var ident=function(p){return p;};
+  _CURTEX=null;                                             /* verre : jamais de texture */
+  face(inner.map(function(p){return [p[0],p[1], fd*0.11];}), [0,0,1], colG, 0.3);
+  face(inner.map(function(p){return [p[0],p[1],-fd*0.11];}).reverse(), [0,0,-1], colG, 0.3);
+  _CURTEX=FINISH_TEX.fcadre;
+  var mid=_arcPts(hw, H, rise, kind, N, fw/2);
+  for(var i=0;i<N;i++){                                     /* facettes du dormant, légèrement recouvrantes */
+    var ax=mid[i][0], ay=mid[i][1], bx=mid[i+1][0], by=mid[i+1][1], dx=bx-ax, dy=by-ay;
+    leafDiag(ident, ax-dx*0.03, ay-dy*0.03, bx+dx*0.03, by+dy*0.03, 0, fw, fd, colC);
+  }
+  var nb=Math.max(0, Math.min(12, P.cintreBois|0));         /* petits bois en éventail */
+  if(nb>0){
+    var ray=_arcPts(hw, H, rise, kind, nb+1, 0);
+    for(var k=1;k<=nb;k++) leafDiag(ident, 0, H, ray[k][0], ray[k][1], 0, 0.024, fd*0.7, colC);
+  }
+  _CURTEX=null;
+  return rise;
+}
+/* Trame de petits bois. 'libre' laisse la main aux curseurs ; les autres trames
+   sont déduites du carreau (les carreaux restent proches du carré quelle que soit
+   la proportion du vantail). Renvoie null pour 'libre'. */
+function _boisGrid(P, iw, ih){
+  var p=P.boisPreset||'libre';
+  if(p==='libre') return null;
+  if(p==='croix')    return {cv:1, ch:1};
+  if(p==='anglais6') return {cv:1, ch:2};
+  if(p==='anglais9') return {cv:2, ch:2};
+  if(p==='carre'){
+    var t=Math.max(0.12,(P.boisCarreau||30)/100);
+    return {cv:Math.max(0,Math.round(iw/t)-1), ch:Math.max(0,Math.round(ih/t)-1)};
+  }
+  return null;
+}
 function buildSash(T, x0,x1,y0,y1,zc,sw, colO,colG,colH, cvert,choriz, handle, handleEdge){
   var lw=x1-x0, lh=y1-y0, cx=(x0+x1)/2, th=0.045;
   _CURTEX=FINISH_TEX.fouvrant;
@@ -12436,10 +12533,15 @@ function buildSash(T, x0,x1,y0,y1,zc,sw, colO,colG,colH, cvert,choriz, handle, h
   if(iw>0&&ih>0){
     _CURTEX=null;
     leafBox(T, icx,(iy0+iy1)/2,zc, iw,ih,0.012, colG,0.3);
+    /* Petits bois : trame, section et pose (collés en saillie / intercalaires noyés) */
+    var g=_boisGrid(PFEN, iw, ih); if(g){ cvert=g.cv; choriz=g.ch; }
+    var bw=Math.max(0.008,(PFEN.boisW||22)/1000),
+        inc=(PFEN.boisPose==='incorpore'),
+        bd=inc?0.010:0.030, colB=inc?[168,172,178]:colO;
+    _CURTEX=inc?null:FINISH_TEX.fouvrant;
+    for(var v=1;v<=cvert;v++){ var xb=ix0+iw*v/(cvert+1); leafBox(T, xb,(iy0+iy1)/2,zc, bw,ih,bd, colB,1); }
+    for(var k=1;k<=choriz;k++){ var yb=iy0+ih*k/(choriz+1); leafBox(T, icx,yb,zc, iw,bw,bd, colB,1); }
     _CURTEX=FINISH_TEX.fouvrant;
-    var bw=0.022;
-    for(var v=1;v<=cvert;v++){ var xb=ix0+iw*v/(cvert+1); leafBox(T, xb,(iy0+iy1)/2,zc, bw,ih,0.03, colO,1); }
-    for(var k=1;k<=choriz;k++){ var yb=iy0+ih*k/(choriz+1); leafBox(T, icx,yb,zc, iw,bw,0.03, colO,1); }
   }
   _CURTEX=null;
   if(handle){
@@ -12464,6 +12566,8 @@ function buildFenetre(){
   box( hw-fw/2, H/2,0, fw,H,fd, colC,1);
   box(0, H-fw/2,0, W,fw,fd, colC,1);
   box(0, fw/2,0, W, fw, fd+sillExtra*2, colC,1);   /* appui (déborde en profondeur) */
+  /* --- CINTRE (imposte en arc au-dessus du tableau) --- */
+  var cintreRise=(PFEN.cintre && PFEN.cintre!=='aucun') ? buildCintreFen(W,H,fw,fd,PFEN,colC,colG) : 0;
   /* --- VOLETS + TABLETTES (additif ; côté extérieur = +z) --- */
   (function(){ var vcol=FINISH.fcadre, colHx=FINISH.fpoignee, colGx=[150,200,235];
     var EXT=MENUIS_EXT, INT=-MENUIS_EXT;                       /* extérieur = -z, intérieur = +z (côté poignées) */
@@ -12489,7 +12593,7 @@ function buildFenetre(){
     /* APPUI extérieur MAÇONNÉ (béton/brique/pierre), pente vers l'extérieur */
     if(PFEN.appuiExt){ _CURTEX=null; macAppui(W, fd, Math.max(0,(PFEN.appuiExtLat||0)/100), Math.max(0.02,(PFEN.appuiExtD||12)/100), Math.max(0.02,(PFEN.appuiExtH||6)/100), (PFEN.appuiExtPente||0), _macCol(PFEN.appuiExtMat), EXT); }
     /* LINTEAU (dépassement latéral + avancée extérieure) */
-    if(PFEN.linteau){ _CURTEX=null; macLinteau(W, fd, H+_linteauDy(PFEN), Math.max(0,(PFEN.linteauLat||0)/100), Math.max(0,(PFEN.linteauD||0)/100), Math.max(0.04,(PFEN.linteauH||20)/100), _macCol(PFEN.linteauMat), EXT); }
+    if(PFEN.linteau){ _CURTEX=null; macLinteau(W, fd, H+cintreRise+_linteauDy(PFEN), Math.max(0,(PFEN.linteauLat||0)/100), Math.max(0,(PFEN.linteauD||0)/100), Math.max(0.04,(PFEN.linteauH||20)/100), _macCol(PFEN.linteauMat), EXT); }
     if(PFEN.grille){ var gn=Math.max(2,PFEN.grilleN|0), gz=EXT*(fd/2+0.03), br=0.014; _CURTEX=null;
       for(var gi=0;gi<gn;gi++){ var gx=-hw+W*(gi+0.5)/gn; box(gx, H/2, gz, br, H-0.02, br, colHx,1); }
       box(0, H*0.28, gz, W-0.02, br, br, colHx,1); box(0, H*0.72, gz, W-0.02, br, br, colHx,1); }
@@ -12558,7 +12662,7 @@ function buildFenetre(){
       _CURTEX=null;
     }
   }
-  DIMS={ w:W, h:H, d:fd+sillExtra };
+  DIMS={ w:W, h:H+cintreRise, d:fd+sillExtra };
   return DIMS;
 }
 /* petit panneau de verre fixe (imposte), axis-aligné */
@@ -19366,8 +19470,12 @@ function buildPorteUI(){
   if(!isBaie) groups.push({title:'Poignée', fields:[
     {type:'choice',key:'handle',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}].concat(P.handle?[
     {type:'choice',label:'Type',key:'handleType',options:[
-      {id:'bequille',l:'Béquille (importée)'},{id:'bouton',l:'Bouton'},{id:'barre',l:'Barre'},{id:'cuvette',l:'Cuvette'}]},
-    {type:'slider',label:'Hauteur poignée',unit:'cm',key:'handleH',min:90,max:120,step:1}].concat(P.handleType==='bequille'?[
+      {id:'bequille',l:'Béquille (importée)'},{id:'plaque',l:'Béquille sur plaque'},
+      {id:'bouton',l:'Bouton'},{id:'barre',l:'Barre'},{id:'cuvette',l:'Cuvette'}]},
+    {type:'slider',label:'Hauteur poignée',unit:'cm',key:'handleH',min:90,max:120,step:1},
+    {type:'choice',label:'Serrure',key:'serrure',options:[
+      {id:'aucune',l:'Aucune'},{id:'cylindre',l:'Cylindre'},{id:'tetiere',l:'Têtière'},{id:'complete',l:'Complète'}]}
+    ].concat(P.handleType==='bequille'?[
     {type:'slider',label:'Avancée rosace',unit:'cm',key:'hOff',min:0,max:15,step:0.5}]:[]):[])});
   if(!isBaie) groups.push({title:'Ouverture', fields:[
     {type:'slider',label:openLabel,unit:openUnit,key:'open',min:0,max:openMax,step:1}]});
@@ -19393,19 +19501,33 @@ function buildFenetreUI(){
   }
   if((P.nv|0)>1) fenDimF.push({type:'choice',label:'Montant central',key:'meneau',
     options:[{id:'auto',l:'Auto'},{id:'oui',l:'Oui'},{id:'non',l:'Non'}]});
+  var groups0Cintre=[].concat(
+    [{type:'choice',key:'cintre',options:[{id:'aucun',l:'Aucun'},{id:'plein',l:'Plein cintre'},
+      {id:'segmentaire',l:'Segmentaire'},{id:'anse',l:'Anse de panier'}]}],
+    (P.cintre&&P.cintre!=='aucun'&&P.cintre!=='plein')?[{type:'slider',label:'Flèche',unit:'cm',key:'cintreH',min:5,max:120,step:1}]:[],
+    (P.cintre&&P.cintre!=='aucun')?[{type:'slider',label:'Petits bois rayonnants',unit:'',key:'cintreBois',min:0,max:12,step:1}]:[]
+  );
   var groups=[
     {title:'Type', fields:[{type:'choice',key:'type',options:[
       {id:'fixe',l:'Fixe'},{id:'battant',l:'Battant'},{id:'oscillo',l:'Oscillo'},
       {id:'coulissant',l:'Coulissant'},{id:'soufflet',l:'Soufflet'},
       {id:'pave',l:'Pavés de verre'},{id:'baie',l:'Baie libre'}]}]},
     {title:'Dimensions', fields:fenDimF},
+    {title:'Cintre', fields:groups0Cintre},
     {title:'Cadre / dormant', fields:[
       {type:'slider',label:'Largeur cadre',unit:'cm',key:'fw',min:3,max:10,step:0.5},
       {type:'slider',label:'Épaisseur',unit:'cm',key:'fd',min:6,max:30,step:1},
       {type:'slider',label:'Largeur ouvrant',unit:'cm',key:'sw',min:3,max:9,step:0.5}]},
-    {title:'Croisillons', fields:[
-      {type:'slider',label:'Verticaux / vantail',unit:'',key:'cvert',min:0,max:5,step:1},
-      {type:'slider',label:'Horizontaux / vantail',unit:'',key:'choriz',min:0,max:5,step:1}]},
+    {title:'Petits bois', fields:[].concat(
+      [{type:'choice',key:'boisPreset',options:[{id:'libre',l:'Libre'},{id:'croix',l:'Croix (4)'},
+        {id:'anglais6',l:'6 carreaux'},{id:'anglais9',l:'9 carreaux'},{id:'carre',l:'Carreaux réguliers'}]}],
+      (P.boisPreset==='libre')?[
+        {type:'slider',label:'Verticaux / vantail',unit:'',key:'cvert',min:0,max:5,step:1},
+        {type:'slider',label:'Horizontaux / vantail',unit:'',key:'choriz',min:0,max:5,step:1}]:[],
+      (P.boisPreset==='carre')?[{type:'slider',label:'Carreau visé',unit:'cm',key:'boisCarreau',min:12,max:60,step:1}]:[],
+      [{type:'slider',label:'Section',unit:'mm',key:'boisW',min:8,max:40,step:1},
+       {type:'choice',label:'Pose',key:'boisPose',options:[{id:'colle',l:'Collés'},{id:'incorpore',l:'Incorporés'}]}]
+    )},
     {title:'Appui de fenêtre', fields:[
       {type:'choice',key:'sill',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}].concat(P.sill?[
       {type:'slider',label:'Débord appui',unit:'cm',key:'sillD',min:2,max:15,step:1}]:[])},
@@ -24288,6 +24410,26 @@ var I18N_ADD37={
 "Auto":["Auto","Auto","Auto","Auto","Auto","Auto","自动","自動","स्वतः","Авто","Авто","تلقائي"],
 "Relevé sur la baie":["Raise above opening","Elevación sobre el vano","Rialzo sul vano","Anhebung über der Öffnung","Elevação sobre o vão","Emelés a nyílás fölé","高出洞口","開口部からの上げ","खुलाव से ऊँचाई","Подъём над проёмом","Підняття над отвором","الرفع فوق الفتحة"],
 "Barres et écharpe":["Ledged and braced","Con travesaños y tornapunta","Con traverse e controventatura","Mit Riegeln und Strebe","Com travessas e escora","Hevederes, merevítős","横档斜撑式","框組み・筋交い","लेज और ब्रेस","С шпонками и укосиной","Зі шпонками та укосиною","بعوارض ودعامة"],
+"Petits bois":["Glazing bars","Barrotillos","Bacchette","Sprossen","Pinázios","Osztók","窗棂","格子","ग्लेज़िंग बार","Горбыльки","Горбильки","قضبان التزجيج"],
+"Libre":["Custom","Libre","Libero","Frei","Livre","Szabad","自定义","自由","कस्टम","Свободно","Вільно","حر"],
+"Croix (4)":["Cross (4)","Cruz (4)","Croce (4)","Kreuz (4)","Cruz (4)","Kereszt (4)","十字(4格)","十字(4)","क्रॉस (4)","Крест (4)","Хрест (4)","صليب (4)"],
+"6 carreaux":["6 panes","6 cuarterones","6 riquadri","6 Felder","6 vidros","6 tábla","6格","6枚","6 पैन","6 стёкол","6 шибок","6 ألواح"],
+"9 carreaux":["9 panes","9 cuarterones","9 riquadri","9 Felder","9 vidros","9 tábla","9格","9枚","9 पैन","9 стёкол","9 шибок","9 ألواح"],
+"Carreaux réguliers":["Even panes","Cuarterones regulares","Riquadri regolari","Gleichmäßige Felder","Vidros regulares","Egyenletes táblák","等分格","均等割","समान पैन","Равные стёкла","Рівні шибки","ألواح منتظمة"],
+"Carreau visé":["Target pane","Cuarterón objetivo","Riquadro obiettivo","Ziel-Feldgröße","Vidro alvo","Cél tábla","目标格尺寸","目標寸法","लक्ष्य पैन","Целевое стекло","Цільова шибка","حجم اللوح"],
+"Section":["Section","Sección","Sezione","Querschnitt","Secção","Keresztmetszet","截面","断面","सेक्शन","Сечение","Переріз","المقطع"],
+"Collés":["Applied","Pegados","Applicate","Aufgeklebt","Colados","Ragasztott","粘贴式","貼付け","चिपकाए","Накладные","Накладні","ملصقة"],
+"Incorporés":["Between panes","Incorporados","Interposte","Im Scheibenzwischenraum","Incorporados","Beépített","中空层内","中空層内","पैन के बीच","В стеклопакете","У склопакеті","بين الألواح"],
+"Cintre":["Arched head","Arco","Arco","Rundbogen","Arco","Íves fejrész","拱顶","アーチ","मेहराब","Арочное завершение","Аркове завершення","القوس"],
+"Plein cintre":["Semicircular","Medio punto","A tutto sesto","Halbkreisbogen","Pleno centro","Félköríves","半圆拱","半円アーチ","अर्धवृत्ताकार","Полуциркульная","Півциркульна","نصف دائري"],
+"Segmentaire":["Segmental","Rebajado","Ribassato","Segmentbogen","Abatido","Szegmensíves","弧形拱","扁平アーチ","खंडीय","Сегментная","Сегментна","قطاعي"],
+"Anse de panier":["Basket handle","Carpanel","Policentrico","Korbbogen","Abatido de três centros","Kosáríves","三心拱","バスケットハンドル","बास्केट हैंडल","Коробовая","Коробова","مقبض السلة"],
+"Flèche":["Rise","Flecha","Freccia","Stichhöhe","Flecha","Nyílmagasság","矢高","ライズ","उठान","Стрела подъёма","Стріла підйому","الارتفاع"],
+"Petits bois rayonnants":["Radiating glazing bars","Barrotillos radiales","Bacchette radiali","Strahlende Sprossen","Pinázios radiais","Sugaras osztók","放射形窗棂","放射状の格子","रेडियल ग्लेज़िंग बार","Радиальные горбыльки","Радіальні горбильки","قضبان مشعة"],
+"Serrure":["Lock","Cerradura","Serratura","Schloss","Fechadura","Zár","锁具","錠","ताला","Замок","Замок","قفل"],
+"Têtière":["Faceplate","Frente","Frontale","Stulp","Testa","Zárhomlok","锁舌板","フロント","फेसप्लेट","Лицевая планка","Лицьова планка","لوحة القفل"],
+"Complète":["Complete","Completa","Completa","Komplett","Completa","Teljes","完整","フル","पूर्ण","Полный","Повний","كامل"],
+"Béquille sur plaque":["Lever on backplate","Manilla sobre placa","Maniglia su placca","Drücker auf Langschild","Puxador sobre espelho","Kilincs hosszúcímen","长板执手","長座レバー","बैकप्लेट लीवर","Ручка на планке","Ручка на планці","مقبض على لوحة"],
 "Quincaillerie":["Hardware","Herrajes","Ferramenta","Beschläge","Ferragens","Vasalat","五金件","金物","हार्डवेयर","Фурнитура","Фурнітура","الأدوات المعدنية"],
 "Visible":["Visible","Visible","Visibile","Sichtbar","Visível","Látható","显示","表示","दृश्यमान","Видимая","Видима","ظاهرة"],
 "Sans":["None","Sin","Senza","Ohne","Sem","Nélkül","无","なし","बिना","Без","Без","بدون"],
