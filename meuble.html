@@ -308,7 +308,15 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
   border:1px solid var(--ln);color:var(--dm);border-radius:3px;cursor:pointer;}
 .finish-tabs button.on{border-color:var(--cy);color:var(--cy);background:rgba(94,184,255,.1);}
 .ral-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-bottom:6px;}
-.ral-grid div{aspect-ratio:1;border-radius:2px;border:2px solid var(--ln);cursor:pointer;}
+/* Cases carrées SANS aspect-ratio : cette propriété est Chrome 88+, or le CEF de
+   SketchUp 2021 est en 78 -> elle y était ignorée, les cases n'avaient AUCUNE
+   hauteur et le nuancier RAL apparaissait vide (couleur bien posée, mais plus de
+   surface pour la montrer). Bug visible UNIQUEMENT dans SketchUp.
+   padding-bottom:100% est relatif à la LARGEUR de la case : c'est la technique
+   d'avant aspect-ratio, et elle marche partout, CEF 78 compris.
+   (Les pastilles de textures, elles, ne sont pas touchées : ce sont des <canvas>
+   44x44 en width:100%/height:auto — leur ratio intrinsèque suffit.) */
+.ral-grid div{height:0;padding-bottom:100%;border-radius:2px;border:2px solid var(--ln);cursor:pointer;}
 .ral-grid div.on{border-color:var(--am);}
 .ral-fam{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;}
 .ral-fam button{flex:1 0 auto;padding:4px 7px;font-size:9.5px;background:var(--p2);
@@ -5859,8 +5867,16 @@ function boxV(vt, col, al){
   var fi=[[0,1,2,3],[4,7,6,5],[0,3,7,4],[1,5,6,2],[0,4,5,1],[3,2,6,7]];
   for(var i=0;i<6;i++){
     var p=fi[i].map(function(j){return vt[j];});
-    /* normale = produit vectoriel de 2 arêtes de la face */
-    var u=sub(p[1],p[0]), v=sub(p[3],p[0]), nf=norm(cross(u,v));
+    /* Normale = produit vectoriel de 2 arêtes de la face.
+       cross(v,u) et NON cross(u,v) : l'ordre des sommets dans fi[] tourne dans
+       le sens rentrant, donc cross(u,v) donnait les 6 normales VERS L'INTÉRIEUR
+       du pavé. Invisible ici (on peint les deux faces), mais faux pour tout ce
+       qui lit la normale : éclairage, et surtout les exports OBJ/DAE/IFC, où les
+       faces ressortaient inversées. Repéré via le plugin SketchUp, qui, lui,
+       oriente les faces d'après la normale. Vérifié : 6/6 sortantes.
+       (box(), juste au-dessus, ne souffre pas du bug : ses normales nm[] sont
+       écrites en dur et sont bien sortantes.) */
+    var u=sub(p[1],p[0]), v=sub(p[3],p[0]), nf=norm(cross(v,u));
     FC.push({ verts:p, n:nf, col:col, al:al, tex:_CURTEX, ifc:_IFCTAG });
   }
 }
