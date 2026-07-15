@@ -3213,6 +3213,7 @@ var FINISH = {
   fgarn:   [206, 200, 190],   /* mobilier : garnissage/plateau  */
   hossature:[120, 124, 130],  /* hangar : ossature acier */
   hbardage: [176, 180, 186],  /* hangar : bardage métal  */
+  hcouv:    [150, 154, 161],  /* hangar : couverture (bac, ondulé, joint debout, sandwich) */
   hcorner:  [176, 180, 186],  /* hangar : cornière d'angle */
   hbeton:   [165, 165, 160],  /* hangar : fondations / parpaing */
   sol:      [235, 232, 224],  /* dalle : sol fini (dallage blanc cassé) */
@@ -3384,6 +3385,7 @@ var FINISH_ELEMS_OMBRIERE = [
 var FINISH_ELEMS_HANGAR = [
   {id:'hossature', l:'Ossature'},
   {id:'hbardage',  l:'Bardage'},
+  {id:'hcouv',     l:'Couverture'},
   {id:'hcorner',   l:'Cornière'},
   {id:'hbeton',    l:'Maçonnerie'}
 ];
@@ -13633,6 +13635,16 @@ function buildFurnUI(){
    bardage avec/sans isolation. Repère : sol à y=0, portée selon X, longueur
    selon Z, hauteur selon Y.
    ============================================================================ */
+/* Profils de couverture : [entraxe, hauteur de nervure, largeur de nervure, nombre max].
+   Table unique : la géométrie des nervures ET la retombée des rives en dépendent. */
+var HCOUV_PROF={
+  bac:      [0.27,  0.045, 0.07,  90],
+  ondule:   [0.105, 0.022, 0.075, 180],
+  joint:    [0.5,   0.05,  0.02,  60],
+  sandwich: [0.333, 0.04,  0.065, 90]
+};
+function hcouvProf(){ return HCOUV_PROF[PHANGAR.roofCover]||null; }
+function hcouvRibH(){ var p=hcouvProf(); return p?p[1]:0; }
 var PHANGAR={
   span:1500, length:3000, height:600, bays:5, pitch:12,
   truss:'portique', roofShape:'deux_pans', colSerie:'HEA', colSize:240, beamSerie:'IPE', beamSize:240,
@@ -13749,6 +13761,7 @@ function buildHangar(){
   var colH=cs[0]/1000, colB=cs[1]/1000, beamH=bs[0]/1000, beamB=bs[1]/1000;
   var colPI={h:colH,b:colB,tw:cs[2]/1000,tf:cs[3]/1000}, beamPI={h:beamH,b:beamB,tw:bs[2]/1000,tf:bs[3]/1000};
   var cOss=FINISH.hossature, cBard=FINISH.hbardage, cCorn=FINISH.hcorner, cBet=FINISH.hbeton, cIso=[232,214,128];
+  var cCouv=FINISH.hcouv||FINISH.hbardage;   /* couverture : matière propre, distincte du bardage */
   /* réservations des portes sectionnelles (calculées en amont pour percer la peau) */
   var DOORS=[]; var ndAll=Math.max(0,Math.min(4,PHANGAR.secDoor|0));
   if(ndAll>0){ var ddw=Math.min(S-0.6,(PHANGAR.secW||400)/100), ddh=Math.min(maxY-0.2,(PHANGAR.secH||450)/100);
@@ -13948,17 +13961,17 @@ function buildHangar(){
   PANS.forEach(function(pn){ var N=panN(pn), off=baseOff;
     if(PHANGAR.roofIso){ _CURTEX=null; var oi=off+isoT/2;
       hStrut(pn[0]+N[0]*oi, pn[1]+N[1]*oi, pn[2]+N[0]*oi, pn[3]+N[1]*oi, 0, isoT, L, cIso); off+=isoT; }
-    _CURTEX=FINISH_TEX.hbardage; var os=off+skin/2;
-    hStrut(pn[0]+N[0]*os, pn[1]+N[1]*os, pn[2]+N[0]*os, pn[3]+N[1]*os, 0, skin, L, cBard);
-    var cvT={bac:[0.27,0.045,0.07,90],ondule:[0.105,0.022,0.075,180],joint:[0.5,0.05,0.02,60]}[PHANGAR.roofCover];
+    _CURTEX=FINISH_TEX.hcouv||null; var os=off+skin/2;
+    hStrut(pn[0]+N[0]*os, pn[1]+N[1]*os, pn[2]+N[0]*os, pn[3]+N[1]*os, 0, skin, L, cCouv);
+    var cvT=hcouvProf();
     if(cvT){ var nrib=Math.max(2,Math.round(L/cvT[0])); if(nrib>cvT[3]) nrib=cvT[3]; var stp=L/nrib, oR=off+skin+cvT[1]/2;
       var ax0=pn[0]+N[0]*oR, ay0=pn[1]+N[1]*oR, bx0=pn[2]+N[0]*oR, by0=pn[3]+N[1]*oR;
-      for(var ir=0;ir<nrib;ir++){ hStrut(ax0,ay0,bx0,by0, -halfL+(ir+0.5)*stp, cvT[1], cvT[2], cBard); } }
+      for(var ir=0;ir<nrib;ir++){ hStrut(ax0,ay0,bx0,by0, -halfL+(ir+0.5)*stp, cvT[1], cvT[2], cCouv); } }
     _CURTEX=null;
   });
   /* --- RIVES : egout (longueur) replie vers l'exterieur + rive de rejet pignon + faitiere --- */
   if(PHANGAR.rives){
-    var cvH=(PHANGAR.roofCover==='bac')?0.045:(PHANGAR.roofCover==='ondule')?0.022:(PHANGAR.roofCover==='joint')?0.05:0;
+    var cvH=hcouvRibH();
     var rTop=baseOff+(PHANGAR.roofIso?isoT:0)+skin+cvH;
     var wOut=(PHANGAR.wall==='bardage')?(colH/2+0.07):(PHANGAR.wall==='parpaing')?0.10:0.05;
     var gOut=(PHANGAR.wall==='bardage')?(colB/2+0.07):(PHANGAR.wall==='parpaing')?0.10:0.05;
@@ -13966,7 +13979,7 @@ function buildHangar(){
        + nervures + pannes), bornée, pour couvrir proprement la tranche quels que soient
        les réglages d'isolation / position des pannes / couverture */
     var edgeCov=(rTop-baseOff)+(dessus?pH:0)+0.06, legH=Math.max(0.12,Math.min(0.6,edgeCov));
-    _CURTEX=FINISH_TEX.hbardage;
+    _CURTEX=FINISH_TEX.hcouv||null;
     if(mono){
       var pnm=PANS[0], Nm=panN(pnm);
       [[pnm[0],pnm[1],1,-1],[pnm[2],pnm[3],-1,1]].forEach(function(E){
@@ -13974,13 +13987,13 @@ function buildHangar(){
         var Xo=sx*Math.max(Math.abs(ex)+wOut+0.03, Math.abs(ex)+Math.abs(Nm[0])*rTop+0.05);
         var inb=[ex+tin*Math.cos(p)*0.18+Nm[0]*rTop, ey+tin*Math.sin(p)*0.18+Nm[1]*rTop];
         var pe=[inb, Ee, [Xo,Ee[1]], [Xo,Ee[1]-legH], [Xo-sx*0.03,Ee[1]-legH-0.02]];
-        for(var ke=0;ke<pe.length-1;ke++) hStrut(pe[ke][0],pe[ke][1],pe[ke+1][0],pe[ke+1][1],0,0.03,L+gOut*2+0.02,cBard);
+        for(var ke=0;ke<pe.length-1;ke++) hStrut(pe[ke][0],pe[ke][1],pe[ke+1][0],pe[ke+1][1],0,0.03,L+gOut*2+0.02,cCouv);
       });
       var Ao=[pnm[0]+Nm[0]*rTop, pnm[1]+Nm[1]*rTop], Bo=[pnm[2]+Nm[0]*rTop, pnm[3]+Nm[1]*rTop];
       for(var gzm=-1;gzm<=1;gzm+=2){ var zIn=gzm*(halfL-0.085), zEd=gzm*halfL, zFc=gzm*(halfL+gOut+0.015);
         var Ae=[[Ao[0],Ao[1],zIn],[Ao[0],Ao[1],zEd],[Ao[0],Ao[1],zFc],[Ao[0],Ao[1]-legH,zFc],[Ao[0],Ao[1]-legH-0.01,zFc-gzm*0.015]];
         var Be=[[Bo[0],Bo[1],zIn],[Bo[0],Bo[1],zEd],[Bo[0],Bo[1],zFc],[Bo[0],Bo[1]-legH,zFc],[Bo[0],Bo[1]-legH-0.01,zFc-gzm*0.015]];
-        hRib2(Ae,Be,0.03,cBard);
+        hRib2(Ae,Be,0.03,cCouv);
       }
     } else {
     /* rive d'egout (sur la longueur) : bavette pliee, posee sur le toit, debordant au-dela
@@ -13994,7 +14007,7 @@ function buildHangar(){
         Ee, [Xo, Ee[1]], [Xo, Ee[1]-legH], [Xo - rs*0.03, Ee[1]-legH-0.02] ];
       var dep=L+gOut*2+0.02;
       for(var ke=0;ke<pe.length-1;ke++)
-        hStrut(pe[ke][0],pe[ke][1],pe[ke+1][0],pe[ke+1][1],0,0.03,dep,cBard);
+        hStrut(pe[ke][0],pe[ke][1],pe[ke+1][0],pe[ke+1][1],0,0.03,dep,cCouv);
     }
     /* rive de rejet (pignon) : plat sur le toit (85) -> bavette verticale sur le mur (165) -> ourlet (15) */
     for(var rs2=-1;rs2<=1;rs2+=2){ for(var gz=-1;gz<=1;gz+=2){
@@ -14003,17 +14016,17 @@ function buildHangar(){
       var zIn=gz*(halfL-0.085), zEd=gz*halfL, zFc=gz*(halfL+gOut+0.015);
       var Ae=[ [Fe[0],Fe[1],zIn],[Fe[0],Fe[1],zEd],[Fe[0],Fe[1],zFc],[Fe[0],Fe[1]-legH,zFc],[Fe[0],Fe[1]-legH-0.01,zFc-gz*0.015] ];
       var Br=[ [Fr[0],Fr[1],zIn],[Fr[0],Fr[1],zEd],[Fr[0],Fr[1],zFc],[Fr[0],Fr[1]-legH,zFc],[Fr[0],Fr[1]-legH-0.01,zFc-gz*0.015] ];
-      hRib2(Ae,Br,0.03,cBard);
+      hRib2(Ae,Br,0.03,cCouv);
     }}
     /* faitiere */
     var yr=ridgeY+rTop+0.05;
-    hStrut(-0.45, yr-0.45*Math.tan(p), 0, yr, 0, 0.05, L+gOut*2+0.06, cBard);
-    hStrut( 0.45, yr-0.45*Math.tan(p), 0, yr, 0, 0.05, L+gOut*2+0.06, cBard);
+    hStrut(-0.45, yr-0.45*Math.tan(p), 0, yr, 0, 0.05, L+gOut*2+0.06, cCouv);
+    hStrut( 0.45, yr-0.45*Math.tan(p), 0, yr, 0, 0.05, L+gOut*2+0.06, cCouv);
     /* capots d'angle : ferment la jonction rive d'égout / rive de rejet (masquent la tranche d'isolant) */
     var Yc=H+Math.cos(p)*rTop;
     for(var rc=-1;rc<=1;rc+=2){ for(var gc=-1;gc<=1;gc+=2){
       var Xc=rc*Math.max(S/2+wOut+0.03, S/2+Math.sin(p)*rTop+0.05), Zc=gc*(halfL+gOut+0.015);
-      box(Xc-rc*0.05, Yc-legH/2, Zc-gc*0.05, 0.13, legH+0.05, 0.13, cBard,1);
+      box(Xc-rc*0.05, Yc-legH/2, Zc-gc*0.05, 0.13, legH+0.05, 0.13, cCouv,1);
     }}
     }
     _CURTEX=null;
@@ -25126,268 +25139,4 @@ function translateDOM(){
   var D=I18N[LANG]||{};
   for(var i=0;i<list.length;i++){ var n=list[i];
     if(n.__fr===undefined) n.__fr=n.nodeValue;
-    /* `raw` = le texte r\u00e9ellement pr\u00e9sent dans le n\u0153ud (avec \u2019 \u00e9ventuelle).
-       `k`   = la m\u00eame cha\u00eene, apostrophe normalis\u00e9e, pour chercher la cl\u00e9.
-       Le remplacement doit porter sur `raw`, pas sur `k` : sinon, d\u00e8s qu'une
-       cha\u00eene contient une apostrophe typographique, replace() ne trouve rien
-       et le libell\u00e9 reste en fran\u00e7ais malgr\u00e9 une traduction disponible. */
-    var base=n.__fr, raw=base.trim(), k=raw.replace(/\u2019/g,"'"); if(!k) continue;
-    var out=base;
-    if(LANG!=='fr'){ var tr=D[k]; if(tr!=null) out=base.replace(raw,tr); }
-    if(n.nodeValue!==out) n.nodeValue=out;
-  }
-  /* attributs traduisibles : placeholder (champs) + title (infobulles) — non couverts
-     par la passe sur les nœuds texte. Mémorise le FR d'origine (__frph/__frt) puis applique. */
-  var els=root.querySelectorAll('[placeholder],[title]');
-  for(var e=0;e<els.length;e++){ var el=els[e];
-    if(el.hasAttribute('placeholder')){ if(el.__frph===undefined) el.__frph=el.getAttribute('placeholder')||'';
-      var pk=el.__frph.trim().replace(/’/g,"'"), pv=(LANG!=='fr'&&pk&&D[pk])||el.__frph; if(el.getAttribute('placeholder')!==pv) el.setAttribute('placeholder',pv); }
-    if(el.hasAttribute('title')){ if(el.__frt===undefined) el.__frt=el.getAttribute('title')||'';
-      var tk=el.__frt.trim().replace(/’/g,"'"), tv=(LANG!=='fr'&&tk&&D[tk])||el.__frt; if(el.getAttribute('title')!==tv) el.setAttribute('title',tv); }
-  }
-  /* Boutons « Rendu photo » (module de rendu + export) : recréés hors passe texte,
-     réécrits explicitement ici (anti-boucle : seulement si le libellé diffère). */
-  var _ptl='🎞 '+((LANG!=='fr'&&D['Rendu photo'])||'Rendu photo');
-  ['bpo-pt-btn','exp-photorender'].forEach(function(id){ var _b=document.getElementById(id); if(_b && _b.textContent!==_ptl) _b.innerHTML=_ptl; });
-  document.documentElement.lang=LANG; document.documentElement.dir=(LANG==='ar')?'rtl':'ltr'; setFlag();
-  if(mo){ mo.takeRecords(); mo.observe(root,{childList:true,subtree:true,characterData:true}); }
-}
-/* Easter egg : hommage à Graphisoft / ArchiCAD quand on passe en hongrois.
-   Recouvre le viewer d'une petite animation, puis revient au viewer (clic pour passer). */
-/* Son des animations : joué UNIQUEMENT pendant les écrans d'intro (changement de langue) et « À propos ».
-   Pas de musique d'ambiance. Respecte window.SOUND_ON (bouton haut-parleur). */
-var _ANIM_AU=null;
-function animSoundStart(){ try{ if(window.SOUND_ON===false) return; if(!_ANIM_AU){ _ANIM_AU=new Audio('Logic.mp3'); _ANIM_AU.volume=0.6; } _ANIM_AU.currentTime=0; var p=_ANIM_AU.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} }
-function animSoundStop(){ try{ if(_ANIM_AU) _ANIM_AU.pause(); }catch(e){} }
-function playGraphisoftTribute(){
-  var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsTribute')) return;
-  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
-  var ov=document.createElement('div'); ov.id='gsTribute';
-  ov.style.cssText='position:absolute;inset:0;z-index:9999;overflow:hidden;cursor:pointer;'+
-    'background:radial-gradient(ellipse at 50% 38%,#241a12 0%,#15100f 66%,#0a0708 100%);'+
-    'display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;opacity:0;transition:opacity .5s;';
-  ov.innerHTML=''+
-'<style>'+
-'#gsTribute .flag{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#ce2939 33%,#fff 33% 66%,#477050 66%);opacity:.9;}'+
-'#gsTribute .grid{position:absolute;inset:-25%;background-image:linear-gradient(rgba(255,138,61,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,61,.09) 1px,transparent 1px);background-size:34px 34px;animation:gsPan 19s linear infinite;}'+
-'@keyframes gsPan{to{transform:translate(34px,34px);}}'+
-'#gsTribute .scene{position:absolute;top:42%;left:50%;width:150px;height:150px;margin:-75px 0 0 -75px;perspective:640px;opacity:.30;}'+
-'#gsTribute .cube{position:absolute;inset:0;transform-style:preserve-3d;animation:gsSpin 15s linear infinite;}'+
-'#gsTribute .cube i{position:absolute;width:150px;height:150px;border:1px solid rgba(255,138,61,.8);display:block;}'+
-'#gsTribute .cube .f1{transform:translateZ(75px);}#gsTribute .cube .f2{transform:rotateY(180deg) translateZ(75px);}'+
-'#gsTribute .cube .f3{transform:rotateY(90deg) translateZ(75px);}#gsTribute .cube .f4{transform:rotateY(-90deg) translateZ(75px);}'+
-'#gsTribute .cube .f5{transform:rotateX(90deg) translateZ(75px);}#gsTribute .cube .f6{transform:rotateX(-90deg) translateZ(75px);}'+
-'@keyframes gsSpin{from{transform:rotateX(-22deg) rotateY(0);}to{transform:rotateX(-22deg) rotateY(360deg);}}'+
-'#gsTribute .txt{position:relative;text-align:center;padding:22px;color:#eaf2ff;text-shadow:0 2px 20px rgba(0,0,0,.7);max-width:92%;}'+
-'#gsTribute .l{opacity:0;transform:translateY(15px);animation:gsIn .9s cubic-bezier(.2,.7,.2,1) forwards;}'+
-'@keyframes gsIn{to{opacity:1;transform:none;}}'+
-'#gsTribute .brand{font-size:12px;letter-spacing:.5em;color:var(--am,#ff8a3d);font-weight:600;}'+
-'#gsTribute .acad{font-size:38px;font-weight:800;letter-spacing:.03em;margin:8px 0 3px;background:linear-gradient(90deg,#ffd3ac,var(--am,#ff8a3d),#ff6a12);-webkit-background-clip:text;background-clip:text;color:transparent;}'+
-'#gsTribute .sub{font-size:11.5px;color:#c9a889;letter-spacing:.14em;}'+
-'#gsTribute .founder{font-size:25px;font-weight:700;margin-top:24px;color:#fff;}'+
-'#gsTribute .role{font-size:10px;color:var(--am,#ff8a3d);letter-spacing:.28em;text-transform:uppercase;margin-top:2px;}'+
-'#gsTribute .team{font-size:13.5px;color:#efe3d8;margin-top:16px;line-height:2.05;}'+
-'#gsTribute .team b{font-weight:600;color:#fff;}'+
-'#gsTribute .thx{font-size:12px;color:#c9a889;margin-top:18px;font-style:italic;letter-spacing:.04em;}'+
-'#gsTribute .en{font-size:10px;color:#a58a72;letter-spacing:.08em;margin-top:1px;font-style:italic;}'+
-'#gsTribute .sec{font-size:10px;color:var(--am,#ff8a3d);letter-spacing:.26em;text-transform:uppercase;margin-top:20px;font-weight:600;}'+
-'#gsTribute .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#5a6c78;letter-spacing:.12em;}'+
-'</style>'+
-'<div class="flag"></div><div class="grid"></div>'+
-'<div class="scene"><div class="cube"><i class="f1"></i><i class="f2"></i><i class="f3"></i><i class="f4"></i><i class="f5"></i><i class="f6"></i></div></div>'+
-'<div class="txt">'+
-'<div class="l brand" style="animation-delay:.2s">TISZTELETTEL · GRAPHISOFT</div>'+
-'<div class="l en" style="animation-delay:.35s">with respect</div>'+
-'<div class="l acad" style="animation-delay:.7s">ArchiCAD</div>'+
-'<div class="l sub" style="animation-delay:1.2s">Budapest · 1982</div>'+
-'<div class="l founder" style="animation-delay:2.1s">Bojár Gábor</div>'+
-'<div class="l role" style="animation-delay:2.45s">az ArchiCAD és a GDL megalkotója</div>'+
-'<div class="l en" style="animation-delay:2.6s">founder of ArchiCAD &amp; GDL</div>'+
-'<div class="l thx" style="animation-delay:2.9s">À mon mentor — pour son intelligence et sa vision.</div>'+
-'<div class="l en" style="animation-delay:3.05s">To my mentor — for his brilliance and vision.</div>'+
-'<div class="l team" style="animation-delay:3.3s">'+
-'<span class="l" style="animation-delay:3.4s"><b>Seidl Tibor</b></span> · '+
-'<span class="l" style="animation-delay:3.7s"><b>Hinsenkamp Tamás</b></span> · '+
-'<span class="l" style="animation-delay:4.0s"><b>Sulli Gábor</b></span><br>'+
-'<span class="l" style="animation-delay:4.3s"><b>Szabó Ildikó</b></span> · '+
-'<span class="l" style="animation-delay:4.6s"><b>Heidekker András</b></span> · '+
-'<span class="l" style="animation-delay:4.9s"><b>Halász Dóra</b></span>'+
-'</div>'+
-'<div class="l sec" style="animation-delay:5.6s">Graphisoft France · Abvent</div>'+
-'<div class="l team" style="animation-delay:5.9s">'+
-'<span class="l" style="animation-delay:6.0s"><b>Xavier Soule</b></span> · '+
-'<span class="l" style="animation-delay:6.3s"><b>Gérard Bomer</b></span> · '+
-'<span class="l" style="animation-delay:6.6s"><b>Éric Larrouil</b></span><br>'+
-'<span class="l" style="animation-delay:6.9s"><b>† Pierre Judde</b></span> <span class="en" style="display:inline">in memoriam</span>'+
-'</div>'+
-'<div class="l thx" style="animation-delay:7.7s">…és az egész Graphisoft csapatnak — köszönjük.</div>'+
-'<div class="l en" style="animation-delay:7.95s">…and to the whole Graphisoft team — thank you.</div>'+
-'</div><div class="skip">◾ kattints a kihagyáshoz · click to skip</div>';
-  vp.appendChild(ov);
-  requestAnimationFrame(function(){ ov.style.opacity='1'; });
-  animSoundStart();
-  var timer=setTimeout(close, 15600);
-  function close(){ clearTimeout(timer); animSoundStop(); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
-  ov.addEventListener('click', close);
-}
-/* Message d'introduction à l'outil (corps en paragraphes ; ligne finale = INTRO_HOP). */
-var INTRO_MSG={
- fr:"Voici la 1ère version de BPO Architectural Parametrics. Cet outil n'a pas vocation à remplacer un logiciel BIM d'architecture — ArchiCAD (Graphisoft) le fait très bien ! Nous souhaitons d'ailleurs dédier cet outil à Bojár Gábor, son fondateur, notre mentor ;)<br><br>Nous souhaitons mettre à la disposition de tout le monde la puissance des outils paramétriques, pour vous faire gagner du temps dans la réalisation de vos projets.<br><br>N'hésitez pas à nous envoyer des commentaires et des souhaits.<br><br>Nous allons bientôt ajouter une rubrique « Fabricants » !",
- en:"This is the first version of BPO Architectural Parametrics. This tool is not meant to replace architectural BIM software — ArchiCAD (Graphisoft) does that very well! We would also like to dedicate this tool to Bojár Gábor, its founder, our mentor ;)<br><br>We want to make the power of parametric tools available to everyone, to save you time in bringing your projects to life.<br><br>Feel free to send us your comments and wishes.<br><br>We will soon be adding a « Manufacturers » section!",
- es:"Esta es la primera versión de BPO Architectural Parametrics. Esta herramienta no pretende sustituir a un software BIM de arquitectura — ¡ArchiCAD (Graphisoft) lo hace muy bien! Además, queremos dedicar esta herramienta a Bojár Gábor, su fundador, nuestro mentor ;)<br><br>Queremos poner la potencia de las herramientas paramétricas al alcance de todos, para ahorrarle tiempo en la realización de sus proyectos.<br><br>No dude en enviarnos sus comentarios y deseos.<br><br>¡Pronto añadiremos una sección « Fabricantes »!",
- it:"Questa è la prima versione di BPO Architectural Parametrics. Questo strumento non intende sostituire un software BIM di architettura — ArchiCAD (Graphisoft) lo fa benissimo! Desideriamo inoltre dedicare questo strumento a Bojár Gábor, il suo fondatore, il nostro mentore ;)<br><br>Vogliamo mettere la potenza degli strumenti parametrici alla portata di tutti, per farvi risparmiare tempo nella realizzazione dei vostri progetti.<br><br>Non esitate a inviarci commenti e desideri.<br><br>Presto aggiungeremo una sezione « Produttori »!",
- de:"Dies ist die erste Version von BPO Architectural Parametrics. Dieses Werkzeug soll keine Architektur-BIM-Software ersetzen — ArchiCAD (Graphisoft) macht das hervorragend! Wir möchten dieses Werkzeug außerdem Bojár Gábor widmen, seinem Gründer, unserem Mentor ;)<br><br>Wir möchten die Leistung parametrischer Werkzeuge allen zugänglich machen, um Ihnen Zeit bei der Umsetzung Ihrer Projekte zu sparen.<br><br>Senden Sie uns gerne Ihre Kommentare und Wünsche.<br><br>Bald fügen wir einen Bereich « Hersteller » hinzu!",
- pt:"Esta é a primeira versão do BPO Architectural Parametrics. Esta ferramenta não pretende substituir um software BIM de arquitetura — o ArchiCAD (Graphisoft) faz isso muito bem! Queremos também dedicar esta ferramenta a Bojár Gábor, o seu fundador, o nosso mentor ;)<br><br>Queremos colocar o poder das ferramentas paramétricas ao alcance de todos, para lhe poupar tempo na realização dos seus projetos.<br><br>Não hesite em enviar-nos os seus comentários e desejos.<br><br>Em breve adicionaremos uma secção « Fabricantes »!",
- zh:"这是 BPO Architectural Parametrics 的第一个版本。此工具并非用于取代建筑 BIM 软件——ArchiCAD（Graphisoft）在这方面做得非常出色！我们也想将此工具献给它的创始人、我们的导师 Bojár Gábor ;)<br><br>我们希望让所有人都能使用参数化工具的强大功能，帮助您在项目实现中节省时间。<br><br>欢迎向我们发送意见和建议。<br><br>我们即将添加 « 厂商 » 板块！",
- ja:"これは BPO Architectural Parametrics の最初のバージョンです。このツールは建築 BIM ソフトを置き換えるものではありません——ArchiCAD（Graphisoft）がそれを見事に担っています！また、このツールを創業者であり私たちの師である Bojár Gábor に捧げます ;)<br><br>パラメトリックツールの力をすべての人に届け、プロジェクトの実現にかかる時間を短縮したいと考えています。<br><br>ご意見・ご要望をぜひお寄せください。<br><br>まもなく « メーカー » セクションを追加します！",
- hi:"यह BPO Architectural Parametrics का पहला संस्करण है। यह टूल किसी आर्किटेक्चरल BIM सॉफ़्टवेयर की जगह लेने के लिए नहीं है — ArchiCAD (Graphisoft) यह काम बहुत अच्छे से करता है! हम यह टूल इसके संस्थापक, हमारे गुरु Bojár Gábor को समर्पित करना चाहते हैं ;)<br><br>हम पैरामीट्रिक टूल्स की शक्ति सभी तक पहुँचाना चाहते हैं, ताकि आपके प्रोजेक्ट्स को साकार करने में आपका समय बचे।<br><br>अपनी टिप्पणियाँ और सुझाव हमें ज़रूर भेजें।<br><br>हम जल्द ही « निर्माता » रूब्रिक जोड़ेंगे!",
- ar:"هذه هي النسخة الأولى من BPO Architectural Parametrics. لا تهدف هذه الأداة إلى استبدال برامج BIM المعمارية — فـ ArchiCAD (Graphisoft) يقوم بذلك على أكمل وجه! كما نودّ إهداء هذه الأداة إلى بويار غابور، مؤسِّسها ومعلِّمنا ;)<br><br>نريد أن نُتيح قوة الأدوات البارامترية للجميع، لتوفير وقتك في إنجاز مشاريعك.<br><br>لا تتردّد في إرسال ملاحظاتك واقتراحاتك إلينا.<br><br>سنضيف قريبًا قسم « المصنّعون »!",
- ru:"Это первая версия BPO Architectural Parametrics. Этот инструмент не призван заменить архитектурное BIM-ПО — ArchiCAD (Graphisoft) прекрасно с этим справляется! Мы также хотим посвятить его основателю ArchiCAD, нашему наставнику Бояру Габору ;)<br><br>Мы хотим сделать мощь параметрических инструментов доступной каждому, чтобы вы экономили время при реализации проектов.<br><br>Не стесняйтесь присылать нам замечания и пожелания.<br><br>Скоро мы добавим раздел « Производители »!",
- uk:"Це перша версія BPO Architectural Parametrics. Цей інструмент не має на меті замінити архітектурне BIM-ПЗ — ArchiCAD (Graphisoft) чудово з цим впорається! Ми також хочемо присвятити його засновнику ArchiCAD, нашому наставнику Бояру Габору ;)<br><br>Ми прагнемо зробити потужність параметричних інструментів доступною кожному, щоб ви заощаджували час у реалізації проєктів.<br><br>Не вагайтеся надсилати нам зауваження та побажання.<br><br>Незабаром ми додамо розділ « Виробники »!"
-};
-/* Ligne de clôture, mise en valeur, traduite par langue. */
-var INTRO_HOP={
- fr:"Nous espérons que vous apprécierez ces outils.",
- en:"We hope you enjoy these tools.",
- es:"Esperamos que disfrute de estas herramientas.",
- it:"Ci auguriamo che questi strumenti vi piacciano.",
- de:"Wir hoffen, dass Ihnen diese Werkzeuge gefallen.",
- pt:"Esperamos que goste destas ferramentas.",
- zh:"希望您喜欢这些工具。",
- ja:"これらのツールを楽しんでいただければ幸いです。",
- hi:"हमें आशा है कि आपको ये टूल्स पसंद आएँगे।",
- ar:"نأمل أن تستمتع بهذه الأدوات.",
- ru:"Надеемся, вам понравятся эти инструменты.",
- uk:"Сподіваємося, вам сподобаються ці інструменти."
-};
-/* Intros des langues sorties du monolithe. Fusionnées ici, donc après INTRO_MSG et
-   INTRO_HOP : les treize langues d'origine restent maîtresses de leur texte. */
-(function(){
-  var M=window.BPO_I18N_EXT_META; if(!M) return;
-  if(M.msg) for(var a in M.msg){ if(INTRO_MSG[a]===undefined) INTRO_MSG[a]=M.msg[a]; }
-  if(M.hop) for(var b in M.hop){ if(INTRO_HOP[b]===undefined) INTRO_HOP[b]=M.hop[b]; }
-})();
-/* Écran d'introduction à l'outil (toutes langues sauf hongrois). Clic pour passer. */
-function playIntro(l, onClose){
-  var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsIntro') || document.getElementById('gsTribute')) return;
-  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
-  var msg=INTRO_MSG[l]||INTRO_MSG.en, hop=INTRO_HOP[l]||INTRO_HOP.en;
-  var ov=document.createElement('div'); ov.id='gsIntro';
-  ov.style.cssText='position:absolute;inset:0;z-index:9999;overflow:hidden;cursor:pointer;'+
-    'background:radial-gradient(ellipse at 50% 30%,#241a12 0%,#15100f 56%,#0a0708 100%);'+
-    'display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;opacity:0;transition:opacity .5s;';
-  ov.innerHTML=''+
-'<style>'+
-'#gsIntro .flag{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--am,#ff8a3d),#ffc79a,var(--am,#ff8a3d));opacity:.92;}'+
-'#gsIntro .grid{position:absolute;inset:-25%;background-image:linear-gradient(rgba(255,138,61,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,61,.09) 1px,transparent 1px);background-size:34px 34px;animation:giPan 19s linear infinite;}'+
-'@keyframes giPan{to{transform:translate(34px,34px);}}'+
-/* Bâtiment paramétrique en fond : étages qui se resserrent/élargissent en cascade (retraits) */
-'#gsIntro .massing{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-1deg);width:210px;display:flex;flex-direction:column-reverse;align-items:center;gap:4px;opacity:.16;filter:drop-shadow(0 0 22px rgba(255,138,61,.4));pointer-events:none;}'+
-'#gsIntro .massing i{display:block;height:32px;background:linear-gradient(180deg,rgba(255,150,80,.95),rgba(255,106,18,.62));border:1px solid rgba(255,196,150,.7);border-radius:2px;transform-origin:center;animation:mFloor 7.8s ease-in-out infinite;}'+
-'@keyframes mFloor{0%,100%{transform:scaleX(1);}50%{transform:scaleX(.4);}}'+
-'#gsIntro .card{position:relative;max-width:640px;width:86%;max-height:84%;overflow:auto;text-align:center;padding:26px;color:#f3e8dd;text-shadow:0 2px 16px rgba(0,0,0,.55);}'+
-'#gsIntro .l{opacity:0;transform:translateY(14px);animation:giIn 1.05s cubic-bezier(.2,.7,.2,1) forwards;}'+
-'@keyframes giIn{to{opacity:1;transform:none;}}'+
-'#gsIntro .brand{font-size:12px;letter-spacing:.42em;color:var(--am,#ff8a3d);font-weight:700;}'+
-'#gsIntro .title{font-size:29px;font-weight:800;margin:6px 0 2px;background:linear-gradient(90deg,#ffd3ac,var(--am,#ff8a3d),#ff6a12);-webkit-background-clip:text;background-clip:text;color:transparent;}'+
-'#gsIntro .ver{font-size:11px;color:#c9a889;letter-spacing:.16em;margin-bottom:16px;}'+
-'#gsIntro .msg{font-size:14.5px;line-height:1.72;color:#efe3d8;margin:0 0 16px;text-align:left;}'+
-'#gsIntro .hop{font-size:16px;font-weight:700;color:var(--am,#ff8a3d);letter-spacing:.02em;}'+
-'#gsIntro .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#7a6551;letter-spacing:.12em;}'+
-'</style>'+
-'<div class="flag" style="background:'+((typeof FLAG_BANDS!=='undefined'&&FLAG_BANDS[l])||'linear-gradient(90deg,var(--am,#ff8a3d),#ffc79a,var(--am,#ff8a3d))')+';"></div><div class="grid"></div>'+
-'<div class="massing">'+
-'<i style="width:152px;animation-delay:0s"></i>'+
-'<i style="width:152px;animation-delay:.28s"></i>'+
-'<i style="width:144px;animation-delay:.56s"></i>'+
-'<i style="width:144px;animation-delay:.84s"></i>'+
-'<i style="width:132px;animation-delay:1.12s"></i>'+
-'<i style="width:120px;animation-delay:1.4s"></i>'+
-'<i style="width:106px;animation-delay:1.68s"></i>'+
-'<i style="width:92px;animation-delay:1.96s"></i>'+
-'</div>'+
-'<div class="card">'+
-'<div class="l brand" style="animation-delay:.15s">BPO · ARCHITECTURAL PARAMETRICS</div>'+
-'<div class="l title" style="animation-delay:.4s">Architectural Parametrics</div>'+
-'<div class="l ver" style="animation-delay:.7s">v1 — première version · first release</div>'+
-'<p class="l msg" style="animation-delay:1.0s">'+msg+'</p>'+
-'<div class="l hop" style="animation-delay:2.0s">'+hop+'</div>'+
-'</div><div class="skip">◾ click to continue</div>';
-  vp.appendChild(ov);
-  requestAnimationFrame(function(){ ov.style.opacity='1'; });
-  animSoundStart();
-  var timer=setTimeout(close, 15600), closed=false;
-  function close(){ if(closed) return; closed=true; clearTimeout(timer); animSoundStop(); ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); if(typeof onClose==='function') try{ onClose(); }catch(e){} }, 550); }
-  ov.addEventListener('click', close);
-}
-/* Formulaire de contact affiché dans le viewer après l'animation « À propos ». Aucun
-   backend : « Envoyer » ouvre le logiciel de messagerie du visiteur, pré-rempli vers
-   al@architecture-al.com. Rien n'est transmis automatiquement. */
-function showContactForm(){
-  var vp=document.getElementById('vp'); if(!vp || document.getElementById('bpoContact')) return;
-  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
-  var ov=document.createElement('div'); ov.id='bpoContact';
-  ov.style.cssText='position:absolute;inset:0;z-index:9998;overflow:auto;display:flex;align-items:center;justify-content:center;'+
-    'background:radial-gradient(ellipse at 50% 22%,#241a12 0%,#14100e 60%,#0a0708 100%);font-family:system-ui,sans-serif;opacity:0;transition:opacity .4s;';
-  ov.innerHTML='<style>'+
-    '#bpoContact .card{width:min(560px,90%);max-height:90%;overflow:auto;background:rgba(28,22,16,0.88);border:1px solid rgba(255,196,150,0.25);border-radius:14px;padding:24px 24px 18px;box-shadow:0 12px 50px rgba(0,0,0,.6);color:#f3e8dd;}'+
-    '#bpoContact h2{font-size:16px;margin:0 0 6px;color:#ffc79a;font-weight:700;letter-spacing:.02em;}'+
-    '#bpoContact .intro{font-size:13px;line-height:1.62;color:#e8dccf;margin:0 0 14px;}'+
-    '#bpoContact label{display:block;font-size:11px;color:#c9a889;margin:11px 0 3px;letter-spacing:.04em;}'+
-    '#bpoContact input,#bpoContact select,#bpoContact textarea{width:100%;background:rgba(255,246,236,0.06);border:1px solid rgba(255,196,150,0.28);border-radius:7px;color:#f6ede2;font-size:13px;padding:8px 9px;font-family:inherit;outline:none;}'+
-    '#bpoContact textarea{min-height:120px;resize:vertical;}'+
-    '#bpoContact input:focus,#bpoContact select:focus,#bpoContact textarea:focus{border-color:#ff8a3d;}'+
-    '#bpoContact .row{display:flex;gap:16px;justify-content:space-between;align-items:center;margin-top:18px;}'+
-    '#bpoContact .send{background:#ff8a3d;color:#201812;border:0;border-radius:8px;font-size:13px;font-weight:700;padding:9px 18px;cursor:pointer;}'+
-    '#bpoContact .send:hover{background:#ffa055;}'+
-    '#bpoContact .close{background:transparent;border:1px solid rgba(255,196,150,0.35);color:#e8dccf;border-radius:8px;font-size:12px;padding:8px 14px;cursor:pointer;}'+
-    '#bpoContact .hintline{font-size:10.5px;color:#9c8570;margin-top:12px;line-height:1.5;}'+
-    '#bpoContact .ok{font-size:12px;color:#8fd39a;margin-top:10px;display:none;}'+
-    '</style>'+
-    '<div class="card">'+
-    '<h2>Contact — BPO</h2>'+
-    '<p class="intro">Des questions, des problèmes de fonctionnement, un commentaire, des idées de configurateurs ? C\'est ici :</p>'+
-    '<label>Type de message</label>'+
-    '<select id="bpoCType"><option>Question</option><option>Problème de fonctionnement</option><option>Commentaire</option><option>Idée de configurateur</option></select>'+
-    '<label>Votre nom</label><input id="bpoCName" type="text" placeholder="Prénom Nom">'+
-    '<label>Votre e-mail</label><input id="bpoCMail" type="email" placeholder="vous@exemple.com">'+
-    '<label>Message</label><textarea id="bpoCMsg" placeholder="Votre message…"></textarea>'+
-    '<div class="row"><button class="close" id="bpoCClose">Fermer</button><button class="send" id="bpoCSend">Envoyer ✉</button></div>'+
-    '<div class="ok" id="bpoCOk">Votre messagerie s\'est ouverte, pré-remplie. Merci !</div>'+
-    '<div class="hintline">Le bouton ouvre votre logiciel de messagerie, pré-rempli vers al@architecture-al.com. Rien n\'est envoyé automatiquement.</div>'+
-    '</div>';
-  vp.appendChild(ov);
-  requestAnimationFrame(function(){ ov.style.opacity='1'; });
-  function cclose(){ if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); },350); }
-  ov.querySelector('#bpoCClose').onclick=cclose;
-  ov.addEventListener('click',function(e){ if(e.target===ov) cclose(); });
-  ov.querySelector('#bpoCSend').onclick=function(){
-    var g=function(id){ return (ov.querySelector('#'+id)||{}).value||''; };
-    var t=g('bpoCType'), n=g('bpoCName').trim(), m=g('bpoCMail').trim(), msg=g('bpoCMsg').trim();
-    var subject='[BPO] '+t+(n?(' — '+n):'');
-    var body=(msg||'')+'\n\n—\n'+(n?('Nom : '+n+'\n'):'')+(m?('E-mail : '+m+'\n'):'')+'Type : '+t;
-    var url='mailto:al@architecture-al.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
-    var a=document.createElement('a'); a.href=url; a.style.display='none'; document.body.appendChild(a); a.click();
-    setTimeout(function(){ if(a.parentNode) a.parentNode.removeChild(a); },200);
-    var ok=ov.querySelector('#bpoCOk'); if(ok) ok.style.display='block';
-  };
-}
-function setLang(l){ LANG=(l==='fr'||I18N[l]||(typeof FLAGS!=='undefined'&&FLAGS[l]))?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
-  var sel=document.getElementById('langsel'); if(sel) sel.value=LANG; translateDOM();
-  if(l==='hu') playGraphisoftTribute(); else playIntro(l); }
-function start(){
-  LANG=pick();
-  var sel=document.getElementById('langsel');
-  if(sel){ sel.value=LANG; sel.addEventListener('change',function(){ setLang(this.value); }); }
-  mo=new MutationObserver(function(){ if(pend||LANG==='fr')return; pend=true; setTimeout(function(){pend=false; translateDOM();},40); });
-  translateDOM();
-  try{ applyPrefs(); }catch(e){}
-}
-if(document.readyState!=='loading') setTimeout(start,60); else document.addEventListener('DOMContentLoaded',function(){ setTimeout(start,60); });
-window.playAbout=function(){ try{ var l=(document.getElementById('langsel')||{}).value||(typeof LANG!=='undefined'?LANG:'fr'); if(l==='hu'){ if(typeof playGraphisoftTribute==='function') playGraphisoftTribute(); setTimeout(function(){ if(typeof showContactForm==='function') showContactForm(); }, 600); } else if(typeof playIntro==='function'){ playIntro(l, showContactForm); } }catch(e){} };
-window.SOUND_ON=true;   /* son joué pendant les animations (intro langue / À propos) */
-})();
-</script>
-<!-- ru/uk intégrés -->
-</body>
-</html>
+    /* `raw` = le texte r\u00e9ellement pr\u00e9sent dans le n\u0153ud (avec \u
