@@ -12094,15 +12094,22 @@ function ombRecapHTML(){
 var PPORTE = {
   type:'simple', sizeMode:'std', w:93, h:204, lt:4,
   frame:true, fw:6, fd:12,
-  panel:'plein', mv:1, mh:1,
+  panel:'plein', mv:1, mh:1, nPan:4, pcols:1,
   imposteOn:false, imposte:40,
   handle:true, handleType:'bequille', handleH:105,
   hScale:1, hRotX:0, hRotY:0, hRotZ:0, hOff:0,
+  chambranle:0, chambranleW:6, seuil:'aucun',
+  volet:'aucun', voletType:'plein', voletOpen:150, voletDown:0, voletPos:'ext', voletJeu:2, voletQuinc:1,   /* volets (porte-fenêtre) ; voletJeu = dégagement devant le dormant (cm) */
+  linteau:0, linteauMat:'beton', linteauH:20, linteauLat:15, linteauD:4, linteauDy:0, linteauCoffre:1,
   open:18
 };
 /* rotation autour d'un axe vertical en (hx, z=0) */
 function rotT(hx,a,sens){ var c=Math.cos(sens*a), s=Math.sin(sens*a);
   return function(p){ var dx=p[0]-hx, dz=p[2]; return [hx+dx*c-dz*s, p[1], dx*s+dz*c]; }; }
+/* rotation autour d'un axe vertical passant par (x=hx, z=hz) — indispensable dès que
+   l'ouvrant est déporté en z (volets posés devant le dormant) : sinon le gond se déplace. */
+function rotTz(hx,hz,a,sens){ var c=Math.cos(sens*a), s=Math.sin(sens*a);
+  return function(p){ var dx=p[0]-hx, dz=p[2]-hz; return [hx+dx*c-dz*s, p[1], hz+dx*s+dz*c]; }; }
 function rotAbout(cx,ang){ var c=Math.cos(ang), s=Math.sin(ang);
   return function(p){ var dx=p[0]-cx, dz=p[2]; return [cx+dx*c-dz*s, p[1], dx*s+dz*c]; }; }
 /* basculement autour d'un axe horizontal X passant par (y=hy, z=0) — oscillo/soufflet */
@@ -12116,13 +12123,85 @@ function leafBox(T, cx,cy,cz, w,h,d, col, al){
           [cx-hw,cy-hh,cz+hd],[cx+hw,cy-hh,cz+hd],[cx+hw,cy+hh,cz+hd],[cx-hw,cy+hh,cz+hd]];
   boxV(vt.map(T), col, al);
 }
+/* --- Ouvrages maçonnés autour d'une baie : appui extérieur + linteau ---
+   CONVENTION : les poignées/crémones sont côté INTÉRIEUR (+z), donc l'EXTÉRIEUR
+   est en -z. MENUIS_EXT porte ce sens : à changer ici si la convention évolue. */
+var MENUIS_EXT=-1;
+var MAC_MATS=[['beton','Béton',[172,172,166]],['brique','Brique',[160,90,70]],['pierre','Pierre',[205,198,182]],['bois','Bois',[150,112,74]],['acier','Acier',[92,96,102]]];
+function _macCol(id){ for(var i=0;i<MAC_MATS.length;i++) if(MAC_MATS[i][0]===id) return MAC_MATS[i][2]; return [172,172,166]; }
+/* Appui maçonné sous une baie de largeur W (centrée). `side` = sens de l'extérieur.
+   lat = débord latéral, d = avancée ext., th = épaisseur, penteDeg = pente vers l'ext. */
+function macAppui(W, fd, lat, d, th, penteDeg, col, side){
+  side=(side===undefined)?MENUIS_EXT:side;
+  var x1=W/2+lat, x0=-x1, zA=-side*fd/2, zB=side*(fd/2+d);
+  var drop=Math.tan(Math.max(0,penteDeg)*Math.PI/180)*Math.abs(zB-zA);
+  var vt=[[x0,-th,zA],[x1,-th,zA],[x1,-th,zB],[x0,-th,zB],
+          [x0,0,zA],[x1,0,zA],[x1,-drop,zB],[x0,-drop,zB]];   /* dessus incliné vers l'extérieur */
+  boxV(vt, col, 1);
+}
+/* Linteau au-dessus d'une baie : yTop = niveau haut de la baie ; `side` = sens ext. */
+function macLinteau(W, fd, yTop, lat, d, h, col, side){
+  side=(side===undefined)?MENUIS_EXT:side;
+  var zA=-side*fd/2, zB=side*(fd/2+d);
+  box(0, yTop+h/2, (zA+zB)/2, W+2*lat, h, Math.abs(zB-zA), col, 1);
+}
+/* Relevé du linteau au-dessus de la baie (m). Avec un volet roulant, le linteau est
+   remonté pour dégager le coffre, sauf si l'on veut un linteau-coffre (monobloc). */
+function _linteauDy(P){
+  var dy=Math.max(0,(P.linteauDy||0))/100;
+  if(P.volet==='roulant' && P.linteauCoffre) dy += 0.23;
+  return dy;
+}
+/* _panRows() : n bandes horizontales égales de type k ('p' panneau, 'g' verre, 'l' lame). */
+function _panRows(n,k){ var out=[]; for(var i=0;i<n;i++) out.push({f0:i/n, f1:(i+1)/n, k:k}); return out; }
 /* construit un vantail (cadre + remplissage) dans [x0,x1]x[y0,y1], épaisseur lt,
    plan z=zc, via la transformation T. handleEdge=+1 -> poignée côté x1, -1 -> x0. */
+/* Contexte du volet en cours de construction (lu par le style 'barres') :
+   _LEAFSD = direction "vers l'extérieur" du vantail, _LEAFQ = quincaillerie visible. */
+var _LEAFSD=1, _LEAFQ=1;
+var COL_FERRURE=[38,38,40];
+/* 'lames' est l'ancien identifiant du volet à barres et écharpe (il rendait une persienne). */
+function _voletStyle(t){ return (t==='barres'||t==='lames') ? 'barres' : 'plein'; }
+/* Barre oblique (écharpe) : boîte orientée dans le plan XY du vantail, puis passée dans T. */
+function leafDiag(T, xa,ya, xb,yb, cz, w, d, col){
+  var dx=xb-xa, dy=yb-ya, L=Math.sqrt(dx*dx+dy*dy); if(L<1e-6||w<=0||d<=0) return;
+  var ux=dx/L, uy=dy/L, px=-uy*w/2, py=ux*w/2, hd=d/2;
+  var vt=[[xa+px,ya+py,cz-hd],[xb+px,yb+py,cz-hd],[xb-px,yb-py,cz-hd],[xa-px,ya-py,cz-hd],
+          [xa+px,ya+py,cz+hd],[xb+px,yb+py,cz+hd],[xb-px,yb-py,cz+hd],[xa-px,ya-py,cz+hd]];
+  boxV(vt.map(T), col, 1);
+}
 function buildFramedLeaf(T, x0,x1,y0,y1,zc,lt,style,colL,colP,colG,colH, handleEdge, handle, handleY){
   var lw=x1-x0, lh=y1-y0, cx=(x0+x1)/2;
   _CURTEX=FINISH_TEX.panneau;                              /* matiere "Panneau" */
   if(style==='plein'){
     leafBox(T, cx,(y0+y1)/2,zc, lw,lh,lt, colL,1);
+  } else if(style==='barres'){
+    /* Volet à barres et écharpe : lames verticales jointives (type plancher),
+       deux barres horizontales et une écharpe diagonale sur la face intérieure. */
+    var sd=_LEAFSD, npl=Math.max(3,Math.round(lw/0.115)), pw=lw/npl;
+    for(var pi=0;pi<npl;pi++) leafBox(T, x0+(pi+0.5)*pw, (y0+y1)/2, zc, pw-0.005, lh, lt, colL,1);
+    var bt=0.022, bhh=0.09, bz=zc-sd*(lt/2+bt/2),          /* barres côté façade */
+        by0=y0+lh*0.15, by1=y1-lh*0.15, mx=lw*0.015;
+    leafBox(T, cx, by0, bz, lw-2*mx, bhh, bt, colP,1);
+    leafBox(T, cx, by1, bz, lw-2*mx, bhh, bt, colP,1);
+    /* écharpe : monte depuis le côté des gonds vers le côté de la fermeture */
+    var hgX=(handleEdge>0)?x0:x1, clX=(handleEdge>0)?x1:x0;
+    leafDiag(T, hgX+(clX>hgX?mx:-mx), by0, clX-(clX>hgX?mx:-mx), by1, bz, bhh*0.8, bt, colP);
+    if(_LEAFQ){
+      _CURTEX=null;
+      /* pentures (bandes plates) sur les barres, côté gonds */
+      var pl=lw*0.62, pz=bz-sd*(bt/2+0.008), pxc=hgX+((clX>hgX)?pl/2:-pl/2);
+      leafBox(T, pxc, by0, pz, pl, 0.05, 0.012, COL_FERRURE,1);
+      leafBox(T, pxc, by1, pz, pl, 0.05, 0.012, COL_FERRURE,1);
+      /* gonds : axes verticaux au nu du bord des gonds */
+      leafBox(T, hgX, by0, pz, 0.03, 0.09, 0.03, COL_FERRURE,1);
+      leafBox(T, hgX, by1, pz, 0.03, 0.09, 0.03, COL_FERRURE,1);
+      /* espagnolette : tringle verticale + poignée, côté fermeture */
+      var exx=clX-((clX>hgX)?0.055:-0.055), ez=bz-sd*(bt/2+0.012);
+      leafBox(T, exx, (y0+y1)/2, ez, 0.016, lh*0.8, 0.016, COL_FERRURE,1);
+      leafBox(T, exx, (y0+y1)/2-lh*0.06, ez-sd*0.03, 0.016, 0.13, 0.05, COL_FERRURE,1);
+      _CURTEX=FINISH_TEX.panneau;
+    }
   } else {
     var sw=Math.min(0.11, lw*0.18);
     leafBox(T, x0+sw/2,(y0+y1)/2,zc, sw,lh,lt, colL,1);
@@ -12131,16 +12210,24 @@ function buildFramedLeaf(T, x0,x1,y0,y1,zc,lt,style,colL,colP,colG,colH, handleE
     leafBox(T, cx,y0+sw/2,zc, lw,sw,lt, colL,1);
     var ix0=x0+sw, ix1=x1-sw, iy0=y0+sw, iy1=y1-sw, iw=ix1-ix0, ih=iy1-iy0, icx=(ix0+ix1)/2;
     var rows;
-    if(style==='moulure')         rows=[{f0:0,f1:0.5,k:'p'},{f0:0.5,f1:1,k:'p'}];
+    if(style==='moulure')         rows=_panRows(2,'p');
+    else if(style==='panneaux')   rows=_panRows(Math.max(1,Math.min(6,PPORTE.nPan||4)),'p');
+    else if(style==='persienne')  rows=[{f0:0,f1:1,k:'l'}];
     else if(style==='tout_vitre') rows=[{f0:0,f1:1,k:'g'}];
     else if(style==='mi_vitre')   rows=[{f0:0,f1:0.5,k:'p'},{f0:0.5,f1:1,k:'g'}];
+    else if(style==='vitre_bas')  rows=[{f0:0,f1:0.5,k:'g'},{f0:0.5,f1:1,k:'p'}];
     else                          rows=[{f0:0,f1:0.58,k:'p'},{f0:0.58,f1:1,k:'g'}];
     var mr=0.05;
     rows.forEach(function(r){
       var ry0=iy0+r.f0*ih+(r.f0>0?mr/2:0), ry1=iy0+r.f1*ih-(r.f1<1?mr/2:0);
       if(ry1<=ry0) return;
       if(r.k==='p'){
-        leafBox(T, icx,(ry0+ry1)/2,zc, iw,(ry1-ry0), lt*0.6, colP,1);
+        var nc=Math.max(1,Math.min(3,PPORTE.pcols||1));
+        for(var ci=0;ci<nc;ci++){ var cx0=ix0+iw*ci/nc+(ci>0?mr/2:0), cx1=ix0+iw*(ci+1)/nc-(ci<nc-1?mr/2:0); if(cx1>cx0) leafBox(T,(cx0+cx1)/2,(ry0+ry1)/2,zc,(cx1-cx0),(ry1-ry0),lt*0.6,colP,1); }
+        for(var cm=1;cm<nc;cm++){ leafBox(T, ix0+iw*cm/nc,(ry0+ry1)/2,zc, mr,(ry1-ry0),lt, colL,1); }   /* meneaux verticaux entre colonnes */
+      } else if(r.k==='l'){
+        var nl=Math.max(4,Math.round((ry1-ry0)/0.055)), sl=(ry1-ry0)/nl;   /* persienne : lames */
+        for(var li=0;li<nl;li++){ var ly=ry0+(li+0.55)*sl; leafBox(T, icx, ly, zc+lt*0.14, iw, sl*0.66, lt*0.5, colP,1); }
       } else {
         _CURTEX=null;
         leafBox(T, icx,(ry0+ry1)/2,zc, iw,(ry1-ry0), lt*0.22, colG,0.3);  /* verre (jamais texture) */
@@ -12244,6 +12331,35 @@ function buildPorte(){
     box( hw+fw/2, innerTop/2, 0, fw, innerTop, fd, colF,1);
     box(0, innerTop+fw/2, 0, W+2*fw, fw, fd, colF,1);
   }
+  /* --- CHAMBRANLE (encadrement mouluré, en U sur les 2 faces) --- */
+  if(PPORTE.chambranle && hasFrame){ var cw=Math.max(0.03,(PPORTE.chambranleW||6)/100), ct=0.016, ox=hw+fw, oy=innerTop+fw;
+    [-1,1].forEach(function(zs){ var zz=zs*(fd/2+ct/2);
+      box(-ox-cw/2, oy/2, zz, cw, oy+cw, ct, colF,1);
+      box( ox+cw/2, oy/2, zz, cw, oy+cw, ct, colF,1);
+      box(0, oy+cw/2, zz, (ox+cw/2)*2+cw, cw, ct, colF,1); });
+  }
+  /* --- SEUIL (plat / PMR arrondi bas) --- */
+  if(PPORTE.seuil && PPORTE.seuil!=='aucun'){ var sh=(PPORTE.seuil==='pmr')?0.02:0.04; _CURTEX=null; box(0, sh/2, 0, W+(hasFrame?2*fw:0), sh, fd*0.95, [148,150,154],1); }
+  /* --- VOLETS (porte-fenêtre) + LINTEAU --- */
+  (function(){ var EXT=MENUIS_EXT, INT=-MENUIS_EXT, sd=(PPORTE.voletPos==='int')?INT:EXT, colGx=[150,200,235];
+    if(PPORTE.volet==='battant' || PPORTE.volet==='persienne'){
+      var vst=(PPORTE.volet==='persienne')?'persienne':_voletStyle(PPORTE.voletType), vlt=0.03,
+          vz=sd*(fd/2 + Math.max(0,(PPORTE.voletJeu===undefined?2:PPORTE.voletJeu))/100 + vlt/2),   /* posé DEVANT le bâti */
+          ang=(PPORTE.voletOpen||0)*Math.PI/180;
+      _LEAFSD=sd; _LEAFQ=(PPORTE.voletQuinc===undefined)?1:PPORTE.voletQuinc;
+      /* sens : le vantail doit s'écarter de la façade, donc tourner vers le côté de pose (sd) */
+      buildFramedLeaf(rotTz(-hw, vz, ang,  sd), -hw, 0, 0, H, vz, vlt, vst, colF, colF, colGx, colH, +1, false, 0);
+      buildFramedLeaf(rotTz( hw, vz, ang, -sd), 0, hw, 0, H, vz, vlt, vst, colF, colF, colGx, colH, -1, false, 0);
+      _LEAFSD=1; _LEAFQ=1;
+    } else if(PPORTE.volet==='roulant'){
+      var rj=Math.max(0,(PPORTE.voletJeu===undefined?2:PPORTE.voletJeu))/100;
+      _CURTEX=FINISH_TEX.bati; box(0, innerTop+0.11, sd*(fd/2+rj+0.085), W+0.05, 0.22, 0.17, colF,1); _CURTEX=null;
+      var down=Math.max(0,Math.min(1,(PPORTE.voletDown||0)/100));
+      if(down>0){ var ty0=H*(1-down), nl=Math.max(3,Math.round((H-ty0)/0.06)), sl=(H-ty0)/nl;
+        for(var li=0;li<nl;li++){ var ly=ty0+(li+0.5)*sl; box(0, ly, sd*(fd/2+rj+0.01), W-0.02, sl*0.85, 0.02, colL,1); } }
+    }
+    if(PPORTE.linteau){ _CURTEX=null; macLinteau(W, fd, innerTop+(hasFrame?fw:0)+_linteauDy(PPORTE), Math.max(0,(PPORTE.linteauLat||0)/100), Math.max(0,(PPORTE.linteauD||0)/100), Math.max(0.04,(PPORTE.linteauH||20)/100), _macCol(PPORTE.linteauMat), EXT); }
+  })();
   /* --- IMPOSTE (panneau vitré fixe au-dessus) --- */
   if(impH>0){
     box(0, H+0.03, 0, W, 0.06, fd*0.9, colF,1);                       /* traverse (Bâti) */
@@ -12289,6 +12405,14 @@ var PFEN = {
   fw:5, fd:10, sw:5,
   cvert:0, choriz:0,
   sill:true, sillD:5,
+  sens:'int',                                                                    /* ouverture : 'int' = à la française, 'ext' = à l'anglaise */
+  meneau:'auto',                                                                 /* montant central : auto (absent en battants) / oui / non */
+  volet:'aucun', voletType:'plein', voletOpen:150, voletDown:0, voletPos:'ext', voletJeu:2, voletQuinc:1,   /* volets : aucun/battant/persienne/roulant ; posé ext ou int ; voletJeu = dégagement devant le dormant (cm) */
+  tabInt:0, tabIntD:20, tabIntEp:3,                                /* TABLETTE intérieure (menuiserie) */
+  appuiExt:0, appuiExtMat:'beton', appuiExtD:12, appuiExtH:6, appuiExtPente:8, appuiExtLat:8,   /* APPUI extérieur maçonné (rejingot/pente) */
+  linteau:0, linteauMat:'beton', linteauH:20, linteauLat:15, linteauD:4, linteauDy:0, linteauCoffre:1,  /* linteau : hauteur, dépassement latéral, avancée ext., relevé, coffre du volet roulant sous le linteau */
+  grille:0, grilleN:5,                                             /* grille de défense (barreaudage RDC) */
+  chambranle:0, chambranleW:6,                                     /* encadrement mouluré */
   imposteOn:false, imposte:30,
   soubOn:false, soub:40,
   handle:true, open:18,
@@ -12340,6 +12464,41 @@ function buildFenetre(){
   box( hw-fw/2, H/2,0, fw,H,fd, colC,1);
   box(0, H-fw/2,0, W,fw,fd, colC,1);
   box(0, fw/2,0, W, fw, fd+sillExtra*2, colC,1);   /* appui (déborde en profondeur) */
+  /* --- VOLETS + TABLETTES (additif ; côté extérieur = +z) --- */
+  (function(){ var vcol=FINISH.fcadre, colHx=FINISH.fpoignee, colGx=[150,200,235];
+    var EXT=MENUIS_EXT, INT=-MENUIS_EXT;                       /* extérieur = -z, intérieur = +z (côté poignées) */
+    var sd=(PFEN.voletPos==='int')?INT:EXT;                    /* côté de pose du volet */
+    if(PFEN.volet==='battant' || PFEN.volet==='persienne'){
+      var vst=(PFEN.volet==='persienne')?'persienne':_voletStyle(PFEN.voletType), vlt=0.03,
+          vz=sd*(fd/2 + Math.max(0,(PFEN.voletJeu===undefined?2:PFEN.voletJeu))/100 + vlt/2),   /* posé DEVANT le dormant, jamais au nu du vitrage */
+          ang=(PFEN.voletOpen||0)*Math.PI/180;
+      _LEAFSD=sd; _LEAFQ=(PFEN.voletQuinc===undefined)?1:PFEN.voletQuinc;
+      /* sens : le vantail doit s'écarter de la façade, donc tourner vers le côté de pose (sd) */
+      buildFramedLeaf(rotTz(-hw, vz, ang,  sd), -hw, 0, 0, H, vz, vlt, vst, vcol, vcol, colGx, colHx, +1, false, 0);
+      buildFramedLeaf(rotTz( hw, vz, ang, -sd), 0, hw, 0, H, vz, vlt, vst, vcol, vcol, colGx, colHx, -1, false, 0);
+      _LEAFSD=1; _LEAFQ=1;
+    } else if(PFEN.volet==='roulant'){
+      var rj=Math.max(0,(PFEN.voletJeu===undefined?2:PFEN.voletJeu))/100;
+      _CURTEX=FINISH_TEX.fcadre; box(0, H+0.11, sd*(fd/2+rj+0.085), W+0.05, 0.22, 0.17, vcol,1); _CURTEX=null;   /* coffre, devant le dormant */
+      var down=Math.max(0,Math.min(1,(PFEN.voletDown||0)/100));
+      if(down>0){ var ty0=H*(1-down), nl=Math.max(3,Math.round((H-ty0)/0.06)), sl=(H-ty0)/nl; _CURTEX=FINISH_TEX.fouvrant;
+        for(var li=0;li<nl;li++){ var ly=ty0+(li+0.5)*sl; box(0, ly, sd*(fd/2+rj+0.01), W-0.02, sl*0.85, 0.02, FINISH.fouvrant,1); } _CURTEX=null; }
+    }
+    /* TABLETTE intérieure (menuiserie, plate) — côté poignées */
+    if(PFEN.tabInt){ var di=Math.max(0.05,(PFEN.tabIntD||20)/100), ei=Math.max(0.01,(PFEN.tabIntEp||3)/100); _CURTEX=FINISH_TEX.fcadre; box(0, ei/2, INT*(fd/2 + di/2), W+0.06, ei, di, vcol,1); _CURTEX=null; }
+    /* APPUI extérieur MAÇONNÉ (béton/brique/pierre), pente vers l'extérieur */
+    if(PFEN.appuiExt){ _CURTEX=null; macAppui(W, fd, Math.max(0,(PFEN.appuiExtLat||0)/100), Math.max(0.02,(PFEN.appuiExtD||12)/100), Math.max(0.02,(PFEN.appuiExtH||6)/100), (PFEN.appuiExtPente||0), _macCol(PFEN.appuiExtMat), EXT); }
+    /* LINTEAU (dépassement latéral + avancée extérieure) */
+    if(PFEN.linteau){ _CURTEX=null; macLinteau(W, fd, H+_linteauDy(PFEN), Math.max(0,(PFEN.linteauLat||0)/100), Math.max(0,(PFEN.linteauD||0)/100), Math.max(0.04,(PFEN.linteauH||20)/100), _macCol(PFEN.linteauMat), EXT); }
+    if(PFEN.grille){ var gn=Math.max(2,PFEN.grilleN|0), gz=EXT*(fd/2+0.03), br=0.014; _CURTEX=null;
+      for(var gi=0;gi<gn;gi++){ var gx=-hw+W*(gi+0.5)/gn; box(gx, H/2, gz, br, H-0.02, br, colHx,1); }
+      box(0, H*0.28, gz, W-0.02, br, br, colHx,1); box(0, H*0.72, gz, W-0.02, br, br, colHx,1); }
+    if(PFEN.chambranle){ var cw=Math.max(0.03,(PFEN.chambranleW||6)/100), ct=0.016, ox=hw, oy=H; _CURTEX=FINISH_TEX.fcadre;
+      [-1,1].forEach(function(zs){ var zz=zs*(fd/2+ct/2);
+        box(-ox-cw/2, oy/2, zz, cw, oy+2*cw, ct, vcol,1); box( ox+cw/2, oy/2, zz, cw, oy+2*cw, ct, vcol,1);
+        box(0, oy+cw/2, zz, (ox+cw/2)*2+cw, cw, ct, vcol,1); box(0, -cw/2, zz, (ox+cw/2)*2+cw, cw, ct, vcol,1); });
+      _CURTEX=null; }
+  })();
   var ix0=-hw+fw, ix1=hw-fw, iy0=fw, iy1=H-fw;
   /* --- IMPOSTE fixe haute --- */
   if(impH>0){
@@ -12375,18 +12534,29 @@ function buildFenetre(){
     DIMS={ w:W, h:H, d:Math.max(fd,pdt)+sillExtra }; return DIMS;
   }
   /* --- ZONE VITRÉE divisée en nv vantaux --- */
+  /* sens d'ouverture : 'int' = à la française (vers les poignées, +z) ; 'ext' = à l'anglaise */
+  var FSENS=(PFEN.sens==='ext')?MENUIS_EXT:-MENUIS_EXT;
+  /* Montant central : 'auto' = présent sauf en battants (qui ferment sur battement) */
+  var MEN=(PFEN.meneau==='oui')?true:(PFEN.meneau==='non')?false:(type!=='battant');
   var colW=(ix1-ix0)/nv, aDeg=PFEN.open;
   for(var ci=0; ci<nv; ci++){
     var cx0=ix0+ci*colW, cx1=cx0+colW;
-    if(ci>0){ _CURTEX=FINISH_TEX.fcadre; box(cx0,(iy0+iy1)/2,0, 0.04, iy1-iy0, fd*0.85, colC,1); _CURTEX=null; }
-    var sxl=cx0+(ci>0?0.02:0), sxr=cx1-(ci<nv-1?0.02:0);
+    if(ci>0 && MEN){ _CURTEX=FINISH_TEX.fcadre; box(cx0,(iy0+iy1)/2,0, 0.04, iy1-iy0, fd*0.85, colC,1); _CURTEX=null; }
+    /* sans montant central les ouvrants se rejoignent : pas de retrait de 2 cm */
+    var sxl=cx0+((ci>0&&MEN)?0.02:0), sxr=cx1-((ci<nv-1&&MEN)?0.02:0);
     var T, handleEdge=1, doHandle=PFEN.handle, a;
     if(type==='fixe'){ T=function(p){return p;}; doHandle=false; }
-    else if(type==='battant'){ var left=(ci<nv/2); a=aDeg*Math.PI/180; T= left?rotT(sxl,a,1):rotT(sxr,a,-1); handleEdge= left?1:-1; }
+    else if(type==='battant'){ var left=(ci<nv/2); a=aDeg*Math.PI/180*FSENS; T= left?rotT(sxl,a,1):rotT(sxr,a,-1); handleEdge= left?1:-1; }
     else if(type==='coulissant'){ var slide=(aDeg/100)*colW*0.9*((ci%2)?-1:1), zf=(ci%2)?fd*0.18:-fd*0.18; T=(function(sl,zz){return function(p){return [p[0]+sl,p[1],p[2]+zz];};})(slide,zf); }
-    else if(type==='oscillo'){ a=(aDeg/100)*0.28; T=rotXT(iy0,a,1); }
-    else { a=(aDeg/100)*0.28; T=rotXT(iy1,a,-1); }    /* soufflet */
+    else if(type==='oscillo'){ a=(aDeg/100)*0.28*FSENS; T=rotXT(iy0,a,1); }
+    else { a=(aDeg/100)*0.28*FSENS; T=rotXT(iy1,a,-1); }    /* soufflet */
     buildSash(T, sxl,sxr, iy0,iy1, 0, sw, colO,colG,colH, PFEN.cvert,PFEN.choriz, doHandle, handleEdge);
+    /* battement : sans montant central, l'ouvrant semi-fixe recouvre la jonction */
+    if(!MEN && type==='battant' && nv>1 && ci===0){
+      _CURTEX=FINISH_TEX.fouvrant;
+      leafBox(T, sxr, (iy0+iy1)/2, 0, 0.026, iy1-iy0, sw*1.35, colO, 1);
+      _CURTEX=null;
+    }
   }
   DIMS={ w:W, h:H, d:fd+sillExtra };
   return DIMS;
@@ -19155,15 +19325,44 @@ function buildPorteUI(){
       {type:'slider',label:'Largeur dormant',unit:'cm',key:'fw',min:3,max:12,step:0.5},
       {type:'slider',label:'Épaisseur mur',unit:'cm',key:'fd',min:7,max:40,step:1}]:[])}
   ];
-  if(!isBaie) groups.push({title:'Vantail', fields:[{type:'choice',key:'panel',options:[
-      {id:'plein',l:'Plein'},{id:'moulure',l:'Mouluré'},{id:'vitre_haut',l:'Vitré haut'},
-      {id:'mi_vitre',l:'Mi-vitré'},{id:'tout_vitre',l:'Tout vitré'}]}]});
+  if(!isBaie) groups.push({title:'Vantail', fields:[].concat(
+      [{type:'choice',key:'panel',options:[
+        {id:'plein',l:'Plein'},{id:'moulure',l:'Mouluré (2)'},{id:'panneaux',l:'Panneaux (N)'},
+        {id:'vitre_haut',l:'Vitré haut'},{id:'mi_vitre',l:'Mi-vitré'},{id:'vitre_bas',l:'Vitré bas'},
+        {id:'tout_vitre',l:'Tout vitré'},{id:'persienne',l:'Persienne'}]}],
+      (P.panel==='panneaux')?[{type:'slider',label:'Nombre de panneaux',unit:'',key:'nPan',min:1,max:6,step:1}]:[],
+      (P.panel==='moulure'||P.panel==='panneaux'||P.panel==='vitre_haut'||P.panel==='mi_vitre'||P.panel==='vitre_bas')?[{type:'slider',label:'Colonnes de panneaux',unit:'',key:'pcols',min:1,max:3,step:1}]:[]
+    )});
   if(glazed) groups.push({title:'Vitrage — meneaux', fields:[
     {type:'slider',label:'Meneaux verticaux',unit:'',key:'mv',min:0,max:5,step:1},
     {type:'slider',label:'Meneaux horizontaux',unit:'',key:'mh',min:0,max:5,step:1}]});
   groups.push({title:'Imposte', fields:[
     {type:'choice',key:'imposteOn',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}].concat(P.imposteOn?[
     {type:'slider',label:'Hauteur imposte',unit:'cm',key:'imposte',min:20,max:80,step:1}]:[])});
+  if(P.frame) groups.push({title:'Chambranle', fields:[
+    {type:'choice',key:'chambranle',options:[{id:1,l:'Avec'},{id:0,l:'Sans'}]}].concat(P.chambranle?[
+    {type:'slider',label:'Largeur chambranle',unit:'cm',key:'chambranleW',min:3,max:15,step:0.5}]:[])});
+  if(!isBaie) groups.push({title:'Seuil', fields:[{type:'choice',key:'seuil',options:[
+    {id:'aucun',l:'Aucun'},{id:'plat',l:'Plat'},{id:'pmr',l:'PMR (bas)'}]}]});
+  groups.push({title:'Volets', fields:[].concat(
+    [{type:'choice',key:'volet',options:[{id:'aucun',l:'Aucun'},{id:'battant',l:'Battants'},{id:'persienne',l:'Persiennés'},{id:'roulant',l:'Roulant'}]}],
+    (P.volet!=='aucun')?[{type:'choice',label:'Pose',key:'voletPos',options:[{id:'ext',l:'Extérieur'},{id:'int',l:'Intérieur'}]}]:[],
+    (P.volet==='battant')?[{type:'choice',label:'Remplissage',key:'voletType',options:[{id:'plein',l:'Plein'},{id:'barres',l:'Barres et écharpe'}]},
+     {type:'choice',label:'Quincaillerie',key:'voletQuinc',options:[{id:1,l:'Visible'},{id:0,l:'Sans'}]}]:[],
+    (P.volet==='battant'||P.volet==='persienne')?[{type:'slider',label:'Ouverture',unit:'°',key:'voletOpen',min:0,max:170,step:5}]:[],
+    (P.volet==='roulant')?[{type:'slider',label:'Descente du tablier',unit:'%',key:'voletDown',min:0,max:100,step:5}]:[],
+    (P.volet!=='aucun')?[{type:'slider',label:'Dégagement / dormant',unit:'cm',key:'voletJeu',min:0,max:20,step:1}]:[]
+  )});
+  groups.push({title:'Linteau', fields:[].concat(
+    [{type:'choice',key:'linteau',options:[{id:1,l:'Oui'},{id:0,l:'Non'}]}],
+    P.linteau?[{type:'choice',label:'Matériau',key:'linteauMat',options:MAC_MATS.map(function(m){return {id:m[0],l:m[1]};})},
+               {type:'slider',label:'Hauteur',unit:'cm',key:'linteauH',min:5,max:60,step:1},
+               {type:'slider',label:'Dépassement latéral',unit:'cm',key:'linteauLat',min:0,max:50,step:1},
+               {type:'slider',label:'Avancée ext.',unit:'cm',key:'linteauD',min:0,max:30,step:1},
+               {type:'slider',label:'Relevé sur la baie',unit:'cm',key:'linteauDy',min:0,max:80,step:1}]:[],
+    (P.linteau&&P.volet==='roulant')?[{type:'choice',label:'Coffre du volet',key:'linteauCoffre',
+      options:[{id:1,l:'Sous le linteau'},{id:0,l:'Intégré (linteau-coffre)'}]}]:[]
+  )});
   if(!isBaie) groups.push({title:'Poignée', fields:[
     {type:'choice',key:'handle',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}].concat(P.handle?[
     {type:'choice',label:'Type',key:'handleType',options:[
@@ -19192,6 +19391,8 @@ function buildFenetreUI(){
     fenDimF.push({type:'slider',label:'Hauteur tableau',unit:'cm',key:'h',min:40,max:280,step:1});
     fenDimF.push({type:'slider',label:'Nombre de vantaux',unit:'',key:'nv',min:1,max:4,step:1});
   }
+  if((P.nv|0)>1) fenDimF.push({type:'choice',label:'Montant central',key:'meneau',
+    options:[{id:'auto',l:'Auto'},{id:'oui',l:'Oui'},{id:'non',l:'Non'}]});
   var groups=[
     {title:'Type', fields:[{type:'choice',key:'type',options:[
       {id:'fixe',l:'Fixe'},{id:'battant',l:'Battant'},{id:'oscillo',l:'Oscillo'},
@@ -19225,10 +19426,55 @@ function buildFenetreUI(){
     {type:'slider',label:'Joint mortier',unit:'cm',key:'paveJoint',min:0,max:3,step:0.1}];
     if(Math.abs((P.paveW||0)-(P.paveH||0))>0.05) paveF.splice(1,0,{type:'choice',label:'Sens du pavé',key:'paveRot',options:[{id:0,l:'Horizontal'},{id:1,l:'Vertical'}]});   /* seulement si non carré */
     groups.push({title:'Pavés de verre', fields:paveF}); }
+  if(!isBaie && !isPave){
+    groups.push({title:'Volets', fields:[].concat(
+      [{type:'choice',key:'volet',options:[{id:'aucun',l:'Aucun'},{id:'battant',l:'Battants'},{id:'persienne',l:'Persiennés'},{id:'roulant',l:'Roulant'}]}],
+      (P.volet!=='aucun')?[{type:'choice',label:'Pose',key:'voletPos',options:[{id:'ext',l:'Extérieur'},{id:'int',l:'Intérieur'}]}]:[],
+      (P.volet==='battant')?[{type:'choice',label:'Remplissage',key:'voletType',options:[{id:'plein',l:'Plein'},{id:'barres',l:'Barres et écharpe'}]},
+     {type:'choice',label:'Quincaillerie',key:'voletQuinc',options:[{id:1,l:'Visible'},{id:0,l:'Sans'}]}]:[],
+      (P.volet==='battant'||P.volet==='persienne')?[{type:'slider',label:'Ouverture',unit:'°',key:'voletOpen',min:0,max:170,step:5}]:[],
+      (P.volet==='roulant')?[{type:'slider',label:'Descente du tablier',unit:'%',key:'voletDown',min:0,max:100,step:5}]:[],
+      (P.volet!=='aucun')?[{type:'slider',label:'Dégagement / dormant',unit:'cm',key:'voletJeu',min:0,max:20,step:1}]:[]
+    )});
+    groups.push({title:'Tablette intérieure', fields:[].concat(
+      [{type:'choice',key:'tabInt',options:[{id:1,l:'Oui'},{id:0,l:'Non'}]}],
+      P.tabInt?[{type:'slider',label:'Profondeur',unit:'cm',key:'tabIntD',min:5,max:40,step:1},
+                {type:'slider',label:'Épaisseur',unit:'cm',key:'tabIntEp',min:1,max:8,step:0.5}]:[]
+    )});
+    groups.push({title:'Appui extérieur (maçonné)', fields:[].concat(
+      [{type:'choice',key:'appuiExt',options:[{id:1,l:'Oui'},{id:0,l:'Non'}]}],
+      P.appuiExt?[{type:'choice',label:'Matériau',key:'appuiExtMat',options:MAC_MATS.map(function(m){return {id:m[0],l:m[1]};})},
+                  {type:'slider',label:'Avancée ext.',unit:'cm',key:'appuiExtD',min:2,max:40,step:1},
+                  {type:'slider',label:'Épaisseur',unit:'cm',key:'appuiExtH',min:2,max:25,step:1},
+                  {type:'slider',label:'Débord latéral',unit:'cm',key:'appuiExtLat',min:0,max:30,step:1},
+                  {type:'slider',label:'Pente',unit:'°',key:'appuiExtPente',min:0,max:25,step:1}]:[]
+    )});
+    groups.push({title:'Linteau', fields:[].concat(
+      [{type:'choice',key:'linteau',options:[{id:1,l:'Oui'},{id:0,l:'Non'}]}],
+      P.linteau?[{type:'choice',label:'Matériau',key:'linteauMat',options:MAC_MATS.map(function(m){return {id:m[0],l:m[1]};})},
+                 {type:'slider',label:'Hauteur',unit:'cm',key:'linteauH',min:5,max:60,step:1},
+                 {type:'slider',label:'Dépassement latéral',unit:'cm',key:'linteauLat',min:0,max:50,step:1},
+                 {type:'slider',label:'Avancée ext.',unit:'cm',key:'linteauD',min:0,max:30,step:1},
+                 {type:'slider',label:'Relevé sur la baie',unit:'cm',key:'linteauDy',min:0,max:80,step:1}]:[],
+      (P.linteau&&P.volet==='roulant')?[{type:'choice',label:'Coffre du volet',key:'linteauCoffre',
+        options:[{id:1,l:'Sous le linteau'},{id:0,l:'Intégré (linteau-coffre)'}]}]:[]
+    )});
+    groups.push({title:'Grille de défense', fields:[].concat(
+      [{type:'choice',key:'grille',options:[{id:1,l:'Oui'},{id:0,l:'Non'}]}],
+      P.grille?[{type:'slider',label:'Barreaux',unit:'',key:'grilleN',min:2,max:12,step:1}]:[]
+    )});
+    groups.push({title:'Chambranle', fields:[].concat(
+      [{type:'choice',key:'chambranle',options:[{id:1,l:'Oui'},{id:0,l:'Non'}]}],
+      P.chambranle?[{type:'slider',label:'Largeur chambranle',unit:'cm',key:'chambranleW',min:3,max:15,step:0.5}]:[]
+    )});
+  }
   if(opening) groups.push({title:'Poignée', fields:[
     {type:'choice',key:'handle',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}]});
-  if(opening) groups.push({title:openLabel, fields:[
-    {type:'slider',label:openLabel,unit:openUnit,key:'open',min:0,max:openMax,step:1}]});
+  if(opening) groups.push({title:openLabel, fields:[].concat(
+    [{type:'slider',label:openLabel,unit:openUnit,key:'open',min:0,max:openMax,step:1}],
+    (P.type==='battant'||P.type==='oscillo'||P.type==='soufflet')
+      ? [{type:'choice',label:'Sens d\'ouverture',key:'sens',options:[{id:'int',l:'Vers l\'intérieur'},{id:'ext',l:'Vers l\'extérieur'}]}] : []
+  )});
   buildObjUI(P, groups, buildFenetreUI);
 }
 /* UI du Mur-rideau */
@@ -23986,6 +24232,70 @@ var I18N_ADD35={
 "Plan":["Plan","Planta","Pianta","Grundriss","Planta","Alaprajz","平面","平面図","योजना","План","План","مسقط"]
 };
 (function(){ for(var fr in I18N_ADD35){ var t=I18N_ADD35[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD36 — portes (vantaux) + fenêtres (volets, tablettes). Ordre I18N_ORDER7. */
+var I18N_ADD36={
+"Mouluré (2)":["Panelled (2)","Con paneles (2)","A pannelli (2)","Kassettiert (2)","Almofadada (2)","Betétes (2)","拼板(2)","パネル（2）","पैनल (2)","Филёнчатая (2)","Філончаста (2)","بحشوات (2)"],
+"Panneaux (N)":["Panels (N)","Paneles (N)","Pannelli (N)","Kassetten (N)","Almofadas (N)","Betétek (N)","拼板(N)","パネル（N）","पैनल (N)","Филёнки (N)","Філонки (N)","حشوات (N)"],
+"Vitré bas":["Glazed bottom","Acristalado abajo","Vetrato in basso","Unten verglast","Envidraçado em baixo","Alul üvegezett","下部玻璃","下部ガラス","नीचे कांच","Остекление снизу","Скління знизу","زجاج سفلي"],
+"Persienne":["Louvred","Persiana","Persiana","Lamellen","Persiana","Zsalus","百叶","ルーバー","झिलमिली","Жалюзийная","Жалюзійна","شيش"],
+"Nombre de panneaux":["Number of panels","Número de paneles","Numero di pannelli","Anzahl Kassetten","Número de almofadas","Betétek száma","拼板数量","パネル数","पैनल संख्या","Число филёнок","Кількість філонок","عدد الحشوات"],
+"Colonnes de panneaux":["Panel columns","Columnas de paneles","Colonne di pannelli","Kassettenspalten","Colunas de almofadas","Betét oszlopok","拼板列数","パネル列","पैनल स्तंभ","Столбцы филёнок","Стовпці філонок","أعمدة الحشوات"],
+"Volets":["Shutters","Contraventanas","Persiane","Fensterläden","Portadas","Zsaluk","百叶窗","雨戸","शटर","Ставни","Віконниці","مصاريع"],
+"Battants":["Hinged","Batientes","A battente","Klappläden","De batente","Nyíló","对开","開き","कब्जेदार","Распашные","Розпашні","مفصلية"],
+"Persiennés":["Louvred","De lamas","A lamelle","Lamellen","De lâminas","Zsalus","百叶","ルーバー","झिलमिली","Жалюзийные","Жалюзійні","بشرائح"],
+"Roulant":["Roller","Enrollable","Avvolgibile","Rollladen","De enrolar","Redőny","卷帘","シャッター","रोलर","Рулонные","Рулонні","دوّار"],
+"Remplissage":["Infill","Relleno","Riempimento","Füllung","Preenchimento","Kitöltés","填充","面材","भराव","Заполнение","Заповнення","الحشو"],
+"À lames":["Slatted","De lamas","A doghe","Lamellen","De ripas","Lécezett","板条","スラット","पट्टीदार","Реечные","Рейкові","بشرائح"],
+"Descente du tablier":["Curtain descent","Bajada del tablero","Discesa del telo","Behang-Absenkung","Descida do estore","Redőny leeresztése","帘片下降","スラット下降","परदा उतार","Спуск полотна","Спуск полотна","نزول الستارة"],
+"Tablettes":["Sills / shelves","Repisas","Davanzali","Fensterbänke","Peitoris","Könyöklők","窗台板","窓台","सिल/शेल्फ","Подоконники","Підвіконня","أرفف النافذة"],
+"Tablette intérieure":["Interior sill","Repisa interior","Davanzale interno","Innenfensterbank","Peitoril interior","Belső könyöklő","内窗台","内側窓台","आंतरिक सिल","Внутренний подоконник","Внутрішнє підвіконня","رف داخلي"],
+"Profondeur int.":["Interior depth","Profundidad int.","Profondità int.","Tiefe innen","Profundidade int.","Belső mélység","内部进深","内側奥行","आंतरिक गहराई","Глубина внутр.","Глибина внутр.","العمق الداخلي"],
+"Appui-tablette ext.":["Exterior sill","Vierteaguas ext.","Soglia esterna","Außenfensterbank","Peitoril exterior","Külső könyöklő","外窗台","外側窓台","बाहरी सिल","Наружный отлив","Зовнішній відлив","عتبة خارجية"],
+"Débord ext.":["Exterior overhang","Voladizo ext.","Sporgenza est.","Überstand außen","Saliência ext.","Külső túlnyúlás","外部悬挑","外側の出","बाहरी ओवरहैंग","Свес наружу","Звис назовні","بروز خارجي"],
+"Grille de défense":["Security bars","Reja de seguridad","Grata di sicurezza","Fenstergitter","Grade de segurança","Biztonsági rács","防盗栏","面格子","सुरक्षा जाली","Решётка","Ґрати","قضبان حماية"],
+"Barreaux":["Bars","Barrotes","Barre","Stäbe","Barras","Rudak","栏杆","格子桟","सलाखें","Прутья","Прути","قضبان"],
+"Chambranle":["Casing","Marco","Mostrina","Bekleidung","Guarnição","Tokborítás","门套","額縁","चौखट पट्टी","Наличник","Лиштва","إطار"],
+"Largeur chambranle":["Casing width","Ancho del marco","Larghezza mostrina","Bekleidungsbreite","Largura da guarnição","Borítás szélessége","门套宽度","額縁の幅","पट्टी चौड़ाई","Ширина наличника","Ширина лиштви","عرض الإطار"],
+"Seuil":["Threshold","Umbral","Soglia","Schwelle","Soleira","Küszöb","门槛","敷居","देहली","Порог","Поріг","عتبة"],
+"Plat":["Flat","Plano","Piatta","Flach","Plano","Lapos","平","平","सपाट","Плоский","Плоский","مسطح"],
+"PMR (bas)":["Accessible (low)","PMR (bajo)","Ribassata (PMR)","Barrierefrei (flach)","Acessível (baixo)","Akadálymentes (alacsony)","无障碍（低）","バリアフリー（低）","सुलभ (नीचा)","Доступный (низкий)","Доступний (низький)","ميسّر (منخفض)"],
+"Pose":["Mounting","Montaje","Montaggio","Montage","Montagem","Szerelés","安装位置","取付","माउंटिंग","Установка","Встановлення","التركيب"],
+"Extérieur":["Exterior","Exterior","Esterno","Außen","Exterior","Kültéri","室外","屋外","बाहरी","Снаружи","Зовні","خارجي"],
+"Intérieur":["Interior","Interior","Interno","Innen","Interior","Beltéri","室内","屋内","आंतरिक","Внутри","Всередині","داخلي"],
+"Appui extérieur (maçonné)":["Exterior sill (masonry)","Vierteaguas (obra)","Davanzale esterno (muratura)","Außenfensterbank (Mauerwerk)","Peitoril exterior (alvenaria)","Külső könyöklő (falazott)","外窗台（砌体）","外部窓台（組積）","बाहरी सिल (चिनाई)","Наружный отлив (кладка)","Зовнішній відлив (кладка)","عتبة خارجية (بناء)"],
+"Linteau":["Lintel","Dintel","Architrave","Sturz","Lintel","Áthidaló","过梁","まぐさ","लिंटेल","Перемычка","Перемичка","عتب"],
+"Matériau":["Material","Material","Materiale","Material","Material","Anyag","材料","材質","सामग्री","Материал","Матеріал","المادة"],
+"Avancée ext.":["Exterior projection","Voladizo ext.","Sporgenza est.","Auskragung außen","Avanço ext.","Külső kinyúlás","外挑出","外側の出","बाहरी प्रक्षेप","Вынос наружу","Виніс назовні","بروز خارجي"],
+"Débord latéral":["Side overhang","Voladizo lateral","Sporgenza laterale","Seitlicher Überstand","Saliência lateral","Oldalsó túlnyúlás","侧向悬挑","side出","पार्श्व ओवरहैंग","Боковой свес","Бічний звис","بروز جانبي"],
+"Dépassement latéral":["Side projection","Prolongación lateral","Prolungamento laterale","Seitliche Auflagerlänge","Prolongamento lateral","Oldalsó túlnyúlás","侧向伸出","側面の伸び","पार्श्व विस्तार","Боковой выпуск","Бічний випуск","امتداد جانبي"],
+"Pente":["Slope","Pendiente","Pendenza","Neigung","Inclinação","Lejtés","坡度","勾配","ढलान","Уклон","Ухил","الميل"],
+"Tablette intérieure":["Interior sill (board)","Repisa interior","Davanzale interno","Innenfensterbank","Peitoril interior","Belső könyöklő","内窗台板","内側窓台","आंतरिक सिल","Внутренний подоконник","Внутрішнє підвіконня","رف داخلي"]
+};
+(function(){ for(var fr in I18N_ADD36){ var t=I18N_ADD36[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD37 — sens d'ouverture des ouvrants + dégagement des volets. Ordre I18N_ORDER7. */
+var I18N_ADD37={
+"Sens d'ouverture":["Opening direction","Sentido de apertura","Verso di apertura","Öffnungsrichtung","Sentido de abertura","Nyitásirány","开启方向","開き勝手","खुलने की दिशा","Направление открывания","Напрямок відчинення","اتجاه الفتح"],
+"Vers l'intérieur":["Inward","Hacia el interior","Verso l'interno","Nach innen","Para dentro","Befelé","向内开","内開き","अंदर की ओर","Внутрь","Всередину","للداخل"],
+"Vers l'extérieur":["Outward","Hacia el exterior","Verso l'esterno","Nach außen","Para fora","Kifelé","向外开","外開き","बाहर की ओर","Наружу","Назовні","للخارج"],
+"Dégagement / dormant":["Clearance from frame","Separación del marco","Distanza dal telaio","Abstand zum Blendrahmen","Afastamento do aro","Tokhézag","距窗框间距","枠からの離れ","चौखट से दूरी","Зазор от коробки","Зазор від коробки","الخلوص عن الإطار"],
+"Montant central":["Central mullion","Montante central","Montante centrale","Mittelpfosten","Montante central","Középső osztó","中梃","方立","केंद्रीय मुलियन","Центральный импост","Центральний імпост","العمود الأوسط"],
+"Auto":["Auto","Auto","Auto","Auto","Auto","Auto","自动","自動","स्वतः","Авто","Авто","تلقائي"],
+"Relevé sur la baie":["Raise above opening","Elevación sobre el vano","Rialzo sul vano","Anhebung über der Öffnung","Elevação sobre o vão","Emelés a nyílás fölé","高出洞口","開口部からの上げ","खुलाव से ऊँचाई","Подъём над проёмом","Підняття над отвором","الرفع فوق الفتحة"],
+"Barres et écharpe":["Ledged and braced","Con travesaños y tornapunta","Con traverse e controventatura","Mit Riegeln und Strebe","Com travessas e escora","Hevederes, merevítős","横档斜撑式","框組み・筋交い","लेज और ब्रेस","С шпонками и укосиной","Зі шпонками та укосиною","بعوارض ودعامة"],
+"Quincaillerie":["Hardware","Herrajes","Ferramenta","Beschläge","Ferragens","Vasalat","五金件","金物","हार्डवेयर","Фурнитура","Фурнітура","الأدوات المعدنية"],
+"Visible":["Visible","Visible","Visibile","Sichtbar","Visível","Látható","显示","表示","दृश्यमान","Видимая","Видима","ظاهرة"],
+"Sans":["None","Sin","Senza","Ohne","Sem","Nélkül","无","なし","बिना","Без","Без","بدون"],
+"Coffre du volet":["Shutter box","Cajón de persiana","Cassonetto","Rollladenkasten","Caixa de estore","Redőnytok","卷帘箱","シャッターボックス","शटर बॉक्स","Короб рольставни","Короб ролети","صندوق الستارة"],
+"Sous le linteau":["Below the lintel","Bajo el dintel","Sotto l'architrave","Unter dem Sturz","Sob o lintel","A áthidaló alatt","过梁下方","まぐさの下","लिंटेल के नीचे","Под перемычкой","Під перемичкою","تحت العتبة"],
+"Intégré (linteau-coffre)":["Integrated (box lintel)","Integrado (dintel-cajón)","Integrato (architrave-cassonetto)","Integriert (Sturzkasten)","Integrado (lintel-caixa)","Beépített (tokos áthidaló)","一体式(箱式过梁)","一体型(まぐさ兼用)","एकीकृत (बॉक्स लिंटेल)","Встроенный (перемычка-короб)","Вбудований (перемичка-короб)","مدمج (عتبة-صندوق)"]
+};
+(function(){ for(var fr in I18N_ADD37){ var t=I18N_ADD37[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
