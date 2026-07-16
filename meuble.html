@@ -14762,6 +14762,22 @@ function scnStore(list){ try{ localStorage.setItem(SCN_KEY, JSON.stringify(list,
    en faces FC colorées (teinte moyenne par texture), mis en cache, pour être
    posés/déplacés/tournés comme n'importe quel objet de la scène.
    ============================================================================ */
+/* Signature de l'état des finitions. Les couleurs et textures sont cuites dans les
+   buffers GL au moment de la construction : sans elle dans la clé de cache, changer
+   une matière sur un objet posé ne redessine jamais (il fallait recharger la scène).
+   Recalculée seulement quand FIN_TICK bouge — toutes les mutations passent par build(). */
+var FIN_TICK=0, _finSigStr='', _finSigTick=-1;
+function finBump(){ FIN_TICK++; }
+function finSig(){
+  if(_finSigTick===FIN_TICK) return _finSigStr;
+  try{
+    _finSigStr=JSON.stringify(FINISH)+'|'+JSON.stringify(FINISH_TEX)+'|'+JSON.stringify(FINISH_SET)
+              +'|'+JSON.stringify(typeof FINISH_ON!=='undefined'?FINISH_ON:0)
+              +'|'+JSON.stringify(typeof TEX_SCALE_BY!=='undefined'?TEX_SCALE_BY:0)
+              +'|'+JSON.stringify(typeof TEX_ROT_BY!=='undefined'?TEX_ROT_BY:0);
+  }catch(e){ _finSigStr=''+FIN_TICK; }
+  _finSigTick=FIN_TICK; return _finSigStr;
+}
 var FAB_CACHE={}, TEX_AVGCOL={};
 function texAvgCol(key, cb){
   if(TEX_AVGCOL[key]){ cb(TEX_AVGCOL[key]); return; }
@@ -14878,6 +14894,7 @@ function scnModel(inst){
 function scnInstGL(inst){
   if(!WGL.gl) return null;
   var sig=inst.group?('grp'+JSON.stringify(inst.children)):(inst.mode==='fabprod'?('fab:'+inst.prod+':'+((FAB_CACHE[inst.prod]&&FAB_CACHE[inst.prod].ready)?1:0)):(inst.mode+':'+JSON.stringify(inst.params)));
+  sig+='|'+finSig();   /* les couleurs sont cuites dans les buffers : sans ça, changer une matière ne redessine rien */
   if(inst._gl && inst._glsig===sig) return inst._gl.count?inst._gl:null;
   var faces=scnLocalFaces(inst), P=[],N=[],C=[];
   faces.forEach(function(f){ var v=f.verts, nn=f.n||[0,1,0], col=f.col||[180,180,180], vn=f.vn;
@@ -15077,6 +15094,7 @@ function scnResync(){ var cfgs=cfgLoad(); function res(list){ (list||[]).forEach
   res(SCENE.instances); }
 
 function build(){
+  finBump();   /* toute mutation de finition passe par ici : invalide le cache des instances */
   FC=[]; PRIMS=[]; CUR_POLY=null; _IFCTAG=null; DIMS_BB=null; IM_EDGES=[]; IM_PART_DOORS=[]; HATCH_FACES=[];
   /* Seul un objet enterré perce le sol. Remis à zéro à chaque construction :
      sans cela le trou d'une piscine survivrait au passage à un autre objet. */
