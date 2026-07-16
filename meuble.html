@@ -730,7 +730,7 @@ WGL.initGL = function(){
     'uniform mat4 mvp;varying vec3 vn;varying vec3 vc;varying vec2 vmr;varying vec3 vw;'+
     'void main(){gl_Position=mvp*vec4(p,1.0);vn=n;vc=c;vmr=mr;vw=p;}';
   var fs='precision highp float;varying vec3 vn;varying vec3 vc;varying vec2 vmr;varying vec3 vw;'+
-    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;uniform float ovOn;uniform vec3 ovCol;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;uniform float uExpo;uniform float ovOn;uniform vec3 ovCol;'+
     'const float PI=3.14159265;'+
     'float D_GGX(float NoH,float a){float a2=a*a;float d=NoH*NoH*(a2-1.0)+1.0;return a2/(PI*d*d);}'+
     'float G_Smith(float NoV,float NoL,float a){float k=a*0.5;float gv=NoV/(NoV*(1.0-k)+k);float gl=NoL/(NoL*(1.0-k)+k);return gv*gl;}'+
@@ -748,7 +748,7 @@ WGL.initGL = function(){
     'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);vec3 _sd=normalize(lightDirs[0]);float _sf=max(dot(N,_sd),0.0);amb+=iblAmt*(lightCols[0]*_sf*0.22+vec3(0.09,0.12,0.17)*max(-dot(N,_sd),0.0)*0.55);col+=amb*alb*(0.6+0.4*(1.0-metal));'+
     'vec3 R=reflect(-Vd,N);float rh=R.y*0.5+0.5;vec3 er=mix(ambBot,ambTop,rh)*1.4;'+
     'vec3 Fe=fres(NoV,F0)*(1.0-rough);col+=er*Fe;'+
-    'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));gl_FragColor=vec4(col,1.0);}';
+    'col*=uExpo;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));gl_FragColor=vec4(col,1.0);}';
   function sh(t,s){var o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
   var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);gl.useProgram(pr);
   WGL.prog=pr;
@@ -952,6 +952,7 @@ WGL.render=function(){
   gl.uniform3fv(gl.getUniformLocation(WGL.prog,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(WGL.prog,'ambBot'),new Float32Array(e.aB));
   gl.uniform1f(gl.getUniformLocation(WGL.prog,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
+  gl.uniform1f(gl.getUniformLocation(WGL.prog,'uExpo'), texExpo());
   gl.uniform1f(gl.getUniformLocation(WGL.prog,'ovOn'), PROD_OVERRIDE?1.0:0.0);
   var _oc=FINISH.fab||[180,182,188];
   gl.uniform3f(gl.getUniformLocation(WGL.prog,'ovCol'), _oc[0]/255, _oc[1]/255, _oc[2]/255);
@@ -973,7 +974,7 @@ WGL.initTexGL=function(){
     'varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
     'void main(){vec4 wp=model*vec4(p,1.0);gl_Position=pv*wp;vn=mat3(model)*n;vw=wp.xyz;vsp=lvp*wp;vec2 su=uv*uvScale;float cr=cos(uvRot),sr=sin(uvRot);vuv=vec2(su.x*cr-su.y*sr,su.x*sr+su.y*cr);}';
   var fs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
-    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;uniform float uExpo;'+
     'uniform float ovOn;uniform vec3 ovCol;uniform sampler2D tex0;uniform float useTex;uniform vec3 baseCol;uniform vec2 mrp;uniform float uAlpha;'+
     GLSL_SH_FS+
     'const float PI=3.14159265;'+
@@ -1008,7 +1009,7 @@ WGL.initTexGL=function(){
     'float glintG=pow(max(dot(R,normalize(lightDirs[0])),0.0),64.0)*shf;'+
     'vec3 tintG=alb*(amb*0.85+lightCols[0]*0.20*shf);'+
     'col=mix(col, mix(tintG,envG,Fg)+vec3(glintG*0.50), isG);'+
-    'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));'+
+    'col*=uExpo;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));'+
     /* L'opacité suit Fresnel : quasi transparent de face, miroir au rasant. */
     'float aOut=isG>0.5 ? clamp(mix(uAlpha,0.97,Fg),0.0,0.97) : 1.0;'+
     'gl_FragColor=vec4(col,aOut);}';
@@ -1208,6 +1209,7 @@ WGL.renderT=function(){
   gl.uniform3fv(gl.getUniformLocation(P,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(P,'ambBot'),new Float32Array(e.aB));
   gl.uniform1f(gl.getUniformLocation(P,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
+  gl.uniform1f(gl.getUniformLocation(P,'uExpo'), texExpo());
   gl.uniform1f(gl.getUniformLocation(P,'ovOn'), PROD_OVERRIDE?1.0:0.0);
   var oc=FINISH.fab||[180,182,188];
   gl.uniform3f(gl.getUniformLocation(P,'ovCol'),oc[0]/255,oc[1]/255,oc[2]/255);
@@ -1409,6 +1411,7 @@ WGL.renderSceneTex=function(){
   gl.uniform3fv(gl.getUniformLocation(P,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(P,'ambBot'),new Float32Array(e.aB));
   gl.uniform1f(gl.getUniformLocation(P,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
+  gl.uniform1f(gl.getUniformLocation(P,'uExpo'), texExpo());
   gl.uniform1f(gl.getUniformLocation(P,'ovOn'),0.0);
   gl.uniform3f(gl.getUniformLocation(P,'ovCol'),0.7,0.71,0.73);
   gl.uniform1i(gl.getUniformLocation(P,'tex0'),0);
@@ -1484,6 +1487,7 @@ WGL.renderSceneTex=function(){
     gl.uniform3fv(gl.getUniformLocation(PG,'ambTop'),new Float32Array(e.aT));
     gl.uniform3fv(gl.getUniformLocation(PG,'ambBot'),new Float32Array(e.aB));
     gl.uniform1f(gl.getUniformLocation(PG,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
+    gl.uniform1f(gl.getUniformLocation(PG,'uExpo'), texExpo());
     WGL.bindShadowU(PG,_shOK);
     WGL.bindEnvColors(PG);   /* ciel/sol réels → reflets du verre */
     var gM=gl.getUniformLocation(PG,'model'), glp=gl.getAttribLocation(PG,'p'), gln=gl.getAttribLocation(PG,'n'), glc=gl.getAttribLocation(PG,'c');
@@ -1518,7 +1522,7 @@ WGL.initGGL=function(){
     'varying vec3 vn;varying vec3 vw;varying vec4 vc;'+
     'void main(){vec4 wp=model*vec4(p,1.0);gl_Position=pv*wp;vn=mat3(model)*n;vw=wp.xyz;vc=c;vsp=lvp*wp;}';
   var fs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec4 vc;'+
-    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;uniform float uExpo;'+
     'uniform vec3 skyTopC;uniform vec3 skyHorC;uniform vec3 gndC;'+
     GLSL_SH_FS+
     'const float PI=3.14159265;'+
@@ -1548,7 +1552,7 @@ WGL.initGGL=function(){
        Sans cela une teinte claire s'éclaire jusqu'au blanc et la vitre devient laiteuse. */
     'vec3 tintG=alb*(amb*0.85+lightCols[0]*0.20*shf);'+
     'col=mix(col, mix(tintG,skyR,Fg)+vec3(glint*0.55), isG);'+
-    'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));'+
+    'col*=uExpo;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));'+
     /* L'opacité suit Fresnel : quasi transparent de face, miroir au rasant. */
     'gl_FragColor=vec4(col, mix(vc.a, clamp(mix(vc.a,0.97,Fg),0.0,0.97), isG));}';
   function sh(t,src){var o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
@@ -1558,7 +1562,7 @@ WGL.initGGL=function(){
   var tvs='attribute vec3 p;attribute vec3 n;attribute vec2 uv;uniform mat4 pv;'+GLSL_SH_VS+'varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
     'void main(){gl_Position=pv*vec4(p,1.0);vn=n;vw=p;vuv=uv;vsp=lvp*vec4(p,1.0);}';
   var tfs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec2 vuv;'+
-    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;uniform sampler2D uTex;'+
+    'uniform vec3 camPos;uniform vec3 lightDirs[3];uniform vec3 lightCols[3];uniform vec3 ambTop;uniform vec3 ambBot;uniform float iblAmt;uniform float uExpo;uniform sampler2D uTex;'+
     GLSL_SH_FS+
     'const float PI=3.14159265;'+
     'float D_GGX(float NoH,float a){float a2=a*a;float d=NoH*NoH*(a2-1.0)+1.0;return a2/(PI*d*d);}'+
@@ -1573,7 +1577,7 @@ WGL.initGGL=function(){
     'float D=D_GGX(NoH,a);float G=G_Smith(NoV,NoL,a);vec3 F=fres(VoH,F0);'+
     'vec3 spec=(D*G*F)/(4.0*NoV*NoL+0.001);col+=(alb/PI+spec)*lightCols[i]*NoL*((i==0)?shf:1.0);}'+
     'float hemi=N.y*0.5+0.5;vec3 amb=mix(ambBot,ambTop,hemi);vec3 _sd=normalize(lightDirs[0]);float _sf=max(dot(N,_sd),0.0);amb+=iblAmt*(lightCols[0]*_sf*0.22+vec3(0.09,0.12,0.17)*max(-dot(N,_sd),0.0)*0.55);col+=amb*alb*0.9;'+
-    'col*=1.18;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));gl_FragColor=vec4(col,1.0);}';
+    'col*=uExpo;col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);col=pow(col,vec3(1.0/2.2));gl_FragColor=vec4(col,1.0);}';
   var prt=gl.createProgram();gl.attachShader(prt,sh(gl.VERTEX_SHADER,tvs));gl.attachShader(prt,sh(gl.FRAGMENT_SHADER,tfs));gl.linkProgram(prt);
   if(!gl.getProgramParameter(prt,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(prt));
   WGL.progGT=prt;
@@ -2270,6 +2274,7 @@ WGL.renderG=function(){
   gl.uniform3fv(gl.getUniformLocation(P,'ambTop'),new Float32Array(e.aT));
   gl.uniform3fv(gl.getUniformLocation(P,'ambBot'),new Float32Array(e.aB));
   gl.uniform1f(gl.getUniformLocation(P,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
+  gl.uniform1f(gl.getUniformLocation(P,'uExpo'), texExpo());
   WGL.bindShadowU(P,_shOK); WGL.bindEnvColors(P);   /* ombres + reflets de verre */
   var lp=gl.getAttribLocation(P,'p'), ln=gl.getAttribLocation(P,'n'), lc=gl.getAttribLocation(P,'c');
   function draw(pb,nb,cb,count){
@@ -2316,6 +2321,7 @@ WGL.renderG=function(){
     gl.uniform3fv(gl.getUniformLocation(PT2,'ambTop'),new Float32Array(e.aT));
     gl.uniform3fv(gl.getUniformLocation(PT2,'ambBot'),new Float32Array(e.aB));
     gl.uniform1f(gl.getUniformLocation(PT2,'iblAmt'),(typeof PREFS!=='undefined'&&PREFS.ibl!=null)?PREFS.ibl:0.6);
+    gl.uniform1f(gl.getUniformLocation(PT2,'uExpo'), texExpo());
     gl.uniform1i(gl.getUniformLocation(PT2,'uTex'),0);
     WGL.bindShadowU(PT2,_shOK);
     var tlp=gl.getAttribLocation(PT2,'p'), tln=gl.getAttribLocation(PT2,'n'), tlu=gl.getAttribLocation(PT2,'uv');
@@ -3143,8 +3149,9 @@ var TEX_PHOTO = { enabled:true, dir:'data/textures/', map:null, hasManifest:fals
         if(Array.isArray(j)){ j.forEach(function(f){ var b=(''+f).replace(/^.*[\/\\]/,''); m[b.replace(/\.[^.]+$/,'')]=b; }); }
         else if(j && typeof j==='object'){ for(var k in j){ if(j.hasOwnProperty(k)) m[k]=j[k]; } }
         TEX_PHOTO.map=m; TEX_PHOTO.hasManifest=true;   /* manifest présent -> liste blanche (même vide) */
+        texPhotoAfterManifest();
       })
-      .catch(function(){ TEX_PHOTO.map={}; TEX_PHOTO.hasManifest=false; });   /* absent -> mode probe <id>.jpg */
+      .catch(function(){ TEX_PHOTO.map={}; TEX_PHOTO.hasManifest=false; texSwRedrawAll(); });   /* absent -> procédural */
   }catch(e){ TEX_PHOTO.map={}; TEX_PHOTO.hasManifest=false; }
 })();
 /* Jette la texture GL en cache pour cet id et redessine (photo fraîchement prête). */
@@ -3153,6 +3160,59 @@ function texPhotoInvalidate(id){
   try{ if(window.WGL && WGL.txt && WGL.txt[id]){ if(WGL.gl && WGL.txt[id].tex) WGL.gl.deleteTexture(WGL.txt[id].tex); delete WGL.txt[id]; } }catch(e){}
   try{ DIRTY=true; }catch(e){}
   try{ if(window.WGL && WGL.render && (WGL.gActive||WGL.txActive||WGL.ready)) WGL.render(); }catch(e){}
+  try{ texSwRedraw(id); }catch(e){}   /* repeindre les vignettes déjà posées dans le DOM */
+}
+/* --- VIGNETTES DE TEXTURE ----------------------------------------------------
+   Le manifest et le décodage des photos sont asynchrones : au premier rendu, la
+   liste blanche n'est pas encore résolue. Une vignette peinte à ce moment-là doit
+   donc pouvoir être REpeinte, et tant qu'une photo est attendue on montre un aplat
+   neutre plutôt que le repli procédural — sinon la grille affiche d'abord une
+   fausse matière, puis la bonne. */
+function texPhotoPending(id){
+  if(!TEX_PHOTO.enabled) return false;
+  if(TEX_PHOTO.map===null) return true;            /* manifest pas encore résolu : on ne sait pas */
+  if(!TEX_PHOTO.map[id]) return false;             /* aucune photo attendue pour cet id */
+  var st=TEX_PHOTO.state[id];
+  return !(st==='ok' || st==='none' || st==='err');
+}
+function _texBaseCol(id){
+  var d=(typeof TEXTURE_DEFS!=='undefined')?TEXTURE_DEFS.filter(function(t){return t.id===id;})[0]:null;
+  var c=(d&&(d.base||d.c))||[170,170,170];
+  return 'rgb('+c[0]+','+c[1]+','+c[2]+')';
+}
+/* Peintre unique d'une vignette (utilisé au premier tracé ET aux repeints). */
+function texSwPaint(cv, id){
+  var g=cv.getContext('2d'); g.clearRect(0,0,cv.width,cv.height);
+  cv.setAttribute('data-texid', id);
+  if(texPhotoPending(id)){ ensureTexPhoto(id); g.fillStyle=_texBaseCol(id); g.fillRect(0,0,cv.width,cv.height); return cv; }
+  var img=(typeof getTexImage==='function')?getTexImage(id):null;
+  if(img && img.data){
+    var tmp=document.createElement('canvas'); tmp.width=img.w; tmp.height=img.h;
+    var tc=tmp.getContext('2d'), idd=tc.createImageData(img.w,img.h);
+    idd.data.set(img.data); tc.putImageData(idd,0,0);
+    g.drawImage(tmp,0,0,cv.width,cv.height);
+  }
+  return cv;
+}
+function texSwRedraw(id){
+  try{ var l=document.querySelectorAll('canvas.sw[data-texid="'+id+'"]');
+    for(var i=0;i<l.length;i++) texSwPaint(l[i], id); }catch(e){}
+}
+function texSwRedrawAll(){
+  try{ var l=document.querySelectorAll('canvas.sw[data-texid]');
+    for(var i=0;i<l.length;i++) texSwPaint(l[i], l[i].getAttribute('data-texid')); }catch(e){}
+}
+/* Manifest résolu : jeter les procédurales mises en cache pour des ids qui ont en
+   fait une photo (sinon elles restent figées), puis précharger pour que la grille
+   soit déjà prête à l'ouverture du panneau. */
+function texPhotoAfterManifest(){
+  var m=TEX_PHOTO.map||{}, n=0;
+  for(var id in m){ if(!m.hasOwnProperty(id)) continue;
+    if(TEX_IMAGES[id] && !TEX_IMAGES[id].photo){ delete TEX_IMAGES[id]; n++; }
+    ensureTexPhoto(id);
+  }
+  if(n){ try{ DIRTY=true; }catch(e){} }
+  texSwRedrawAll();
 }
 /* Tente (une seule fois par id) de charger la photo correspondante. */
 function ensureTexPhoto(id){
@@ -3531,8 +3591,15 @@ function metalPattern(ctx){
 function uiBgStyle(ctx){ return UIKRAFT ? kraftPattern(ctx) : (UIMETAL ? metalPattern(ctx) : (UILIGHT?'#e9edf2':'#1a1d23')); }
 
 /* ===== PRÉFÉRENCES DE PRÉSENTATION (persistées) : thème, polices, ciel/sol WebGL, trame ===== */
+/* Exposition avant tonemap ACES. Elle était codée en dur (1.18) dans les 4 shaders :
+   sur une surface horizontale claire (dalle en plein soleil + ciel), on tapait le haut
+   de la courbe, là où ACES écrase les hautes lumières — et la texture s'y effaçait. */
+function texExpo(){
+  var e=(typeof PREFS!=='undefined' && PREFS.expo!=null) ? PREFS.expo : 1.0;
+  return Math.max(0.2, Math.min(2.5, e));
+}
 var PREFS_KEY='BPO_PREFS_v1';
-var PREFS=(function(){ var d={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0,coteColor:'',coteSize:0,coteFont:'', ssaa:1.5, bloom:0.5, grade:0.5, ibl:0.6, units:'metric', metricUnit:'cm'};
+var PREFS=(function(){ var d={theme:'',fontColor:'',skyTop:'',skyHor:'',ground:'',gridColor:'',gridStep:0,coteColor:'',coteSize:0,coteFont:'', ssaa:1.5, bloom:0.5, grade:0.5, ibl:0.6, expo:1.0, units:'metric', metricUnit:'cm'};
   try{ var s=JSON.parse(localStorage.getItem(PREFS_KEY)); if(s) for(var k in s){ if(k in d) d[k]=s[k]; } }catch(e){} return d; })();
 function prefsSave(){ try{ localStorage.setItem(PREFS_KEY, JSON.stringify(PREFS)); }catch(e){} }
 /* ---- Système d'unités (Préférences). Le modèle reste stocké en mètres ; seuls
@@ -3651,6 +3718,13 @@ function buildSunControls(host, rerender){
     var il2=document.createElement('span'); il2.style.cssText='font-size:10px;color:var(--dm);min-width:34px;text-align:right;'; il2.textContent=(+ii.value).toFixed(2);
     ii.oninput=function(){ PREFS.ibl=parseFloat(ii.value); il2.textContent=PREFS.ibl.toFixed(2); prefsSave(); if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
     wIb.appendChild(ii); wIb.appendChild(il2); rIb.appendChild(wIb);
+    /* Exposition : descendre pour récupérer le détail des surfaces claires en plein soleil. */
+    var rEx=line('Exposition'), wEx=document.createElement('div'); wEx.style.cssText='display:flex;align-items:center;gap:6px;';
+    var xi=document.createElement('input'); xi.type='range'; xi.min=0.4; xi.max=1.8; xi.step=0.02;
+    xi.value=(PREFS.expo!=null?PREFS.expo:1.0); xi.style.width='110px';
+    var xl2=document.createElement('span'); xl2.style.cssText='font-size:10px;color:var(--dm);min-width:34px;text-align:right;'; xl2.textContent=(+xi.value).toFixed(2);
+    xi.oninput=function(){ PREFS.expo=parseFloat(xi.value); xl2.textContent=PREFS.expo.toFixed(2); prefsSave(); DIRTY=true; if(WGL&&WGL.render&&(WGL.gActive||WGL.txActive)) WGL.render(); };
+    wEx.appendChild(xi); wEx.appendChild(xl2); rEx.appendChild(wEx);
   }
   tog('Ciel avec nuages', PREFS.clouds!==0, function(){ PREFS.clouds=(PREFS.clouds!==0)?0:1; prefsSave(); redraw(); rerender&&rerender(); });
   tog('Sol herbe (procédural)', PREFS.grass!==0, function(){ PREFS.grass=(PREFS.grass!==0)?0:1; prefsSave(); redraw(); rerender&&rerender(); });
@@ -20559,14 +20633,7 @@ function buildProductMatPanel(host, pid, groups){
     var gg=cvv.getContext('2d');
     var pool=(typeof TEX_POOL!=='undefined')?TEX_POOL[id]:null;
     if(pool){ var im=new Image(); im.onload=function(){ gg.drawImage(im,0,0,44,44); }; im.src=pool; return cvv; }
-    var img=getTexImage(id);
-    if(img){
-      var tmp=document.createElement('canvas'); tmp.width=img.w; tmp.height=img.h;
-      var idd=tmp.getContext('2d').createImageData(img.w,img.h);
-      idd.data.set(img.data); tmp.getContext('2d').putImageData(idd,0,0);
-      gg.drawImage(tmp,0,0,44,44);
-    }
-    return cvv;
+    return texSwPaint(cvv, id);
   }
   function texCell(id, label, title){
     var cell=document.createElement('div'); cell.className=(ov.tex===id)?'tex-cell on':'tex-cell';
@@ -20799,14 +20866,7 @@ function buildFinishPanel(){
       var cell=document.createElement('div'); cell.className='tex-cell';
       if(FINISH_TEX[key]===tx.id) cell.className='tex-cell on';
       var cvv=document.createElement('canvas'); cvv.width=44; cvv.height=44; cvv.className='sw';
-      var img=getTexImage(tx.id);
-      if(img){
-        var gg=cvv.getContext('2d');
-        var tmp=document.createElement('canvas'); tmp.width=img.w; tmp.height=img.h;
-        var idd=tmp.getContext('2d').createImageData(img.w,img.h);
-        idd.data.set(img.data); tmp.getContext('2d').putImageData(idd,0,0);
-        gg.drawImage(tmp,0,0,44,44);
-      }
+      texSwPaint(cvv, tx.id);
       var nm=document.createElement('div'); nm.className='nm'; nm.textContent=tx.n;
       cell.appendChild(cvv); cell.appendChild(nm);
       cell.onclick=function(){ FINISH_TEX[key]=tx.id; FINISH_SET[key]=true; build(); buildFinishPanel(); };
@@ -25117,42 +25177,4 @@ var I18N_RUUK={
 "Scène (assemblage)":{"ru":"Сцена (сборка)","uk":"Сцена (збірка)"},
 "Scène — assemblage":{"ru":"Сцена — сборка","uk":"Сцена — збірка"},
 "Glissez une configuration dans la vue pour l'ajouter (elle se pose au sol au point visé), ou cliquez « + ». Sélectionnez un élément puis réglez Position / Hauteur / Rotation.":{"ru":"Перетащите конфигурацию в вид, чтобы добавить её (она ляжет на пол в целевой точке), или нажмите «+». Выберите элемент, затем настройте Положение / Высоту / Поворот.","uk":"Перетягніть конфігурацію у вид, щоб додати її (вона ляже на підлогу в цільовій точці), або натисніть «+». Виберіть елемент, потім налаштуйте Положення / Висоту / Обертання."},
-"Configurations disponibles":{"ru":"Доступные конфигурации","uk":"Доступні конфігурації"},
-"Aucune config. Enregistrez d'abord un objet (murs, toiture, escalier…) via 💾.":{"ru":"Нет конфигураций. Сначала сохраните объект (стены, кровля, лестница…) через 💾.","uk":"Немає конфігурацій. Спочатку збережіть об'єкт (стіни, покрівля, сходи…) через 💾."},
-"Éléments de la scène":{"ru":"Элементы сцены","uk":"Елементи сцени"},
-"Décor (mode Réaliste)":{"ru":"Окружение (режим Реалистичный)","uk":"Оточення (режим Реалістичний)"},
-"💾 Enregistrer cette scène":{"ru":"💾 Сохранить эту сцену","uk":"💾 Зберегти цю сцену"},
-"Vide — glissez une config ci-dessus dans la vue.":{"ru":"Пусто — перетащите конфигурацию сверху в вид.","uk":"Порожньо — перетягніть конфігурацію зверху у вид."},
-"Eau":{"ru":"Вода","uk":"Вода"},
-"Arbres":{"ru":"Деревья","uk":"Дерева"},
-"OBJ universel · DAE pour SketchUp · IFC4 pour ArchiCAD/Revit · IFC 2x3 pour SketchUp / vieux importeurs (unités m)":{"ru":"OBJ универсальный · DAE для SketchUp · IFC4 для ArchiCAD/Revit · IFC 2x3 для SketchUp / старых импортёров (единицы м)","uk":"OBJ універсальний · DAE для SketchUp · IFC4 для ArchiCAD/Revit · IFC 2x3 для SketchUp / старих імпортерів (одиниці м)"},
-"🎨 Rendu IA (Gemini)":{"ru":"🎨 ИИ-рендеринг (Gemini)","uk":"🎨 ШІ-рендеринг (Gemini)"},
-"Bâtiment":{"ru":"Здание","uk":"Будівля"},
-"Éléments de construction":{"ru":"Строительные элементы","uk":"Будівельні елементи"},
-"Mobilier":{"ru":"Мебель","uk":"Меблі"},
-"Cuisine":{"ru":"Кухня","uk":"Кухня"},
-"Rechercher…":{"ru":"Поиск…","uk":"Пошук…"},
-"Recentrer":{"ru":"Центрировать","uk":"Центрувати"},
-"Mon compte":{"ru":"Моя учётная запись","uk":"Мій обліковий запис"},
-"Matériaux":{"ru":"Материалы","uk":"Матеріали"},
-"Site / géolocalisation":{"ru":"Участок / геолокация","uk":"Ділянка / геолокація"},
-"Libre":{"ru":"Свободный","uk":"Вільний"},
-"Marbre":{"ru":"Мрамор","uk":"Мармур"},
-"Alu":{"ru":"Алюминий","uk":"Алюміній"},
-"Inox":{"ru":"Нержавейка","uk":"Нержавійка"},
-"Oui":{"ru":"Да","uk":"Так"},
-"Non":{"ru":"Нет","uk":"Ні"}
-};
-(function(){ for(var fr in I18N_RUUK){ var t=I18N_RUUK[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
-function pick(){ try{ var sv=localStorage.getItem('bpo_lang'); if(sv) return sv; }catch(e){}
-  var l=(navigator.language||navigator.userLanguage||'en').slice(0,2).toLowerCase();
-  return (l==='fr'||I18N[l]||(typeof FLAGS!=='undefined'&&FLAGS[l]))?l:'en'; }
-function translateDOM(){
-  var root=document.getElementById('app'); if(!root) return;
-  if(mo) mo.disconnect();
-  var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null), nd, list=[];
-  while(nd=w.nextNode()) list.push(nd);
-  var D=I18N[LANG]||{};
-  for(var i=0;i<list.length;i++){ var n=list[i];
-    if(n.__fr===undefined) n.__fr=n.nodeValue;
-    /* `raw` = le texte r\u00e9ellement pr\u00e9sent dans le n\u0153ud (avec \u
+"Configurations disponibles":{"ru":"Доступные кон
