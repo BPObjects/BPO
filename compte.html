@@ -54,7 +54,7 @@
       <div class="row"><span>Statut</span><span id="statusBadge" class="badge"></span></div>
       <div class="row"><span id="periodLbl">Essai</span><span id="periodVal"></span></div>
       <button id="openApp">Ouvrir le configurateur</button>
-      <button id="subscribe" class="hidden">S'abonner — 50 € / an</button>
+      <button id="subscribe" class="hidden">S'abonner</button>
       <button id="portal" class="alt hidden">Gérer mon abonnement</button>
       <div class="msg" id="accMsg"></div>
     </div>
@@ -69,7 +69,7 @@
 
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SUPABASE_URL, SUPABASE_ANON, SITE_URL, TRIAL_DAYS } from "./bpo-config.js";
+import { SUPABASE_URL, SUPABASE_ANON, SITE_URL, TRIAL_DAYS, PRICE_LABEL } from "./bpo-config.js";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 if(String(SUPABASE_URL).includes("VOTRE-PROJET")){
   document.querySelector(".wrap").innerHTML =
@@ -80,6 +80,7 @@ if(String(SUPABASE_URL).includes("VOTRE-PROJET")){
   throw new Error("BPO: backend Supabase non configuré");
 }
 const $ = id => document.getElementById(id);
+$("subscribe").textContent = "S'abonner — " + PRICE_LABEL;   /* libellé piloté par la config */
 let mode = "login"; // login | signup
 
 function show(el){ el.classList.remove("hidden"); } function hide(el){ el.classList.add("hidden"); }
