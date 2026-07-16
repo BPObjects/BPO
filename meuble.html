@@ -11772,7 +11772,9 @@ function parkRecapHTML(){
   var isl=I.isl?('<br>'+I.isl+' îlot'+(I.isl>1?'s':'')+' planté'+(I.isl>1?'s':'')+(PPARK.islTree?(' · '+I.isl+' arbre'+(I.isl>1?'s':'')):'')):'';
   if(I.ombMods) isl+='<br>Ombrière : <b>'+I.ombMods+'</b> modules · <b>'+I.ombKwc.toFixed(1)+'</b> kWc';
   if(PPARK.ombOn && PPARK.ombClear<220) warn+='<div style="color:#e08a2e;margin-top:3px;">⚠ Ombrière : hauteur libre &lt; 2,20 m.</div>';
-  return '<b>'+I.total+'</b> place'+(I.total>1?'s':'')+', dont <b>'+I.pmr+'</b> PMR'+isl+'<br>'+
+  /* chaque mot traduisible dans son propre <span> : collé à un nombre, il ne
+     correspondrait à aucune clé du dictionnaire. */
+  return '<b>'+I.total+'</b> <span>'+(I.total>1?'places':'place')+'</span> <span>dont</span> <b>'+I.pmr+'</b> <span>PMR</span>'+isl+'<br>'+
          '<span>Surface :</span> <b>'+I.area.toFixed(1)+'</b> m² &nbsp;·&nbsp; <b>'+per.toFixed(1)+'</b> m²/<span>place</span>'+warn;
 }
 
@@ -24589,6 +24591,38 @@ var I18N_ADD36={
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD38 — module Terrain, récap parking, ombrière PV. Ordre I18N_ORDER7. */
+var I18N_ADD38={
+"Depuis DXF":["From DXF","Desde DXF","Da DXF","Aus DXF","A partir de DXF","DXF-ből","从 DXF","DXFから","DXF से","Из DXF","З DXF","من DXF"],
+"Créer une forme":["Create a shape","Crear una forma","Crea una forma","Form erstellen","Criar uma forma","Alakzat létrehozása","创建形状","形状を作成","आकृति बनाएँ","Создать форму","Створити форму","إنشاء شكل"],
+"Importer cadastre (fond de plan)":["Import cadastre (base map)","Importar catastro (mapa base)","Importa catasto (mappa base)","Kataster importieren (Grundkarte)","Importar cadastro (mapa base)","Kataszter importálása (alaptérkép)","导入地籍图(底图)","地籍図を読込(下図)","कैडस्ट्रे आयात (बेस मैप)","Импорт кадастра (подложка)","Імпорт кадастру (підкладка)","استيراد المساحة (خريطة أساس)"],
+"Terrain — MNT depuis DXF":["Terrain — DTM from DXF","Terreno — MDT desde DXF","Terreno — DTM da DXF","Gelände — DGM aus DXF","Terreno — MDT a partir de DXF","Terep — DDM DXF-ből","地形 — 从 DXF 生成 DTM","地形 — DXFからDTM","भूभाग — DXF से DTM","Рельеф — ЦМР из DXF","Рельєф — ЦМР з DXF","التضاريس — نموذج رقمي من DXF"],
+"⭳Charger un DXF (points cotés)":["⭳Load a DXF (spot heights)","⭳Cargar un DXF (puntos acotados)","⭳Carica un DXF (quote)","⭳DXF laden (Höhenpunkte)","⭳Carregar um DXF (pontos cotados)","⭳DXF betöltése (magassági pontok)","⭳载入 DXF(高程点)","⭳DXFを読込(標高点)","⭳DXF लोड करें (स्पॉट हाइट)","⭳Загрузить DXF (отметки высот)","⭳Завантажити DXF (позначки висот)","⭳تحميل DXF (نقاط منسوبة)"],
+"Aucun terrain chargé.":["No terrain loaded.","Ningún terreno cargado.","Nessun terreno caricato.","Kein Gelände geladen.","Nenhum terreno carregado.","Nincs betöltött terep.","未载入地形。","地形が未読込です。","कोई भूभाग लोड नहीं।","Рельеф не загружен.","Рельєф не завантажено.","لم يتم تحميل تضاريس."],
+"Altitude de base":["Base elevation","Cota base","Quota di base","Basishöhe","Cota base","Alapmagasság","基准高程","基準標高","आधार ऊँचाई","Базовая отметка","Базова відмітка","المنسوب الأساسي"],
+"Altitude absolue":["Absolute elevation","Cota absoluta","Quota assoluta","Absolute Höhe","Cota absoluta","Abszolút magasság","绝对高程","絶対標高","निरपेक्ष ऊँचाई","Абсолютная отметка","Абсолютна відмітка","المنسوب المطلق"],
+"Base à 0":["Base at 0","Base en 0","Base a 0","Basis auf 0","Base em 0","Alap 0-n","基准置零","基準を0に","आधार 0 पर","База на 0","База на 0","الأساس عند 0"],
+"Exagération verticale":["Vertical exaggeration","Exageración vertical","Esagerazione verticale","Überhöhung","Exagero vertical","Függőleges túlmagasítás","垂直放大","鉛直強調","लंबवत अतिशयोक्ति","Вертикальное преувеличение","Вертикальне перебільшення","المبالغة الرأسية"],
+"Maille (résolution)":["Mesh (resolution)","Malla (resolución)","Maglia (risoluzione)","Netz (Auflösung)","Malha (resolução)","Háló (felbontás)","网格(分辨率)","メッシュ(解像度)","मेश (रिज़ॉल्यूशन)","Сетка (разрешение)","Сітка (роздільність)","الشبكة (الدقة)"],
+"Découpe au contour":["Clip to outline","Recorte al contorno","Ritaglio sul contorno","Auf Umriss zuschneiden","Recorte ao contorno","Vágás a kontúrhoz","按轮廓裁剪","輪郭でクリップ","रूपरेखा पर क्लिप","Обрезка по контуру","Обрізка за контуром","القص عند المحيط"],
+"Courbes de niveau":["Contour lines","Curvas de nivel","Curve di livello","Höhenlinien","Curvas de nível","Szintvonalak","等高线","等高線","समोच्च रेखाएँ","Горизонтали","Горизонталі","خطوط الكنتور"],
+"Matière unie":["Solid material","Material liso","Materiale unito","Einfarbiges Material","Material liso","Egyszínű anyag","单色材质","単色マテリアル","सादा सामग्री","Однотонный материал","Однотонний матеріал","مادة سادة"],
+"Dégradé altitude":["Elevation gradient","Degradado de cota","Sfumatura di quota","Höhenverlauf","Gradiente de cota","Magassági színátmenet","高程渐变","標高グラデーション","ऊँचाई ग्रेडिएंट","Градиент высот","Градієнт висот","تدرج المناسيب"],
+"Emprise L":["Footprint W","Huella A","Ingombro L","Grundfläche B","Implantação L","Alapterület Sz","占地 宽","敷地 幅","फुटप्रिंट चौ.","Габарит Ш","Габарит Ш","المساحة ع"],
+"Emprise P":["Footprint D","Huella P","Ingombro P","Grundfläche T","Implantação P","Alapterület M","占地 深","敷地 奥行","फुटप्रिंट ग.","Габарит Г","Габарит Г","المساحة ُع"],
+"Largeur du pied":["Toe width","Ancho del pie","Larghezza del piede","Fußbreite","Largura do pé","Lábszélesség","坡脚宽度","裾の幅","पाद चौड़ाई","Ширина подошвы","Ширина підошви","عرض القدم"],
+"points cotés lus.":["spot heights read.","puntos acotados leídos.","quote lette.","Höhenpunkte gelesen.","pontos cotados lidos.","magassági pont beolvasva.","个高程点已读取。","点の標高を読込みました。","स्पॉट हाइट पढ़े गए।","отметок высот прочитано.","позначок висот прочитано.","نقطة منسوبة تمت قراءتها."],
+"points cotés en mémoire.":["spot heights in memory.","puntos acotados en memoria.","quote in memoria.","Höhenpunkte im Speicher.","pontos cotados em memória.","magassági pont a memóriában.","个高程点在内存中。","点の標高をメモリ保持。","स्पॉट हाइट मेमोरी में।","отметок высот в памяти.","позначок висот у пам'яті.","نقطة منسوبة في الذاكرة."],
+"m² d'emprise":["m² of footprint","m² de huella","m² di ingombro","m² Grundfläche","m² de implantação","m² alapterület","m² 占地","m² の敷地","m² फुटप्रिंट","м² габарита","м² габариту","م² من المساحة"],
+"places":["spaces","plazas","posti","Stellplätze","lugares","férőhely","个车位","台分","स्थान","мест","місць","مواقف"],
+"place":["space","plaza","posto","Stellplatz","lugar","férőhely","个车位","台分","स्थान","место","місце","موقف"],
+"dont":["incl.","incl.","di cui","davon","incl.","ebből","其中","うち","सहित","в т.ч.","у т.ч.","منها"],
+"PMR":["accessible","PMR","PMR","barrierefrei","PMR","akadálymentes","无障碍","バリアフリー","सुलभ","МГН","МГН","لذوي الإعاقة"]
+};
+(function(){ for(var fr in I18N_ADD38){ var t=I18N_ADD38[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
 /* I18N_ADD37 — sens d'ouverture des ouvrants + dégagement des volets. Ordre I18N_ORDER7. */
 var I18N_ADD37={
 "Sens d'ouverture":["Opening direction","Sentido de apertura","Verso di apertura","Öffnungsrichtung","Sentido de abertura","Nyitásirány","开启方向","開き勝手","खुलने की दिशा","Направление открывания","Напрямок відчинення","اتجاه الفتح"],
@@ -25331,6 +25365,19 @@ function translateDOM(){
   var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null), nd, list=[];
   while(nd=w.nextNode()) list.push(nd);
   var D=I18N[LANG]||{};
+  /* Les attributs ne sont pas des nœuds texte : sans cette passe, un placeholder
+     ou une infobulle restait en français même avec sa traduction disponible. */
+  try{
+    var att=root.querySelectorAll('[placeholder],[title]');
+    for(var ai=0;ai<att.length;ai++){ var el=att[ai];
+      ['placeholder','title'].forEach(function(a){
+        var raw=el.getAttribute(a); if(raw==null||raw==='') return;
+        if(el['__fr_'+a]===undefined) el['__fr_'+a]=raw;
+        var src=el['__fr_'+a], v=D[(''+src).replace(/’/g,"'")];
+        el.setAttribute(a, (LANG==='fr'||v==null) ? src : v);
+      });
+    }
+  }catch(e){}
   for(var i=0;i<list.length;i++){ var n=list[i];
     if(n.__fr===undefined) n.__fr=n.nodeValue;
     /* `raw` = le texte r\u00e9ellement pr\u00e9sent dans le n\u0153ud (avec \u2019 \u00e9ventuelle).
@@ -25517,6 +25564,11 @@ function playIntro(l){
 }
 function setLang(l){ LANG=(l==='fr'||I18N[l]||(typeof FLAGS!=='undefined'&&FLAGS[l]))?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
   var sel=document.getElementById('langsel'); if(sel) sel.value=LANG; translateDOM();
+  /* Le canvas ne passe pas par translateDOM : ses libellés (cotes, vignettes de
+     surface, niveaux) sont peints via T(). Sans redessin, ils restent dans la
+     langue précédente jusqu'à la prochaine interaction. */
+  try{ DIRTY=true; if(typeof buildFinishPanel==='function') buildFinishPanel(); }catch(e){}
+  try{ if(typeof WGL!=='undefined' && WGL.render && (WGL.gActive||WGL.txActive)) WGL.render(); }catch(e){}
   if(l==='hu') playGraphisoftTribute(); else playIntro(l); }
 function start(){
   LANG=pick();
