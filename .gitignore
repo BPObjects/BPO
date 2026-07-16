@@ -1,0 +1,16 @@
+# Dépendances et sorties de build — reconstructibles, ~790 Mo
+desktop/node_modules/
+desktop/dist/
+node_modules/
+
+# Sauvegardes manuelles : Git les remplace désormais
+_backups/
+
+# Fichiers temporaires d'écriture atomique
+*.tmp
+tmp*
+
+# Système
+.DS_Store
+Thumbs.db
+desktop.ini
