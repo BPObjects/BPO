@@ -21373,7 +21373,9 @@ function refreshView(){
     } else {
       WGL.hide();
       var r=build();                    /* construit d'abord (calcule DIMS) */
-      fitCamera(r || DIMS);             /* cadre automatiquement le nouvel objet */
+      /* Recadrage automatique : bienvenu quand on change d'objet, gênant sur une
+         annulation — on ne défait qu'un paramètre, la vue ne doit pas sauter. */
+      if(!(typeof _undoApplying!=='undefined' && _undoApplying)) fitCamera(r || DIMS);
       if(isWall){ buildWallUI(); }
       else if(isSlab){ buildSlabUI(); }
       else if(cat.id==='immeuble'){ buildImmeubleUI(); }
