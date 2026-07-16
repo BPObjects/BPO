@@ -2383,7 +2383,7 @@ function fabDirOf(pid){
   }catch(e){}
   return null;
 }
-var DATA_VER='20260710b';   /* à incrémenter à chaque publication de data/ */
+var DATA_VER='20260716a';   /* à incrémenter à chaque publication de data/ */
 function isFabMesh(pid){ return !!fabDirOf(pid); }
 /* compatibilité : d'anciens appels testent encore isHaworth() */
 function isHaworth(pid){ return isFabMesh(pid); }
@@ -3261,7 +3261,7 @@ var FINISH = {
   pmargelle:[210,206,196], pplage:[200,196,186],
   pbassin:[150,180,196], pstruct:[176,176,170],   /* piscine : revêtement intérieur (mosaïque) / structure */
   rampsurf:[196,196,192], rampstruct:[176,176,172],   /* rampe PMR : roulement / joues */
-  vstruct:[80,84,90], vsoub:[180,178,172], vsoubExt:[180,178,172], vsoubInt:[198,194,187], chab:[205,198,182], chtub:[120,124,130],
+  vstruct:[80,84,90], vsoub:[180,178,172], vsoubExt:[180,178,172], vsoubInt:[198,194,187], chtab:[196,166,116], chab:[205,198,182], chtub:[120,124,130],
   corps:   [176, 140, 98],
   etagere: [176, 140, 98],
   porte:   [150, 200, 235],
@@ -3349,7 +3349,7 @@ var FINISH_TEX = {
   pbassin:'mosaique',              /* revêtement intérieur du bassin : mosaïque par défaut */
   pstruct:null,                    /* structure : parpaing / béton banché (posé selon le type) */
   rampsurf:null, rampstruct:null,  /* rampe PMR */
-  pmargelle:null, pplage:null, vstruct:null, vsoub:null, vsoubExt:null, vsoubInt:null, chab:null,
+  pmargelle:null, pplage:null, vstruct:null, vsoub:null, vsoubExt:null, vsoubInt:null, chtab:null, chab:null,
   imdalle:null, impoteau:null, impoutre:null, imvoile:null, imcloison:null, terrain:null, chtub:null,
   tcadre:null, touvrant:null, tpoignee:null, vcadre:null, vouvrant:null,
   corps:null, etagere:null, porte:null, forme:null, objet:null, bati:null, panneau:null, poignee:null, fcadre:null, fouvrant:null, fpoignee:null, cwframe:null, cwspandrel:null, cwvent:null, fstruct:null, fgarn:null, hossature:null, hbardage:null, hcorner:null, hbeton:null, sol:'dallage_blanc', fauxplaf:null,
@@ -3427,7 +3427,7 @@ var FINISH_ELEMS_VERANDA = [
   {id:'vsoubExt', l:'Soubassement ext.'},
   {id:'vsoubInt', l:'Soubassement int.'}
 ];
-var FINISH_ELEMS_CHEMINEE = [ {id:'chab', l:'Habillage'}, {id:'chtub', l:'Conduit / tubage'} ];
+var FINISH_ELEMS_CHEMINEE = [ {id:'chab', l:'Habillage'}, {id:'chtab', l:'Tablette'}, {id:'chtub', l:'Conduit / tubage'} ];
 var FINISH_ELEMS_MOSQUITO = [
   {id:'mqverre',   l:'Plateau (verre)'},
   {id:'mqbandeau', l:'Bandeau'},
@@ -4260,6 +4260,9 @@ var CHEM_MATS = [ {id:'pierre',l:'Pierre',c:[205,198,182]},{id:'metal',l:'Métal
 var PCHEM = { type:'foyer', width:120, height:110, depth:45, condH:200, mat:'pierre',
   /* foyer paramétrique */
   hearthH:16, jambageW:22, linteauH:22, backThick:6, openInset:6,
+  /* INSERT — cotes relevées sur le modèle ArchiCAD (corps 1,70×0,85×1,50 ; tablette
+     bois à 41 cm débordant à 1,80 ; foyer 1,40 de 45 à 100 ; vitre de 52 à 93). */
+  tab:1, tabH:41, tabEp:4, tabDeb:5, foyW:140, foyH:55, vitreY:7, vitreH:41,
   /* conduit : boisseau (maçonnerie) + tubage (métal) */
   condMode:'boisseau', boisRound:0, boisD:50, tubD:20,
   /* traversée de toit / dépassement / chapeau */
@@ -7185,6 +7188,29 @@ function buildCheminee(){
     var sy=H*0.55, sbh=H*0.6; box(0,sy,0, W*0.55,sbh,D*0.7, col,1); _CURTEX=null;
     box(0,sy-sbh*0.42,0, W*0.42,0.05,D*0.5, fire,1);
     yTop=sy+sbh/2;
+  } else if(ty==='insert'){
+    /* Insert : gabarit relevé sur le modèle ArchiCAD (1,80 × 0,90 × 3,00 m).
+       Habillage plein évidé autour du foyer, tablette bois débordante à 41 cm,
+       foyer métal 0,45→1,00 et vitre 0,52→0,93. */
+    var tH=Math.max(0,PCHEM.tabH/100), tE=Math.max(0.01,PCHEM.tabEp/100), tDb=Math.max(0,PCHEM.tabDeb/100),
+        fW=Math.max(0.2,Math.min(W-0.04,PCHEM.foyW/100)), fH2=Math.max(0.1,PCHEM.foyH/100),
+        vY=Math.max(0,PCHEM.vitreY/100), vH=Math.max(0.05,PCHEM.vitreH/100),
+        opY0=tH+tE, opY1=Math.min(H-0.02, opY0+fH2), jw2=Math.max(0.02,(W-fW)/2),
+        wood=fcol('chtab',[196,166,116]);
+    /* habillage : quatre blocs autour de la baie du foyer */
+    box(-W/2+jw2/2, H/2, 0, jw2, H, D, col,1);
+    box( W/2-jw2/2, H/2, 0, jw2, H, D, col,1);
+    if(H>opY1) box(0, (opY1+H)/2, 0, fW, H-opY1, D, col,1);
+    if(opY0>0)  box(0, opY0/2, 0, fW, opY0, D, col,1);
+    _CURTEX=FINISH_TEX.chtab;
+    if(PCHEM.tab) box(0, tH+tE/2, tDb/2, W+2*tDb, tE, D+tDb, wood,1);   /* tablette, déborde de tous côtés */
+    _CURTEX=null;
+    var fD=D*0.82;
+    box(0, (opY0+opY1)/2, 0, fW, opY1-opY0, fD, cMet,1);                 /* corps de foyer métal */
+    box(0, (opY0+opY1)/2, -D/2+0.03, fW, opY1-opY0, 0.03, dark,1);       /* fond */
+    box(0, opY0+0.09, 0, fW-0.18, 0.15, fD*0.5, fire,0.95);              /* flammes */
+    box(0, opY0+vY+vH/2, fD/2-0.02, fW-0.01, vH, 0.02, glass,0.4);       /* porte vitrée, presque pleine largeur */
+    yTop=H;
   } else {
     var hh=Math.max(0.03,PCHEM.hearthH/100), jw=Math.max(0.06,PCHEM.jambageW/100),
         lh=Math.max(0.06,PCHEM.linteauH/100), bt=Math.max(0.02,PCHEM.backThick/100), fH=Math.max(0.1,H-hh-lh);
@@ -7236,15 +7262,29 @@ function buildCheminee(){
   return DIMS;
 }
 function buildChemineeUI(){
-  var open=(PCHEM.type==='foyer'||PCHEM.type==='insert'||PCHEM.type==='double'||PCHEM.type==='ethanol');
+  /* l'insert a sa propre géométrie (tablette + foyer métal), pas les jambages/linteau maçonnés */
+  var open=(PCHEM.type==='foyer'||PCHEM.type==='double'||PCHEM.type==='ethanol');
+  var ins=(PCHEM.type==='insert');
   var groups=[
     {title:'Type', fields:[{type:'choice',label:'Type de foyer',key:'type',options:CHEM_TYPES}]},
-    {title:'Foyer', fields:[
-      {type:'slider',label:'Largeur',unit:'cm',key:'width',min:40,max:260,step:5},
-      {type:'slider',label:'Hauteur foyer',unit:'cm',key:'height',min:40,max:220,step:5},
-      {type:'slider',label:'Profondeur',unit:'cm',key:'depth',min:20,max:90,step:5}
-    ]}
+    {title:ins?'Corps':'Foyer', fields:[].concat(
+      ins?[{type:'preset',label:'Gabarit',options:[
+        {l:'Modèle ArchiCAD (170×150×85)',set:{width:170,height:150,depth:85,tab:1,tabH:41,tabEp:4,tabDeb:5,foyW:140,foyH:55,vitreY:7,vitreH:41,condH:150,condMode:'tubage',tubD:20}}]}]:[],
+      [{type:'slider',label:'Largeur',unit:'cm',key:'width',min:40,max:260,step:5},
+       {type:'slider',label:ins?'Hauteur du corps':'Hauteur foyer',unit:'cm',key:'height',min:40,max:220,step:5},
+       {type:'slider',label:'Profondeur',unit:'cm',key:'depth',min:20,max:90,step:5}]
+    )}
   ];
+  if(ins) groups.push({title:'Insert', fields:[].concat(
+      [{type:'choice',label:'Tablette',key:'tab',options:[{id:1,l:'Avec'},{id:0,l:'Sans'}]}],
+      PCHEM.tab?[{type:'slider',label:'Hauteur tablette',unit:'cm',key:'tabH',min:0,max:120,step:1},
+                 {type:'slider',label:'Épaisseur tablette',unit:'cm',key:'tabEp',min:2,max:15,step:1},
+                 {type:'slider',label:'Débord tablette',unit:'cm',key:'tabDeb',min:0,max:30,step:1}]:[],
+      [{type:'slider',label:'Largeur du foyer',unit:'cm',key:'foyW',min:30,max:250,step:1},
+       {type:'slider',label:'Hauteur du foyer',unit:'cm',key:'foyH',min:20,max:150,step:1},
+       {type:'slider',label:'Vitre — départ',unit:'cm',key:'vitreY',min:0,max:40,step:1},
+       {type:'slider',label:'Vitre — hauteur',unit:'cm',key:'vitreH',min:10,max:140,step:1}]
+    )});
   if(open) groups.push({title:'Géométrie du foyer', fields:[
       {type:'slider',label:'Hauteur âtre',unit:'cm',key:'hearthH',min:2,max:40,step:1},
       {type:'slider',label:'Largeur jambages',unit:'cm',key:'jambageW',min:6,max:50,step:1},
@@ -24517,6 +24557,17 @@ var I18N_ADD37={
 "Auto":["Auto","Auto","Auto","Auto","Auto","Auto","自动","自動","स्वतः","Авто","Авто","تلقائي"],
 "Relevé sur la baie":["Raise above opening","Elevación sobre el vano","Rialzo sul vano","Anhebung über der Öffnung","Elevação sobre o vão","Emelés a nyílás fölé","高出洞口","開口部からの上げ","खुलाव से ऊँचाई","Подъём над проёмом","Підняття над отвором","الرفع فوق الفتحة"],
 "Barres et écharpe":["Ledged and braced","Con travesaños y tornapunta","Con traverse e controventatura","Mit Riegeln und Strebe","Com travessas e escora","Hevederes, merevítős","横档斜撑式","框組み・筋交い","लेज और ब्रेस","С шпонками и укосиной","Зі шпонками та укосиною","بعوارض ودعامة"],
+"Corps":["Body","Cuerpo","Corpo","Korpus","Corpo","Test","主体","本体","बॉडी","Корпус","Корпус","الجسم"],
+"Tablette":["Shelf","Repisa","Mensola","Ablage","Prateleira","Polc","搁板","棚板","शेल्फ","Полка","Полиця","الرف"],
+"Hauteur du corps":["Body height","Altura del cuerpo","Altezza del corpo","Korpushöhe","Altura do corpo","Testmagasság","主体高度","本体高さ","बॉडी ऊँचाई","Высота корпуса","Висота корпусу","ارتفاع الجسم"],
+"Hauteur tablette":["Shelf height","Altura de la repisa","Altezza mensola","Ablagenhöhe","Altura da prateleira","Polcmagasság","搁板高度","棚板高さ","शेल्फ ऊँचाई","Высота полки","Висота полиці","ارتفاع الرف"],
+"Épaisseur tablette":["Shelf thickness","Espesor de la repisa","Spessore mensola","Ablagendicke","Espessura da prateleira","Polcvastagság","搁板厚度","棚板厚さ","शेल्फ मोटाई","Толщина полки","Товщина полиці","سماكة الرف"],
+"Débord tablette":["Shelf overhang","Vuelo de la repisa","Sporgenza mensola","Ablagenüberstand","Saliência da prateleira","Polckinyúlás","搁板出挑","棚板の出","शेल्फ ओवरहैंग","Свес полки","Звис полиці","بروز الرف"],
+"Largeur du foyer":["Firebox width","Ancho del hogar","Larghezza focolare","Feuerraumbreite","Largura da fornalha","Tűztér szélessége","炉膛宽度","炉幅","फायरबॉक्स चौड़ाई","Ширина топки","Ширина топки","عرض الموقد"],
+"Hauteur du foyer":["Firebox height","Alto del hogar","Altezza focolare","Feuerraumhöhe","Altura da fornalha","Tűztér magassága","炉膛高度","炉高さ","फायरबॉक्स ऊँचाई","Высота топки","Висота топки","ارتفاع الموقد"],
+"Vitre — départ":["Glass — bottom","Vidrio — inicio","Vetro — base","Scheibe — Beginn","Vidro — início","Üveg — alja","玻璃 — 起点","ガラス — 下端","कांच — नीचे","Стекло — низ","Скло — низ","الزجاج — البداية"],
+"Vitre — hauteur":["Glass — height","Vidrio — altura","Vetro — altezza","Scheibe — Höhe","Vidro — altura","Üveg — magasság","玻璃 — 高度","ガラス — 高さ","कांच — ऊँचाई","Стекло — высота","Скло — висота","الزجاج — الارتفاع"],
+"Gabarit":["Template","Plantilla","Sagoma","Vorlage","Gabarito","Sablon","模板","テンプレート","टेम्पलेट","Шаблон","Шаблон","القالب"],
 "Petits bois":["Glazing bars","Barrotillos","Bacchette","Sprossen","Pinázios","Osztók","窗棂","格子","ग्लेज़िंग बार","Горбыльки","Горбильки","قضبان التزجيج"],
 "Libre":["Custom","Libre","Libero","Frei","Livre","Szabad","自定义","自由","कस्टम","Свободно","Вільно","حر"],
 "Croix (4)":["Cross (4)","Cruz (4)","Croce (4)","Kreuz (4)","Cruz (4)","Kereszt (4)","十字(4格)","十字(4)","क्रॉस (4)","Крест (4)","Хрест (4)","صليب (4)"],
@@ -25195,4 +25246,242 @@ var I18N_RUUK={
 "Scène (assemblage)":{"ru":"Сцена (сборка)","uk":"Сцена (збірка)"},
 "Scène — assemblage":{"ru":"Сцена — сборка","uk":"Сцена — збірка"},
 "Glissez une configuration dans la vue pour l'ajouter (elle se pose au sol au point visé), ou cliquez « + ». Sélectionnez un élément puis réglez Position / Hauteur / Rotation.":{"ru":"Перетащите конфигурацию в вид, чтобы добавить её (она ляжет на пол в целевой точке), или нажмите «+». Выберите элемент, затем настройте Положение / Высоту / Поворот.","uk":"Перетягніть конфігурацію у вид, щоб додати її (вона ляже на підлогу в цільовій точці), або натисніть «+». Виберіть елемент, потім налаштуйте Положення / Висоту / Обертання."},
-"Configurations disponibles":{"ru":"Доступные кон
+"Configurations disponibles":{"ru":"Доступные конфигурации","uk":"Доступні конфігурації"},
+"Aucune config. Enregistrez d'abord un objet (murs, toiture, escalier…) via 💾.":{"ru":"Нет конфигураций. Сначала сохраните объект (стены, кровля, лестница…) через 💾.","uk":"Немає конфігурацій. Спочатку збережіть об'єкт (стіни, покрівля, сходи…) через 💾."},
+"Éléments de la scène":{"ru":"Элементы сцены","uk":"Елементи сцени"},
+"Décor (mode Réaliste)":{"ru":"Окружение (режим Реалистичный)","uk":"Оточення (режим Реалістичний)"},
+"💾 Enregistrer cette scène":{"ru":"💾 Сохранить эту сцену","uk":"💾 Зберегти цю сцену"},
+"Vide — glissez une config ci-dessus dans la vue.":{"ru":"Пусто — перетащите конфигурацию сверху в вид.","uk":"Порожньо — перетягніть конфігурацію зверху у вид."},
+"Eau":{"ru":"Вода","uk":"Вода"},
+"Arbres":{"ru":"Деревья","uk":"Дерева"},
+"OBJ universel · DAE pour SketchUp · IFC4 pour ArchiCAD/Revit · IFC 2x3 pour SketchUp / vieux importeurs (unités m)":{"ru":"OBJ универсальный · DAE для SketchUp · IFC4 для ArchiCAD/Revit · IFC 2x3 для SketchUp / старых импортёров (единицы м)","uk":"OBJ універсальний · DAE для SketchUp · IFC4 для ArchiCAD/Revit · IFC 2x3 для SketchUp / старих імпортерів (одиниці м)"},
+"🎨 Rendu IA (Gemini)":{"ru":"🎨 ИИ-рендеринг (Gemini)","uk":"🎨 ШІ-рендеринг (Gemini)"},
+"Bâtiment":{"ru":"Здание","uk":"Будівля"},
+"Éléments de construction":{"ru":"Строительные элементы","uk":"Будівельні елементи"},
+"Mobilier":{"ru":"Мебель","uk":"Меблі"},
+"Cuisine":{"ru":"Кухня","uk":"Кухня"},
+"Rechercher…":{"ru":"Поиск…","uk":"Пошук…"},
+"Recentrer":{"ru":"Центрировать","uk":"Центрувати"},
+"Mon compte":{"ru":"Моя учётная запись","uk":"Мій обліковий запис"},
+"Matériaux":{"ru":"Материалы","uk":"Матеріали"},
+"Site / géolocalisation":{"ru":"Участок / геолокация","uk":"Ділянка / геолокація"},
+"Libre":{"ru":"Свободный","uk":"Вільний"},
+"Marbre":{"ru":"Мрамор","uk":"Мармур"},
+"Alu":{"ru":"Алюминий","uk":"Алюміній"},
+"Inox":{"ru":"Нержавейка","uk":"Нержавійка"},
+"Oui":{"ru":"Да","uk":"Так"},
+"Non":{"ru":"Нет","uk":"Ні"}
+};
+(function(){ for(var fr in I18N_RUUK){ var t=I18N_RUUK[fr]; for(var lg in t){ if(!I18N[lg]) I18N[lg]={}; if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[lg]; } } })();
+function pick(){ try{ var sv=localStorage.getItem('bpo_lang'); if(sv) return sv; }catch(e){}
+  var l=(navigator.language||navigator.userLanguage||'en').slice(0,2).toLowerCase();
+  return (l==='fr'||I18N[l]||(typeof FLAGS!=='undefined'&&FLAGS[l]))?l:'en'; }
+function translateDOM(){
+  var root=document.getElementById('app'); if(!root) return;
+  if(mo) mo.disconnect();
+  var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null), nd, list=[];
+  while(nd=w.nextNode()) list.push(nd);
+  var D=I18N[LANG]||{};
+  for(var i=0;i<list.length;i++){ var n=list[i];
+    if(n.__fr===undefined) n.__fr=n.nodeValue;
+    /* `raw` = le texte r\u00e9ellement pr\u00e9sent dans le n\u0153ud (avec \u2019 \u00e9ventuelle).
+       `k`   = la m\u00eame cha\u00eene, apostrophe normalis\u00e9e, pour chercher la cl\u00e9.
+       Le remplacement doit porter sur `raw`, pas sur `k` : sinon, d\u00e8s qu'une
+       cha\u00eene contient une apostrophe typographique, replace() ne trouve rien
+       et le libell\u00e9 reste en fran\u00e7ais malgr\u00e9 une traduction disponible. */
+    var base=n.__fr, raw=base.trim(), k=raw.replace(/\u2019/g,"'"); if(!k) continue;
+    var out=base;
+    if(LANG!=='fr'){ var tr=D[k]; if(tr!=null) out=base.replace(raw,tr); }
+    if(n.nodeValue!==out) n.nodeValue=out;
+  }
+  var rc=document.getElementById('recenter'); if(rc){ if(rc.__frt===undefined) rc.__frt=rc.title; rc.title=(LANG!=='fr'&&D[rc.__frt])||rc.__frt; }
+  document.documentElement.lang=LANG; document.documentElement.dir=(LANG==='ar')?'rtl':'ltr'; setFlag();
+  if(mo){ mo.takeRecords(); mo.observe(root,{childList:true,subtree:true,characterData:true}); }
+}
+/* Easter egg : hommage à Graphisoft / ArchiCAD quand on passe en hongrois.
+   Recouvre le viewer d'une petite animation, puis revient au viewer (clic pour passer). */
+/* Son des animations : joué UNIQUEMENT pendant les écrans d'intro (changement de langue) et « À propos ».
+   Pas de musique d'ambiance. Respecte window.SOUND_ON (bouton haut-parleur). */
+var _ANIM_AU=null;
+function animSoundStart(){ try{ if(window.SOUND_ON===false) return; if(!_ANIM_AU){ _ANIM_AU=new Audio('Logic.mp3'); _ANIM_AU.volume=0.6; } _ANIM_AU.currentTime=0; var p=_ANIM_AU.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} }
+function animSoundStop(){ try{ if(_ANIM_AU) _ANIM_AU.pause(); }catch(e){} }
+function playGraphisoftTribute(){
+  var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsTribute')) return;
+  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
+  var ov=document.createElement('div'); ov.id='gsTribute';
+  ov.style.cssText='position:absolute;inset:0;z-index:9999;overflow:hidden;cursor:pointer;'+
+    'background:radial-gradient(ellipse at 50% 38%,#241a12 0%,#15100f 66%,#0a0708 100%);'+
+    'display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;opacity:0;transition:opacity .5s;';
+  ov.innerHTML=''+
+'<style>'+
+'#gsTribute .flag{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#ce2939 33%,#fff 33% 66%,#477050 66%);opacity:.9;}'+
+'#gsTribute .grid{position:absolute;inset:-25%;background-image:linear-gradient(rgba(255,138,61,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,61,.09) 1px,transparent 1px);background-size:34px 34px;animation:gsPan 19s linear infinite;}'+
+'@keyframes gsPan{to{transform:translate(34px,34px);}}'+
+'#gsTribute .scene{position:absolute;top:42%;left:50%;width:150px;height:150px;margin:-75px 0 0 -75px;perspective:640px;opacity:.30;}'+
+'#gsTribute .cube{position:absolute;inset:0;transform-style:preserve-3d;animation:gsSpin 15s linear infinite;}'+
+'#gsTribute .cube i{position:absolute;width:150px;height:150px;border:1px solid rgba(255,138,61,.8);display:block;}'+
+'#gsTribute .cube .f1{transform:translateZ(75px);}#gsTribute .cube .f2{transform:rotateY(180deg) translateZ(75px);}'+
+'#gsTribute .cube .f3{transform:rotateY(90deg) translateZ(75px);}#gsTribute .cube .f4{transform:rotateY(-90deg) translateZ(75px);}'+
+'#gsTribute .cube .f5{transform:rotateX(90deg) translateZ(75px);}#gsTribute .cube .f6{transform:rotateX(-90deg) translateZ(75px);}'+
+'@keyframes gsSpin{from{transform:rotateX(-22deg) rotateY(0);}to{transform:rotateX(-22deg) rotateY(360deg);}}'+
+'#gsTribute .txt{position:relative;text-align:center;padding:22px;color:#eaf2ff;text-shadow:0 2px 20px rgba(0,0,0,.7);max-width:92%;}'+
+'#gsTribute .l{opacity:0;transform:translateY(15px);animation:gsIn .9s cubic-bezier(.2,.7,.2,1) forwards;}'+
+'@keyframes gsIn{to{opacity:1;transform:none;}}'+
+'#gsTribute .brand{font-size:12px;letter-spacing:.5em;color:var(--am,#ff8a3d);font-weight:600;}'+
+'#gsTribute .acad{font-size:38px;font-weight:800;letter-spacing:.03em;margin:8px 0 3px;background:linear-gradient(90deg,#ffd3ac,var(--am,#ff8a3d),#ff6a12);-webkit-background-clip:text;background-clip:text;color:transparent;}'+
+'#gsTribute .sub{font-size:11.5px;color:#c9a889;letter-spacing:.14em;}'+
+'#gsTribute .founder{font-size:25px;font-weight:700;margin-top:24px;color:#fff;}'+
+'#gsTribute .role{font-size:10px;color:var(--am,#ff8a3d);letter-spacing:.28em;text-transform:uppercase;margin-top:2px;}'+
+'#gsTribute .team{font-size:13.5px;color:#efe3d8;margin-top:16px;line-height:2.05;}'+
+'#gsTribute .team b{font-weight:600;color:#fff;}'+
+'#gsTribute .thx{font-size:12px;color:#c9a889;margin-top:18px;font-style:italic;letter-spacing:.04em;}'+
+'#gsTribute .en{font-size:10px;color:#a58a72;letter-spacing:.08em;margin-top:1px;font-style:italic;}'+
+'#gsTribute .sec{font-size:10px;color:var(--am,#ff8a3d);letter-spacing:.26em;text-transform:uppercase;margin-top:20px;font-weight:600;}'+
+'#gsTribute .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#5a6c78;letter-spacing:.12em;}'+
+'</style>'+
+'<div class="flag"></div><div class="grid"></div>'+
+'<div class="scene"><div class="cube"><i class="f1"></i><i class="f2"></i><i class="f3"></i><i class="f4"></i><i class="f5"></i><i class="f6"></i></div></div>'+
+'<div class="txt">'+
+'<div class="l brand" style="animation-delay:.2s">TISZTELETTEL · GRAPHISOFT</div>'+
+'<div class="l en" style="animation-delay:.35s">with respect</div>'+
+'<div class="l acad" style="animation-delay:.7s">ArchiCAD</div>'+
+'<div class="l sub" style="animation-delay:1.2s">Budapest · 1982</div>'+
+'<div class="l founder" style="animation-delay:2.1s">Bojár Gábor</div>'+
+'<div class="l role" style="animation-delay:2.45s">az ArchiCAD és a GDL megalkotója</div>'+
+'<div class="l en" style="animation-delay:2.6s">founder of ArchiCAD &amp; GDL</div>'+
+'<div class="l thx" style="animation-delay:2.9s">À mon mentor — pour son intelligence et sa vision.</div>'+
+'<div class="l en" style="animation-delay:3.05s">To my mentor — for his brilliance and vision.</div>'+
+'<div class="l team" style="animation-delay:3.3s">'+
+'<span class="l" style="animation-delay:3.4s"><b>Seidl Tibor</b></span> · '+
+'<span class="l" style="animation-delay:3.7s"><b>Hinsenkamp Tamás</b></span> · '+
+'<span class="l" style="animation-delay:4.0s"><b>Sulli Gábor</b></span><br>'+
+'<span class="l" style="animation-delay:4.3s"><b>Szabó Ildikó</b></span> · '+
+'<span class="l" style="animation-delay:4.6s"><b>Heidekker András</b></span> · '+
+'<span class="l" style="animation-delay:4.9s"><b>Halász Dóra</b></span>'+
+'</div>'+
+'<div class="l sec" style="animation-delay:5.6s">Graphisoft France · Abvent</div>'+
+'<div class="l team" style="animation-delay:5.9s">'+
+'<span class="l" style="animation-delay:6.0s"><b>Xavier Soule</b></span> · '+
+'<span class="l" style="animation-delay:6.3s"><b>Gérard Bomer</b></span> · '+
+'<span class="l" style="animation-delay:6.6s"><b>Éric Larrouil</b></span><br>'+
+'<span class="l" style="animation-delay:6.9s"><b>† Pierre Judde</b></span> <span class="en" style="display:inline">in memoriam</span>'+
+'</div>'+
+'<div class="l thx" style="animation-delay:7.7s">…és az egész Graphisoft csapatnak — köszönjük.</div>'+
+'<div class="l en" style="animation-delay:7.95s">…and to the whole Graphisoft team — thank you.</div>'+
+'</div><div class="skip">◾ kattints a kihagyáshoz · click to skip</div>';
+  vp.appendChild(ov);
+  requestAnimationFrame(function(){ ov.style.opacity='1'; });
+  animSoundStart();
+  var timer=setTimeout(close, 15600);
+  function close(){ clearTimeout(timer); animSoundStop(); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
+  ov.addEventListener('click', close);
+}
+/* Message d'introduction à l'outil (corps en paragraphes ; ligne finale = INTRO_HOP). */
+var INTRO_MSG={
+ fr:"Voici la 1ère version de BPO Architectural Parametrics. Cet outil n'a pas vocation à remplacer un logiciel BIM d'architecture — ArchiCAD (Graphisoft) le fait très bien ! Nous souhaitons d'ailleurs dédier cet outil à Bojár Gábor, son fondateur, notre mentor ;)<br><br>Nous souhaitons mettre à la disposition de tout le monde la puissance des outils paramétriques, pour vous faire gagner du temps dans la réalisation de vos projets.<br><br>N'hésitez pas à nous envoyer des commentaires et des souhaits.<br><br>Nous allons bientôt ajouter une rubrique « Fabricants » !",
+ en:"This is the first version of BPO Architectural Parametrics. This tool is not meant to replace architectural BIM software — ArchiCAD (Graphisoft) does that very well! We would also like to dedicate this tool to Bojár Gábor, its founder, our mentor ;)<br><br>We want to make the power of parametric tools available to everyone, to save you time in bringing your projects to life.<br><br>Feel free to send us your comments and wishes.<br><br>We will soon be adding a « Manufacturers » section!",
+ es:"Esta es la primera versión de BPO Architectural Parametrics. Esta herramienta no pretende sustituir a un software BIM de arquitectura — ¡ArchiCAD (Graphisoft) lo hace muy bien! Además, queremos dedicar esta herramienta a Bojár Gábor, su fundador, nuestro mentor ;)<br><br>Queremos poner la potencia de las herramientas paramétricas al alcance de todos, para ahorrarle tiempo en la realización de sus proyectos.<br><br>No dude en enviarnos sus comentarios y deseos.<br><br>¡Pronto añadiremos una sección « Fabricantes »!",
+ it:"Questa è la prima versione di BPO Architectural Parametrics. Questo strumento non intende sostituire un software BIM di architettura — ArchiCAD (Graphisoft) lo fa benissimo! Desideriamo inoltre dedicare questo strumento a Bojár Gábor, il suo fondatore, il nostro mentore ;)<br><br>Vogliamo mettere la potenza degli strumenti parametrici alla portata di tutti, per farvi risparmiare tempo nella realizzazione dei vostri progetti.<br><br>Non esitate a inviarci commenti e desideri.<br><br>Presto aggiungeremo una sezione « Produttori »!",
+ de:"Dies ist die erste Version von BPO Architectural Parametrics. Dieses Werkzeug soll keine Architektur-BIM-Software ersetzen — ArchiCAD (Graphisoft) macht das hervorragend! Wir möchten dieses Werkzeug außerdem Bojár Gábor widmen, seinem Gründer, unserem Mentor ;)<br><br>Wir möchten die Leistung parametrischer Werkzeuge allen zugänglich machen, um Ihnen Zeit bei der Umsetzung Ihrer Projekte zu sparen.<br><br>Senden Sie uns gerne Ihre Kommentare und Wünsche.<br><br>Bald fügen wir einen Bereich « Hersteller » hinzu!",
+ pt:"Esta é a primeira versão do BPO Architectural Parametrics. Esta ferramenta não pretende substituir um software BIM de arquitetura — o ArchiCAD (Graphisoft) faz isso muito bem! Queremos também dedicar esta ferramenta a Bojár Gábor, o seu fundador, o nosso mentor ;)<br><br>Queremos colocar o poder das ferramentas paramétricas ao alcance de todos, para lhe poupar tempo na realização dos seus projetos.<br><br>Não hesite em enviar-nos os seus comentários e desejos.<br><br>Em breve adicionaremos uma secção « Fabricantes »!",
+ zh:"这是 BPO Architectural Parametrics 的第一个版本。此工具并非用于取代建筑 BIM 软件——ArchiCAD（Graphisoft）在这方面做得非常出色！我们也想将此工具献给它的创始人、我们的导师 Bojár Gábor ;)<br><br>我们希望让所有人都能使用参数化工具的强大功能，帮助您在项目实现中节省时间。<br><br>欢迎向我们发送意见和建议。<br><br>我们即将添加 « 厂商 » 板块！",
+ ja:"これは BPO Architectural Parametrics の最初のバージョンです。このツールは建築 BIM ソフトを置き換えるものではありません——ArchiCAD（Graphisoft）がそれを見事に担っています！また、このツールを創業者であり私たちの師である Bojár Gábor に捧げます ;)<br><br>パラメトリックツールの力をすべての人に届け、プロジェクトの実現にかかる時間を短縮したいと考えています。<br><br>ご意見・ご要望をぜひお寄せください。<br><br>まもなく « メーカー » セクションを追加します！",
+ hi:"यह BPO Architectural Parametrics का पहला संस्करण है। यह टूल किसी आर्किटेक्चरल BIM सॉफ़्टवेयर की जगह लेने के लिए नहीं है — ArchiCAD (Graphisoft) यह काम बहुत अच्छे से करता है! हम यह टूल इसके संस्थापक, हमारे गुरु Bojár Gábor को समर्पित करना चाहते हैं ;)<br><br>हम पैरामीट्रिक टूल्स की शक्ति सभी तक पहुँचाना चाहते हैं, ताकि आपके प्रोजेक्ट्स को साकार करने में आपका समय बचे।<br><br>अपनी टिप्पणियाँ और सुझाव हमें ज़रूर भेजें।<br><br>हम जल्द ही « निर्माता » रूब्रिक जोड़ेंगे!",
+ ar:"هذه هي النسخة الأولى من BPO Architectural Parametrics. لا تهدف هذه الأداة إلى استبدال برامج BIM المعمارية — فـ ArchiCAD (Graphisoft) يقوم بذلك على أكمل وجه! كما نودّ إهداء هذه الأداة إلى بويار غابور، مؤسِّسها ومعلِّمنا ;)<br><br>نريد أن نُتيح قوة الأدوات البارامترية للجميع، لتوفير وقتك في إنجاز مشاريعك.<br><br>لا تتردّد في إرسال ملاحظاتك واقتراحاتك إلينا.<br><br>سنضيف قريبًا قسم « المصنّعون »!",
+ ru:"Это первая версия BPO Architectural Parametrics. Этот инструмент не призван заменить архитектурное BIM-ПО — ArchiCAD (Graphisoft) прекрасно с этим справляется! Мы также хотим посвятить его основателю ArchiCAD, нашему наставнику Бояру Габору ;)<br><br>Мы хотим сделать мощь параметрических инструментов доступной каждому, чтобы вы экономили время при реализации проектов.<br><br>Не стесняйтесь присылать нам замечания и пожелания.<br><br>Скоро мы добавим раздел « Производители »!",
+ uk:"Це перша версія BPO Architectural Parametrics. Цей інструмент не має на меті замінити архітектурне BIM-ПЗ — ArchiCAD (Graphisoft) чудово з цим впорається! Ми також хочемо присвятити його засновнику ArchiCAD, нашому наставнику Бояру Габору ;)<br><br>Ми прагнемо зробити потужність параметричних інструментів доступною кожному, щоб ви заощаджували час у реалізації проєктів.<br><br>Не вагайтеся надсилати нам зауваження та побажання.<br><br>Незабаром ми додамо розділ « Виробники »!"
+};
+/* Ligne de clôture, mise en valeur, traduite par langue. */
+var INTRO_HOP={
+ fr:"Nous espérons que vous apprécierez ces outils.",
+ en:"We hope you enjoy these tools.",
+ es:"Esperamos que disfrute de estas herramientas.",
+ it:"Ci auguriamo che questi strumenti vi piacciano.",
+ de:"Wir hoffen, dass Ihnen diese Werkzeuge gefallen.",
+ pt:"Esperamos que goste destas ferramentas.",
+ zh:"希望您喜欢这些工具。",
+ ja:"これらのツールを楽しんでいただければ幸いです。",
+ hi:"हमें आशा है कि आपको ये टूल्स पसंद आएँगे।",
+ ar:"نأمل أن تستمتع بهذه الأدوات.",
+ ru:"Надеемся, вам понравятся эти инструменты.",
+ uk:"Сподіваємося, вам сподобаються ці інструменти."
+};
+/* Intros des langues sorties du monolithe. Fusionnées ici, donc après INTRO_MSG et
+   INTRO_HOP : les treize langues d'origine restent maîtresses de leur texte. */
+(function(){
+  var M=window.BPO_I18N_EXT_META; if(!M) return;
+  if(M.msg) for(var a in M.msg){ if(INTRO_MSG[a]===undefined) INTRO_MSG[a]=M.msg[a]; }
+  if(M.hop) for(var b in M.hop){ if(INTRO_HOP[b]===undefined) INTRO_HOP[b]=M.hop[b]; }
+})();
+/* Écran d'introduction à l'outil (toutes langues sauf hongrois). Clic pour passer. */
+function playIntro(l){
+  var vp=document.getElementById('vp'); if(!vp || document.getElementById('gsIntro') || document.getElementById('gsTribute')) return;
+  if(getComputedStyle(vp).position==='static') vp.style.position='relative';
+  var msg=INTRO_MSG[l]||INTRO_MSG.en, hop=INTRO_HOP[l]||INTRO_HOP.en;
+  var ov=document.createElement('div'); ov.id='gsIntro';
+  ov.style.cssText='position:absolute;inset:0;z-index:9999;overflow:hidden;cursor:pointer;'+
+    'background:radial-gradient(ellipse at 50% 30%,#241a12 0%,#15100f 56%,#0a0708 100%);'+
+    'display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;opacity:0;transition:opacity .5s;';
+  ov.innerHTML=''+
+'<style>'+
+'#gsIntro .flag{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--am,#ff8a3d),#ffc79a,var(--am,#ff8a3d));opacity:.92;}'+
+'#gsIntro .grid{position:absolute;inset:-25%;background-image:linear-gradient(rgba(255,138,61,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,61,.09) 1px,transparent 1px);background-size:34px 34px;animation:giPan 19s linear infinite;}'+
+'@keyframes giPan{to{transform:translate(34px,34px);}}'+
+/* Bâtiment paramétrique en fond : étages qui se resserrent/élargissent en cascade (retraits) */
+'#gsIntro .massing{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-1deg);width:210px;display:flex;flex-direction:column-reverse;align-items:center;gap:4px;opacity:.16;filter:drop-shadow(0 0 22px rgba(255,138,61,.4));pointer-events:none;}'+
+'#gsIntro .massing i{display:block;height:32px;background:linear-gradient(180deg,rgba(255,150,80,.95),rgba(255,106,18,.62));border:1px solid rgba(255,196,150,.7);border-radius:2px;transform-origin:center;animation:mFloor 7.8s ease-in-out infinite;}'+
+'@keyframes mFloor{0%,100%{transform:scaleX(1);}50%{transform:scaleX(.4);}}'+
+'#gsIntro .card{position:relative;max-width:640px;width:86%;max-height:84%;overflow:auto;text-align:center;padding:26px;color:#f3e8dd;text-shadow:0 2px 16px rgba(0,0,0,.55);}'+
+'#gsIntro .l{opacity:0;transform:translateY(14px);animation:giIn 1.05s cubic-bezier(.2,.7,.2,1) forwards;}'+
+'@keyframes giIn{to{opacity:1;transform:none;}}'+
+'#gsIntro .brand{font-size:12px;letter-spacing:.42em;color:var(--am,#ff8a3d);font-weight:700;}'+
+'#gsIntro .title{font-size:29px;font-weight:800;margin:6px 0 2px;background:linear-gradient(90deg,#ffd3ac,var(--am,#ff8a3d),#ff6a12);-webkit-background-clip:text;background-clip:text;color:transparent;}'+
+'#gsIntro .ver{font-size:11px;color:#c9a889;letter-spacing:.16em;margin-bottom:16px;}'+
+'#gsIntro .msg{font-size:14.5px;line-height:1.72;color:#efe3d8;margin:0 0 16px;text-align:left;}'+
+'#gsIntro .hop{font-size:16px;font-weight:700;color:var(--am,#ff8a3d);letter-spacing:.02em;}'+
+'#gsIntro .skip{position:absolute;bottom:11px;right:15px;font-size:9.5px;color:#7a6551;letter-spacing:.12em;}'+
+'</style>'+
+'<div class="flag" style="background:'+((typeof FLAG_BANDS!=='undefined'&&FLAG_BANDS[l])||'linear-gradient(90deg,var(--am,#ff8a3d),#ffc79a,var(--am,#ff8a3d))')+';"></div><div class="grid"></div>'+
+'<div class="massing">'+
+'<i style="width:152px;animation-delay:0s"></i>'+
+'<i style="width:152px;animation-delay:.28s"></i>'+
+'<i style="width:144px;animation-delay:.56s"></i>'+
+'<i style="width:144px;animation-delay:.84s"></i>'+
+'<i style="width:132px;animation-delay:1.12s"></i>'+
+'<i style="width:120px;animation-delay:1.4s"></i>'+
+'<i style="width:106px;animation-delay:1.68s"></i>'+
+'<i style="width:92px;animation-delay:1.96s"></i>'+
+'</div>'+
+'<div class="card">'+
+'<div class="l brand" style="animation-delay:.15s">BPO · ARCHITECTURAL PARAMETRICS</div>'+
+'<div class="l title" style="animation-delay:.4s">Architectural Parametrics</div>'+
+'<div class="l ver" style="animation-delay:.7s">v1 — première version · first release</div>'+
+'<p class="l msg" style="animation-delay:1.0s">'+msg+'</p>'+
+'<div class="l hop" style="animation-delay:2.0s">'+hop+'</div>'+
+'</div><div class="skip">◾ click to continue</div>';
+  vp.appendChild(ov);
+  requestAnimationFrame(function(){ ov.style.opacity='1'; });
+  animSoundStart();
+  var timer=setTimeout(close, 15600);
+  function close(){ clearTimeout(timer); animSoundStop(); if(!ov.parentNode) return; ov.style.opacity='0'; setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 550); }
+  ov.addEventListener('click', close);
+}
+function setLang(l){ LANG=(l==='fr'||I18N[l]||(typeof FLAGS!=='undefined'&&FLAGS[l]))?l:'en'; try{localStorage.setItem('bpo_lang',LANG);}catch(e){}
+  var sel=document.getElementById('langsel'); if(sel) sel.value=LANG; translateDOM();
+  if(l==='hu') playGraphisoftTribute(); else playIntro(l); }
+function start(){
+  LANG=pick();
+  var sel=document.getElementById('langsel');
+  if(sel){ sel.value=LANG; sel.addEventListener('change',function(){ setLang(this.value); }); }
+  mo=new MutationObserver(function(){ if(pend||LANG==='fr')return; pend=true; setTimeout(function(){pend=false; translateDOM();},40); });
+  translateDOM();
+  try{ applyPrefs(); }catch(e){}
+}
+if(document.readyState!=='loading') setTimeout(start,60); else document.addEventListener('DOMContentLoaded',function(){ setTimeout(start,60); });
+window.playAbout=function(){ try{ var l=(document.getElementById('langsel')||{}).value||(typeof LANG!=='undefined'?LANG:'fr'); if(l==='hu'){ if(typeof playGraphisoftTribute==='function') playGraphisoftTribute(); } else if(typeof playIntro==='function'){ playIntro(l); } }catch(e){} };
+window.SOUND_ON=true;   /* son joué pendant les animations (intro langue / À propos) */
+})();
+</script>
+<!-- ru/uk intégrés -->
+</body>
+</html>
