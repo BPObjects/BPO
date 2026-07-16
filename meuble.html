@@ -307,7 +307,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
 .finish-tabs button{flex:1;padding:5px 0;font-size:9.5px;background:var(--p2);
   border:1px solid var(--ln);color:var(--dm);border-radius:3px;cursor:pointer;}
 .finish-tabs button.on{border-color:var(--cy);color:var(--cy);background:rgba(94,184,255,.1);}
-.ral-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-bottom:6px;}
+.ral-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-bottom:6px;}
 /* Cases carrées SANS aspect-ratio : cette propriété est Chrome 88+, or le CEF de
    SketchUp 2021 est en 78 -> elle y était ignorée, les cases n'avaient AUCUNE
    hauteur et le nuancier RAL apparaissait vide (couleur bien posée, mais plus de
@@ -317,8 +317,8 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
    (Les pastilles de textures, elles, ne sont pas touchées : ce sont des <canvas>
    44x44 en width:100%/height:auto — leur ratio intrinsèque suffit.) */
 .ral-grid div{height:0;padding-bottom:100%;border-radius:2px;border:2px solid var(--ln);cursor:pointer;position:relative;}
-.ral-grid div .rr{position:absolute;right:2px;bottom:1px;font:600 7px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
-  letter-spacing:-.2px;pointer-events:none;}
+.ral-grid div .rr{position:absolute;right:3px;bottom:2px;font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:0;pointer-events:none;}
 .ral-grid div.on{border-color:var(--am);}
 .ral-fam{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;}
 .ral-fam button{flex:1 0 auto;padding:4px 7px;font-size:9.5px;background:var(--p2);
@@ -2629,7 +2629,8 @@ function ralCellEl(r, current){
   var tag=document.createElement('span'); tag.className='rr';
   tag.textContent=r.c.replace(/^RAL\s*/i,'');
   var lum=(0.299*rgb[0]+0.587*rgb[1]+0.114*rgb[2])/255;
-  tag.style.color = (lum>0.55) ? 'rgba(0,0,0,.72)' : 'rgba(255,255,255,.88)';
+  if(lum>0.55){ tag.style.color='#000'; tag.style.textShadow='0 0 2px rgba(255,255,255,.85)'; }
+  else        { tag.style.color='#fff'; tag.style.textShadow='0 0 2px rgba(0,0,0,.9)'; }
   cell.appendChild(tag);
   return cell;
 }
@@ -7339,8 +7340,8 @@ function buildChemineeUI(){
       {type:'slider',label:'Hauteur linteau',unit:'cm',key:'linteauH',min:6,max:50,step:1},
       {type:'slider',label:'Épaisseur fond',unit:'cm',key:'backThick',min:2,max:20,step:1}
     ]});
-  groups.push({title:'Hotte', fields:[].concat(
-      [{type:'choice',key:'hotte',options:[{id:'aucune',l:'Aucune'},{id:'tronconique',l:'Tronconique'},{id:'droite',l:'Droite'}]}],
+  groups.push({title:'Hotte de cheminée', fields:[].concat(
+      [{type:'choice',key:'hotte',options:[{id:'aucune',l:'Aucune'},{id:'tronconique',l:'Tronconique'},{id:'droite',l:'Caisson droit'}]}],
       (PCHEM.hotte&&PCHEM.hotte!=='aucune')?[
         {type:'slider',label:'Hauteur de hotte',unit:'cm',key:'hotteH',min:10,max:200,step:5},
         {type:'slider',label:'Retrait de la base',unit:'cm',key:'hotteRet',min:0,max:60,step:1}]:[],
@@ -16797,6 +16798,12 @@ function drawAreaChip(px,py,title,areaStr){
 function drawImmAreas(cam,W,H){
   if(PLOT_CLEAN) return;
   if(!(typeof IMM_STRUCT!=='undefined' && IMM_STRUCT && IMM_STRUCT.slabs && IMM_STRUCT.slabs.length)) return;
+  /* Où afficher le tableau. Il n'a rien à faire en coupe ni en élévation, et en vues
+     multiples une seule occurrence suffit : on la garde dans le plan. */
+  var isPlan=(cam && cam.fwd) ? (Math.abs(cam.fwd[1])>0.85) : false;
+  var quad=(typeof LAYOUT!=='undefined' && LAYOUT==='quad');
+  if(quad && !isPlan) return;                                                   /* vues multiples : plan uniquement */
+  if(!quad && !isPlan && typeof ORTHO!=='undefined' && ORTHO) return;           /* vue unique en élévation / coupe */
   var N=(IMM_INFO&&IMM_INFO.levelY)?IMM_INFO.levelY.length-1:0, byst={};
   IMM_STRUCT.slabs.forEach(function(sl){
     if(sl.st<0 || sl.yTop < -0.01) return;   /* ignore les dalles de sous-sol */
@@ -16804,17 +16811,24 @@ function drawImmAreas(cam,W,H){
     var ar=Math.abs(polyArea(poly)); (sl.holes||[]).forEach(function(h){ if(h&&h.length>2) ar-=Math.abs(polyArea(h)); });
     if(ar<=0.01) return;
     var title=(sl.st===0)?T('RDC'):(sl.st>=N?T('Toiture'):T('Étage')+' '+sl.st);
-    byst[sl.st]={st:sl.st, title:title, area:fmtArea(ar)};   /* 1 ligne par niveau */
+    /* on CUMULE par niveau : plusieurs dalles sur un même étage doivent s'additionner,
+       sinon la dernière écraserait les précédentes et le total serait faux. */
+    if(byst[sl.st]) byst[sl.st].raw+=ar;
+    else byst[sl.st]={st:sl.st, title:title, raw:ar};
   });
   var rows=Object.keys(byst).map(function(k){return byst[k];}); if(!rows.length) return;
   rows.sort(function(a,b){ return b.st-a.st; });   /* toiture en haut, RDC en bas */
+  var tot=0; rows.forEach(function(r){ tot+=r.raw; r.area=fmtArea(r.raw); });
+  var totTitle=T('Total'), totArea=fmtArea(tot);
   ctx.save(); ctx.textBaseline='middle';
-  var padX=9, rowH=19, headH=20, gap=16;
+  var padX=9, rowH=19, headH=20, gap=16, totH=21;
   ctx.font='11px system-ui,sans-serif';
   var tw=0, aw=0; rows.forEach(function(r){ tw=Math.max(tw,ctx.measureText(r.title).width); aw=Math.max(aw,ctx.measureText(r.area).width); });
+  ctx.font='bold 11px system-ui,sans-serif';
+  tw=Math.max(tw,ctx.measureText(totTitle).width); aw=Math.max(aw,ctx.measureText(totArea).width);
   var head=T('Surfaces de plancher').toUpperCase();
   ctx.font='bold 10px system-ui,sans-serif'; var hw=ctx.measureText(head).width;
-  var bw=Math.max(tw+gap+aw, hw)+padX*2, bh=headH+rows.length*rowH+6, x=W-bw-10, y=62;
+  var bw=Math.max(tw+gap+aw, hw)+padX*2, bh=headH+rows.length*rowH+totH+6, x=W-bw-10, y=62;
   ctx.fillStyle='rgba(18,22,30,0.85)'; ctx.fillRect(x,y,bw,bh);
   ctx.strokeStyle='rgba(255,138,61,0.9)'; ctx.lineWidth=1; ctx.strokeRect(x+0.5,y+0.5,bw-1,bh-1);
   ctx.fillStyle='#ffb877'; ctx.textAlign='left'; ctx.font='bold 10px system-ui,sans-serif'; ctx.fillText(head, x+padX, y+headH/2+2);
@@ -16822,6 +16836,13 @@ function drawImmAreas(cam,W,H){
     ctx.font='11px system-ui,sans-serif'; ctx.fillStyle='#bcd2e8'; ctx.textAlign='left'; ctx.fillText(r.title, x+padX, ry);
     ctx.fillStyle='#ffd9ad'; ctx.textAlign='right'; ctx.fillText(r.area, x+bw-padX, ry);
   });
+  /* total, séparé par un filet */
+  var sy=y+headH+rows.length*rowH+3;
+  ctx.strokeStyle='rgba(255,138,61,0.45)'; ctx.beginPath(); ctx.moveTo(x+padX,sy+0.5); ctx.lineTo(x+bw-padX,sy+0.5); ctx.stroke();
+  var ty=sy+totH/2+1;
+  ctx.font='bold 11px system-ui,sans-serif';
+  ctx.fillStyle='#ffb877'; ctx.textAlign='left';  ctx.fillText(totTitle, x+padX, ty);
+  ctx.fillStyle='#ffb877'; ctx.textAlign='right'; ctx.fillText(totArea,  x+bw-padX, ty);
   ctx.restore();
 }
 /* drawImmOverhead() : en vue plan d'étage, les POUTRES du plafond (au-dessus de
@@ -24597,9 +24618,10 @@ var I18N_ADD37={
 "Section":["Section","Sección","Sezione","Querschnitt","Secção","Keresztmetszet","截面","断面","सेक्शन","Сечение","Переріз","المقطع"],
 "Collés":["Applied","Pegados","Applicate","Aufgeklebt","Colados","Ragasztott","粘贴式","貼付け","चिपकाए","Накладные","Накладні","ملصقة"],
 "Incorporés":["Between panes","Incorporados","Interposte","Im Scheibenzwischenraum","Incorporados","Beépített","中空层内","中空層内","पैन के बीच","В стеклопакете","У склопакеті","بين الألواح"],
-"Hotte":["Hood","Campana","Cappa","Rauchfang","Coifa","Füstelvezető","烟罩","フード","हुड","Колпак","Ковпак","الغطاء"],
+"Total":["Total","Total","Totale","Gesamt","Total","Összesen","合计","合計","कुल","Итого","Разом","الإجمالي"],
+"Hotte de cheminée":["Chimney hood","Campana de chimenea","Cappa del camino","Rauchfang","Coifa da lareira","Kéménybúra","烟囱罩","煙突フード","चिमनी हुड","Колпак дымохода","Ковпак димоходу","غطاء المدخنة"],
 "Tronconique":["Tapered","Troncocónica","Troncoconica","Konisch","Troncocónica","Kúpos","锥形","テーパー","शंक्वाकार","Коническая","Конічна","مخروطي"],
-"Droite":["Straight","Recta","Dritta","Gerade","Reta","Egyenes","直形","ストレート","सीधा","Прямая","Пряма","مستقيم"],
+"Caisson droit":["Straight box","Cajón recto","Cassone dritto","Gerader Kasten","Caixa reta","Egyenes doboz","直箱形","ストレート箱","सीधा बॉक्स","Прямой короб","Прямий короб","صندوق مستقيم"],
 "Hauteur de hotte":["Hood height","Altura de la campana","Altezza cappa","Rauchfanghöhe","Altura da coifa","Füstelvezető magassága","烟罩高度","フード高さ","हुड ऊँचाई","Высота колпака","Висота ковпака","ارتفاع الغطاء"],
 "Retrait de la base":["Base setback","Retranqueo de la base","Arretramento della base","Rücksprung der Basis","Recuo da base","Alap visszahúzása","底部收进","基部の後退","आधार सेटबैक","Отступ основания","Відступ основи","تراجع القاعدة"],
 "Largeur en tête":["Top width","Ancho superior","Larghezza in testa","Kopfbreite","Largura no topo","Felső szélesség","顶部宽度","頂部幅","शीर्ष चौड़ाई","Ширина вверху","Ширина вгорі","العرض العلوي"],
