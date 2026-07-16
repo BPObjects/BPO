@@ -316,7 +316,9 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
    d'avant aspect-ratio, et elle marche partout, CEF 78 compris.
    (Les pastilles de textures, elles, ne sont pas touchées : ce sont des <canvas>
    44x44 en width:100%/height:auto — leur ratio intrinsèque suffit.) */
-.ral-grid div{height:0;padding-bottom:100%;border-radius:2px;border:2px solid var(--ln);cursor:pointer;}
+.ral-grid div{height:0;padding-bottom:100%;border-radius:2px;border:2px solid var(--ln);cursor:pointer;position:relative;}
+.ral-grid div .rr{position:absolute;right:2px;bottom:1px;font:600 7px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:-.2px;pointer-events:none;}
 .ral-grid div.on{border-color:var(--am);}
 .ral-fam{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;}
 .ral-fam button{flex:1 0 auto;padding:4px 7px;font-size:9.5px;background:var(--p2);
@@ -2611,6 +2613,26 @@ var RAL_FAMILIES = [
 /* liste à plat de toutes les teintes RAL (compat. ascendante) */
 var RAL = [];
 RAL_FAMILIES.forEach(function(f){ f.teintes.forEach(function(t){ RAL.push(t); }); });
+/* Liste RAL affichée : TOUTES les teintes sur une seule palette, ou le résultat
+   de la recherche. Les familles ne servent plus à découper le nuancier. */
+function ralList(){
+  var q=(typeof RAL_SEARCH!=='undefined' ? RAL_SEARCH : '').trim().toLowerCase();
+  return q ? RAL.filter(function(r){ return r.c.toLowerCase().indexOf(q)>=0; }) : RAL;
+}
+/* Une case du nuancier : aplat de couleur + sa référence en bas à droite. Le texte
+   bascule en noir sur les teintes claires, sinon il serait illisible. */
+function ralCellEl(r, current){
+  var rgb=hexToRgb(r.h);
+  var cell=document.createElement('div');
+  cell.style.background=r.h; cell.title=r.c;
+  if(current && current[0]===rgb[0] && current[1]===rgb[1] && current[2]===rgb[2]) cell.className='on';
+  var tag=document.createElement('span'); tag.className='rr';
+  tag.textContent=r.c.replace(/^RAL\s*/i,'');
+  var lum=(0.299*rgb[0]+0.587*rgb[1]+0.114*rgb[2])/255;
+  tag.style.color = (lum>0.55) ? 'rgba(0,0,0,.72)' : 'rgba(255,255,255,.88)';
+  cell.appendChild(tag);
+  return cell;
+}
 
 /* ============================================================================
    BIBLIOTHÈQUE DE TEXTURES — organisée en familles
@@ -4263,6 +4285,9 @@ var PCHEM = { type:'foyer', width:120, height:110, depth:45, condH:200, mat:'pie
   /* INSERT — cotes relevées sur le modèle ArchiCAD (corps 1,70×0,85×1,50 ; tablette
      bois à 41 cm débordant à 1,80 ; foyer 1,40 de 45 à 100 ; vitre de 52 à 93). */
   tab:1, tabH:41, tabEp:4, tabDeb:5, foyW:140, foyH:55, vitreY:7, vitreH:41,
+  /* HOTTE : tronc de pyramide entre le haut du corps et le départ du conduit.
+     Absente du .dae (qui n'a qu'un conduit droit) mais présente sur le rendu ArchiCAD. */
+  hotte:'aucune', hotteH:55, hotteRet:10, hotteTop:40,
   /* conduit : boisseau (maçonnerie) + tubage (métal) */
   condMode:'boisseau', boisRound:0, boisD:50, tubD:20,
   /* traversée de toit / dépassement / chapeau */
@@ -5278,6 +5303,16 @@ function cfgApply(cfg){
   CUR_POLY=null; POLY_TARGET=null;                      /* le contour libre est reconstruit par build() */
   buildCatList(); refreshView();
   if(typeof undoReset==='function') undoReset();
+}
+/* Ouvre une instance de la scène dans son configurateur — même chemin que le bouton
+   « Éditer » de la bibliothèque. Renvoie false si l'objet n'est pas paramétrique
+   (mesh fabricant, objet importé, groupe) : il n'y a alors rien à éditer. */
+function scnEditInst(i){
+  var it=SCENE.instances[i];
+  if(!it || it.group || it.mode==='fabprod' || !it.mode || !it.params) return false;
+  if(typeof cfgApply!=='function') return false;
+  cfgApply({ mode:it.mode, params:it.params });
+  return true;
 }
 function cfgUpdate(id){
   var o=undoParams(); if(!o){ alert("Rien à mettre à jour ici."); return; }
@@ -7227,6 +7262,19 @@ function buildCheminee(){
     if(ty==='double') box(0,hh+fH/2,-D/2+0.04, oW-0.06,fH-0.06,0.02, glass,0.4);                 // vitre arrière
     yTop=H;
   }
+  /* ---- HOTTE : tronc de pyramide (base = corps en retrait, tête = section du conduit) ---- */
+  if(PCHEM.hotte && PCHEM.hotte!=='aucune'){
+    var hoH=Math.max(0.05,PCHEM.hotteH/100), hoR=Math.max(0,PCHEM.hotteRet/100),
+        hoBW=Math.max(0.1, W-2*hoR), hoBD=Math.max(0.1, D-2*hoR),
+        hoTW=(PCHEM.hotte==='droite') ? hoBW : Math.max(0.08, Math.min(hoBW, PCHEM.hotteTop/100)),
+        hoTD=(PCHEM.hotte==='droite') ? hoBD : Math.max(0.08, Math.min(hoBD, hoTW*hoBD/hoBW)),
+        hoY0=yTop, hoY1=yTop+hoH;
+    _CURTEX=FINISH_TEX.chab;
+    boxV([[-hoBW/2,hoY0,-hoBD/2],[hoBW/2,hoY0,-hoBD/2],[hoBW/2,hoY0,hoBD/2],[-hoBW/2,hoY0,hoBD/2],
+          [-hoTW/2,hoY1,-hoTD/2],[hoTW/2,hoY1,-hoTD/2],[hoTW/2,hoY1,hoTD/2],[-hoTW/2,hoY1,hoTD/2]], col, 1);
+    _CURTEX=null;
+    yTop=hoY1;                      /* le conduit part désormais du haut de la hotte */
+  }
   /* ---- CONDUIT : boisseau (maçonnerie) + tubage (métal) ---- */
   var bd=Math.max(0.06,PCHEM.boisD/100), td=Math.max(0.04,PCHEM.tubD/100);
   var roofH=Math.max(yTop+0.2, PCHEM.roofH/100), dep=Math.max(0.05,PCHEM.depassement/100);
@@ -7291,6 +7339,13 @@ function buildChemineeUI(){
       {type:'slider',label:'Hauteur linteau',unit:'cm',key:'linteauH',min:6,max:50,step:1},
       {type:'slider',label:'Épaisseur fond',unit:'cm',key:'backThick',min:2,max:20,step:1}
     ]});
+  groups.push({title:'Hotte', fields:[].concat(
+      [{type:'choice',key:'hotte',options:[{id:'aucune',l:'Aucune'},{id:'tronconique',l:'Tronconique'},{id:'droite',l:'Droite'}]}],
+      (PCHEM.hotte&&PCHEM.hotte!=='aucune')?[
+        {type:'slider',label:'Hauteur de hotte',unit:'cm',key:'hotteH',min:10,max:200,step:5},
+        {type:'slider',label:'Retrait de la base',unit:'cm',key:'hotteRet',min:0,max:60,step:1}]:[],
+      (PCHEM.hotte==='tronconique')?[{type:'slider',label:'Largeur en tête',unit:'cm',key:'hotteTop',min:10,max:150,step:5}]:[]
+    )});
   groups.push({title:'Conduit', fields:[
       {type:'choice',label:'Type de conduit',key:'condMode',options:[{id:'boisseau',l:'Boisseau + tubage'},{id:'tubage',l:'Tubage seul'}]},
       {type:'choice',label:'Section boisseau',key:'boisRound',options:[{id:0,l:'Carré'},{id:1,l:'Rond'}]},
@@ -16040,7 +16095,15 @@ function scnDragCommit(){ if(WGL&&WGL.render)WGL.render(); if(typeof drawGizov==
   gz.addEventListener('dblclick', function(e){ if(MODE!=='scene'||!WGL.gActive||!SCENE.instances.length) return;
     e.preventDefault(); var m=rel(e), vpv=wglVP(), bst=-1,bdd=60*60;
     for(var si=0;si<SCENE.instances.length;si++){ var it=SCENE.instances[si], sp=wglProjPt(vpv,[it.x/100,(it.y/100)||0,it.z/100]); if(sp){ var dd=(sp.x-m.x)*(sp.x-m.x)+(sp.y-m.y)*(sp.y-m.y); if(dd<bdd){bdd=dd;bst=si;} } }
-    if(bst<0) return; if(e.ctrlKey||e.metaKey||e.shiftKey) scnSelToggle(bst); else scnSelSingle(bst); if(typeof buildSceneUI==='function')buildSceneUI(); drawGizov(); DIRTY=true; if(WGL.render)WGL.render();
+    if(bst<0) return;
+    if(e.ctrlKey||e.metaKey||e.shiftKey){   /* avec modificateur : on garde l'ajout à la sélection */
+      scnSelToggle(bst); if(typeof buildSceneUI==='function')buildSceneUI(); drawGizov(); DIRTY=true; if(WGL.render)WGL.render(); return;
+    }
+    scnSelSingle(bst);
+    /* double-clic simple : ouvrir l'objet dans son configurateur. S'il n'est pas
+       paramétrique, on retombe sur l'ancien comportement (simple sélection). */
+    if(scnEditInst(bst)) return;
+    if(typeof buildSceneUI==='function')buildSceneUI(); drawGizov(); DIRTY=true; if(WGL.render)WGL.render();
   });
 })();
 /* Échap : tout désélectionner · Ctrl/Cmd+A : tout sélectionner (mode Scène) */
@@ -20513,16 +20576,7 @@ function buildProductFinishPanel(host){
 
   if(mode==='mat'){ buildProductMatPanel(host, pid, groups); return; }
   var current=FINISH.fab;
-  /* familles RAL */
-  var famRow=document.createElement('div'); famRow.className='ral-fam';
-  RAL_FAMILIES.forEach(function(fam){
-    var b=document.createElement('button'); b.textContent=fam.label;
-    if(fam.id===RAL_FAM) b.className='on';
-    b.onclick=function(){ RAL_FAM=fam.id; buildFinishPanel(); };
-    famRow.appendChild(b);
-  });
-  host.appendChild(famRow);
-  /* recherche par code RAL */
+  /* nuancier complet, sans découpage par famille — recherche par code RAL */
   var search=document.createElement('input'); search.type='text';
   search.placeholder='Rechercher un code RAL…'; search.className='ral-search'; search.value=RAL_SEARCH;
   search.oninput=function(){ RAL_SEARCH=search.value; renderGrid(); search.focus(); };
@@ -20530,14 +20584,10 @@ function buildProductFinishPanel(host){
   var gridHost=document.createElement('div'); host.appendChild(gridHost);
   function renderGrid(){
     gridHost.innerHTML='';
-    var list;
-    if(RAL_SEARCH.trim()){ var q=RAL_SEARCH.trim().toLowerCase(); list=RAL.filter(function(r){ return r.c.toLowerCase().indexOf(q)>=0; }); }
-    else { var fam=RAL_FAMILIES.filter(function(f){return f.id===RAL_FAM;})[0]||RAL_FAMILIES[0]; list=fam.teintes; }
+    var list=ralList();
     var grid=document.createElement('div'); grid.className='ral-grid';
     list.forEach(function(r){
-      var rgb=hexToRgb(r.h);
-      var cell=document.createElement('div'); cell.style.background=r.h; cell.title=r.c;
-      if(current[0]===rgb[0]&&current[1]===rgb[1]&&current[2]===rgb[2]) cell.className='on';
+      var cell=ralCellEl(r,current);
       cell.onclick=function(){ FINISH.fab=hexToRgb(r.h); if(WGL.ready) WGL.render(); buildFinishPanel(); };
       grid.appendChild(cell);
     });
@@ -20636,14 +20686,6 @@ function buildProductMatPanel(host, pid, groups){
 
   if(FINISH_VIEW==='ral'){
     var current=ov.col||g.col||[170,162,150];
-    var famRow=document.createElement('div'); famRow.className='ral-fam';
-    RAL_FAMILIES.forEach(function(fam){
-      var b=document.createElement('button'); b.textContent=fam.label;
-      if(fam.id===RAL_FAM) b.className='on';
-      b.onclick=function(){ RAL_FAM=fam.id; buildFinishPanel(); };
-      famRow.appendChild(b);
-    });
-    host.appendChild(famRow);
     var search=document.createElement('input'); search.type='text';
     search.placeholder='Rechercher un code RAL…'; search.className='ral-search'; search.value=RAL_SEARCH;
     search.oninput=function(){ RAL_SEARCH=search.value; renderGrid(); search.focus(); };
@@ -20651,14 +20693,10 @@ function buildProductMatPanel(host, pid, groups){
     var gridHost=document.createElement('div'); host.appendChild(gridHost);
     function renderGrid(){
       gridHost.innerHTML='';
-      var list;
-      if(RAL_SEARCH.trim()){ var q=RAL_SEARCH.trim().toLowerCase(); list=RAL.filter(function(r){ return r.c.toLowerCase().indexOf(q)>=0; }); }
-      else { var fam=RAL_FAMILIES.filter(function(f){return f.id===RAL_FAM;})[0]||RAL_FAMILIES[0]; list=fam.teintes; }
+      var list=ralList();
       var grid=document.createElement('div'); grid.className='ral-grid';
       list.forEach(function(r){
-        var rgb=hexToRgb(r.h);
-        var cell=document.createElement('div'); cell.style.background=r.h; cell.title=r.c;
-        if(current[0]===rgb[0]&&current[1]===rgb[1]&&current[2]===rgb[2]) cell.className='on';
+        var cell=ralCellEl(r,current);
         /* une couleur RAL retire la texture de ce matériau : les deux s'excluent */
         cell.onclick=function(){ prodFinSet(pid,gi,'tex',null); prodFinSet(pid,gi,'col',hexToRgb(r.h)); apply(); };
         grid.appendChild(cell);
@@ -20845,17 +20883,7 @@ function buildFinishPanel(){
   host.appendChild(tabs);
 
   if(FINISH_VIEW==='ral'){
-    /* sélecteur de famille RAL (Jaunes, Rouges, Bleus...) */
-    var famRow=document.createElement('div'); famRow.className='ral-fam';
-    RAL_FAMILIES.forEach(function(fam){
-      var b=document.createElement('button'); b.textContent=fam.label;
-      if(fam.id===RAL_FAM) b.className='on';
-      b.onclick=function(){ RAL_FAM=fam.id; buildFinishPanel(); };
-      famRow.appendChild(b);
-    });
-    host.appendChild(famRow);
-
-    /* champ de recherche par code RAL (ex: "7016") */
+    /* nuancier complet sur une seule palette — recherche par code RAL (ex: "7016") */
     var search=document.createElement('input'); search.type='text';
     search.placeholder='Rechercher un code RAL…'; search.className='ral-search';
     search.value=RAL_SEARCH;
@@ -20868,20 +20896,11 @@ function buildFinishPanel(){
     /* grille des teintes : famille active OU résultats de recherche */
     function renderRalGrid(){
       gridHost.innerHTML='';
-      var list;
-      if(RAL_SEARCH.trim()){
-        var q=RAL_SEARCH.trim().toLowerCase();
-        list=RAL.filter(function(r){ return r.c.toLowerCase().indexOf(q)>=0; });
-      } else {
-        var fam=RAL_FAMILIES.filter(function(f){return f.id===RAL_FAM;})[0]||RAL_FAMILIES[0];
-        list=fam.teintes;
-      }
+      var list=ralList();
       var grid=document.createElement('div'); grid.className='ral-grid';
       list.forEach(function(r){
         var rgb=hexToRgb(r.h);
-        var cell=document.createElement('div');
-        cell.style.background=r.h; cell.title=r.c;
-        if(current[0]===rgb[0]&&current[1]===rgb[1]&&current[2]===rgb[2]) cell.className='on';
+        var cell=ralCellEl(r,current);
         cell.onclick=function(){ FINISH[key]=rgb; FINISH_SET[key]=true; FINISH_TEX[key]=null; build(); buildFinishPanel(); };   /* RAL = teinte unie : retire la texture (ex. mosaïque native du bassin) */
         grid.appendChild(cell);
       });
@@ -24578,6 +24597,12 @@ var I18N_ADD37={
 "Section":["Section","Sección","Sezione","Querschnitt","Secção","Keresztmetszet","截面","断面","सेक्शन","Сечение","Переріз","المقطع"],
 "Collés":["Applied","Pegados","Applicate","Aufgeklebt","Colados","Ragasztott","粘贴式","貼付け","चिपकाए","Накладные","Накладні","ملصقة"],
 "Incorporés":["Between panes","Incorporados","Interposte","Im Scheibenzwischenraum","Incorporados","Beépített","中空层内","中空層内","पैन के बीच","В стеклопакете","У склопакеті","بين الألواح"],
+"Hotte":["Hood","Campana","Cappa","Rauchfang","Coifa","Füstelvezető","烟罩","フード","हुड","Колпак","Ковпак","الغطاء"],
+"Tronconique":["Tapered","Troncocónica","Troncoconica","Konisch","Troncocónica","Kúpos","锥形","テーパー","शंक्वाकार","Коническая","Конічна","مخروطي"],
+"Droite":["Straight","Recta","Dritta","Gerade","Reta","Egyenes","直形","ストレート","सीधा","Прямая","Пряма","مستقيم"],
+"Hauteur de hotte":["Hood height","Altura de la campana","Altezza cappa","Rauchfanghöhe","Altura da coifa","Füstelvezető magassága","烟罩高度","フード高さ","हुड ऊँचाई","Высота колпака","Висота ковпака","ارتفاع الغطاء"],
+"Retrait de la base":["Base setback","Retranqueo de la base","Arretramento della base","Rücksprung der Basis","Recuo da base","Alap visszahúzása","底部收进","基部の後退","आधार सेटबैक","Отступ основания","Відступ основи","تراجع القاعدة"],
+"Largeur en tête":["Top width","Ancho superior","Larghezza in testa","Kopfbreite","Largura no topo","Felső szélesség","顶部宽度","頂部幅","शीर्ष चौड़ाई","Ширина вверху","Ширина вгорі","العرض العلوي"],
 "Cintre":["Arched head","Arco","Arco","Rundbogen","Arco","Íves fejrész","拱顶","アーチ","मेहराब","Арочное завершение","Аркове завершення","القوس"],
 "Plein cintre":["Semicircular","Medio punto","A tutto sesto","Halbkreisbogen","Pleno centro","Félköríves","半圆拱","半円アーチ","अर्धवृत्ताकार","Полуциркульная","Півциркульна","نصف دائري"],
 "Segmentaire":["Segmental","Rebajado","Ribassato","Segmentbogen","Abatido","Szegmensíves","弧形拱","扁平アーチ","खंडीय","Сегментная","Сегментна","قطاعي"],
