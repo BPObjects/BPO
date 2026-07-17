@@ -68,7 +68,7 @@
 </div>
 
 <script type="module">
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "./vendor/supabase-js-2.110.7.js";  /* vendorisé — plus de CDN externe */
 import { SUPABASE_URL, SUPABASE_ANON, SITE_URL, TRIAL_DAYS, PRICE_LABEL } from "./bpo-config.js";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 if(String(SUPABASE_URL).includes("VOTRE-PROJET")){

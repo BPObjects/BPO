@@ -2,9 +2,24 @@
      <script type="module" src="bpo-auth.js"></script>
    Vérifie la session + l'accès (essai en cours ou abonné). Sinon -> redirige vers
    compte.html. Affiche un bandeau "essai : N jours restants". */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+/* supabase-js VENDORISÉ (2.110.7, bundle esm.sh rapatrié dans ./vendor/) :
+   plus aucun code d'authentification chargé depuis un CDN externe. */
+import { createClient } from "./vendor/supabase-js-2.110.7.js";
 import { SUPABASE_URL, SUPABASE_ANON, PRICE_LABEL, PRICE_LABEL_SHORT } from "./bpo-config.js";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/* Vérification d'accès CÔTÉ SERVEUR (fonction Edge check-access) — utilisée par
+   les exports DQE de meuble.html. true si abonné ou essai en cours. */
+window.BPO_CHECK_ACCESS = async () => {
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session) return false;
+    const r = await fetch(SUPABASE_URL+"/functions/v1/check-access",
+      { method:"POST", headers:{ "Authorization":"Bearer "+session.access_token } });
+    const j = await r.json().catch(()=>({}));
+    return j.access === true;
+  }catch(e){ return false; }
+};
 
 function paywall(html){
   const o=document.createElement("div");

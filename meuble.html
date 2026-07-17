@@ -3998,7 +3998,29 @@ function scnDQE(){
   return R;
 }
 /* Export tableur : CSV point-virgule (Excel FR). L'avertissement voyage avec. */
-function dqeCSV(D){
+/* ============ Garde serveur des exports DQE (fonctionnalité abonnés) ============
+   L'accès est revérifié CÔTÉ SERVEUR (fonction Edge check-access, via
+   window.BPO_CHECK_ACCESS posé par bpo-auth.js) : retirer le bandeau ou le
+   paywall du DOM ne débloque plus l'export. Build desktop interne débridé :
+   bpo-auth.js est remplacé par un stub qui pose data-bpo-unlocked=1. */
+var BPO_EXP={ok:false,t:0};
+function bpoExportAllowed(cb){
+  if(document.documentElement.getAttribute('data-bpo-unlocked')==='1'){cb(true);return;}
+  if(BPO_EXP.ok && (Date.now()-BPO_EXP.t)<600000){cb(true);return;}   /* cache 10 min : garde le clic synchrone (pop-up PDF) */
+  if(typeof window.BPO_CHECK_ACCESS!=='function'){cb(false);return;}
+  window.BPO_CHECK_ACCESS().then(function(ok){BPO_EXP.ok=!!ok;BPO_EXP.t=Date.now();cb(!!ok);})
+    .catch(function(){cb(false);});
+}
+function bpoExportDenied(){
+  var m='Export r\u00e9serv\u00e9 aux abonn\u00e9s (ou essai en cours). Ouvrez \u00ab Mon compte \u00bb pour vous abonner.';
+  try{ m=trI18N(m); }catch(_e){}
+  alert(m);
+}
+/* Pr\u00e9chauffe : le 1er clic PDF reste dans le geste utilisateur (pop-up non bloqu\u00e9). */
+setTimeout(function(){ try{ bpoExportAllowed(function(){}); }catch(_e){} }, 2500);
+function dqeCSV(D){ bpoExportAllowed(function(ok){ if(!ok){bpoExportDenied();return;} _dqeCSV(D); }); }
+function dqePDF(D){ bpoExportAllowed(function(ok){ if(!ok){bpoExportDenied();return;} _dqePDF(D); }); }
+function _dqeCSV(D){
   /* D fourni = chiffrage de scène ; sinon on chiffre l'objet courant. */
   D=D||immDQE(); if(!D.lines.length){ alert('Aucune quantité à chiffrer.'); return; }
   var R=[['AVERTISSEMENT : chiffrage NON CONTRACTUEL — ordres de grandeur indicatifs, potentiellement approximatifs.'],
@@ -4022,7 +4044,7 @@ function dqeCSV(D){
 /* Export « planche » imprimable du DQE (PDF via l'impression du navigateur, sans
    dépendance externe). Mêmes données que le CSV, mises en page en devis quantitatif
    estimatif : groupé par lot, sous-totaux, avertissement, total et ratio au m². */
-function dqePDF(D){
+function _dqePDF(D){
   D=D||immDQE(); if(!D.lines.length){ alert('Aucune quantité à chiffrer.'); return; }
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   var sdp=(D.floor!=null)?D.floor:((typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0);
