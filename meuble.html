@@ -3896,7 +3896,55 @@ function immDQE(){
    silencieusement oubliés. */
 var SCN_BATI_MODES={immeuble:1, cuisine:1, mur:1, dalle:1, hangar:1, piscine:1, veranda:1, cheminee:1,
                     poteau:1, poutre:1, escalier:1, toiture:1, ferme:1, murrideau:1, gardecorps:1};
-var SCN_QUANT_MODES={immeuble:1};        /* modes réellement mesurables à ce jour */
+var SCN_QUANT_MODES={immeuble:1, mur:1, dalle:1};        /* modes réellement mesurables */
+/* ---- Chiffrage des objets simples (mur, dalle) : mêmes lignes de prix que l'immeuble.
+   dqeAddLine / dqeInstall factorisent la logique de immDQE (bordereau prioritaire, puis
+   prix indicatif ; installation de chantier en % ajoutée en dernier, hors cumul). ---- */
+function dqeAddLine(L, id, q){
+  var d=prixDef(id); if(!d || !(q>1e-6)) return;
+  var b=(typeof bordFor==='function')?bordFor(id):null;
+  if(b){ L.push({id:id, code:b.code, lot:b.lot||d.lot, lbl:b.lbl, u:d.u, uBord:b.u,
+                 uWarn:!!(b.u && b.u.toLowerCase()!==d.u.toLowerCase()), q:q, pu:b.pu, tot:q*b.pu, src:'bord'}); return; }
+  var pu=(PRIX[id]!=null)?PRIX[id]:d.pu;
+  L.push({id:id, code:'', lot:d.lot, lbl:d.lbl, u:d.u, q:q, pu:pu, tot:q*pu, src:'def'});
+}
+function dqeInstall(L){
+  var t=L.reduce(function(s,l){ return s+l.tot; },0);
+  var dI=prixDef('install_pct'), pct=(PRIX['install_pct']!=null)?PRIX['install_pct']:(dI?dI.pu:0);
+  if(dI && pct>0 && t>0){ var mi=t*pct/100; L.push({id:'install_pct', code:'', lot:dI.lot, lbl:dI.lbl, u:'%', q:pct, pu:null, tot:mi, src:'pct'}); t+=mi; }
+  return t;
+}
+/* MUR : aire d'élévation développée (une face) → prix de façade maçonnée.
+   Mur droit = longueur × hauteur ; contour fermé (rect/L/U/T/libre) = périmètre × hauteur. */
+function murQuant(){
+  var H=Math.max(0,(PM.hgt||0))/100, lay=PM.layout||'droit', area=0;
+  if(lay==='droit'){ area=Math.max(0,(PM.len||0))/100*H; }
+  else { var A=(PM.len||0)/100, B=(PM.wid||0)/100;
+    var poly=(lay==='libre')?parsePoly(PM.verts):outlinePoly(lay,A,B,(PM.la||0)/100,(PM.lb||0)/100,PM.lcorner||'tr',(PM.tb||150)/100,(PM.tw||200)/100,(PM.uw||0)/100,(PM.ud||0)/100);
+    if(poly && poly.length>=2){ var per=0,n=poly.length; for(var i=0;i<n;i++){ var a=poly[i],b=poly[(i+1)%n]; per+=Math.hypot(b[0]-a[0],b[1]-a[1]); } area=per*H; } }
+  return {area:area};
+}
+function murDQE(){ var Q=murQuant(), L=[]; dqeAddLine(L,'fac_mur',Q.area); return {lines:L, total:dqeInstall(L), q:Q}; }
+/* DALLE : volume de béton (si cœur béton) + faux plafond BA13 éventuel. Chape,
+   revêtement et isolation ne sont pas chiffrés (pas de ligne de prix dédiée à ce jour). */
+function dalleQuant(){
+  var area=0;
+  if(PD.shape==='libre'){ var P=parsePoly(PD.verts); if(P&&P.length>=3){ P=(typeof arcCurve==='function')?arcCurve(P,PD):P; area=Math.abs(polyArea(P)); } }
+  else { var DR=outlineRects(PD.shape,(PD.len||0)/100,(PD.wid||0)/100,(PD.lx||0)/100,(PD.lz||0)/100,PD.lcorner||'tr',(PD.tb||150)/100,(PD.tw||200)/100,(PD.ux||0)/100,(PD.uz||0)/100);
+    (DR.rects||[]).forEach(function(r){ area+=r.w*r.d; }); }
+  var concreteCores={betonplein:1, alveolee:1, hourdis:1};
+  return { area:area,
+    beton:(concreteCores[PD.coreMat]?area*Math.max(0,(PD.core||0))/100:0),
+    fp:(PD.fpOn?area:0), fpIso:((PD.fpOn&&PD.fpIsoOn)?area:0) };
+}
+function dalleDQE(){ var Q=dalleQuant(), L=[]; dqeAddLine(L,'beton_dalle',Q.beton); dqeAddLine(L,'fp_ba13',Q.fp); dqeAddLine(L,'fp_iso',Q.fpIso); return {lines:L, total:dqeInstall(L), q:Q}; }
+/* Dispatch : mode d'un objet -> son chiffrage (null si non mesuré). */
+function objDQE(mode){
+  if(mode==='immeuble') return immDQE();
+  if(mode==='mur') return murDQE();
+  if(mode==='dalle') return dalleDQE();
+  return null;
+}
 function scnDQE(){
   var R={lines:[], total:0, n:0, skipped:{}, unpriced:[]};
   if(typeof SCENE==='undefined' || !SCENE.instances) return R;
@@ -3918,7 +3966,7 @@ function scnDQE(){
       var sIME=(typeof IM_EDGES!=='undefined')?IM_EDGES:null, sIPD=(typeof IM_PART_DOORS!=='undefined')?IM_PART_DOORS:null;
       var sSTR=(typeof IMM_STRUCT!=='undefined')?IMM_STRUCT:null, sFT=(typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0;
       MODE=m; var _pfo=INST_FACEONLY; INST_FACEONLY=true;
-      var D=null; try{ build(); D=(m==='immeuble')?immDQE():null; }catch(e){}
+      var D=null; try{ build(); D=objDQE(m); }catch(e){}
       INST_FACEONLY=_pfo;
       MODE=sMODE; FC=sFC; PRIMS=sPR; CUR_POLY=sPOLY; POLY_TARGET=sPT; DIMS=sDIMS;
       if(sIME) IM_EDGES=sIME;
@@ -3933,7 +3981,7 @@ function scnDQE(){
           if(!acc[l.id]) acc[l.id]={id:l.id, code:l.code, lot:l.lot, lbl:l.lbl, u:l.u, pu:l.pu, q:0};
           acc[l.id].q+=l.q;
         });
-        R.floor=(R.floor||0)+((typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0);
+        if(m==='immeuble') R.floor=(R.floor||0)+((typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0);
       }
       if(sSTR!==null) IMM_STRUCT=sSTR;
       if(typeof IMM_FLOOR_TOTAL!=='undefined') IMM_FLOOR_TOTAL=sFT;
@@ -3970,6 +4018,54 @@ function dqeCSV(D){
   var csv=R.map(function(r){ return r.map(function(c){
     c=String(c).replace(/"/g,'""'); return /[;"\n]/.test(c)?('"'+c+'"'):c; }).join(';'); }).join('\r\n');
   dlFile('BPO-chiffrage.csv', '﻿'+csv, 'text/csv;charset=utf-8');
+}
+/* Export « planche » imprimable du DQE (PDF via l'impression du navigateur, sans
+   dépendance externe). Mêmes données que le CSV, mises en page en devis quantitatif
+   estimatif : groupé par lot, sous-totaux, avertissement, total et ratio au m². */
+function dqePDF(D){
+  D=D||immDQE(); if(!D.lines.length){ alert('Aucune quantité à chiffrer.'); return; }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  var sdp=(D.floor!=null)?D.floor:((typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0);
+  var rows='', lot=null, sub=0;
+  function flushSub(){ if(lot!==null && sub>0.5) rows+='<tr class="sub"><td colspan="4">Sous-total — '+esc(lot)+'</td><td class="n">'+eur(sub)+'</td></tr>'; }
+  D.lines.forEach(function(l){
+    if(l.lot!==lot){ flushSub(); lot=l.lot; sub=0; rows+='<tr class="lot"><td colspan="5">'+esc(lot)+'</td></tr>'; }
+    if(l.src!=='pct') sub+=l.tot;
+    var q=(l.src==='pct')?(esc(l.q)+' %'):(l.q.toFixed(l.u==='kg'?0:2)+' '+esc(l.u));
+    var pu=(l.src==='pct')?'—':eur(l.pu);
+    rows+='<tr><td class="c">'+esc(l.code||'')+'</td><td>'+esc(l.lbl)+'</td><td class="n">'+q+'</td><td class="n">'+pu+'</td><td class="n">'+eur(l.tot)+'</td></tr>';
+  });
+  flushSub();
+  var dt=new Date(), dd=('0'+dt.getDate()).slice(-2)+'/'+('0'+(dt.getMonth()+1)).slice(-2)+'/'+dt.getFullYear();
+  var ratio=(sdp>0.5)?('<div class="rat">Ratio <b>'+eur(D.total/sdp)+'</b> / m² de plancher &nbsp;·&nbsp; surface de plancher <b>'+sdp.toFixed(2).replace('.',',')+' m²</b><div class="rn">Ratio des seuls ouvrages chiffrés ci-dessus — pas le prix du bâtiment fini.</div></div>'):'';
+  var css='@page{size:A4;margin:14mm 12mm}'
+    +'*{box-sizing:border-box}body{font:12px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a1d24;margin:0;padding:18px;background:#fff}'
+    +'.bar{display:flex;gap:8px;margin-bottom:14px}'
+    +'.bar button{font:600 12px sans-serif;padding:7px 14px;border:1px solid #c8ccd4;border-radius:6px;background:#f3f4f6;cursor:pointer}'
+    +'.bar button.pr{background:#ff8a3d;border-color:#ff8a3d;color:#fff}'
+    +'h1{font-size:18px;margin:0 0 2px}.beta{font:600 10px sans-serif;color:#ff8a3d;text-transform:uppercase;letter-spacing:.5px}'
+    +'.sub1{color:#5a6472;font-size:12px;margin-bottom:12px}'
+    +'.warn{border-left:4px solid #e08a2e;background:#fff6ec;padding:9px 11px;border-radius:0 5px 5px 0;color:#8a5310;font-size:11.5px;margin-bottom:14px}.warn b{color:#b4671a}'
+    +'table{width:100%;border-collapse:collapse;font-size:11.5px}'
+    +'th,td{padding:5px 7px;border-bottom:1px solid #e6e8ec;text-align:left;vertical-align:top}'
+    +'th{background:#f0f2f5;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#5a6472;border-bottom:1.5px solid #c8ccd4}'
+    +'td.n,th.n{text-align:right;white-space:nowrap}td.c{color:#8a92a0}'
+    +'tr.lot td{background:#eef1f5;font-weight:700;font-size:11px;padding-top:8px}'
+    +'tr.sub td{font-style:italic;color:#5a6472;border-bottom:1.5px solid #c8ccd4}'
+    +'.tot{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:10px;border-top:2px solid #1a1d24;font-size:15px;font-weight:700}'
+    +'.rat{margin-top:8px;font-size:12px;color:#3a4250}.rn{font-size:10px;color:#8a92a0;margin-top:2px}'
+    +'.foot{margin-top:18px;font-size:10px;color:#98a0ac;border-top:1px solid #e6e8ec;padding-top:8px}'
+    +'@media print{.bar{display:none}body{padding:0}}';
+  var body='<div class="bar"><button class="pr" onclick="window.print()">Imprimer / PDF</button><button onclick="window.close()">Fermer</button></div>'
+    +'<h1>Devis quantitatif estimatif <span class="beta">beta</span></h1>'
+    +'<div class="sub1">BPObjects · établi le '+dd+' · prix indicatifs base '+esc(PRIX_BASE_DATE)+'</div>'
+    +'<div class="warn"><b>NON CONTRACTUEL</b> — ordres de grandeur indicatifs, potentiellement approximatifs, pour dégrossir une enveloppe. Prix France HT fourni-posé, à caler sur vos propres marchés.</div>'
+    +'<table><thead><tr><th>Code</th><th>Ouvrage</th><th class="n">Quantité</th><th class="n">PU HT</th><th class="n">Total HT</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<div class="tot"><span>Total indicatif HT</span><span>'+eur(D.total)+'</span></div>'
+    +ratio
+    +'<div class="foot">Document généré par BPObjects à partir des quantités mesurées sur la maquette. Ne se substitue pas à un devis d\'entreprise.</div>';
+  var w=window.open('','_blank'); if(!w){ alert('Autorisez les fenêtres pop-up pour générer la planche PDF.'); return; }
+  w.document.open(); w.document.write('<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>BPObjects — Chiffrage</title><style>'+css+'</style></head><body>'+body+'</body></html>'); w.document.close(); w.focus();
 }
 var IMM_FLOOR_TOTAL=0, IMM_FLOOR_N=0;
 function immFloorStr(){ return fmtArea(IMM_FLOOR_TOTAL||0); }
@@ -18600,6 +18696,7 @@ function immQuantUI(target){
     function mkb(txt, fn){ var b=document.createElement('button'); b.className='tex-none'; b.style.flex='1';
       b.textContent=txt; b.onclick=fn; return b; }
     bar.appendChild(mkb('⭳ Export tableur', function(){ dqeCSV(); }));
+    bar.appendChild(mkb('⭳ Planche PDF', function(){ dqePDF(); }));
     bar.appendChild(mkb('↺ Prix par défaut', function(){ prixReset(); buildImmeubleUI(); }));
     target.appendChild(bar);
   })();
@@ -18935,7 +19032,7 @@ function buildImmeubleUI(){
     var iih=document.createElement('div'); iih.className='exp-note'; iih.style.marginTop='8px'; iih.textContent='Image scannée (JPG / PNG / PDF) à mettre à l\'échelle'; target.appendChild(iih);
     var iib=document.createElement('button'); iib.textContent='🖼️ Importer une image / PDF'; iib.style.cssText='width:100%;font-size:11px;padding:6px;'; iib.onclick=function(){ imgImport(); }; target.appendChild(iib);
     if(IMG_UL.img){
-      var i2=document.createElement('div'); i2.className='exp-note'; i2.style.marginTop='3px'; i2.innerHTML='« '+(IMG_UL.name||'image')+' » — '+IMG_UL.w+'×'+IMG_UL.h+' px<br>Visible en vue de dessus. Dimensions actuelles : '+(IMG_UL.w*IMG_UL.scale).toFixed(2)+' × '+(IMG_UL.h*IMG_UL.scale).toFixed(2)+' m'; target.appendChild(i2);
+      var i2=document.createElement('div'); i2.className='exp-note'; i2.style.marginTop='3px'; i2.innerHTML='« '+cfgEsc(IMG_UL.name||'image')+' » — '+IMG_UL.w+'×'+IMG_UL.h+' px<br>Visible en vue de dessus. Dimensions actuelles : '+(IMG_UL.w*IMG_UL.scale).toFixed(2)+' × '+(IMG_UL.h*IMG_UL.scale).toFixed(2)+' m'; target.appendChild(i2);
       var calb=document.createElement('button'); calb.textContent=IMGCAL.on?('■ Clique 2 points ('+IMGCAL.pts.length+'/2)'):'📏 Calibrer (2 points + distance)'; calb.style.cssText='width:100%;font-size:11px;padding:6px;margin-top:3px;'; if(IMGCAL.on)calb.className='on';
       calb.onclick=function(){ if(IMGCAL.on){ IMGCAL.on=false; IMGCAL.pts=[]; } else { IMGCAL.on=true; IMGCAL.pts=[]; if(LAYOUT!=='quad'&&SINGLEVIEW!=='top'){ SINGLEVIEW='top'; LAYOUT='single'; } } DIRTY=true; buildImmeubleUI(); }; target.appendChild(calb);
       function isl(lbl,key,mn,mx,st,isOp){ var r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:6px;margin:2px 0;font-size:10px;'; var l=document.createElement('span'); l.textContent=lbl; l.style.cssText='width:70px;color:var(--dm);'; var rg=document.createElement('input'); rg.type='range'; rg.min=mn; rg.max=mx; rg.step=st; rg.value=IMG_UL[key]; rg.style.flex='1'; rg.oninput=function(){ IMG_UL[key]=parseFloat(rg.value); if(isOp) imgBuildTex(); build(); DIRTY=true; }; r.appendChild(l); r.appendChild(rg); target.appendChild(r); }
@@ -20261,6 +20358,8 @@ function buildSceneUI(){
     if(D.lines.length){
       var b=document.createElement('button'); b.className='tex-none'; b.style.cssText='width:100%;margin-top:6px;';
       b.textContent='⭳ Export tableur'; b.onclick=function(){ dqeCSV(D); }; host.appendChild(b);
+      var bp=document.createElement('button'); bp.className='tex-none'; bp.style.cssText='width:100%;margin-top:6px;';
+      bp.textContent='⭳ Planche PDF'; bp.onclick=function(){ dqePDF(D); }; host.appendChild(bp);
     }
   })();
 }
@@ -25369,7 +25468,8 @@ var I18N_ADDFP={
 "Faux plafond — dalles minérales 600×600 sur ossature":["Suspended ceiling — 600×600 mineral tiles on grid","Falso techo — placas minerales 600×600 sobre perfilería","Controsoffitto — pannelli minerali 600×600 su orditura","Abgehängte Decke — Mineralplatten 600×600 auf Unterkonstruktion","Teto falso — placas minerais 600×600 sobre perfilaria","Álmennyezet — 600×600 ásványi lapok vázon","吊顶——600×600矿棉板配龙骨","吊り天井 — 下地組の600×600ミネラルパネル","सस्पेंडेड सीलिंग — ग्रिड पर 600×600 मिनरल टाइलें","Подвесной потолок — минеральные плиты 600×600 по каркасу","Підвісна стеля — мінеральні плити 600×600 по каркасу","سقف معلق — ألواح معدنية 600×600 على هيكل"],
 "Jouées / retombées de faux plafond":["Ceiling returns / bulkheads","Jambas / faldones de falso techo","Risvolti / velette di controsoffitto","Deckenschürzen / -abhänge","Abas / sancas de teto falso","Álmennyezeti leszúrások / szegélyek","吊顶侧板/垂板","天井見切り／幕板","सीलिंग रिटर्न / बल्कहेड","Борта / фартуки подвесного потолка","Борти / фартухи підвісної стелі","جوانب / حواف السقف المعلق"],
 "Isolant en plénum de faux plafond":["Insulation in ceiling plenum","Aislante en plénum de falso techo","Isolante nel plenum del controsoffitto","Dämmung im Deckenplenum","Isolante no plenum do teto falso","Hőszigetelés az álmennyezeti plénumban","吊顶空腔内保温层","天井懐の断熱材","सीलिंग प्लेनम में इन्सुलेशन","Утеплитель в запотолочном пространстве","Утеплювач у запотельному просторі","عازل في فراغ السقف المعلق"],
-"Plafonds":["Ceilings","Techos","Controsoffitti","Decken","Tetos","Mennyezetek","顶棚","天井","छतें","Потолки","Стелі","الأسقف"]
+"Plafonds":["Ceilings","Techos","Controsoffitti","Decken","Tetos","Mennyezetek","顶棚","天井","छतें","Потолки","Стелі","الأسقف"],
+"⭳ Planche PDF":["⭳ PDF sheet","⭳ Ficha PDF","⭳ Scheda PDF","⭳ PDF-Blatt","⭳ Ficha PDF","⭳ PDF-lap","⭳ PDF图纸","⭳ PDFシート","⭳ PDF शीट","⭳ PDF-лист","⭳ PDF-аркуш","⭳ ورقة PDF"]
 };
 (function(){ for(var fr in I18N_ADDFP){ var t=I18N_ADDFP[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
