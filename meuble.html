@@ -3663,6 +3663,56 @@ function fmtArea(m2){
 var OBJ_AREA=0, OBJ_AREA_X=0, OBJ_AREA_Z=0, OBJ_AREA_Y=0, OBJ_AREA_MODE=null;
 function setObjArea(a,x,z,y){ OBJ_AREA=a||0; OBJ_AREA_X=x||0; OBJ_AREA_Z=z||0; OBJ_AREA_Y=(y==null?0:y); OBJ_AREA_MODE=(typeof MODE!=='undefined')?MODE:null; }
 /* Immeuble : surface de plancher cumulée (RDC + étages, hors toiture et sous-sols). */
+/* ---- MÉTRÉS IMMEUBLE : béton (dalles / poteaux / poutres) et acier au poids ----
+   L'acier se chiffre au POIDS. STEEL_PROFILES ne donne que la géométrie
+   [h, b, âme, aile] : on calcule l'aire de section, puis on corrige des congés de
+   raccordement, que la formule géométrique ignore. Les facteurs sont calés sur les
+   valeurs catalogue (IPE 300 : 40,7 calculé -> 42,2 réel). Les IPN/UPN ont des ailes
+   inclinées : leur formule sur-estime légèrement, d'où un facteur < 1.
+   Précision attendue ~1 % — à confirmer au catalogue pour une commande ferme. */
+var STEEL_RHO=7850;                                                  /* kg/m³ */
+var STEEL_FILLET={IPE:1.040, IPN:0.992, HEA:1.057, HEB:1.041, UPN:1.000};
+function steelSectM2(serie, taille){
+  var pr=(typeof STEEL_PROFILES!=='undefined')?STEEL_PROFILES[serie]:null; if(!pr) return 0;
+  var d=pr.sizes[taille] || pr.sizes[Object.keys(pr.sizes)[0]]; if(!d) return 0;
+  var h=d[0], b=d[1], tw=d[2], tf=d[3];
+  return (2*b*tf + Math.max(0,h-2*tf)*tw)*1e-6 * (STEEL_FILLET[serie]||1);
+}
+function steelKgM(serie, taille){ return steelSectM2(serie,taille)*STEEL_RHO; }
+/* Renvoie {beton:{dalles,poteaux,poutres,total}, acier:[{lbl,ml,kg}], ml, kg}. */
+function immQuant(){
+  var Q={beton:{dalles:0,poteaux:0,poutres:0,total:0}, acier:[], ml:0, kg:0}, ac={};
+  if(typeof IMM_STRUCT==='undefined' || !IMM_STRUCT) return Q;
+  function addAc(lbl, ml, kgm){ if(!(ml>0)) return; if(!ac[lbl]) ac[lbl]={lbl:lbl,ml:0,kg:0};
+    ac[lbl].ml+=ml; ac[lbl].kg+=ml*kgm; Q.ml+=ml; Q.kg+=ml*kgm; }
+  /* dalles : contour moins les trémies */
+  (IMM_STRUCT.slabs||[]).forEach(function(sl){
+    if(!sl.poly || sl.poly.length<3) return;
+    var a=Math.abs(polyArea(sl.poly));
+    (sl.holes||[]).forEach(function(h){ if(h && h.length>2) a-=Math.abs(polyArea(h)); });
+    if(a>0) Q.beton.dalles += a*(sl.t||0);
+  });
+  /* poteaux : béton plein, rond/tube acier, ou profil normé */
+  var ct=(PIM.colType||'beton'), cSz=PIM.colSize||300;
+  (IMM_STRUCT.cols||[]).forEach(function(c){
+    var L=Math.abs((c.y1||0)-(c.y0||0)); if(!(L>0)) return;
+    if(ct==='beton'){ Q.beton.poteaux += L*(c.w||0)*(c.w||0); return; }
+    if(ct==='rond'){ var d=Math.max(0.05,cSz/1000); addAc('Rond ⌀'+cSz, L, Math.PI*d*d/4*STEEL_RHO); return; }
+    if(ct==='tubeCarre'){ var q=Math.max(0.05,cSz/1000); addAc('Tube carré '+cSz, L, q*q*STEEL_RHO); return; }
+    addAc(ct+' '+cSz, L, steelKgM(ct,cSz));
+  });
+  /* poutres : longueur réelle (déjà raccourcies aux nus des poteaux) */
+  var bt=(PIM.beamType||''), bSz=PIM.beamSize||300;
+  var bIsSteel=(typeof STEEL_PROFILES!=='undefined' && !!STEEL_PROFILES[bt]);
+  (IMM_STRUCT.beams||[]).forEach(function(b){
+    var L=Math.hypot((b.bx||0)-(b.ax||0), (b.bz||0)-(b.az||0)); if(!(L>0)) return;
+    if(bIsSteel) addAc(bt+' '+bSz, L, steelKgM(bt,bSz));
+    else Q.beton.poutres += L*(b.w||0)*(b.h||0);
+  });
+  Q.beton.total = Q.beton.dalles + Q.beton.poteaux + Q.beton.poutres;
+  Q.acier = Object.keys(ac).map(function(k){ return ac[k]; }).sort(function(a,b){ return b.kg-a.kg; });
+  return Q;
+}
 var IMM_FLOOR_TOTAL=0, IMM_FLOOR_N=0;
 function immFloorStr(){ return fmtArea(IMM_FLOOR_TOTAL||0); }
 /* volume : eau (litres/gallons) ou béton (m³/yd³) selon le système */
@@ -6168,7 +6218,12 @@ function offsetPoly(poly, d, ccw){
   }
   var out=[]; for(var i=0;i<n;i++) out.push(lineX(lines[(i-1+n)%n], lines[i])); return out;
 }
-function polyArea(poly){ var n=poly.length,a=0; for(var i=0;i<n;i++){var p=poly[i],q=poly[(i+1)%n]; a+=p[0]*q[1]-q[0]*p[1];} return a; }
+/* Aire signée d'un polygone (formule du lacet). Le /2 est INDISPENSABLE : sans lui
+   la fonction renvoyait le DOUBLE de l'aire, et tous ses consommateurs — surfaces de
+   plancher, volume d'eau de la piscine, volumes de béton, vignettes d'emprise — étaient
+   doublés. Les appelants qui ne lisent que le SIGNE (sens de parcours) ou comparent
+   deux aires ne sont pas affectés par la division. */
+function polyArea(poly){ var n=poly.length,a=0; for(var i=0;i<n;i++){var p=poly[i],q=poly[(i+1)%n]; a+=p[0]*q[1]-q[0]*p[1];} return a/2; }
 function polyBBox(poly){ var x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; poly.forEach(function(p){ if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<z0)z0=p[1]; if(p[1]>z1)z1=p[1]; }); return {w:x1-x0,d:z1-z0,cx:(x0+x1)/2,cz:(z0+z1)/2}; }
 function parsePoly(str){
   if(!str) return null;
@@ -18719,6 +18774,34 @@ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.innerHT
   info.innerHTML='<span>Hauteur totale</span> <b>'+fmtLen(DIMS.h)+'</b> · <b>'+PIM.nFloors+'</b> <span>niveaux</span><br>'+
     '<span>Surface de plancher</span> ≈ <b id="immFloorTxt">'+immFloorStr()+'</b> · <b>'+(IMM_FLOOR_N||PIM.nFloors)+'</b> <span>planchers</span>';
   target.appendChild(info);
+  /* Béton par ouvrage + acier au poids (c'est ainsi qu'il se chiffre). */
+  (function(){
+    var Q=immQuant(); if(!Q) return;
+    if(Q.beton.total>0.001){
+      var bd=document.createElement('div'); bd.className='wall-total';
+      var rows='';
+      if(Q.beton.dalles>0.001)  rows+='<span>Dalles</span> <b>'+fmtVol(Q.beton.dalles,'beton')+'</b><br>';
+      if(Q.beton.poteaux>0.001) rows+='<span>Poteaux</span> <b>'+fmtVol(Q.beton.poteaux,'beton')+'</b><br>';
+      if(Q.beton.poutres>0.001) rows+='<span>Poutres</span> <b>'+fmtVol(Q.beton.poutres,'beton')+'</b><br>';
+      bd.innerHTML='<span>Volume de béton</span><br>'+rows+
+        '<span>Total béton</span> <b>'+fmtVol(Q.beton.total,'beton')+'</b>';
+      target.appendChild(bd);
+    }
+    if(Q.acier.length){
+      var ad=document.createElement('div'); ad.className='wall-total';
+      var ar='';
+      Q.acier.forEach(function(a){
+        ar+='<span>'+a.lbl+'</span> <b>'+fmtLen(a.ml)+'</b> · <b>'+Math.round(a.kg).toLocaleString('fr-FR')+'</b> <span>kg</span><br>';
+      });
+      ad.innerHTML='<span>Charpente acier</span><br>'+ar+
+        '<span>Total acier</span> <b>'+Math.round(Q.kg).toLocaleString('fr-FR')+'</b> <span>kg</span>'+
+        (Q.kg>1000?(' &nbsp;·&nbsp; <b>'+(Q.kg/1000).toFixed(2)+'</b> <span>t</span>'):'');
+      target.appendChild(ad);
+      var nt=document.createElement('div'); nt.className='exp-note';
+      nt.textContent='Poids théorique : section calculée + congés de raccordement estimés (~1 %). À confirmer au catalogue pour une commande.';
+      target.appendChild(nt);
+    }
+  })();
   hatchUIGroup(PIM, buildImmeubleUI);
 }
 
