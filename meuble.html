@@ -3745,6 +3745,11 @@ function immQuant(){
   })();
   Q.beton.total = Q.beton.dalles + Q.beton.poteaux + Q.beton.poutres;
   Q.acier = Object.keys(ac).map(function(k){ return ac[k]; }).sort(function(a,b){ return b.kg-a.kg; });
+  /* Faux plafond suspendu : surfaces cumulées à la construction (plaque nette des
+     trémies, jouées de fermeture du plénum, isolant plénum). Le type est porté
+     jusqu'au chiffrage, qui choisit la ligne de prix correspondante. */
+  Q.fp={type:(PIM.fpType||'ba13'), area:0, jouee:0, iso:0};
+  if(IMM_STRUCT.fp && IMM_STRUCT.fp.on){ Q.fp.area=IMM_STRUCT.fp.area||0; Q.fp.jouee=IMM_STRUCT.fp.jouee||0; Q.fp.iso=IMM_STRUCT.fp.iso||0; }
   return Q;
 }
 /* ============================================================================
@@ -3773,6 +3778,11 @@ var PRIX_DEF=[
   {id:'cloison_autre', lot:'Second œuvre',          lbl:'Cloison maçonnée',                               u:'m²', pu:95},
   {id:'menuis_ext',    lot:'Menuiseries extérieures', lbl:'Menuiserie extérieure — fourni, posé',         u:'m²', pu:700},
   {id:'porte_int',     lot:'Menuiseries intérieures', lbl:'Porte intérieure — bloc-porte fourni, posé',   u:'u',  pu:450},
+  {id:'fp_ba13',   lot:'Plafonds', lbl:'Faux plafond suspendu — plaque de plâtre (BA13)',        u:'m²', pu:42},
+  {id:'fp_phon',   lot:'Plafonds', lbl:'Faux plafond suspendu — plaque phonique',                u:'m²', pu:56},
+  {id:'fp_dalle',  lot:'Plafonds', lbl:'Faux plafond — dalles minérales 600×600 sur ossature',   u:'m²', pu:40},
+  {id:'fp_jouee',  lot:'Plafonds', lbl:'Jouées / retombées de faux plafond',                     u:'m²', pu:75},
+  {id:'fp_iso',    lot:'Plafonds', lbl:'Isolant en plénum de faux plafond',                       u:'m²', pu:12},
   {id:'install_pct',   lot:'Installation de chantier', lbl:'Installation de chantier (% des travaux)',  u:'%',  pu:5}
 ];
 var PRIX_KEY='BPO_PRIX_v1';
@@ -3858,6 +3868,12 @@ function immDQE(){
   if(Q.fac){ add('fac_mur', Q.fac.mur); add('fac_bardage', Q.fac.bardage); add('fac_rideau', Q.fac.rideau); }
   if(Q.clo){ add('cloison_placo', Q.clo.placo); add('cloison_autre', Q.clo.autre); }
   if(Q.men){ add('menuis_ext', Q.men.extM2); add('porte_int', Q.men.intN); }
+  /* Faux plafond : la ligne de prix suit le type choisi ; jouées et isolant à part. */
+  if(Q.fp && Q.fp.area>0){
+    add(({ba13:'fp_ba13', phonique:'fp_phon', dalle600:'fp_dalle'})[Q.fp.type] || 'fp_ba13', Q.fp.area);
+    add('fp_jouee', Q.fp.jouee);
+    add('fp_iso',   Q.fp.iso);
+  }
   var t=L.reduce(function(s,l){ return s+l.tot; },0);
   /* Installation de chantier : pourcentage des travaux, donc calculée en dernier
      et hors du cumul des ouvrages. */
@@ -4632,6 +4648,10 @@ var PIM = {
   nFloors:5,
   heights:[350,300,300,300,300],
   dalleAuto:1, dalleEp:25,
+  /* FAUX PLAFOND suspendu sous chaque dalle de plafond (étages portés + toiture) :
+     type, épaisseur de plaque, distance à la dalle (plénum), isolant optionnel.
+     Jouées de fermeture du plénum (contour + trémies) automatiques. Défaut : éteint. */
+  fpOn:0, fpType:'ba13', fpThick:1.3, fpGap:40, fpIsoOn:0, fpIso:10,
   gridAuto:1, spanTarget:600, nbX:3, nbY:3,
   structAuto:1, colSide:45, beamH:50, beamW:25,
   poutres:1, mat:'beton',
@@ -6550,6 +6570,46 @@ function _triPolyHoles(P){
 function tremiesForFloor(fi){ var out=[]; (PIM&&PIM.tremies?PIM.tremies:[]).forEach(function(tr){
     var fl=tr.floors||[]; if(fl.indexOf(fi)>=0){ var p=partParse(tr.verts); if(p&&p.length>=3){ var pc=(typeof arcCurve==='function')?arcCurve(p, tr):p; out.push(pc.map(function(q){return [q[0],q[1]];})); } } });
   return out; }
+/* Jouées (retombées) fermant le plénum d'un faux plafond : parois verticales sur le
+   contour ET autour de chaque trémie, du bas de la plaque (y0) à la sous-face de la
+   dalle (y1). Mêmes conventions de normale que dallePrismHoles. */
+function fpJouees(outer, holes, y0, y1, col){
+  if(!outer || outer.length<2 || !(y1>y0)) return;
+  var n=outer.length;
+  for(var i=0;i<n;i++){ var a=outer[i], b=outer[(i+1)%n];
+    var q=[[a[0],y0,a[1]],[b[0],y0,b[1]],[b[0],y1,b[1]],[a[0],y1,a[1]]];
+    face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), col,1); }
+  (holes||[]).forEach(function(h){ if(!h||h.length<3) return; var H=h.slice(); if(_ringArea(H)>0) H.reverse();
+    var m=H.length; for(var i=0;i<m;i++){ var a=H[i], b=H[(i+1)%m];
+      var q=[[a[0],y0,a[1]],[b[0],y0,b[1]],[b[0],y1,b[1]],[a[0],y1,a[1]]];
+      face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), col,1); } });
+}
+/* périmètre d'un anneau polygonal (m) */
+function _ringPerim(r){ var p=0,n=r.length; for(var i=0;i<n;i++){ var a=r[i],b=r[(i+1)%n]; p+=Math.hypot(b[0]-a[0],b[1]-a[1]); } return p; }
+/* FAUX PLAFOND suspendu sous une dalle de plafond de l'immeuble : plaque (percée des
+   trémies), jouées de fermeture du plénum (contour + trémies), isolant optionnel
+   plaqué sous la dalle. Cumule les surfaces dans IMM_STRUCT.fp pour le métré/DQE. */
+function immFauxPlaf(pl, holes, ySlabBot){
+  if(!PIM.fpOn || !pl || pl.length<3) return;
+  var gap=Math.max(0,(PIM.fpGap||0))/100, fth=Math.max(0.005,(PIM.fpThick||1.3)/100);
+  var yBoardBot=ySlabBot-gap-fth;
+  var hol=(holes||[]).filter(function(h){return h&&h.length>=3;});
+  var col=FINISH.fauxplaf, sT=_CURTEX, sIFC=_IFCTAG;
+  _IFCTAG=null; _CURTEX=FINISH_TEX.fauxplaf;
+  if(hol.length) dallePrismHoles(pl, hol, yBoardBot, fth, col); else dallePrism(pl, yBoardBot, fth, col);
+  fpJouees(pl, hol, yBoardBot, ySlabBot, col);
+  _CURTEX=sT;
+  if(PIM.fpIsoOn){ var fi=Math.min(gap-0.02,(PIM.fpIso||0)/100); if(fi>0){ var sT2=_CURTEX; _CURTEX=FINISH_TEX.imdalle;
+    if(hol.length) dallePrismHoles(pl, hol, ySlabBot-fi, fi, SLAB_COL.iso); else dallePrism(pl, ySlabBot-fi, fi, SLAB_COL.iso);
+    _CURTEX=sT2; } }
+  _IFCTAG=sIFC;
+  if(typeof IMM_STRUCT!=='undefined' && IMM_STRUCT && IMM_STRUCT.fp){
+    var a=Math.abs(polyArea(pl)); hol.forEach(function(h){ a-=Math.abs(polyArea(h)); });
+    if(a>0){ IMM_STRUCT.fp.area+=a; if(PIM.fpIsoOn) IMM_STRUCT.fp.iso+=a; }
+    var per=_ringPerim(pl); hol.forEach(function(h){ per+=_ringPerim(h); });
+    IMM_STRUCT.fp.jouee+=per*(gap+fth);
+  }
+}
 function buildMur(){
   var L = PM.len/100, H = PM.hgt/100;       /* longueur, hauteur (m) */
 
@@ -8399,7 +8459,8 @@ function buildImmeuble(){
   var N=Math.max(1, PIM.nFloors|0), HS=[];
   for(var i=0;i<N;i++){ HS.push(((PIM.heights&&PIM.heights[i]!=null)?PIM.heights[i]:300)/100); }
   var levelY=[0]; for(var i=0;i<N;i++) levelY.push(levelY[i]+HS[i]);
-  IMM_STRUCT={levelY:levelY.slice(), e:e, slabs:[], cols:[], beams:[], cores:[], facades:[], acro:[], parts:[]};
+  IMM_STRUCT={levelY:levelY.slice(), e:e, slabs:[], cols:[], beams:[], cores:[], facades:[], acro:[], parts:[],
+              fp:{on:!!PIM.fpOn, type:(PIM.fpType||'ba13'), area:0, jouee:0, iso:0}};
   var slCol=FINISH.imdalle, cCol=FINISH.impoteau, bCol=FINISH.impoutre, coreCol=FINISH.imvoile;
   /* une poutre acier reste acier tant que l'utilisateur n'a pas choisi sa finition */
   if(bSteel && !FINISH_SET.impoutre && !FINISH_TEX.impoutre) bCol=(typeof STEEL_COL!=='undefined')?STEEL_COL:[120,124,130];
@@ -8439,6 +8500,9 @@ function buildImmeuble(){
     if(_hol.length){ dallePrismHoles(sp, _hol, yT-e, e, slCol); }
     else if(detailDeb || dd>0 || insetOf(i)>0 || libre){ dallePrism(sp, yT-e, e, slCol); }
     else { rects.forEach(function(r){ box(r.cx, yT-e/2, r.cz, r.w, e, r.d, slCol,1); }); }
+    /* faux plafond suspendu sous les dalles de plafond (étages portés + toiture, i>=1),
+       sur le contour de la pièce (hors débord), percé des mêmes trémies que la dalle */
+    if(i>=1) immFauxPlaf(pl, _hol, yT-e);
   }
   /* POTEAUX continus : du sol au soffite du dernier niveau porté (touchent toutes les dalles) */
   _CURTEX=FINISH_TEX.impoteau;
@@ -18736,6 +18800,27 @@ function buildImmeubleUI(){
     base:'debordSides', floors:'debordFloors', selKey:'debSel', sideMin:0, sideMax:2000, roof:true,
     note:'Débord de dalle par côté (cm). « Tous » = base ; choisir un niveau (dont « Toit ») pour le surcharger.' });
 
+  group('Faux plafond');
+  toggle('Faux plafond','fpOn');
+  if(PIM.fpOn){
+    (function(){
+      var lbl=document.createElement('div'); lbl.className='slbl'; lbl.style.cssText='font-size:10px;margin:8px 0 3px;'; lbl.textContent=T('Type'); target.appendChild(lbl);
+      var grid=document.createElement('div'); grid.className='mat-grid';
+      [['ba13','BA13'],['phonique','BA13 phonique'],['dalle600','Dalles 600×600']].forEach(function(p){
+        var b=document.createElement('button'); b.textContent=T(p[1]); if(p[0]===(PIM.fpType||'ba13')) b.className='on';
+        b.onclick=function(){ PIM.fpType=p[0]; build(); updateDims(); buildImmeubleUI(); }; grid.appendChild(b);
+      });
+      target.appendChild(grid);
+    })();
+    slider('Épaisseur','cm','fpThick',1,5,0.1);
+    slider('Distance à la dalle','cm','fpGap',5,120,1);
+    toggle('Isolant en plénum','fpIsoOn');
+    if(PIM.fpIsoOn) slider('Épaisseur isolant','cm','fpIso',2,30,0.5);
+    var nn=document.createElement('div'); nn.className='exp-note'; nn.style.margin='4px 0 0';
+    nn.textContent=T('Sous chaque dalle de plafond (planchers portés + toiture), percé des trémies, avec jouées de fermeture du plénum.');
+    target.appendChild(nn);
+  }
+
   group('Trame de poteaux');
   toggle('Trame automatique','gridAuto');
   if(PIM.gridAuto) slider('Entraxe cible','cm','spanTarget',300,1200,10);
@@ -25269,6 +25354,24 @@ var I18N_ADD37={
 "Intégré (linteau-coffre)":["Integrated (box lintel)","Integrado (dintel-cajón)","Integrato (architrave-cassonetto)","Integriert (Sturzkasten)","Integrado (lintel-caixa)","Beépített (tokos áthidaló)","一体式(箱式过梁)","一体型(まぐさ兼用)","एकीकृत (बॉक्स लिंटेल)","Встроенный (перемычка-короб)","Вбудований (перемичка-короб)","مدمج (عتبة-صندوق)"]
 };
 (function(){ for(var fr in I18N_ADD37){ var t=I18N_ADD37[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADDFP — faux plafond de l'immeuble (UI + lignes de chiffrage). Ordre I18N_ORDER7. */
+var I18N_ADDFP={
+"BA13 phonique":["Acoustic plasterboard","Placa fónica","Cartongesso fonico","Akustik-Gipskarton","Gesso acústico","Akusztikus gipszkarton","隔音石膏板","遮音石膏ボード","ध्वनिरोधी जिप्सम","Акустический гипсокартон","Акустичний гіпсокартон","لوح جبس عازل للصوت"],
+"Dalles 600×600":["600×600 tiles","Placas 600×600","Pannelli 600×600","Deckenplatten 600×600","Placas 600×600","600×600 lapok","600×600矿棉板","600×600パネル","600×600 टाइलें","Плиты 600×600","Плити 600×600","ألواح 600×600"],
+"Type":["Type","Tipo","Tipo","Typ","Tipo","Típus","类型","タイプ","प्रकार","Тип","Тип","النوع"],
+"Épaisseur":["Thickness","Espesor","Spessore","Dicke","Espessura","Vastagság","厚度","厚さ","मोटाई","Толщина","Товщина","السماكة"],
+"Sous chaque dalle de plafond (planchers portés + toiture), percé des trémies, avec jouées de fermeture du plénum.":["Under every ceiling slab (supported floors + roof), pierced at openings, with returns closing the plenum.","Bajo cada losa de techo (forjados + cubierta), perforado en los huecos, con jambas que cierran el plénum.","Sotto ogni solaio di copertura (solai portati + tetto), forato in corrispondenza delle aperture, con risvolti che chiudono il plenum.","Unter jeder Deckenplatte (getragene Geschosse + Dach), an Öffnungen durchbrochen, mit Schürzen zum Schließen des Plenums.","Sob cada laje de teto (pisos apoiados + cobertura), perfurado nos vãos, com abas que fecham o plenum.","Minden födém alatt (alátámasztott szintek + tető), az áttöréseknél kivágva, a plénumot lezáró szegélyekkel.","位于每层顶板下方（承重楼板+屋面），在洞口处开孔，并以侧板封闭吊顶空腔。","各天井スラブ下（支持床＋屋根）に設置、開口部で開孔し、懐を塞ぐ幕板付き。","प्रत्येक छत स्लैब के नीचे (सहायक फर्श + छत), ओपनिंग पर छिद्रित, प्लेनम बंद करने वाली जौई के साथ।","Под каждой потолочной плитой (перекрытия + кровля), с проёмами и бортами, закрывающими запотолочное пространство.","Під кожною стельовою плитою (перекриття + покрівля), з отворами та бортами, що закривають запотельний простір.","أسفل كل بلاطة سقف (الطوابق المحمولة + السطح)، مثقوب عند الفتحات، مع جوانب تغلق الفراغ العلوي."],
+"Faux plafond suspendu — plaque de plâtre (BA13)":["Suspended ceiling — plasterboard (BA13)","Falso techo suspendido — placa de yeso (BA13)","Controsoffitto — cartongesso (BA13)","Abgehängte Decke — Gipskarton (BA13)","Teto falso suspenso — placa de gesso (BA13)","Függesztett álmennyezet — gipszkarton (BA13)","吊顶——石膏板（BA13）","吊り天井 — 石膏ボード（BA13）","सस्पेंडेड सीलिंग — जिप्सम बोर्ड (BA13)","Подвесной потолок — гипсокартон (BA13)","Підвісна стеля — гіпсокартон (BA13)","سقف معلق — لوح جبس (BA13)"],
+"Faux plafond suspendu — plaque phonique":["Suspended ceiling — acoustic board","Falso techo suspendido — placa fónica","Controsoffitto — lastra fonica","Abgehängte Decke — Akustikplatte","Teto falso suspenso — placa acústica","Függesztett álmennyezet — akusztikus lap","吊顶——隔音板","吊り天井 — 遮音ボード","सस्पेंडेड सीलिंग — ध्वनिरोधी बोर्ड","Подвесной потолок — акустическая плита","Підвісна стеля — акустична плита","سقف معلق — لوح عازل للصوت"],
+"Faux plafond — dalles minérales 600×600 sur ossature":["Suspended ceiling — 600×600 mineral tiles on grid","Falso techo — placas minerales 600×600 sobre perfilería","Controsoffitto — pannelli minerali 600×600 su orditura","Abgehängte Decke — Mineralplatten 600×600 auf Unterkonstruktion","Teto falso — placas minerais 600×600 sobre perfilaria","Álmennyezet — 600×600 ásványi lapok vázon","吊顶——600×600矿棉板配龙骨","吊り天井 — 下地組の600×600ミネラルパネル","सस्पेंडेड सीलिंग — ग्रिड पर 600×600 मिनरल टाइलें","Подвесной потолок — минеральные плиты 600×600 по каркасу","Підвісна стеля — мінеральні плити 600×600 по каркасу","سقف معلق — ألواح معدنية 600×600 على هيكل"],
+"Jouées / retombées de faux plafond":["Ceiling returns / bulkheads","Jambas / faldones de falso techo","Risvolti / velette di controsoffitto","Deckenschürzen / -abhänge","Abas / sancas de teto falso","Álmennyezeti leszúrások / szegélyek","吊顶侧板/垂板","天井見切り／幕板","सीलिंग रिटर्न / बल्कहेड","Борта / фартуки подвесного потолка","Борти / фартухи підвісної стелі","جوانب / حواف السقف المعلق"],
+"Isolant en plénum de faux plafond":["Insulation in ceiling plenum","Aislante en plénum de falso techo","Isolante nel plenum del controsoffitto","Dämmung im Deckenplenum","Isolante no plenum do teto falso","Hőszigetelés az álmennyezeti plénumban","吊顶空腔内保温层","天井懐の断熱材","सीलिंग प्लेनम में इन्सुलेशन","Утеплитель в запотолочном пространстве","Утеплювач у запотельному просторі","عازل في فراغ السقف المعلق"],
+"Plafonds":["Ceilings","Techos","Controsoffitti","Decken","Tetos","Mennyezetek","顶棚","天井","छतें","Потолки","Стелі","الأسقف"]
+};
+(function(){ for(var fr in I18N_ADDFP){ var t=I18N_ADDFP[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
