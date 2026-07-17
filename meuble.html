@@ -3681,7 +3681,8 @@ function steelSectM2(serie, taille){
 function steelKgM(serie, taille){ return steelSectM2(serie,taille)*STEEL_RHO; }
 /* Renvoie {beton:{dalles,poteaux,poutres,total}, acier:[{lbl,ml,kg}], ml, kg}. */
 function immQuant(){
-  var Q={beton:{dalles:0,poteaux:0,poutres:0,total:0}, acier:[], ml:0, kg:0}, ac={};
+  var Q={beton:{dalles:0,poteaux:0,poutres:0,total:0}, surf:{dalles:0},
+         clo:{placo:0, autre:0}, men:{extM2:0, extN:0, intN:0}, acier:[], ml:0, kg:0}, ac={};
   if(typeof IMM_STRUCT==='undefined' || !IMM_STRUCT) return Q;
   function addAc(lbl, ml, kgm){ if(!(ml>0)) return; if(!ac[lbl]) ac[lbl]={lbl:lbl,ml:0,kg:0};
     ac[lbl].ml+=ml; ac[lbl].kg+=ml*kgm; Q.ml+=ml; Q.kg+=ml*kgm; }
@@ -3690,7 +3691,7 @@ function immQuant(){
     if(!sl.poly || sl.poly.length<3) return;
     var a=Math.abs(polyArea(sl.poly));
     (sl.holes||[]).forEach(function(h){ if(h && h.length>2) a-=Math.abs(polyArea(h)); });
-    if(a>0) Q.beton.dalles += a*(sl.t||0);
+    if(a>0){ Q.beton.dalles += a*(sl.t||0); Q.surf.dalles += a; }   /* surface coulée, pour pouvoir rapprocher */
   });
   /* poteaux : béton plein, rond/tube acier, ou profil normé */
   var ct=(PIM.colType||'beton'), cSz=PIM.colSize||300;
@@ -3709,9 +3710,250 @@ function immQuant(){
     if(bIsSteel) addAc(bt+' '+bSz, L, steelKgM(bt,bSz));
     else Q.beton.poutres += L*(b.w||0)*(b.h||0);
   });
+  /* Façades : surface nette par type (les baies posées sont déduites). */
+  Q.fac={mur:0, bardage:0, rideau:0};
+  (IMM_STRUCT.facades||[]).forEach(function(f){
+    var L=Math.hypot((f.bx||0)-(f.ax||0), (f.bz||0)-(f.az||0)), H=Math.abs((f.y1||0)-(f.y0||0));
+    var a=L*H; if(!(a>0)) return;
+    (f.wins||[]).forEach(function(w){ var wa=(w.w||0)*(w.h||0); if(wa>0 && wa<a) a-=wa; });   /* déduction des baies */
+    if(f.nm==='Mur-rideau') Q.fac.rideau+=a;
+    else if(f.nm==='Bardage') Q.fac.bardage+=a;
+    else Q.fac.mur+=a;
+  });
+  /* Cloisons : surface développée, baies de portes déduites. */
+  (IMM_STRUCT.parts||[]).forEach(function(pt){
+    var H=Math.abs((pt.y1||0)-(pt.y0||0)); if(!(H>0)) return;
+    var pp=pt.pts||[], L=0;
+    for(var i=0;i<pp.length-1;i++) L+=Math.hypot(pp[i+1][0]-pp[i][0], pp[i+1][1]-pp[i][1]);
+    var a=L*H;
+    (pt.doors||[]).forEach(function(d){ var da=(d.w||0)*(pt.doorH||2.04); if(da>0 && da<a) a-=da; Q.men.intN++; });
+    if(a>0) Q.clo[(pt.ty==='placo')?'placo':'autre'] += a;
+  });
+  /* Menuiseries extérieures : celles réellement posées en façade. */
+  (function(){
+    var ops=(typeof PIM!=='undefined' && PIM.imOpenings)?PIM.imOpenings:[];
+    if(!ops.length) return;
+    var cfgs=null; try{ cfgs=(typeof cfgLoad==='function')?cfgLoad():null; }catch(e){}
+    ops.forEach(function(op){
+      if(!op || !op.cfgId) return;
+      Q.men.extN++;
+      if(!cfgs) return;
+      var c=cfgs.filter(function(x){return x.id===op.cfgId;})[0]; if(!c) return;
+      var sz=null; try{ sz=(typeof imOpSize==='function')?imOpSize(c,op):null; }catch(e){}
+      if(sz && sz.w>0 && sz.h>0) Q.men.extM2 += sz.w*sz.h;
+    });
+  })();
   Q.beton.total = Q.beton.dalles + Q.beton.poteaux + Q.beton.poutres;
   Q.acier = Object.keys(ac).map(function(k){ return ac[k]; }).sort(function(a,b){ return b.kg-a.kg; });
   return Q;
+}
+/* ============================================================================
+   CHIFFRAGE — amorce de DQE
+   ----------------------------------------------------------------------------
+   AVERTISSEMENT, à conserver sur TOUTE sortie : les prix livrés ne sont PAS
+   contractuels. Ce sont des ORDRES DE GRANDEUR indicatifs, susceptibles d'être
+   approximatifs, donnés pour dégrossir une enveloppe — jamais pour engager un
+   prix. Ils varient fortement selon la région, le lot, la quantité, l'accès au
+   chantier et l'état du marché. L'utilisateur DOIT les caler sur ses propres
+   marchés : chaque prix unitaire est éditable et mémorisé.
+   Base : France, HT, fourni-posé. Coffrage et armatures compris dans le béton.
+   ========================================================================== */
+var PRIX_BASE_DATE='2026-07';
+var PRIX_DEF=[
+  {id:'beton_dalle',   lot:'Gros œuvre',           lbl:'Béton armé — dalles / planchers', u:'m³', pu:900},
+  {id:'beton_poteau',  lot:'Gros œuvre',           lbl:'Béton armé — poteaux',            u:'m³', pu:1100},
+  {id:'beton_poutre',  lot:'Gros œuvre',           lbl:'Béton armé — poutres',            u:'m³', pu:1000},
+  {id:'acier_charp',   lot:'Charpente métallique', lbl:'Profilés acier — fourni, posé, monté', u:'kg', pu:3.5},
+  {id:'fac_mur',       lot:'Façades',              lbl:'Façade maçonnée — mur, isolation et parements', u:'m²', pu:260},
+  {id:'fac_bardage',   lot:'Façades',              lbl:'Façade bardée — ossature, isolation, bardage',  u:'m²', pu:230},
+  {id:'fac_rideau',    lot:'Façades',              lbl:'Mur-rideau — fourni, posé',                     u:'m²', pu:650},
+  /* Lot à part dans tout DQE : grue, cantonnements, clôtures, compte prorata.
+     Jamais dilué dans le prix du m³ de béton — d'où un % des travaux, éditable. */
+  {id:'cloison_placo', lot:'Second œuvre',          lbl:'Cloison de distribution — plaques sur ossature', u:'m²', pu:65},
+  {id:'cloison_autre', lot:'Second œuvre',          lbl:'Cloison maçonnée',                               u:'m²', pu:95},
+  {id:'menuis_ext',    lot:'Menuiseries extérieures', lbl:'Menuiserie extérieure — fourni, posé',         u:'m²', pu:700},
+  {id:'porte_int',     lot:'Menuiseries intérieures', lbl:'Porte intérieure — bloc-porte fourni, posé',   u:'u',  pu:450},
+  {id:'install_pct',   lot:'Installation de chantier', lbl:'Installation de chantier (% des travaux)',  u:'%',  pu:5}
+];
+var PRIX_KEY='BPO_PRIX_v1';
+var PRIX=(function(){ var m={}; PRIX_DEF.forEach(function(d){ m[d.id]=d.pu; });
+  try{ var sv=JSON.parse(localStorage.getItem(PRIX_KEY)); if(sv) for(var k in sv) if(k in m) m[k]=sv[k]; }catch(e){}
+  return m; })();
+function prixSave(){ try{ localStorage.setItem(PRIX_KEY, JSON.stringify(PRIX)); }catch(e){} }
+function prixReset(){ PRIX_DEF.forEach(function(d){ PRIX[d.id]=d.pu; }); prixSave(); }
+function prixDef(id){ return PRIX_DEF.filter(function(d){return d.id===id;})[0]||null; }
+function eur(v){ return (Math.round(v)).toLocaleString('fr-FR')+' €'; }
+/* ---- BORDEREAU DE L'ÉCONOMISTE ---------------------------------------------
+   BPO mesure SES ouvrages ; l'économiste travaille avec SA nomenclature. On
+   importe donc son bordereau, puis on associe chaque ouvrage mesuré à une de ses
+   lignes : le DQE sort ensuite dans SES codes, SES libellés, SES prix.
+   Colonnes détectées souplement (code / lot / désignation / unité / prix) ;
+   séparateur ; ou , déduit de l'en-tête. */
+var BORD_KEY='BPO_BORD_v1', BIND_KEY='BPO_BIND_v1';
+var BORD=(function(){ try{ return JSON.parse(localStorage.getItem(BORD_KEY))||[]; }catch(e){ return []; } })();
+var BIND=(function(){ try{ return JSON.parse(localStorage.getItem(BIND_KEY))||{}; }catch(e){ return {}; } })();
+function bordSave(){ try{ localStorage.setItem(BORD_KEY, JSON.stringify(BORD)); localStorage.setItem(BIND_KEY, JSON.stringify(BIND)); }catch(e){} }
+function bordClear(){ BORD=[]; BIND={}; bordSave(); }
+/* découpe une ligne CSV en respectant les guillemets */
+function _csvRow(line, sep){
+  var out=[], cur='', q=false;
+  for(var i=0;i<line.length;i++){ var c=line[i];
+    if(q){ if(c==='"'){ if(line[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=c; }
+    else if(c==='"') q=true;
+    else if(c===sep){ out.push(cur); cur=''; }
+    else cur+=c;
+  }
+  out.push(cur); return out.map(function(x){ return x.trim(); });
+}
+function bordParse(txt){
+  txt=txt.replace(/^﻿/,'').replace(/\r\n?/g,'\n');
+  var lines=txt.split('\n').filter(function(l){ return l.trim()!==''; });
+  if(!lines.length) return {rows:[], err:'fichier vide'};
+  var sep=((lines[0].split(';').length) >= (lines[0].split(',').length)) ? ';' : ',';
+  var head=_csvRow(lines[0], sep).map(function(h){ return h.toLowerCase(); });
+  function find(re, def){ for(var i=0;i<head.length;i++) if(re.test(head[i])) return i; return def; }
+  var iCode=find(/code|réf|ref|article|n°|num/,-1),
+      iLot =find(/lot|chapitre|catégorie|categorie|corps/,-1),
+      iLbl =find(/désignation|designation|libell|ouvrage|description|intitul/,-1),
+      iU   =find(/^unit|unité|unite|^un\.?$|^u$/,-1),
+      iPu  =find(/prix|p\.?u\.?|tarif|montant|€/,-1);
+  if(iLbl<0 || iPu<0) return {rows:[], err:'colonnes « désignation » et « prix unitaire » introuvables'};
+  var rows=[];
+  for(var r=1;r<lines.length;r++){
+    var c=_csvRow(lines[r], sep); if(!c.length) continue;
+    var lbl=(iLbl>=0?c[iLbl]:'')||''; if(!lbl) continue;
+    var raw=(iPu>=0?c[iPu]:'')||'';
+    var pu=parseFloat(raw.replace(/[^\d,.\-]/g,'').replace(/\s/g,'').replace(',','.'));
+    if(isNaN(pu)) continue;
+    rows.push({ code:(iCode>=0?c[iCode]:'')||'', lot:(iLot>=0?c[iLot]:'')||'Bordereau',
+                lbl:lbl, u:((iU>=0?c[iU]:'')||'').replace(/^m2$/i,'m²').replace(/^m3$/i,'m³'), pu:pu });
+  }
+  return {rows:rows, err:rows.length?null:'aucune ligne exploitable'};
+}
+function bordImportText(txt){
+  var R=bordParse(txt);
+  if(R.err){ alert('Bordereau illisible : '+R.err); return 0; }
+  BORD=R.rows; bordSave(); return R.rows.length;
+}
+/* Ligne de bordereau associée à un ouvrage BPO, ou null. */
+function bordFor(id){ var c=BIND[id]; if(!c) return null;
+  return BORD.filter(function(b){ return (b.code||b.lbl)===c; })[0]||null; }
+/* Lignes de chiffrage de l'immeuble, déduites des quantités réelles (immQuant).
+   On ne chiffre QUE ce que l'on mesure : pas de ratio inventé. */
+function immDQE(){
+  var Q=(typeof immQuant==='function')?immQuant():null, L=[];
+  if(!Q) return {lines:L, total:0};
+  function add(id, q){ var d=prixDef(id); if(!d || !(q>1e-6)) return;
+    var b=(typeof bordFor==='function')?bordFor(id):null;
+    /* associé au bordereau : ses code, libellé, lot et prix priment. On signale
+       toute unité divergente — c'est le piège classique (m² pris pour du m³). */
+    if(b){ L.push({id:id, code:b.code, lot:b.lot||d.lot, lbl:b.lbl, u:d.u, uBord:b.u,
+                   uWarn:!!(b.u && b.u.toLowerCase()!==d.u.toLowerCase()), q:q, pu:b.pu, tot:q*b.pu, src:'bord'}); return; }
+    var pu=(PRIX[id]!=null)?PRIX[id]:d.pu;
+    L.push({id:id, code:'', lot:d.lot, lbl:d.lbl, u:d.u, q:q, pu:pu, tot:q*pu, src:'def'}); }
+  add('beton_dalle',  Q.beton.dalles);
+  add('beton_poteau', Q.beton.poteaux);
+  add('beton_poutre', Q.beton.poutres);
+  add('acier_charp',  Q.kg);
+  if(Q.fac){ add('fac_mur', Q.fac.mur); add('fac_bardage', Q.fac.bardage); add('fac_rideau', Q.fac.rideau); }
+  if(Q.clo){ add('cloison_placo', Q.clo.placo); add('cloison_autre', Q.clo.autre); }
+  if(Q.men){ add('menuis_ext', Q.men.extM2); add('porte_int', Q.men.intN); }
+  var t=L.reduce(function(s,l){ return s+l.tot; },0);
+  /* Installation de chantier : pourcentage des travaux, donc calculée en dernier
+     et hors du cumul des ouvrages. */
+  var dI=prixDef('install_pct'), pct=(PRIX['install_pct']!=null)?PRIX['install_pct']:(dI?dI.pu:0);
+  if(dI && pct>0 && t>0){
+    var mi=t*pct/100;
+    L.push({id:'install_pct', code:'', lot:dI.lot, lbl:dI.lbl, u:'%', q:pct, pu:null, tot:mi, src:'pct'});
+    t+=mi;
+  }
+  return {lines:L, total:t, q:Q};
+}
+/* ---- CHIFFRAGE DE SCÈNE ----------------------------------------------------
+   Cumule les objets BÂTIS posés en scène. Le mobilier est exclu (il se chiffre
+   à part, et se déplace), mais la cuisine est comptée : c'est un ouvrage fixe.
+   Chaque instance est requantifiée en rejouant son build() dans son mode, selon
+   le même protocole que instanceFaces() — sauvegarde de l'état global, bascule,
+   construction, restauration. Sans cela on corromprait la scène affichée.
+   LIMITE ASSUMÉE : seuls les modes dotés d'un métré sont chiffrés. Aujourd'hui
+   l'immeuble. Les autres apparaissent en « non chiffrés » plutôt que d'être
+   silencieusement oubliés. */
+var SCN_BATI_MODES={immeuble:1, cuisine:1, mur:1, dalle:1, hangar:1, piscine:1, veranda:1, cheminee:1,
+                    poteau:1, poutre:1, escalier:1, toiture:1, ferme:1, murrideau:1, gardecorps:1};
+var SCN_QUANT_MODES={immeuble:1};        /* modes réellement mesurables à ce jour */
+function scnDQE(){
+  var R={lines:[], total:0, n:0, skipped:{}, unpriced:[]};
+  if(typeof SCENE==='undefined' || !SCENE.instances) return R;
+  var acc={};                                            /* id d'ouvrage -> quantité cumulée */
+  function walk(list){
+    (list||[]).forEach(function(inst){
+      if(!inst) return;
+      if(inst.group && inst.children){ walk(inst.children); return; }
+      var m=inst.mode;
+      if(m==='fabprod' || m==='furn'){ return; }          /* mobilier : hors chiffrage */
+      if(!SCN_BATI_MODES[m]) return;
+      if(!SCN_QUANT_MODES[m]){ R.skipped[m]=(R.skipped[m]||0)+1; return; }
+      var pobj=paramObjFor(m); if(!pobj || !inst.params) return;
+      /* --- bascule protégée, calquée sur instanceFaces() --- */
+      var bk={}; for(var kb in pobj) bk[kb]=pobj[kb];
+      for(var kp in inst.params){ var v=inst.params[kp]; pobj[kp]=(v&&typeof v==='object')?JSON.parse(JSON.stringify(v)):v; }
+      var sMODE=MODE, sFC=FC, sPR=PRIMS, sPOLY=CUR_POLY, sPT=POLY_TARGET, sDIMS=DIMS;
+      var sSITE=(typeof SITE!=='undefined')?SITE.on:undefined;
+      var sIME=(typeof IM_EDGES!=='undefined')?IM_EDGES:null, sIPD=(typeof IM_PART_DOORS!=='undefined')?IM_PART_DOORS:null;
+      var sSTR=(typeof IMM_STRUCT!=='undefined')?IMM_STRUCT:null, sFT=(typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0;
+      MODE=m; var _pfo=INST_FACEONLY; INST_FACEONLY=true;
+      var D=null; try{ build(); D=(m==='immeuble')?immDQE():null; }catch(e){}
+      INST_FACEONLY=_pfo;
+      MODE=sMODE; FC=sFC; PRIMS=sPR; CUR_POLY=sPOLY; POLY_TARGET=sPT; DIMS=sDIMS;
+      if(sIME) IM_EDGES=sIME;
+      if(sIPD) IM_PART_DOORS=sIPD;
+      if(typeof SITE!=='undefined' && sSITE!==undefined) SITE.on=sSITE;
+      for(var kr in bk) pobj[kr]=bk[kr];
+      /* --- cumul --- */
+      if(D && D.lines.length){
+        R.n++;
+        D.lines.forEach(function(l){
+          if(l.src==='pct') return;                      /* recalculée sur le total de scène */
+          if(!acc[l.id]) acc[l.id]={id:l.id, code:l.code, lot:l.lot, lbl:l.lbl, u:l.u, pu:l.pu, q:0};
+          acc[l.id].q+=l.q;
+        });
+        R.floor=(R.floor||0)+((typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0);
+      }
+      if(sSTR!==null) IMM_STRUCT=sSTR;
+      if(typeof IMM_FLOOR_TOTAL!=='undefined') IMM_FLOOR_TOTAL=sFT;
+    });
+  }
+  walk(SCENE.instances);
+  R.lines=Object.keys(acc).map(function(k){ var a=acc[k]; a.tot=a.q*a.pu; return a; });
+  var t=R.lines.reduce(function(s,l){ return s+l.tot; },0);
+  var dI=prixDef('install_pct'), pct=(PRIX['install_pct']!=null)?PRIX['install_pct']:(dI?dI.pu:0);
+  if(dI && pct>0 && t>0){ var mi=t*pct/100;
+    R.lines.push({id:'install_pct', code:'', lot:dI.lot, lbl:dI.lbl, u:'%', q:pct, pu:null, tot:mi, src:'pct'});
+    t+=mi; }
+  R.total=t;
+  return R;
+}
+/* Export tableur : CSV point-virgule (Excel FR). L'avertissement voyage avec. */
+function dqeCSV(D){
+  /* D fourni = chiffrage de scène ; sinon on chiffre l'objet courant. */
+  D=D||immDQE(); if(!D.lines.length){ alert('Aucune quantité à chiffrer.'); return; }
+  var R=[['AVERTISSEMENT : chiffrage NON CONTRACTUEL — ordres de grandeur indicatifs, potentiellement approximatifs.'],
+         ['Prix indicatifs France HT fourni-pose, base '+PRIX_BASE_DATE+', a caler sur vos propres marches.'],
+         [''],
+         ['Code','Lot','Ouvrage','Quantite','Unite','Prix unitaire HT','Total HT']];
+  D.lines.forEach(function(l){
+    R.push([l.code||'', l.lot, l.lbl, (l.src==='pct'?'':l.q.toFixed(3)), l.u,
+            (l.src==='pct'?(l.q+' %'):l.pu), Math.round(l.tot)]); });
+  R.push(['','','','','','TOTAL HT', Math.round(D.total)]);
+  var _sdp=(D.floor!=null)?D.floor:((typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0);
+  if(_sdp>0.5){
+    R.push(['','','','','Surface de plancher (m2)', _sdp.toFixed(2)]);
+    R.push(['','','','','Ratio HT (EUR/m2 de plancher)', (D.total/_sdp).toFixed(2)]);
+    R.push(['','Ratio des seuls ouvrages chiffres ci-dessus — pas le prix du batiment fini.']);
+  }
+  var csv=R.map(function(r){ return r.map(function(c){
+    c=String(c).replace(/"/g,'""'); return /[;"\n]/.test(c)?('"'+c+'"'):c; }).join(';'); }).join('\r\n');
+  dlFile('BPO-chiffrage.csv', '﻿'+csv, 'text/csv;charset=utf-8');
 }
 var IMM_FLOOR_TOTAL=0, IMM_FLOOR_N=0;
 function immFloorStr(){ return fmtArea(IMM_FLOOR_TOTAL||0); }
@@ -8427,6 +8669,7 @@ function buildImmeuble(){
       if(ar>0.01){ tot+=ar; nfl++; } });
     IMM_FLOOR_TOTAL=tot; IMM_FLOOR_N=nfl;
     var el=(typeof document!=='undefined')?document.getElementById('immFloorTxt'):null; if(el) el.innerHTML=immFloorStr();
+    try{ immQuantRefresh(); }catch(e){}   /* quantités + chiffrage en direct, comme le volume de piscine */
   })();
   /* motif 2D par dalle (vue en plan de l'étage) — même réglage pour tous les niveaux */
   if(hatchGet(PIM).on){ var _Nlv=levelY.length-1;
@@ -16888,7 +17131,10 @@ function drawImmAreas(cam,W,H){
   });
   var rows=Object.keys(byst).map(function(k){return byst[k];}); if(!rows.length) return;
   rows.sort(function(a,b){ return b.st-a.st; });   /* toiture en haut, RDC en bas */
-  var tot=0; rows.forEach(function(r){ tot+=r.raw; r.area=fmtArea(r.raw); });
+  /* La TOITURE n'est pas une surface de plancher : on l'affiche pour information
+     (étanchéité, couverture) mais on l'exclut du total — sinon la vignette
+     contredirait le ratio du chiffrage, qui se cale sur IMM_FLOOR_TOTAL. */
+  var tot=0; rows.forEach(function(r){ r.roof=(r.st>=N); if(!r.roof) tot+=r.raw; r.area=fmtArea(r.raw); });
   var totTitle=T('Total'), totArea=fmtArea(tot);
   ctx.save(); ctx.textBaseline='middle';
   var padX=9, rowH=19, headH=20, gap=16, totH=21;
@@ -16903,8 +17149,9 @@ function drawImmAreas(cam,W,H){
   ctx.strokeStyle='rgba(255,138,61,0.9)'; ctx.lineWidth=1; ctx.strokeRect(x+0.5,y+0.5,bw-1,bh-1);
   ctx.fillStyle='#ffb877'; ctx.textAlign='left'; ctx.font='bold 10px system-ui,sans-serif'; ctx.fillText(head, x+padX, y+headH/2+2);
   rows.forEach(function(r,i){ var ry=y+headH+rowH*i+rowH/2;
-    ctx.font='11px system-ui,sans-serif'; ctx.fillStyle='#bcd2e8'; ctx.textAlign='left'; ctx.fillText(r.title, x+padX, ry);
-    ctx.fillStyle='#ffd9ad'; ctx.textAlign='right'; ctx.fillText(r.area, x+bw-padX, ry);
+    ctx.font='11px system-ui,sans-serif';
+    ctx.fillStyle=r.roof?'#7d8ea0':'#bcd2e8'; ctx.textAlign='left'; ctx.fillText(r.title, x+padX, ry);
+    ctx.fillStyle=r.roof?'#9d8a76':'#ffd9ad'; ctx.textAlign='right'; ctx.fillText(r.area, x+bw-padX, ry);
   });
   /* total, séparé par un filet */
   var sy=y+headH+rows.length*rowH+3;
@@ -18140,6 +18387,167 @@ function uiAccordion(host,title){
   hd.onclick=function(){ col=!col; UI_COLLAPSE[title]=col; paint(); };
   host.appendChild(hd); host.appendChild(bd); return bd;
 }
+/* Métrés + chiffrage de l'immeuble. Extrait de buildImmeubleUI pour pouvoir être
+   RE-rendu seul à chaque build(), sans reconstruire tout le panneau : sinon les
+   quantités et les prix restaient figés pendant qu'on déplaçait un curseur.
+   Même idiome que le volume d'eau de la piscine (piscineVolTxt). */
+function immQuantUI(target){
+  /* Béton par ouvrage + acier au poids (c'est ainsi qu'il se chiffre). */
+  (function(){
+    var Q=immQuant(); if(!Q) return;
+    if(Q.beton.total>0.001){
+      var bd=document.createElement('div'); bd.className='wall-total'; bd.style.textAlign='left';
+      var rows='';
+      if(Q.beton.dalles>0.001){
+        rows+='<span>Dalles</span> <b>'+fmtVol(Q.beton.dalles,'beton')+'</b>';
+        /* Rappel de la surface coulée : c'est elle qui explique le volume, et elle
+           diffère de la surface de PLANCHER (qui exclut toiture et sous-sol). */
+        if(Q.surf.dalles>0.01) rows+=' <span>·</span> <b>'+fmtArea(Q.surf.dalles)+'</b> <span>de dalle, ép. moy.</span> <b>'
+          + fmtLen(Q.beton.dalles/Q.surf.dalles)+'</b>';
+        rows+='<br>';
+      }
+      if(Q.beton.poteaux>0.001) rows+='<span>Poteaux</span> <b>'+fmtVol(Q.beton.poteaux,'beton')+'</b><br>';
+      if(Q.beton.poutres>0.001) rows+='<span>Poutres</span> <b>'+fmtVol(Q.beton.poutres,'beton')+'</b><br>';
+      bd.innerHTML='<span>Volume de béton</span><br>'+rows+
+        '<span>Total béton</span> <b>'+fmtVol(Q.beton.total,'beton')+'</b>';
+      target.appendChild(bd);
+    }
+    if(Q.acier.length){
+      var ad=document.createElement('div'); ad.className='wall-total'; ad.style.textAlign='left';
+      var ar='';
+      Q.acier.forEach(function(a){
+        ar+='<span>'+a.lbl+'</span> <b>'+fmtLen(a.ml)+'</b> · <b>'+Math.round(a.kg).toLocaleString('fr-FR')+'</b> <span>kg</span><br>';
+      });
+      ad.innerHTML='<span>Charpente acier</span><br>'+ar+
+        '<span>Total acier</span> <b>'+Math.round(Q.kg).toLocaleString('fr-FR')+'</b> <span>kg</span>'+
+        (Q.kg>1000?(' &nbsp;·&nbsp; <b>'+(Q.kg/1000).toFixed(2)+'</b> <span>t</span>'):'');
+      target.appendChild(ad);
+      var nt=document.createElement('div'); nt.className='exp-note';
+      nt.textContent='Poids théorique : section calculée + congés de raccordement estimés (~1 %). À confirmer au catalogue pour une commande.';
+      target.appendChild(nt);
+    }
+  })();
+
+  /* ---- CHIFFRAGE (amorce de DQE) ---- */
+  (function(){
+    var D=immDQE(); if(!D.lines.length) return;
+    /* Badge « beta » — même facture que celui du rendu photo (bpo-render-hook.js).
+       Le chiffrage est une amorce : autant que ça se voie sur le titre. */
+    (function(){
+      var d=document.createElement('div'); d.className='slbl'; d.style.marginTop='8px';
+      d.style.display='flex'; d.style.alignItems='baseline'; d.style.gap='6px';
+      var t=document.createElement('span'); t.textContent=T('Chiffrage'); d.appendChild(t);
+      var bt=document.createElement('span'); bt.textContent='beta';
+      bt.style.cssText='font:600 9px system-ui;letter-spacing:.5px;text-transform:uppercase;color:#ff8a3d;opacity:.85;';
+      d.appendChild(bt); target.appendChild(d);
+    })();
+    var warn=document.createElement('div'); warn.className='exp-note';
+    /* Avertissement volontairement plus gros et plus contrasté que le reste :
+       c'est la mention la plus importante du panneau, elle doit être lue. */
+    warn.style.cssText='border-left:4px solid #e08a2e;background:rgba(224,138,46,.09);'
+      + 'padding:8px 9px;margin-bottom:8px;border-radius:0 4px 4px 0;'
+      + 'color:#ffc48a;font-size:12px;line-height:1.45;font-weight:600;'
+      + 'text-align:left;text-wrap:pretty;';
+    /* la date est dynamique : elle vit dans son propre élément, sinon la phrase
+       entière cesserait de correspondre à une clé du dictionnaire. */
+    warn.innerHTML='<span style="color:#ffb04d;font-weight:700;">NON CONTRACTUEL — ordres de grandeur indicatifs, potentiellement approximatifs, '
+      + 'pour dégrossir une enveloppe.</span><br><span style="font-weight:500;opacity:.9;">Prix France HT fourni-posé, base</span> '
+      + '<span style="font-weight:500;opacity:.9;">'+PRIX_BASE_DATE+'</span><span style="font-weight:500;opacity:.9;">, à caler sur vos propres marchés.</span>';
+    target.appendChild(warn);
+    /* --- bordereau de l'économiste : import + état --- */
+    (function(){
+      var br=document.createElement('div'); br.style.cssText='display:flex;gap:6px;margin-bottom:6px;';
+      var b1=document.createElement('button'); b1.className='tex-none'; b1.style.flex='1';
+      if(BORD.length) b1.innerHTML='<span>⭳ Bordereau :</span> '+BORD.length+' <span>lignes</span>';
+      else b1.textContent='⭳ Importer un bordereau (CSV)';
+      b1.onclick=function(){
+        var fi=document.createElement('input'); fi.type='file'; fi.accept='.csv,text/csv,text/plain';
+        fi.onchange=function(){ var f=fi.files&&fi.files[0]; if(!f) return;
+          var rd=new FileReader();
+          rd.onload=function(){ var n=bordImportText(String(rd.result));
+            if(n){ alert(n+' '+T('ligne(s) importée(s). Associez vos ouvrages ci-dessous.')); buildImmeubleUI(); } };
+          rd.readAsText(f,'utf-8'); };
+        fi.click(); };
+      br.appendChild(b1);
+      if(BORD.length){ var b2=document.createElement('button'); b2.className='tex-none';
+        b2.textContent='✕'; b2.title='Oublier le bordereau importé';
+        b2.onclick=function(){ bordClear(); buildImmeubleUI(); }; br.appendChild(b2); }
+      target.appendChild(br);
+      var hint=document.createElement('div'); hint.className='exp-note'; hint.style.marginBottom='4px';
+      hint.textContent=BORD.length
+        ? 'Chaque ouvrage mesuré est à associer à une ligne de votre bordereau : le chiffrage reprend alors vos codes, libellés et prix.'
+        : 'CSV attendu : une colonne désignation et une colonne prix unitaire, au minimum. Code, lot et unité sont repris s\'ils existent.';
+      target.appendChild(hint);
+    })();
+    var lot=null;
+    D.lines.forEach(function(l){
+      if(l.lot!==lot){ lot=l.lot;
+        var lh=document.createElement('div'); lh.className='slbl'; lh.style.marginTop='6px';
+        /* « Lot » dans son propre élément : le nom du lot peut venir du bordereau
+           de l'économiste, il ne doit pas être traduit — seul le mot « Lot » l'est. */
+        lh.innerHTML='<span>Lot</span> · <span>'+lot+'</span>'; target.appendChild(lh); }
+      var f=document.createElement('div'); f.className='fld';
+      var q=document.createElement('div'); q.className='exp-note'; q.style.margin='0 0 2px';
+      q.innerHTML=(l.code?('<b>'+l.code+'</b> · '):'')+'<span>'+l.lbl+'</span>'
+        + ((l.src==='pct') ? '' : (' — <b>'+l.q.toFixed(l.u==='kg'?0:2)+'</b> '+l.u));
+      f.appendChild(q);
+      /* association à une ligne du bordereau importé */
+      if(BORD.length && l.src!=='pct'){
+        var sel=document.createElement('select');
+        sel.style.cssText='width:100%;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:3px;font-size:11px;margin-bottom:3px;';
+        var o0=document.createElement('option'); o0.value=''; o0.textContent='— prix BPO indicatif —'; sel.appendChild(o0);
+        BORD.forEach(function(b){ var o=document.createElement('option');
+          o.value=(b.code||b.lbl); o.textContent=(b.code?b.code+' · ':'')+b.lbl+(b.u?(' ('+b.u+')'):'')+' — '+b.pu+' €';
+          if(BIND[l.id]===o.value) o.selected=true; sel.appendChild(o); });
+        sel.onchange=function(){ if(sel.value) BIND[l.id]=sel.value; else delete BIND[l.id]; bordSave(); buildImmeubleUI(); };
+        f.appendChild(sel);
+        if(l.uWarn){ var w=document.createElement('div'); w.className='exp-note';
+          w.style.color='#e08a2e';
+          w.innerHTML='<span>⚠ Unités différentes : BPO mesure des</span> '+l.u
+            +' <span>, votre ligne est en</span> '+l.uBord+' <span>. Le total serait faux.</span>';
+          f.appendChild(w); }
+      }
+      var row=document.createElement('div'); row.className='fh';
+      row.innerHTML=(l.src==='pct') ? '<label>% des travaux</label>'
+                                      : ('<label><span>PU</span> / '+l.u+'</label>');
+      var inp=document.createElement('input'); inp.type='number'; inp.step='0.1'; inp.min='0';
+      inp.value=(l.src==='pct')?l.q:l.pu;
+      inp.disabled=(l.src==='bord');   /* un prix venu du bordereau ne se modifie pas ici */
+      inp.style.cssText='width:88px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:3px;'+(l.src==='bord'?'opacity:.55;':'');
+      var tot=document.createElement('b'); tot.style.marginLeft='8px'; tot.textContent=eur(l.tot);
+      inp.oninput=function(){ var v=parseFloat(inp.value);
+        if(!isNaN(v) && v>=0){ PRIX[l.id]=v; prixSave(); buildImmeubleUI(); } };
+      row.appendChild(inp); row.appendChild(tot); f.appendChild(row); target.appendChild(f);
+    });
+    var tt=document.createElement('div'); tt.className='wall-total'; tt.style.textAlign='left';
+    /* Ratio au m² de surface de plancher — le repère de tout architecte. Il ne
+       porte QUE sur les ouvrages chiffrés ci-dessus (ici le gros œuvre) : ce n'est
+       pas le prix du bâtiment fini, et le libellé doit le dire. */
+    var sdp=(typeof IMM_FLOOR_TOTAL!=='undefined')?IMM_FLOOR_TOTAL:0;
+    var html='<span>TOTAL indicatif HT</span> <b>'+eur(D.total)+'</b>';
+    if(sdp>0.5) html+='<br><span>Ratio</span> <b>'+eur(D.total/sdp)+'</b> <span>/ m² de plancher</span>'
+                    + ' &nbsp;·&nbsp; <b>'+fmtArea(sdp)+'</b>';
+    tt.innerHTML=html;
+    target.appendChild(tt);
+    if(sdp>0.5){ var rn=document.createElement('div'); rn.className='exp-note';
+      rn.textContent='Ratio des seuls ouvrages chiffrés ci-dessus — ce n\'est pas le prix du bâtiment fini.';
+      target.appendChild(rn); }
+    var bar=document.createElement('div'); bar.style.cssText='display:flex;gap:6px;margin-top:6px;';
+    function mkb(txt, fn){ var b=document.createElement('button'); b.className='tex-none'; b.style.flex='1';
+      b.textContent=txt; b.onclick=fn; return b; }
+    bar.appendChild(mkb('⭳ Export tableur', function(){ dqeCSV(); }));
+    bar.appendChild(mkb('↺ Prix par défaut', function(){ prixReset(); buildImmeubleUI(); }));
+    target.appendChild(bar);
+  })();
+}
+/* Rafraîchit le bloc en place. On s'abstient si l'utilisateur a le doigt dans un
+   champ de prix : re-rendre lui volerait le focus au milieu de sa saisie. */
+function immQuantRefresh(){
+  var h=(typeof document!=='undefined')?document.getElementById('immQuantHost'):null;
+  if(!h) return;
+  if(h.contains(document.activeElement) && /INPUT|SELECT/.test((document.activeElement||{}).tagName||'')) return;
+  h.innerHTML=''; try{ immQuantUI(h); }catch(e){}
+}
 function buildImmeubleUI(){
   var host=document.getElementById('params'); host.innerHTML='';
   paramResetButton(buildImmeubleUI);        /* barre Enregistrer / Réinitialiser en tête */
@@ -18774,34 +19182,8 @@ var on=(IMM_LAYERS[d[0]]!==0); var b=document.createElement('button'); b.innerHT
   info.innerHTML='<span>Hauteur totale</span> <b>'+fmtLen(DIMS.h)+'</b> · <b>'+PIM.nFloors+'</b> <span>niveaux</span><br>'+
     '<span>Surface de plancher</span> ≈ <b id="immFloorTxt">'+immFloorStr()+'</b> · <b>'+(IMM_FLOOR_N||PIM.nFloors)+'</b> <span>planchers</span>';
   target.appendChild(info);
-  /* Béton par ouvrage + acier au poids (c'est ainsi qu'il se chiffre). */
-  (function(){
-    var Q=immQuant(); if(!Q) return;
-    if(Q.beton.total>0.001){
-      var bd=document.createElement('div'); bd.className='wall-total';
-      var rows='';
-      if(Q.beton.dalles>0.001)  rows+='<span>Dalles</span> <b>'+fmtVol(Q.beton.dalles,'beton')+'</b><br>';
-      if(Q.beton.poteaux>0.001) rows+='<span>Poteaux</span> <b>'+fmtVol(Q.beton.poteaux,'beton')+'</b><br>';
-      if(Q.beton.poutres>0.001) rows+='<span>Poutres</span> <b>'+fmtVol(Q.beton.poutres,'beton')+'</b><br>';
-      bd.innerHTML='<span>Volume de béton</span><br>'+rows+
-        '<span>Total béton</span> <b>'+fmtVol(Q.beton.total,'beton')+'</b>';
-      target.appendChild(bd);
-    }
-    if(Q.acier.length){
-      var ad=document.createElement('div'); ad.className='wall-total';
-      var ar='';
-      Q.acier.forEach(function(a){
-        ar+='<span>'+a.lbl+'</span> <b>'+fmtLen(a.ml)+'</b> · <b>'+Math.round(a.kg).toLocaleString('fr-FR')+'</b> <span>kg</span><br>';
-      });
-      ad.innerHTML='<span>Charpente acier</span><br>'+ar+
-        '<span>Total acier</span> <b>'+Math.round(Q.kg).toLocaleString('fr-FR')+'</b> <span>kg</span>'+
-        (Q.kg>1000?(' &nbsp;·&nbsp; <b>'+(Q.kg/1000).toFixed(2)+'</b> <span>t</span>'):'');
-      target.appendChild(ad);
-      var nt=document.createElement('div'); nt.className='exp-note';
-      nt.textContent='Poids théorique : section calculée + congés de raccordement estimés (~1 %). À confirmer au catalogue pour une commande.';
-      target.appendChild(nt);
-    }
-  })();
+  var _qh=document.createElement('div'); _qh.id='immQuantHost';
+  target.appendChild(_qh); immQuantUI(_qh);
   hatchUIGroup(PIM, buildImmeubleUI);
 }
 
@@ -19752,6 +20134,50 @@ function buildSceneUI(){
   var sb=document.getElementById('scnSave');
   if(sb) sb.onclick=function(){ if(!SCENE.instances.length){ alert('Scène vide.'); return; } var n=prompt('Nom de la scène :','Ma scène'); if(n===null)return;
     var nid='s'+Date.now().toString(36); var list=scnLoad(); list.unshift({ id:nid, name:(n.trim()||'Ma scène'), instances:JSON.parse(JSON.stringify(SCENE.instances, _scnRep)), lights:JSON.parse(JSON.stringify(SCENE.lights||[])), date:new Date().toLocaleDateString('fr-FR') }); scnStore(list); SCN_CUR=nid; buildSceneUI(); };
+  /* ---- CHIFFRAGE DE SCÈNE (beta) ---- */
+  (function(){
+    var D=scnDQE(); var nSkip=Object.keys(D.skipped||{}).length;
+    if(!D.lines.length && !nSkip) return;
+    var g=document.createElement('div'); g.className='slbl'; g.style.cssText='margin-top:10px;display:flex;align-items:baseline;gap:6px;';
+    var gt=document.createElement('span'); gt.textContent=T('Chiffrage de la scène'); g.appendChild(gt);
+    var gb=document.createElement('span'); gb.textContent='beta';
+    gb.style.cssText='font:600 9px system-ui;letter-spacing:.5px;text-transform:uppercase;color:#ff8a3d;opacity:.85;';
+    g.appendChild(gb); host.appendChild(g);
+    var warn=document.createElement('div'); warn.className='exp-note';
+    warn.style.cssText='border-left:4px solid #e08a2e;background:rgba(224,138,46,.09);padding:8px 9px;margin-bottom:8px;'
+      + 'border-radius:0 4px 4px 0;color:#ffc48a;font-size:12px;line-height:1.45;font-weight:600;text-align:left;';
+    warn.innerHTML='<span style="color:#ffb04d;font-weight:700;">NON CONTRACTUEL — ordres de grandeur indicatifs, potentiellement approximatifs, '
+      + 'pour dégrossir une enveloppe.</span><br><span style="font-weight:500;opacity:.9;">Mobilier exclu, cuisine comprise.</span>';
+    host.appendChild(warn);
+    if(D.lines.length){
+      var lot=null;
+      D.lines.forEach(function(l){
+        if(l.lot!==lot){ lot=l.lot; var lh=document.createElement('div'); lh.className='slbl'; lh.style.marginTop='6px';
+          lh.innerHTML='<span>Lot</span> · <span>'+lot+'</span>'; host.appendChild(lh); }
+        var r=document.createElement('div'); r.className='exp-note'; r.style.cssText='display:flex;justify-content:space-between;gap:8px;font-size:11px;';
+        var q=(l.src==='pct')?(l.q+' %'):(l.q.toFixed(l.u==='kg'?0:2)+' '+l.u);
+        r.innerHTML='<span style="flex:1;">'+(l.code?('<b>'+l.code+'</b> · '):'')+l.lbl+'</span><span style="opacity:.75;">'+q+'</span><b>'+eur(l.tot)+'</b>';
+        host.appendChild(r);
+      });
+      var tt=document.createElement('div'); tt.className='wall-total'; tt.style.textAlign='left';
+      var html='<span>TOTAL indicatif HT</span> <b>'+eur(D.total)+'</b>'
+             + '<br><span>Objets chiffrés</span> <b>'+D.n+'</b>';
+      if(D.floor>0.5) html+='<br><span>Ratio</span> <b>'+eur(D.total/D.floor)+'</b> <span>/ m² de plancher</span>';
+      tt.innerHTML=html; host.appendChild(tt);
+    }
+    /* Ce qui n'a PAS été chiffré doit se voir : un total muet serait trompeur. */
+    if(nSkip){
+      var sk=document.createElement('div'); sk.className='exp-note';
+      sk.style.cssText='color:#e08a2e;margin-top:6px;';
+      var parts=Object.keys(D.skipped).map(function(m){ return D.skipped[m]+' × '+T(m); });
+      sk.innerHTML='<span>⚠ Non chiffré, faute de métré :</span> '+parts.join(', ');
+      host.appendChild(sk);
+    }
+    if(D.lines.length){
+      var b=document.createElement('button'); b.className='tex-none'; b.style.cssText='width:100%;margin-top:6px;';
+      b.textContent='⭳ Export tableur'; b.onclick=function(){ dqeCSV(D); }; host.appendChild(b);
+    }
+  })();
 }
 /* UI de la Porte */
 function buildPorteUI(){
@@ -24698,6 +25124,60 @@ var I18N_ADD36={
 "Tablette intérieure":["Interior sill (board)","Repisa interior","Davanzale interno","Innenfensterbank","Peitoril interior","Belső könyöklő","内窗台板","内側窓台","आंतरिक सिल","Внутренний подоконник","Внутрішнє підвіконня","رف داخلي"]
 };
 (function(){ for(var fr in I18N_ADD36){ var t=I18N_ADD36[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD41 — libellés d'ouvrages de la base de prix. Ordre I18N_ORDER7. */
+var I18N_ADD41={
+"Lot":["Section","Lote","Lotto","Los","Lote","Munkanem","分部","工種","लॉट","Раздел","Розділ","بند"],
+"Béton armé — dalles / planchers":["Reinforced concrete — slabs / floors","Hormigón armado — losas / forjados","Cemento armato — solette / solai","Stahlbeton — Platten / Decken","Betão armado — lajes / pavimentos","Vasbeton — lemezek / födémek","钢筋混凝土 — 楼板","鉄筋コンクリート — スラブ・床","प्रबलित कंक्रीट — स्लैब / फर्श","Железобетон — плиты / перекрытия","Залізобетон — плити / перекриття","خرسانة مسلحة — بلاطات / أسقف"],
+"Béton armé — poteaux":["Reinforced concrete — columns","Hormigón armado — pilares","Cemento armato — pilastri","Stahlbeton — Stützen","Betão armado — pilares","Vasbeton — oszlopok","钢筋混凝土 — 柱","鉄筋コンクリート — 柱","प्रबलित कंक्रीट — स्तंभ","Железобетон — колонны","Залізобетон — колони","خرسانة مسلحة — أعمدة"],
+"Béton armé — poutres":["Reinforced concrete — beams","Hormigón armado — vigas","Cemento armato — travi","Stahlbeton — Träger","Betão armado — vigas","Vasbeton — gerendák","钢筋混凝土 — 梁","鉄筋コンクリート — 梁","प्रबलित कंक्रीट — बीम","Железобетон — балки","Залізобетон — балки","خرسانة مسلحة — كمرات"],
+"Profilés acier — fourni, posé, monté":["Steel sections — supplied, fitted, erected","Perfiles de acero — suministro, colocación, montaje","Profili in acciaio — fornitura, posa, montaggio","Stahlprofile — geliefert, montiert","Perfis de aço — fornecido, assente, montado","Acélprofilok — anyag, szerelés, összeállítás","型钢 — 供货、安装、吊装","形鋼 — 材工共・建方共","स्टील सेक्शन — आपूर्ति, स्थापना, संयोजन","Стальные профили — поставка, монтаж","Сталеві профілі — постачання, монтаж","مقاطع فولاذية — توريد وتركيب ونصب"],
+"Façade maçonnée — mur, isolation et parements":["Masonry façade — wall, insulation and finishes","Fachada de fábrica — muro, aislamiento y acabados","Facciata in muratura — muro, isolamento e finiture","Massivfassade — Wand, Dämmung und Bekleidung","Fachada em alvenaria — parede, isolamento e acabamentos","Falazott homlokzat — fal, szigetelés és burkolat","砌体立面 — 墙体、保温与饰面","組積造ファサード — 壁・断熱・仕上","चिनाई अग्रभाग — दीवार, इन्सुलेशन और फिनिश","Каменный фасад — стена, утепление и отделка","Кам'яний фасад — стіна, утеплення й оздоблення","واجهة مبنية — جدار وعزل وتشطيبات"],
+"Façade bardée — ossature, isolation, bardage":["Clad façade — framing, insulation, cladding","Fachada con revestimiento — estructura, aislamiento, revestimiento","Facciata rivestita — orditura, isolamento, rivestimento","Vorhangfassade — Unterkonstruktion, Dämmung, Bekleidung","Fachada revestida — estrutura, isolamento, revestimento","Burkolt homlokzat — váz, szigetelés, burkolat","幕板立面 — 龙骨、保温、面板","外装材ファサード — 下地・断熱・外装","क्लैड अग्रभाग — फ्रेमिंग, इन्सुलेशन, क्लैडिंग","Навесной фасад — каркас, утепление, облицовка","Навісний фасад — каркас, утеплення, облицювання","واجهة مكسوة — هيكل وعزل وكسوة"],
+"Mur-rideau — fourni, posé":["Curtain wall — supplied and fitted","Muro cortina — suministro y colocación","Facciata continua — fornitura e posa","Vorhangfassade — geliefert und montiert","Fachada-cortina — fornecida e assente","Függönyfal — anyag és szerelés","玻璃幕墙 — 供货与安装","カーテンウォール — 材工共","कर्टेन वॉल — आपूर्ति एवं स्थापना","Светопрозрачный фасад — поставка и монтаж","Світлопрозорий фасад — постачання і монтаж","حائط ساتر — توريد وتركيب"],
+"Installation de chantier (% des travaux)":["Site setup (% of works)","Instalación de obra (% de la obra)","Allestimento cantiere (% dei lavori)","Baustelleneinrichtung (% der Bauleistung)","Estaleiro (% da obra)","Felvonulási terület (a munka %-a)","施工准备（占工程比例 %）","仮設工事（工事費の%）","साइट सेटअप (कार्य का %)","Стройплощадка (% от работ)","Будмайданчик (% від робіт)","تجهيز الموقع (% من الأشغال)"]
+};
+(function(){ for(var fr in I18N_ADD41){ var t=I18N_ADD41[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD40 — corps du panneau Chiffrage. Ordre I18N_ORDER7. */
+var I18N_ADD40={
+"TOTAL indicatif HT":["INDICATIVE TOTAL excl. VAT","TOTAL indicativo sin IVA","TOTALE indicativo IVA escl.","RICHTWERT gesamt netto","TOTAL indicativo s/ IVA","Tájékoztató VÉGÖSSZEG (nettó)","参考合计(不含税)","参考合計(税別)","सांकेतिक कुल (कर रहित)","ИТОГО ориентировочно без НДС","РАЗОМ орієнтовно без ПДВ","الإجمالي الاسترشادي بدون ضريبة"],
+"Ratio":["Ratio","Ratio","Rapporto","Kennwert","Rácio","Fajlagos","单方造价","単価","अनुपात","Удельная стоимость","Питома вартість","المعدل"],
+"/ m² de plancher":["/ m² of floor area","/ m² de superficie","/ m² di solaio","/ m² Geschossfläche","/ m² de pavimento","/ m² szintterület","/ m² 建筑面积","/ m² 床面積","/ m² फर्श क्षेत्र","/ м² площади","/ м² площі","/ م² من المساحة"],
+"PU":["Unit price","P. unitario","P. unitario","EP","P. unitário","Egységár","单价","単価","इकाई मूल्य","Цена ед.","Ціна од.","سعر الوحدة"],
+"% des travaux":["% of works","% de la obra","% dei lavori","% der Bauleistung","% da obra","A munka %-a","占工程比例 %","工事費の%","कार्य का %","% от работ","% від робіт","% من الأشغال"],
+"⭳ Export tableur":["⭳ Spreadsheet export","⭳ Exportar a hoja de cálculo","⭳ Esporta foglio di calcolo","⭳ Tabellen-Export","⭳ Exportar folha de cálculo","⭳ Táblázat exportálása","⭳ 导出表格","⭳ 表計算に書き出し","⭳ स्प्रेडशीट निर्यात","⭳ Экспорт в таблицу","⭳ Експорт у таблицю","⭳ تصدير جدول"],
+"↺ Prix par défaut":["↺ Default prices","↺ Precios por defecto","↺ Prezzi predefiniti","↺ Standardpreise","↺ Preços padrão","↺ Alapértelmezett árak","↺ 默认价格","↺ 既定価格","↺ डिफ़ॉल्ट मूल्य","↺ Цены по умолчанию","↺ Ціни за умовчанням","↺ الأسعار الافتراضية"],
+"⭳ Importer un bordereau (CSV)":["⭳ Import a price schedule (CSV)","⭳ Importar un cuadro de precios (CSV)","⭳ Importa un elenco prezzi (CSV)","⭳ Preisverzeichnis importieren (CSV)","⭳ Importar tabela de preços (CSV)","⭳ Árjegyzék importálása (CSV)","⭳ 导入价格清单(CSV)","⭳ 単価表を読み込む(CSV)","⭳ मूल्य सूची आयात (CSV)","⭳ Импорт прайс-листа (CSV)","⭳ Імпорт прайс-листа (CSV)","⭳ استيراد جدول أسعار (CSV)"],
+"⭳ Bordereau :":["⭳ Price schedule:","⭳ Cuadro de precios:","⭳ Elenco prezzi:","⭳ Preisverzeichnis:","⭳ Tabela de preços:","⭳ Árjegyzék:","⭳ 价格清单:","⭳ 単価表:","⭳ मूल्य सूची:","⭳ Прайс-лист:","⭳ Прайс-лист:","⭳ جدول الأسعار:"],
+"lignes":["lines","líneas","righe","Zeilen","linhas","sor","行","行","पंक्तियाँ","строк","рядків","سطر"],
+"— prix BPO indicatif —":["— indicative BPO price —","— precio BPO indicativo —","— prezzo BPO indicativo —","— BPO-Richtpreis —","— preço BPO indicativo —","— tájékoztató BPO-ár —","— BPO 参考价 —","— BPO 参考価格 —","— सांकेतिक BPO मूल्य —","— ориентировочная цена BPO —","— орієнтовна ціна BPO —","— سعر BPO استرشادي —"],
+"NON CONTRACTUEL — ordres de grandeur indicatifs, potentiellement approximatifs, pour dégrossir une enveloppe.":["NOT CONTRACTUAL — indicative orders of magnitude, possibly approximate, to rough out a budget.","NO CONTRACTUAL — órdenes de magnitud indicativos, posiblemente aproximados, para esbozar un presupuesto.","NON CONTRATTUALE — ordini di grandezza indicativi, possibilmente approssimativi, per abbozzare un budget.","UNVERBINDLICH — Richtwerte, möglicherweise ungenau, zur groben Budgetermittlung.","NÃO CONTRATUAL — ordens de grandeza indicativas, possivelmente aproximadas, para esboçar um orçamento.","NEM SZERZŐDÉSES — tájékoztató nagyságrendek, esetleg pontatlanok, durva keretbecsléshez.","非合同性 — 指示性数量级，可能不精确，仅用于粗略估算。","契約に用いない — 概算のための目安であり、誤差を含む可能性があります。","गैर-संविदात्मक — सांकेतिक अनुमान, संभवतः अनुमानित, बजट के मोटे आकलन हेतु।","НЕ ДОГОВОРНОЕ — ориентировочные порядки величин, возможны отклонения, для грубой оценки бюджета.","НЕ ДОГОВІРНЕ — орієнтовні порядки величин, можливі відхилення, для грубої оцінки бюджету.","غير تعاقدي — قيم استرشادية قد تكون تقريبية، لتقدير أولي للميزانية."],
+"Prix France HT fourni-posé, base":["Prices France, excl. VAT, supplied and fitted, base","Precios Francia, sin IVA, suministro y colocación, base","Prezzi Francia, IVA escl., fornitura e posa, base","Preise Frankreich, netto, Lieferung und Montage, Stand","Preços França, s/ IVA, fornecido e assente, base","Franciaországi árak, nettó, anyag és munka, bázis","法国价格，不含税，含供货与安装，基准","フランス価格・税別・材工共、基準","फ्रांस मूल्य, कर रहित, आपूर्ति एवं स्थापना, आधार","Цены Франция, без НДС, с монтажом, база","Ціни Франція, без ПДВ, з монтажем, база","أسعار فرنسا، بدون ضريبة، توريد وتركيب، الأساس"],
+", à caler sur vos propres marchés.":[", to be aligned with your own contracts.",", a ajustar con sus propios contratos.",", da tarare sui vostri appalti.",", an Ihre eigenen Verträge anzupassen.",", a ajustar aos seus próprios contratos.",", saját szerződéseihez igazítandó.","，请按您自己的合同校准。","、自社の契約に合わせて調整してください。",", अपने अनुबंधों के अनुसार समायोजित करें।",", скорректируйте по своим договорам.",", скоригуйте за своїми договорами.","، يجب معايرتها وفق عقودكم."],
+"Ratio des seuls ouvrages chiffrés ci-dessus — ce n'est pas le prix du bâtiment fini.":["Ratio of the priced items above only — not the cost of the finished building.","Rácio solo de las partidas valoradas arriba — no es el coste del edificio acabado.","Rapporto delle sole voci quotate sopra — non è il costo dell'edificio finito.","Kennwert nur der oben bepreisten Positionen — nicht die Kosten des fertigen Gebäudes.","Rácio apenas dos artigos orçamentados acima — não é o custo do edifício acabado.","Csak a fenti árazott tételek fajlagos értéke — nem a kész épület költsége.","仅为上述已计价项目的单方造价 — 并非建成建筑的造价。","上記の計上項目のみの単価 — 完成建物の価格ではありません。","केवल ऊपर मूल्यांकित मदों का अनुपात — यह तैयार भवन की लागत नहीं है।","Удельная стоимость только учтённых выше работ — не стоимость готового здания.","Питома вартість лише врахованих вище робіт — не вартість готової будівлі.","معدل البنود المسعّرة أعلاه فقط — وليس تكلفة المبنى المنجز."],
+"⚠ Unités différentes : BPO mesure des":["⚠ Unit mismatch: BPO measures","⚠ Unidades distintas: BPO mide","⚠ Unità diverse: BPO misura","⚠ Abweichende Einheiten: BPO misst","⚠ Unidades diferentes: BPO mede","⚠ Eltérő mértékegység: a BPO mértékegysége","⚠ 单位不一致：BPO 计量为","⚠ 単位が異なります：BPOの計量は","⚠ इकाई भिन्न: BPO मापता है","⚠ Единицы различаются: BPO измеряет","⚠ Одиниці різняться: BPO вимірює","⚠ وحدات مختلفة: BPO يقيس بـ"],
+", votre ligne est en":[", your line is in",", su línea está en",", la vostra voce è in",", Ihre Position ist in",", a sua linha está em",", az Ön tétele",", 而您的条目为",", 御社の項目は",", आपकी पंक्ति है",", ваша строка в",", ваш рядок у","، بند سطركم بـ"],
+". Le total serait faux.":[". The total would be wrong.",". El total sería erróneo.",". Il totale sarebbe errato.",". Die Summe wäre falsch.",". O total ficaria errado.",". Az összeg hibás lenne.","。合计将出错。","。合計が誤りになります。","। कुल गलत होगा।",". Итог будет неверным.",". Підсумок буде хибним.","، سيكون الإجمالي خاطئًا."],
+"ligne(s) importée(s). Associez vos ouvrages ci-dessous.":["line(s) imported. Map your items below.","línea(s) importada(s). Asocie sus partidas abajo.","riga/righe importate. Associate le vostre voci qui sotto.","Zeile(n) importiert. Ordnen Sie Ihre Positionen unten zu.","linha(s) importada(s). Associe os seus artigos abaixo.","sor importálva. Rendelje hozzá tételeit alább.","行已导入。请在下方关联您的项目。","行を読み込みました。下で項目を対応付けてください。","पंक्तियाँ आयातित। नीचे अपनी मदें मैप करें।","строк импортировано. Сопоставьте позиции ниже.","рядків імпортовано. Зіставте позиції нижче.","سطر تم استيراده. اربط بنودك أدناه."]
+};
+(function(){ for(var fr in I18N_ADD40){ var t=I18N_ADD40[fr];
+  for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
+    if(!I18N[lg]) I18N[lg]={};
+    if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
+/* I18N_ADD39 — chiffrage (amorce de DQE). Ordre I18N_ORDER7. */
+var I18N_ADD39={
+"Chiffrage":["Cost estimate","Estimación","Stima dei costi","Kostenschätzung","Estimativa","Költségbecslés","造价估算","概算","लागत अनुमान","Смета","Кошторис","تقدير التكلفة"],
+"Gros œuvre":["Structural works","Obra gruesa","Opere strutturali","Rohbau","Estrutura","Szerkezetépítés","主体结构","躯体工事","संरचनात्मक कार्य","Несущие конструкции","Несучі конструкції","الأعمال الإنشائية"],
+"Charpente métallique":["Steel frame","Estructura metálica","Carpenteria metallica","Stahlbau","Estrutura metálica","Acélszerkezet","钢结构","鉄骨","स्टील फ्रेम","Металлокаркас","Металокаркас","الهيكل المعدني"],
+"Façades":["Façades","Fachadas","Facciate","Fassaden","Fachadas","Homlokzatok","立面","ファサード","अग्रभाग","Фасады","Фасади","الواجهات"],
+"Installation de chantier":["Site setup","Instalación de obra","Allestimento cantiere","Baustelleneinrichtung","Estaleiro","Felvonulási terület","施工准备","仮設工事","साइट सेटअप","Стройплощадка","Будмайданчик","تجهيز الموقع"]
+};
+(function(){ for(var fr in I18N_ADD39){ var t=I18N_ADD39[fr];
   for(var i=0;i<I18N_ORDER7.length && i<t.length;i++){ var lg=I18N_ORDER7[i];
     if(!I18N[lg]) I18N[lg]={};
     if(I18N[lg][fr]===undefined) I18N[lg][fr]=t[i]; } } })();
