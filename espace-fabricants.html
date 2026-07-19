@@ -4,98 +4,151 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace fabricants — Building Product Objects</title>
+<meta name="description" content="Fabricants et industriels : faites modéliser vos produits en objets 3D paramétriques et placez-les devant les architectes dès la conception. Audit et devis gratuits.">
+<link rel="canonical" href="https://bpobjects.github.io/BPO/espace-fabricants.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Building Product Objects">
+<meta property="og:title" content="Espace fabricants — Building Product Objects">
+<meta property="og:description" content="Faites modéliser vos gammes en objets 3D configurables, visibles par les prescripteurs au moment où ils conçoivent.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/favicon-180.png">
+<meta name="theme-color" content="#182034">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/bpo-ui.css">
 <style>
-  :root{ --bg:#1a1d23; --pn:#20242c; --p2:#262b34; --ln:#343a45; --tx:#e8e9ec; --dm:#8b92a0; --am:#ff8a3d; --cy:#5eb8ff; }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5;}
-  header{display:flex;align-items:center;gap:8px;padding:14px 20px;background:var(--pn);border-bottom:1px solid var(--ln);}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--am);display:inline-block;}
-  header b{font-size:15px;font-weight:700;}
-  header .sub{color:var(--am);font-size:12px;margin-left:6px;}
-  .wrap{max-width:760px;margin:0 auto;padding:28px 20px 60px;}
-  h1{font-size:24px;margin-bottom:6px;}
-  .lead{color:var(--dm);font-size:14px;margin-bottom:6px;}
-  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0;}
-  .step{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:14px;}
-  .step .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:rgba(255,138,61,.15);color:var(--am);align-items:center;justify-content:center;font-weight:700;font-size:12px;margin-bottom:8px;}
-  .step h3{font-size:13px;margin-bottom:4px;}
-  .step p{font-size:12px;color:var(--dm);}
-  form{background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:22px;margin-top:10px;}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-  .fld{margin-bottom:14px;}
-  label{display:block;font-size:12px;color:var(--dm);margin-bottom:5px;font-weight:600;}
-  label .req{color:var(--am);}
-  input,select,textarea{width:100%;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:7px;padding:10px 11px;font-size:13px;font-family:inherit;outline:none;}
-  input:focus,select:focus,textarea:focus{border-color:var(--cy);}
-  textarea{resize:vertical;min-height:110px;}
-  .check{display:flex;gap:9px;align-items:flex-start;margin-bottom:12px;}
-  .check input{width:auto;margin-top:2px;}
-  .check span{font-size:12px;color:var(--dm);}
-  .hp{position:absolute;left:-5000px;}
-  button{background:var(--am);color:#1a1d23;border:none;border-radius:8px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px;}
-  button:hover{filter:brightness(1.06);}
-  .note{font-size:11px;color:var(--dm);margin-top:14px;}
-  a{color:var(--cy);text-decoration:none;}
-  @media(max-width:620px){ .grid2,.steps{grid-template-columns:1fr;} }
+  .steps{margin:clamp(30px,5vh,48px) 0;}
+  .form-section{padding-bottom:clamp(56px,9vh,96px);}
+  .form-head{margin:0 0 18px;}
+  .form-head h2{font-size:22px;font-weight:600;letter-spacing:0;margin-bottom:6px;}
+  .form-head p{color:var(--dm);font-size:14.5px;}
 </style>
 </head>
-<body>
-<header>
-  <span class="dot"></span><b>Building Product Objects</b><span class="sub">Espace fabricants</span>
+<body class="page">
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+
+<!-- ============================ TOPBAR ============================ -->
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <span class="blockup">
+      <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="BPO">
+        <g stroke="#ff8a3d" stroke-width="1" opacity=".5"><path d="M16 4 27 12 23 25 9 25 5 12Z"/><path d="M16 16 16 4M16 16 27 12M16 16 23 25M16 16 9 25M16 16 5 12"/></g>
+        <g fill="#e5701c"><circle cx="16" cy="4" r="2.1"/><circle cx="27" cy="12" r="2.1"/><circle cx="23" cy="25" r="2.1"/><circle cx="9" cy="25" r="2.1"/><circle cx="5" cy="12" r="2.1"/><circle cx="16" cy="16" r="2.6"/></g>
+      </svg>
+      <span class="bt">BPO</span>
+      </span>
+      <span class="btag">Architectural Parametrics</span>
+    </a>
+    <nav class="nav-mini" aria-label="Navigation">
+      <a href="index.html" class="hide-sm">← Retour au site</a>
+      <a href="meuble.html" class="cta">Ouvrir le configurateur →</a>
+    </nav>
+  </div>
 </header>
 
-<div class="wrap">
-  <h1>Référencez vos produits en 3D paramétrique</h1>
-  <p class="lead">Vous fabriquez du mobilier, de la menuiserie, des façades ou des éléments de structure&nbsp;? Nous intégrons vos produits comme objets 3D configurables (RAL, textures, exports OBJ / DAE / IFC pour ArchiCAD, Revit, SketchUp).</p>
-  <p class="lead">Décrivez votre besoin ci-dessous&nbsp;: nous réalisons un <b>audit de vos objets</b> et vous adressons un <b>devis</b>.</p>
-
-  <div class="steps">
-    <div class="step"><span class="n">1</span><h3>Vous nous écrivez</h3><p>Présentez vos produits et vos fichiers via le formulaire.</p></div>
-    <div class="step"><span class="n">2</span><h3>Audit &amp; devis</h3><p>Nous étudions vos objets, formats et besoins, puis chiffrons.</p></div>
-    <div class="step"><span class="n">3</span><h3>Mise en ligne</h3><p>Vos produits deviennent configurables dans le catalogue.</p></div>
+<main id="contenu">
+<!-- ============================ HERO ============================ -->
+<section class="subhero">
+  <div class="wrap-narrow">
+    <span class="eyebrow">Fabricants &amp; industriels</span>
+    <h1>Référencez vos produits en 3D paramétrique</h1>
+    <p class="lead">Vous fabriquez du mobilier, de la menuiserie, des façades ou des éléments de structure&nbsp;? Nous intégrons vos produits comme objets 3D configurables — finitions RAL, textures, exports OBJ&nbsp;/&nbsp;DAE&nbsp;/&nbsp;IFC pour ArchiCAD, Revit et SketchUp — et les plaçons devant les architectes au moment où ils conçoivent.</p>
   </div>
+</section>
 
-  <!-- Envoi vers al@architecture-al.com via FormSubmit (aucun compte requis).
-       1re soumission : un e-mail de confirmation est envoyé à cette adresse -> cliquez le lien pour activer.
-       Pour masquer l'adresse aux robots, remplacez ensuite l'action par l'URL "hash" fournie par FormSubmit. -->
-  <form action="https://formsubmit.co/al@architecture-al.com" method="POST">
-    <input type="hidden" name="_subject" value="Nouvelle demande fabricant — BPO">
-    <input type="hidden" name="_captcha" value="true">
-    <input type="hidden" name="_template" value="table">
-    <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off">
+<!-- ============================ ÉTAPES + FORMULAIRE ============================ -->
+<section class="form-section">
+  <div class="wrap-narrow">
 
-    <div class="grid2">
-      <div class="fld"><label>Société <span class="req">*</span></label><input type="text" name="Societe" required></div>
-      <div class="fld"><label>Nom du contact <span class="req">*</span></label><input type="text" name="Contact" required></div>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Vous nous écrivez</h3><p>Présentez vos produits et vos fichiers via le formulaire ci-dessous.</p></div>
+      <div class="step"><span class="n">2</span><h3>Audit &amp; devis</h3><p>Nous étudions vos objets, formats et besoins, puis nous chiffrons.</p></div>
+      <div class="step"><span class="n">3</span><h3>Mise en ligne</h3><p>Vos produits deviennent configurables dans le catalogue.</p></div>
     </div>
-    <div class="grid2">
-      <div class="fld"><label>E-mail <span class="req">*</span></label><input type="email" name="email" required></div>
-      <div class="fld"><label>Téléphone</label><input type="tel" name="Telephone"></div>
-    </div>
-    <div class="grid2">
-      <div class="fld"><label>Site web</label><input type="url" name="Site_web" placeholder="https://"></div>
-      <div class="fld"><label>Type de produits</label>
-        <select name="Type_de_produits">
-          <option>Mobilier</option><option>Menuiserie (portes / fenêtres)</option><option>Façade / mur-rideau</option>
-          <option>Structure / charpente</option><option>Sols / revêtements</option><option>Autre</option>
-        </select>
+
+    <!-- Envoi vers al@architecture-al.com via FormSubmit (aucun compte requis).
+         1re soumission : un e-mail de confirmation est envoyé à cette adresse -> cliquez le lien pour activer.
+         Pour masquer l'adresse aux robots, remplacez ensuite l'action par l'URL "hash" fournie par FormSubmit. -->
+    <form class="form-card" action="https://formsubmit.co/al@architecture-al.com" method="POST">
+      <div class="form-head">
+        <h2>Parlez-nous de vos produits</h2>
+        <p>Nous réalisons un <b>audit de vos objets</b> et vous adressons un <b>devis</b> — réponse sous quelques jours ouvrés.</p>
       </div>
+
+      <input type="hidden" name="_subject" value="Nouvelle demande fabricant — BPO">
+      <input type="hidden" name="_captcha" value="true">
+      <input type="hidden" name="_template" value="table">
+      <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+      <div class="grid2">
+        <div class="fld"><label for="f-societe">Société <span class="req" aria-hidden="true">*</span></label>
+          <input id="f-societe" type="text" name="Societe" autocomplete="organization" required></div>
+        <div class="fld"><label for="f-contact">Nom du contact <span class="req" aria-hidden="true">*</span></label>
+          <input id="f-contact" type="text" name="Contact" autocomplete="name" required></div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="f-email">E-mail <span class="req" aria-hidden="true">*</span></label>
+          <input id="f-email" type="email" name="email" autocomplete="email" required></div>
+        <div class="fld"><label for="f-tel">Téléphone</label>
+          <input id="f-tel" type="tel" name="Telephone" autocomplete="tel"></div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="f-web">Site web</label>
+          <input id="f-web" type="url" name="Site_web" placeholder="https://" autocomplete="url"></div>
+        <div class="fld"><label for="f-type">Type de produits</label>
+          <select id="f-type" name="Type_de_produits">
+            <option>Mobilier</option><option>Menuiserie (portes / fenêtres)</option><option>Façade / mur-rideau</option>
+            <option>Structure / charpente</option><option>Sols / revêtements</option><option>Autre</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="f-nb">Nombre d'objets <span class="hint">approximatif</span></label>
+          <input id="f-nb" type="text" name="Nombre_objets" placeholder="ex. 12" inputmode="numeric"></div>
+        <div class="fld"><label for="f-fmt">Formats disponibles</label>
+          <input id="f-fmt" type="text" name="Formats" placeholder="DAE, OBJ, IFC, Revit, SketchUp…"></div>
+      </div>
+      <div class="fld"><label for="f-lien">Lien vers vos fichiers</label>
+        <input id="f-lien" type="url" name="Lien_fichiers" placeholder="Dropbox, WeTransfer, Drive… (https://)"></div>
+      <div class="fld"><label for="f-msg">Votre besoin <span class="req" aria-hidden="true">*</span></label>
+        <textarea id="f-msg" name="Message" required placeholder="Décrivez vos produits, vos attentes, vos délais…"></textarea></div>
+
+      <label class="check"><input type="checkbox" name="Newsletter" value="Oui"><span>Je souhaite recevoir la newsletter Building Product Objects (nouveautés, mises à jour). Désinscription possible à tout moment.</span></label>
+      <label class="check"><input type="checkbox" required><span>J'accepte que mes données soient utilisées pour traiter ma demande (RGPD). <span class="req" aria-hidden="true">*</span></span></label>
+
+      <button type="submit" class="btn btn-primary">Envoyer ma demande <span class="btn-arrow">→</span></button>
+      <p class="note">Vos informations ne servent qu'au traitement de votre demande et ne sont jamais revendues. Réponse à l'adresse <a href="mailto:al@architecture-al.com">al@architecture-al.com</a>.</p>
+    </form>
+
+  </div>
+</section>
+</main>
+
+<!-- ============================ FOOTER ============================ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <div class="foot-brand">
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-label="BPO">
+          <g stroke="#ffa155" stroke-width="1" opacity=".55"><path d="M16 4 27 12 23 25 9 25 5 12Z"/><path d="M16 16 16 4M16 16 27 12M16 16 23 25M16 16 9 25M16 16 5 12"/></g>
+          <g fill="#ff8a3d"><circle cx="16" cy="4" r="2.1"/><circle cx="27" cy="12" r="2.1"/><circle cx="23" cy="25" r="2.1"/><circle cx="9" cy="25" r="2.1"/><circle cx="5" cy="12" r="2.1"/><circle cx="16" cy="16" r="2.6"/></g>
+        </svg>
+        <span><b>BUILDING PRODUCT OBJECTS</b></span>
+      </div>
+      <div class="copyr">© 2026 Building Product Objects — Antoine Lacronique, architecte</div>
     </div>
-    <div class="grid2">
-      <div class="fld"><label>Nombre d'objets (approx.)</label><input type="text" name="Nombre_objets" placeholder="ex. 12"></div>
-      <div class="fld"><label>Formats disponibles</label><input type="text" name="Formats" placeholder="DAE, OBJ, IFC, Revit, SketchUp…"></div>
+    <div class="foot-links">
+      <a href="mentions-legales.html">Mentions légales</a>
+      <a href="cgu.html">CGU</a>
+      <a href="cgv.html">CGV</a>
+      <a href="politique-confidentialite.html">Confidentialité</a>
+      <a href="index.html">Accueil</a>
     </div>
-    <div class="fld"><label>Lien vers vos fichiers</label><input type="url" name="Lien_fichiers" placeholder="Dropbox, WeTransfer, Drive… (https://)"></div>
-    <div class="fld"><label>Votre besoin <span class="req">*</span></label><textarea name="Message" required placeholder="Décrivez vos produits, vos attentes, vos délais…"></textarea></div>
-
-    <label class="check"><input type="checkbox" name="Newsletter" value="Oui"><span>Je souhaite recevoir la newsletter Building Product Objects (nouveautés, mises à jour). Désinscription possible à tout moment.</span></label>
-    <label class="check"><input type="checkbox" required><span>J'accepte que mes données soient utilisées pour traiter ma demande (RGPD). <span class="req">*</span></span></label>
-
-    <button type="submit">Envoyer ma demande</button>
-    <p class="note">Vos informations ne servent qu'au traitement de votre demande et ne sont jamais revendues. Réponse sous quelques jours ouvrés à l'adresse <a href="mailto:al@architecture-al.com">al@architecture-al.com</a>.</p>
-  </form>
-
-  <p class="note" style="margin-top:22px;">© 2026 Antoine Lacronique, architecte — Building Product Objects.</p>
-</div>
+    <div class="foot-sig">Powered by <b>Architecture-AL</b> · by architects, for architects</div>
+  </div>
+</footer>
 </body>
 </html>

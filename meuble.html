@@ -3783,6 +3783,34 @@ var PRIX_DEF=[
   {id:'fp_dalle',  lot:'Plafonds', lbl:'Faux plafond — dalles minérales 600×600 sur ossature',   u:'m²', pu:40},
   {id:'fp_jouee',  lot:'Plafonds', lbl:'Jouées / retombées de faux plafond',                     u:'m²', pu:75},
   {id:'fp_iso',    lot:'Plafonds', lbl:'Isolant en plénum de faux plafond',                       u:'m²', pu:12},
+  /* --- métrés piscine / véranda / hangar / cuisine --- */
+  {id:'beton_voile',   lot:'Gros œuvre',            lbl:'Béton armé — voiles banchés',                        u:'m³', pu:1100},
+  {id:'beton_fond',    lot:'Gros œuvre',            lbl:'Béton armé — fondations (semelles, massifs)',        u:'m³', pu:350},
+  {id:'ver_dalle',     lot:'Gros œuvre',            lbl:'Dallage béton sur terre-plein',                      u:'m²', pu:95},
+  {id:'pisc_bloc',     lot:'Gros œuvre',            lbl:'Paroi de piscine en blocs à bancher — remplis, ferraillés', u:'m²', pu:140},
+  {id:'pisc_liner',    lot:'Piscine',               lbl:'Revêtement d\'étanchéité du bassin (liner / PVC armé)', u:'m²', pu:55},
+  {id:'pisc_coque',    lot:'Piscine',               lbl:'Coque polyester — surface développée du bassin, posée', u:'m²', pu:350},
+  {id:'pisc_margelle', lot:'Piscine',               lbl:'Margelles — fournies, posées',                       u:'ml', pu:90},
+  {id:'pisc_deborde',  lot:'Piscine',               lbl:'Débordement — arase, goulotte, caillebotis',         u:'ml', pu:400},
+  {id:'pisc_plage',    lot:'Piscine',               lbl:'Plage — dallage sur forme',                          u:'m²', pu:110},
+  {id:'pisc_eau',      lot:'Piscine',               lbl:'Mise en eau du bassin',                              u:'m³', pu:5},
+  {id:'ver_toit',      lot:'Menuiseries extérieures', lbl:'Verrière de toiture — vitrage sur profils alu',    u:'m²', pu:950},
+  {id:'porte_section', lot:'Menuiseries extérieures', lbl:'Porte sectionnelle industrielle',                  u:'m²', pu:420},
+  {id:'couv_metal',    lot:'Couverture',            lbl:'Couverture métallique (bac acier)',                  u:'m²', pu:55},
+  {id:'couv_iso',      lot:'Couverture',            lbl:'Isolation de toiture sous bac',                      u:'m²', pu:30},
+  {id:'couv_rives',    lot:'Couverture',            lbl:'Rives, faîtières et habillages',                     u:'ml', pu:25},
+  {id:'cuis_bas',      lot:'Agencement — cuisine',  lbl:'Caisson bas — caisson, socle, quincaillerie (hors façade)', u:'ml', pu:350},
+  {id:'cuis_haut',     lot:'Agencement — cuisine',  lbl:'Caisson haut — fixations comprises (hors façade)',   u:'ml', pu:250},
+  {id:'cuis_colonne',  lot:'Agencement — cuisine',  lbl:'Colonne toute hauteur — caisson (hors façade)',      u:'u',  pu:450},
+  {id:'cuis_plan',     lot:'Agencement — cuisine',  lbl:'Plan de travail — découpes et chants compris',       u:'m²', pu:300},
+  {id:'cuis_credence', lot:'Agencement — cuisine',  lbl:'Crédence — fournie, posée',                          u:'m²', pu:120},
+  {id:'cuis_facade',   lot:'Agencement — cuisine',  lbl:'Façades — portes, tiroirs, poignées',                u:'m²', pu:220},
+  {id:'em_frigo',      lot:'Électroménager',        lbl:'Réfrigérateur intégrable — fourni, posé',            u:'u',  pu:900},
+  {id:'em_four',       lot:'Électroménager',        lbl:'Four encastrable — fourni, posé',                    u:'u',  pu:600},
+  {id:'em_plaque',     lot:'Électroménager',        lbl:'Plaque de cuisson 60 cm — découpe comprise',         u:'u',  pu:450},
+  {id:'em_hotte',      lot:'Électroménager',        lbl:'Hotte aspirante — posée, raccordée',                 u:'u',  pu:400},
+  {id:'em_lv',         lot:'Électroménager',        lbl:'Lave-vaisselle intégrable — posé, raccordé',         u:'u',  pu:600},
+  {id:'em_evier',      lot:'Plomberie',             lbl:'Évier + mitigeur + bonde — posé, raccordé',          u:'u',  pu:450},
   {id:'install_pct',   lot:'Installation de chantier', lbl:'Installation de chantier (% des travaux)',  u:'%',  pu:5}
 ];
 var PRIX_KEY='BPO_PRIX_v1';
@@ -3896,7 +3924,7 @@ function immDQE(){
    silencieusement oubliés. */
 var SCN_BATI_MODES={immeuble:1, cuisine:1, mur:1, dalle:1, hangar:1, piscine:1, veranda:1, cheminee:1,
                     poteau:1, poutre:1, escalier:1, toiture:1, ferme:1, murrideau:1, gardecorps:1};
-var SCN_QUANT_MODES={immeuble:1, mur:1, dalle:1};        /* modes réellement mesurables */
+var SCN_QUANT_MODES={immeuble:1, mur:1, dalle:1, piscine:1, veranda:1, hangar:1, cuisine:1};   /* modes réellement mesurables */
 /* ---- Chiffrage des objets simples (mur, dalle) : mêmes lignes de prix que l'immeuble.
    dqeAddLine / dqeInstall factorisent la logique de immDQE (bordereau prioritaire, puis
    prix indicatif ; installation de chantier en % ajoutée en dernier, hors cumul). ---- */
@@ -3924,7 +3952,7 @@ function murQuant(){
     if(poly && poly.length>=2){ var per=0,n=poly.length; for(var i=0;i<n;i++){ var a=poly[i],b=poly[(i+1)%n]; per+=Math.hypot(b[0]-a[0],b[1]-a[1]); } area=per*H; } }
   return {area:area};
 }
-function murDQE(){ var Q=murQuant(), L=[]; dqeAddLine(L,'fac_mur',Q.area); return {lines:L, total:dqeInstall(L), q:Q}; }
+function murDQE(){ var Q=murQuant(), L=[]; dqeAddLine(L,'fac_mur',Q.area); return {lines:L, total:dqeInstall(L), floor:0, q:Q}; }
 /* DALLE : volume de béton (si cœur béton) + faux plafond BA13 éventuel. Chape,
    revêtement et isolation ne sont pas chiffrés (pas de ligne de prix dédiée à ce jour). */
 function dalleQuant(){
@@ -3937,12 +3965,396 @@ function dalleQuant(){
     beton:(concreteCores[PD.coreMat]?area*Math.max(0,(PD.core||0))/100:0),
     fp:(PD.fpOn?area:0), fpIso:((PD.fpOn&&PD.fpIsoOn)?area:0) };
 }
-function dalleDQE(){ var Q=dalleQuant(), L=[]; dqeAddLine(L,'beton_dalle',Q.beton); dqeAddLine(L,'fp_ba13',Q.fp); dqeAddLine(L,'fp_iso',Q.fpIso); return {lines:L, total:dqeInstall(L), q:Q}; }
+function dalleDQE(){ var Q=dalleQuant(), L=[]; dqeAddLine(L,'beton_dalle',Q.beton); dqeAddLine(L,'fp_ba13',Q.fp); dqeAddLine(L,'fp_iso',Q.fpIso); return {lines:L, total:dqeInstall(L), floor:0, q:Q}; }
+/* ---- PISCINE : contour + profil de profondeur, partagés par toutes les quantités.
+   Réplique EXACTE de la préparation de buildPiscine (l.7300-7318) : contour selon la
+   forme, repli rect, profil de profondeur, ré-échantillonnage aux ruptures de pente
+   (indispensable : ensuite la profondeur est affine sur chaque arête, les trapèzes
+   et bandes sont exacts). Vérifié contre le build sur 28 configurations. */
+function piscPolyD(){
+  var P=PPISCINE, A=P.len/100, B=P.wid/100, sh=P.shape, poly, i, t, pp;
+  if(sh==='libre'){ poly=parsePoly(P.verts); if(poly) poly=arcCurve(poly,P); }
+  else if(sh==='rond'){ var r=Math.max(0.5,Math.min(A,B)/2); pp=[]; for(i=0;i<44;i++){ t=i/44*6.2831853; pp.push([Math.cos(t)*r,Math.sin(t)*r]); } poly=pp; }
+  else if(sh==='ovale'){ pp=[]; for(i=0;i<52;i++){ t=i/52*6.2831853; pp.push([Math.cos(t)*A/2,Math.sin(t)*B/2]); } poly=pp; }
+  else if(sh==='couloir'){ var rc=B/2, sx=Math.max(0.1,A/2-rc); pp=[]; for(i=0;i<=16;i++){ t=-1.5707963+i/16*3.1415927; pp.push([sx+Math.cos(t)*rc,Math.sin(t)*rc]); } for(i=0;i<=16;i++){ t=1.5707963+i/16*3.1415927; pp.push([-sx+Math.cos(t)*rc,Math.sin(t)*rc]); } poly=pp; }
+  else { poly=outlinePoly(sh,A,B,P.lx/100,P.lz/100,P.lcorner||'tr',(P.tb||200)/100,(P.tw||300)/100,P.ux/100,P.uz/100); }
+  if(!poly||poly.length<3) poly=outlinePoly('rect',A,B);
+  var D=poolProfile(polyBBox(poly)); poly=poolResample(poly,D);
+  return {poly:poly, D:D};
+}
+/* Quantités piscine. Conventions (validées par contre-vérification numérique) :
+   eau = intégrale exacte du build (plan d'eau -12 cm, -1 cm si débordement ; escalier
+   et banquette non déduits, comme la note du panneau) ; radier 20 cm sous l'emprise
+   extérieure (épaisseur codée en dur dans le build), nul en coque ; voiles = volume
+   banché du build (banche seulement) ; blocs = m² d'élévation au nu intérieur
+   (parpaing) ; revêtement = fond en vraie surface inclinée + parois (retrait 8 mm
+   négligé) ; margelle au nu intérieur, portions débordantes déduites ; débordement
+   compté sur les arêtes droites confondues avec la bbox (tol 3 cm, comme le build) ;
+   plage = anneau d'offset hors goulotte (écart |gW-marg| négligé côtés débordants). */
+function piscineQuant(){
+  var P=PPISCINE, R=piscPolyD(), poly=R.poly, D=R.D, n=poly.length, i, j;
+  var ccw=polyArea(poly)>=0?1:-1;
+  var twall=Math.max(0.05,(P.wallTh||poolConstr().th)/100);
+  var outerW=_poolOffset(poly, twall, -ccw);
+  function cen(Q){ var a=0,cx=0,cz=0,m=Q.length,ii,jj,cr;
+    for(ii=0;ii<m;ii++){ jj=(ii+1)%m; cr=Q[ii][0]*Q[jj][1]-Q[jj][0]*Q[ii][1]; a+=cr; cx+=(Q[ii][0]+Q[jj][0])*cr; cz+=(Q[ii][1]+Q[jj][1])*cr; }
+    if(Math.abs(a)<1e-9){ var sx=0,sz=0; for(ii=0;ii<m;ii++){ sx+=Q[ii][0]; sz+=Q[ii][1]; } return [sx/m,sz/m]; }
+    return [cx/(3*a), cz/(3*a)]; }
+  var wY=(P.debN||P.debE||P.debS||P.debO)?-0.01:-0.12, eau=0, revFond=0;
+  poolStrips(poly, D, function(Q,s){ var ar=Math.abs(polyArea(Q)); if(ar<1e-7) return;
+    revFond+=ar*Math.sqrt(1+s*s);
+    var h=D.dAt(cen(Q))+wY; if(h>0) eau+=ar*h; });
+  var paroisM2=0, voiles=0;
+  for(i=0;i<n;i++){ j=(i+1)%n;
+    var Lp=Math.hypot(poly[j][0]-poly[i][0],poly[j][1]-poly[i][1]);
+    var dm=(D.dAt(poly[i])+D.dAt(poly[j]))/2;
+    paroisM2+=Lp*dm;
+    voiles+=Math.abs(polyArea([poly[i],poly[j],outerW[j],outerW[i]]))*dm;
+  }
+  /* margelle / débordement : même détection de côté que poolDeborde (sideOf +
+     ovInterval) — l'intervalle débordant est retiré de la margelle. */
+  var bb=polyBBox(poly), x0=bb.cx-bb.w/2, x1=bb.cx+bb.w/2, z0=bb.cz-bb.d/2, z1=bb.cz+bb.d/2, tol=0.03;
+  var dS={n:P.debN,e:P.debE,s:P.debS,o:P.debO}, dL={n:P.debLenN,e:P.debLenE,s:P.debLenS,o:P.debLenO};
+  var margelle=0, deborde=0, anyDeb=(P.debN||P.debE||P.debS||P.debO);
+  for(i=0;i<n;i++){ j=(i+1)%n; var a=poly[i], b=poly[j];
+    var L2=Math.hypot(b[0]-a[0],b[1]-a[1]); if(L2<1e-9) continue;
+    var side=null;
+    if(Math.abs(a[1]-b[1])<tol){ var zc=(a[1]+b[1])/2; if(Math.abs(zc-z0)<tol) side='n'; else if(Math.abs(zc-z1)<tol) side='s'; }
+    if(!side && Math.abs(a[0]-b[0])<tol){ var xc=(a[0]+b[0])/2; if(Math.abs(xc-x0)<tol) side='o'; else if(Math.abs(xc-x1)<tol) side='e'; }
+    var ov=0;
+    if(side && dS[side]){
+      var horiz=(side==='n'||side==='s'), r0=horiz?x0:z0, r1=horiz?x1:z1;
+      var full=r1-r0, c=(r0+r1)/2, len=(dL[side]>0)?Math.min(dL[side]/100,full):full;
+      var w0=c-len/2, w1=c+len/2, wa=horiz?a[0]:a[1], wb=horiz?b[0]:b[1];
+      if(Math.abs(wb-wa)>1e-6){
+        var tA=(w0-wa)/(wb-wa), tB=(w1-wa)/(wb-wa);
+        var lo=Math.max(0,Math.min(tA,tB)), hi=Math.min(1,Math.max(tA,tB));
+        if(hi-lo>0.002) ov=hi-lo;
+      }
+    }
+    if(P.margelleOn) margelle+=L2*(1-ov);
+    if(anyDeb) deborde+=L2*ov;
+  }
+  var plage=0;
+  if(P.plageOn){
+    var marg=P.margelleOn?Math.max(0.05,P.margelle/100):0;
+    var plg=Math.max(0.1,P.plage/100);
+    var inP=_poolOffset(poly, twall+marg, -ccw);
+    var pO =_poolOffset(poly, twall+marg+plg, -ccw);
+    plage=Math.abs(polyArea(pO))-Math.abs(polyArea(inP));
+  }
+  return { eau:eau,
+           radier:(P.constr==='coque')?0:Math.abs(polyArea(outerW))*0.20,
+           voiles:(P.constr==='banche')?voiles:0,
+           blocs:(P.constr==='parpaing')?paroisM2:0,
+           revet:revFond+paroisM2,
+           margelle:margelle, deborde:deborde, plage:plage };
+}
+function piscineDQE(){ var Q=piscineQuant(), L=[];
+  dqeAddLine(L,'beton_dalle',Q.radier);
+  dqeAddLine(L,'beton_voile',Q.voiles);
+  dqeAddLine(L,'pisc_bloc',Q.blocs);
+  if(PPISCINE.constr==='coque') dqeAddLine(L,'pisc_coque',Q.revet);
+  else dqeAddLine(L,'pisc_liner',Q.revet);
+  dqeAddLine(L,'pisc_margelle',Q.margelle);
+  dqeAddLine(L,'pisc_deborde',Q.deborde);
+  dqeAddLine(L,'pisc_plage',Q.plage);
+  dqeAddLine(L,'pisc_eau',Q.eau);
+  return {lines:L, total:dqeInstall(L), floor:0, q:Q};
+}
+/* ---- VÉRANDA : assiette COMPOSITE au m² (menuiserie de paroi au tableau + verrière
+   de toiture + soubassement + côtés pleins + dallage). Les profils alu ne sont PAS
+   comptés à part : ils sont inclus dans les prix composites — les additionner
+   doublerait le chiffrage (verrouillé par contre-vérification). */
+function verandaQuant(){
+  var P=PVERANDA, A=P.len/100, B=P.wid/100, H=P.hgt/100;
+  var poly=(P.shape==='libre')?parsePoly(P.verts):outlinePoly(P.shape,A,B,P.lx/100,P.lz/100,P.lcorner||'tr',(P.tb||200)/100,(P.tw||300)/100,P.ux/100,P.uz/100);
+  if(!poly||poly.length<3) poly=outlinePoly('rect',A,B);
+  if(P.shape==='libre') poly=arcCurve(poly,P);
+  var n=poly.length, soub=P.soubOn?Math.max(0.1,P.soub/100):0;
+  var menuis=0, soubM2=0, plein=0, i, b;
+  for(i=0;i<n;i++){
+    var cfg=(P.faces&&P.faces[i])||{mode:'vitre',bays:2,ouv:'aucun',otype:'frappe'};
+    var q0=poly[i], q1=poly[(i+1)%n], eL=Math.hypot(q1[0]-q0[0],q1[1]-q0[1]);
+    if(cfg.mode==='plein'){ plein+=eL*H; continue; }
+    if(cfg.mode!=='vitre') continue;
+    var bays=Math.max(1,cfg.bays|0);
+    for(b=0;b<bays;b++){
+      var ouv=cfg.ouv==='tous'?true:cfg.ouv==='alt'?(b%2===1):cfg.ouv==='centre'?(b===((bays-1)>>1)):false;
+      var porte=ouv&&cfg.otype==='porte';
+      menuis+=(eL/bays)*(H-(porte?0:soub));       /* au tableau, pleine hauteur sous porte-fenêtre */
+      if(!porte) soubM2+=(eL/bays)*soub;
+    }
+  }
+  var pe=(P.pente||25)*Math.PI/180, toit;
+  if(P.roofFit==='contour'){ toit=Math.abs(polyArea(poly))/Math.cos(pe); }
+  else { var bb=polyBBox(poly);
+    if(P.toit==='deux'){ var r2=(bb.d/2)*Math.tan(pe); toit=bb.w*bb.d/Math.cos(pe)+2*0.5*bb.d*r2; }
+    else { var r1=bb.d*Math.tan(pe); toit=bb.w*bb.d/Math.cos(pe)+2*0.5*bb.d*r1; } }
+  return { sol:Math.abs(polyArea(poly)), menuis:menuis, toit:toit, plein:plein, soub:soubM2 };
+}
+function verandaDQE(){ var Q=verandaQuant(), L=[];
+  dqeAddLine(L,'ver_dalle',Q.sol);
+  dqeAddLine(L,'menuis_ext',Q.menuis);
+  dqeAddLine(L,'ver_toit',Q.toit);
+  dqeAddLine(L,'fac_mur',Q.plein+Q.soub);
+  return {lines:L, total:dqeInstall(L), floor:0, q:Q};
+}
+/* ---- HANGAR : acier au poids (portiques/fermes au catalogue via steelKgM ; pannes
+   et lisses en tôle pliée équivalente 3 mm ; nappe en tubes e=max(4mm,D/30) — peser
+   les enveloppes pleines du 3D donnerait un ordre de grandeur de trop), couverture,
+   bardage/parpaing (portes déduites), fondations (recouvrements d'angle déduits,
+   exact), dalle et planchers au béton, portes sectionnelles, lanterneaux.
+   Contre-vérifié sur 18 variantes. Goussets, ossature des planchers 'metal' et
+   dormants de portes volontairement omis (quantité en moins plutôt que fausse). */
+function hangarQuant(){
+  var P=PHANGAR, S=P.span/100, L=P.length/100, H=P.height/100;
+  var bays=Math.max(1,P.bays|0), nFr=bays+1, p=P.pitch*Math.PI/180;
+  var rise=(S/2)*Math.tan(p), mono=(P.roofShape==='monopente'), nappe=(P.roofShape==='nappe');
+  var RHO=7850, TW=0.003, kg=0, i, k;
+  var kgCol=steelKgM(P.colSerie,P.colSize), kgBeam=steelKgM(P.beamSerie,P.beamSize);
+  if(nappe){
+    var mod=Math.max(1.5,(P.nappeMaille||500)/100), dep=Math.max(1.0,(P.nappeEp||250)/100);
+    var nX=Math.max(1,Math.round(S/mod)), nZ=Math.max(1,Math.round(L/mod)), dX=S/nX, dZ=L/nZ;
+    var mlC=(nZ+1)*nX*dX + (nX+1)*nZ*dZ + nZ*Math.max(0,nX-1)*dX + nX*Math.max(0,nZ-1)*dZ;
+    var mlD=nX*nZ*4*Math.sqrt(dX*dX/4 + dep*dep + dZ*dZ/4);
+    var DC=Math.max(0.06,(P.nappeChord||22)/100), DD=Math.max(0.04,(P.nappeDiag||12)/100);
+    var tubeKgM=function(Dd){ var e=Math.max(0.004,Dd/30); return Math.PI*(Dd-e)*e*RHO; };
+    kg += mlC*tubeKgM(DC) + mlD*tubeKgM(DD);
+    var nGz=Math.max(1,Math.round(S/mod));
+    kg += (nFr*2 + Math.max(0,nGz-1)*2)*H*kgCol;
+  } else {
+    var cs=steelDims(P.colSerie,P.colSize).dims, bs=steelDims(P.beamSerie,P.beamSize).dims;
+    var colB=cs[1]/1000, beamB=bs[1]/1000, colHd=cs[0]/1000;
+    var webW=beamB*0.6;
+    var webKg=function(len,t){ return len*t*webW*RHO; };
+    var perFrame=0;
+    if(mono){ perFrame=(H+(H+2*rise))*kgCol + (S/Math.cos(p))*kgBeam; }
+    else {
+      perFrame=2*H*kgCol + 2*((S/2)/Math.cos(p))*kgBeam;
+      var tt=P.truss;
+      if(tt==='ciseaux'){ var dyc=0.45*rise;
+        perFrame += 2*webKg(Math.sqrt(S*S/4+dyc*dyc),0.07) + webKg(0.55*rise,0.05); }
+      else if(tt!=='portique'){
+        perFrame += S*kgBeam;
+        if(tt==='ferme_w'){ perFrame += webKg(rise,0.05) + 4*webKg(Math.sqrt(S*S/16+rise*rise/4),0.05); }
+        else if(tt==='polonceau'){ perFrame += webKg(rise,0.05) + 2*webKg(rise/2,0.05) + 2*webKg(Math.sqrt(S*S/16+rise*rise),0.04); }
+        else { var np=Math.max(2,Math.round((S/2)/1.5)), dx2=(S/2)/np;
+          for(k=1;k<np;k++){ perFrame += 2*webKg(rise*k/np,0.06) + 2*webKg(Math.sqrt(dx2*dx2+Math.pow(rise*k/np,2)),0.05); } }
+      }
+    }
+    kg += nFr*perFrame;
+    var nP=Math.max(2,P.purlins|0), pans=mono?1:2;
+    kg += pans*(nP+1)*L*(2*(0.08+0.12)*TW*RHO);
+    var gN=Math.max(0,P.girts|0);
+    if(gN>0){
+      var GS={plat:[0.12,0.04],tube:[0.08,0.08],haut:[0.04,0.12]}[P.girtSec]||[0.12,0.04];
+      var kgGirt=2*(GS[0]+GS[1])*TW*RHO;
+      var bayL=L/bays, gapZ=colB/2+0.03, gapX=colHd/2+0.03;
+      var nLP=(P.openLPg?0:1)+(P.openLPd?0:1);
+      var mlLP=gN*nLP*bays*Math.max(0,bayL-2*gapZ);
+      var nd0=Math.max(0,Math.min(4,P.secDoor|0));
+      var maxY0=mono?(H+2*rise):(H+rise);
+      var dw0=Math.min(S-0.6,(P.secW||400)/100), dh0=Math.min(maxY0-0.2,(P.secH||450)/100);
+      var dN0=(nd0&&(P.secGable==='arriere'||P.secGable==='deux'))?nd0:0;
+      var dP0=(nd0&&(P.secGable==='avant'||P.secGable==='deux'))?nd0:0;
+      var mlPG=0, gy, run=Math.max(0,S-2*gapX);
+      for(i=1;i<=gN;i++){ gy=H*i/(gN+1);
+        if(!P.openPAr) mlPG += Math.max(0, run-(gy<dh0?dN0*(dw0+0.08):0));
+        if(!P.openPAv) mlPG += Math.max(0, run-(gy<dh0?dP0*(dw0+0.08):0));
+      }
+      kg += (mlLP+mlPG)*kgGirt;
+    }
+    var brc=P.bracing;
+    if(brc && brc!=='aucun'){
+      var ext=(bays>=2)?(L/bays):L, pairs=(bays>=2)?2:1;
+      var nFac=(P.openLPg?0:1)+(P.openLPd?0:1);
+      kg += pairs*nFac*2*Math.sqrt(H*H+ext*ext)*(0.04*0.05*RHO);
+      if(brc==='complet'){ kg += pairs*4*Math.sqrt(S*S/4+rise*rise+ext*ext)*(0.05*0.05*RHO); }
+    }
+  }
+  /* couverture / isolation / rives */
+  var couv, lant=0;
+  if(nappe){ couv=S*L;
+    if(+P.nappeSheds){ var mod2=Math.max(1.5,(P.nappeMaille||500)/100);
+      var nX2=Math.max(1,Math.round(S/mod2)), nZ2=Math.max(1,Math.round(L/mod2)), se=Math.max(1,P.nappeShedEvery|0);
+      couv -= Math.ceil(nX2/se)*Math.ceil(nZ2/se)*(S/nX2)*(L/nZ2);
+      lant = Math.ceil(nX2/se)*Math.ceil(nZ2/se)*(S/nX2)*0.9*(L/nZ2)*0.9;
+    }
+  } else couv=S*L/Math.cos(p);
+  var couvIso=(P.roofIso && !nappe)?S*L/Math.cos(p):0;
+  var rives=0;
+  if(!nappe && P.rives){
+    rives = 2*L + (mono ? 2*(S/Math.cos(p)) : 4*((S/2)/Math.cos(p))) + (mono?0:L);
+  }
+  /* façades : bardage OU parpaing, portes sectionnelles déduites (pignons) */
+  var HR=H+2*rise, fBard=0, fParp=0;
+  var nd=Math.max(0,Math.min(4,P.secDoor|0));
+  var maxY=mono?HR:(H+rise);
+  var dw=Math.min(S-0.6,(P.secW||400)/100), dh=Math.min(maxY-0.2,(P.secH||450)/100);
+  var dN=(nd&&(P.secGable==='arriere'||P.secGable==='deux'))?nd:0;
+  var dP=(nd&&(P.secGable==='avant'||P.secGable==='deux'))?nd:0;
+  var fa=0;
+  if(nappe){
+    if(!P.openLPg) fa+=H*L; if(!P.openLPd) fa+=H*L;
+    if(!P.openPAv) fa+=S*H; if(!P.openPAr) fa+=S*H;
+  } else {
+    if(!P.openLPg) fa+=H*L;
+    if(!P.openLPd) fa+=(mono?HR:H)*L;
+    var tri=mono?(S*rise):(S*rise/2);
+    if(!P.openPAv) fa+=Math.max(0,S*H-dN*dw*dh)+tri;
+    if(!P.openPAr) fa+=Math.max(0,S*H-dP*dw*dh)+tri;
+  }
+  if(P.wall==='bardage') fBard=fa; else if(P.wall==='parpaing') fParp=fa;
+  /* béton : dalle RDC (épaisseur du 3D), planchers, fondations, longrines */
+  var betonDalle=0;
+  if(P.slabRDC) betonDalle += nappe ? S*0.12*L : (S-0.1)*0.24*(L-0.1);
+  var nf=Math.max(0,P.floors|0);
+  if(nf && !nappe){
+    var fc=Math.max(0.2,Math.min(1,(P.floorCover||100)/100)), Lf=L*fc;
+    var th=(P.slabType==='collaborant')?0.11:((P.slabType==='beton')?0.20:0);
+    betonDalle += nf*(S-0.1)*(Lf-0.1)*th;
+  }
+  var fw=P.foundW/100, fh=P.foundH/100;
+  var fond=(P.found==='filantes') ? 2*fw*fh*(L+S) : (bays+1)*2*fw*fw*fh;
+  var longrine=0;
+  if(!nappe && P.longrine && ((P.longrineH|0)>0)){
+    var lh=Math.min(1.0,P.longrineH/100), lw=0.20;
+    longrine=2*lw*lh*(L+S-2*lw);
+  }
+  var portes=0;
+  if(!nappe && nd){ portes = nd*((P.secGable==='deux')?2:1)*dw*dh; }
+  return { kg:kg, couv:couv, couvIso:couvIso, rives:rives, bardage:fBard, parpaing:fParp,
+           betonDalle:betonDalle, fond:fond, longrine:longrine, portes:portes, lant:lant };
+}
+function hangarDQE(){ var Q=hangarQuant(), L=[];
+  dqeAddLine(L,'acier_charp',Q.kg);
+  dqeAddLine(L,'couv_metal',Q.couv);
+  dqeAddLine(L,'couv_iso',Q.couvIso);
+  dqeAddLine(L,'couv_rives',Q.rives);
+  dqeAddLine(L,'fac_bardage',Q.bardage);
+  dqeAddLine(L,'fac_mur',Q.parpaing);
+  dqeAddLine(L,'beton_dalle',Q.betonDalle);
+  dqeAddLine(L,'beton_fond',Q.fond);
+  dqeAddLine(L,'beton_poutre',Q.longrine);
+  dqeAddLine(L,'porte_section',Q.portes);
+  dqeAddLine(L,'menuis_ext',Q.lant);
+  return {lines:L, total:dqeInstall(L), floor:0, q:Q};
+}
+/* ---- CUISINE : agencement en ml/m²/u, calqué sur buildCuisine (réservations
+   d'angles csB/csW, colonnes en bout de A — ou de C en U —, saut des meubles hauts
+   au droit de la hotte via la position SNAPPÉE au centre de module comme _hobAlong).
+   Plan compté BRUT (découpes évier/plaque non déduites — usage du métré) ; crédence
+   = convention (absente de la géométrie) : runs muraux × wallGap (ou 0,60 m sans
+   meubles hauts). LV et module évier comptés en caissons (le 3D les dessine). */
+function cuisineQuant(){
+  var C=PCUISINE, bd=C.baseD/100, mod=C.module/100, ovh=C.overhang/100, dep=bd+ovh;
+  var Hc=C.counterH/100, ct=C.counterT/100, pl=C.plinthH/100, caisH=(Hc-ct)-pl;
+  var wallD=C.wallD/100, wallHm=C.wallH/100, wallGap=C.wallGap/100;
+  var colH=Math.max(Hc+wallGap+wallHm,2.0);
+  var csB=Math.min(0.90,bd+0.28), csW=Math.min(0.62,wallD+0.28);
+  function cornerPlan(t){ return (t==='L') ? bd*(2*csB-bd) : (csB*csB-(csB-bd)*(csB-bd)/2); }
+  function cornFacB(t){ return (t==='L')?2*(csB-bd)*caisH:(csB-bd)*Math.SQRT2*caisH; }
+  function cornFacW(t){ return (t==='L')?2*(csW-wallD)*wallHm:(csW-wallD)*Math.SQRT2*wallHm; }
+  var Q={bas:0,haut:0,col:0,plan:0,cred:0,fac:0,frigo:0,four:0,plaque:0,hotte:0,lv:0,evier:0};
+  if(C.layout==='element'){
+    var e=C.elemType||'bas_porte';
+    if(e==='bas_porte'||e==='bas_tiroirs'||e==='evier'){ Q.bas=mod; Q.plan=mod*dep; Q.fac=mod*caisH; }
+    else if(e==='haut'){ if(C.wallOn){ Q.haut=mod; Q.fac=mod*wallHm; } }
+    else if(e==='colonne'){ Q.col=1; Q.fac=mod*(colH-pl); }
+    else if(e==='frigo'){ Q.col=1; Q.frigo=1; }
+    else if(e==='four'){ Q.col=1; Q.four=1; Q.fac=mod*(colH-1.05-pl-0.02); }
+    else if(e==='angle_diag'||e==='angle_L'){ var t0=(e==='angle_L')?'L':'diag';
+      Q.bas=2*csB; Q.plan=cornerPlan(t0); Q.fac=cornFacB(t0);
+      if(C.wallOn){ Q.haut=2*csW; Q.fac+=cornFacW(t0); } }
+    if(e==='evier') Q.evier=1;          /* le build dessine l'évier même si C.sink=0 (spA={sink:0}) */
+    return Q;
+  }
+  var A=C.runA/100, B=C.runB/100, Cc=C.runC/100;
+  var hasL=(C.layout==='L'||C.layout==='U'), hasU=(C.layout==='U');
+  var c1=hasL?(C.cornerType||'diag'):'aucun', c2=hasU?(C.cornerType2||'diag'):'aucun';
+  var corner1=(c1!=='aucun'), corner2=(c2!=='aucun');
+  var colW=((C.fridge?1:0)+(C.oven?1:0))*mod;
+  var aStart=corner1?csB:0, aRight=hasU?(corner2?csB:0):colW;
+  var baseAlen=Math.max(mod, A-aStart-aRight);
+  /* runs bas */
+  var basMl=baseAlen;
+  if(hasL) basMl+=Math.max(0, B-(corner1?csB:bd));
+  if(hasU) basMl+=Math.max(0, Cc-(corner2?csB:bd)-colW);
+  var credMl=basMl;                                   /* runs adossés aux murs (avant angles) */
+  if(corner1){ basMl+=2*csB; credMl+=2*csB; }
+  if(corner2){ basMl+=2*csB; credMl+=2*csB; }
+  if(C.ilot) basMl+=C.ilotW/100;
+  Q.bas=basMl;
+  /* runs hauts, hotte sautée à la position SNAPPÉE (même règle que baseRun/_hobAlong) */
+  var wA0=corner1?csW:0, wARight=hasU?(corner2?csW:0):colW;
+  var lenA=Math.max(0,A-wA0-wARight), wallMl=0;
+  if(C.wallOn){
+    wallMl=lenA;
+    if(C.hob){
+      var hobRaw=aStart+baseAlen*(C.hobPos/100), hobAlong=hobRaw, bm=kModules(baseAlen,mod,0), bi;
+      for(bi=0;bi<bm.length;bi++){ var bc=aStart+bm[bi].s+bm[bi].w/2;
+        if(Math.abs(bc-hobRaw)<=bm[bi].w/2){ hobAlong=bc; break; } }
+      var wm=kModules(lenA,mod,0), wi;
+      for(wi=0;wi<wm.length;wi++){ var wc=wA0+wm[wi].s+wm[wi].w/2;
+        if(Math.abs(wc-hobAlong)<mod*0.7) wallMl-=wm[wi].w; }
+    }
+    if(hasL) wallMl+=Math.max(0, B-(corner1?csW:bd));
+    if(hasU) wallMl+=Math.max(0, Cc-(corner2?csW:bd)-colW);
+    var hautMl=wallMl;
+    if(corner1) hautMl+=2*csW;
+    if(corner2) hautMl+=2*csW;
+    Q.haut=hautMl;
+  }
+  Q.col=(C.fridge?1:0)+(C.oven?1:0);
+  /* plan de travail (brut, profondeur bd+overhang partout — l'îlot ignore ilotD comme le build) */
+  var plan=baseAlen*dep;
+  if(hasL) plan+=Math.max(0, B-(corner1?csB:bd))*dep;
+  if(hasU) plan+=Math.max(0, Cc-(corner2?csB:bd)-colW)*dep;
+  if(corner1) plan+=cornerPlan(c1);
+  if(corner2) plan+=cornerPlan(c2);
+  if(C.ilot) plan+=(C.ilotW/100)*dep;
+  Q.plan=plan;
+  Q.cred=credMl*(C.wallOn ? wallGap : 0.60);
+  /* façades : bas pleine hauteur × ml (jeux négligés), hauts × wallH, angles, porte
+     basse de la colonne four ; l'habillage frigo n'est pas une façade bois ; îlot
+     = façades avant + panneau dossier. */
+  var fac=(basMl-(corner1?2*csB:0)-(corner2?2*csB:0)-(C.ilot?C.ilotW/100:0))*caisH;
+  if(C.wallOn) fac+=wallMl*wallHm;
+  if(corner1) fac+=cornFacB(c1)+(C.wallOn?cornFacW(c1):0);
+  if(corner2) fac+=cornFacB(c2)+(C.wallOn?cornFacW(c2):0);
+  if(C.oven) fac+=mod*(colH-1.05-pl-0.02);
+  if(C.ilot) fac+=2*(C.ilotW/100)*caisH;
+  Q.fac=fac;
+  Q.frigo=C.fridge?1:0; Q.four=C.oven?1:0;
+  Q.plaque=C.hob?1:0; Q.hotte=(C.hob&&C.hood)?1:0;
+  Q.lv=C.dishwasher?1:0; Q.evier=C.sink?1:0;
+  return Q;
+}
+function cuisineDQE(){ var Q=cuisineQuant(), L=[];
+  dqeAddLine(L,'cuis_bas',Q.bas);
+  dqeAddLine(L,'cuis_haut',Q.haut);
+  dqeAddLine(L,'cuis_colonne',Q.col);
+  dqeAddLine(L,'cuis_plan',Q.plan);
+  dqeAddLine(L,'cuis_credence',Q.cred);
+  dqeAddLine(L,'cuis_facade',Q.fac);
+  dqeAddLine(L,'em_frigo',Q.frigo);
+  dqeAddLine(L,'em_four',Q.four);
+  dqeAddLine(L,'em_plaque',Q.plaque);
+  dqeAddLine(L,'em_hotte',Q.hotte);
+  dqeAddLine(L,'em_lv',Q.lv);
+  dqeAddLine(L,'em_evier',Q.evier);
+  return {lines:L, total:dqeInstall(L), floor:0, q:Q};
+}
 /* Dispatch : mode d'un objet -> son chiffrage (null si non mesuré). */
 function objDQE(mode){
   if(mode==='immeuble') return immDQE();
   if(mode==='mur') return murDQE();
   if(mode==='dalle') return dalleDQE();
+  if(mode==='piscine') return piscineDQE();
+  if(mode==='veranda') return verandaDQE();
+  if(mode==='hangar') return hangarDQE();
+  if(mode==='cuisine') return cuisineDQE();
   return null;
 }
 function scnDQE(){
@@ -15747,6 +16159,7 @@ function build(){
   }
   else { r=buildMeuble(); }
   _CURTEX = null;   /* reset après construction */
+  if(!INST_FACEONLY){ try{ if(typeof objQuantRefresh==='function') objQuantRefresh(); }catch(e){} }   /* chiffrage live (outils mesurables) */
   /* La finition des objets génériques est désormais appliquée PAR ÉLÉMENT dans
      chaque constructeur (fcol/ftex), et non plus en écrasant FC après coup. */
   if(typeof SITE!=='undefined' && SITE.on && SITE.show!==0) addSiteGround();
@@ -18730,6 +19143,88 @@ function immQuantRefresh(){
   if(!h) return;
   if(h.contains(document.activeElement) && /INPUT|SELECT/.test((document.activeElement||{}).tagName||'')) return;
   h.innerHTML=''; try{ immQuantUI(h); }catch(e){}
+}
+
+/* ---- Chiffrage générique des outils mesurables (mur, dalle, piscine, véranda,
+   hangar, cuisine) : même bloc que le chiffrage de l'immeuble (avertissement,
+   association bordereau, PU éditables, total, exports), rendu en bas du panneau
+   de l'outil courant. L'immeuble garde son panneau dédié (immQuantUI). ---- */
+function objChiffrageUI(target){
+  var mode=(typeof MODE!=='undefined')?MODE:'';
+  if(mode==='immeuble' || !SCN_QUANT_MODES[mode]) return;
+  var D=null; try{ D=objDQE(mode); }catch(e){}
+  if(!D || !D.lines.length) return;
+  var rebuild=function(){ objQuantRefresh(true); };
+  var d=document.createElement('div'); d.className='slbl'; d.style.marginTop='8px';
+  d.style.display='flex'; d.style.alignItems='baseline'; d.style.gap='6px';
+  var t=document.createElement('span'); t.textContent=T('Chiffrage'); d.appendChild(t);
+  var bt=document.createElement('span'); bt.textContent='beta';
+  bt.style.cssText='font:600 9px system-ui;letter-spacing:.5px;text-transform:uppercase;color:#ff8a3d;opacity:.85;';
+  d.appendChild(bt); target.appendChild(d);
+  var warn=document.createElement('div'); warn.className='exp-note';
+  warn.style.cssText='border-left:4px solid #e08a2e;background:rgba(224,138,46,.09);'
+    + 'padding:8px 9px;margin-bottom:8px;border-radius:0 4px 4px 0;'
+    + 'color:#ffc48a;font-size:12px;line-height:1.45;font-weight:600;text-align:left;text-wrap:pretty;';
+  warn.innerHTML='<span style="color:#ffb04d;font-weight:700;">NON CONTRACTUEL — ordres de grandeur indicatifs, potentiellement approximatifs, '
+    + 'pour dégrossir une enveloppe.</span><br><span style="font-weight:500;opacity:.9;">Prix France HT fourni-posé, base</span> '
+    + '<span style="font-weight:500;opacity:.9;">'+PRIX_BASE_DATE+'</span><span style="font-weight:500;opacity:.9;">, à caler sur vos propres marchés.</span>';
+  target.appendChild(warn);
+  var lot=null;
+  D.lines.forEach(function(l){
+    if(l.lot!==lot){ lot=l.lot;
+      var lh=document.createElement('div'); lh.className='slbl'; lh.style.marginTop='6px';
+      lh.innerHTML='<span>Lot</span> · <span>'+lot+'</span>'; target.appendChild(lh); }
+    var f=document.createElement('div'); f.className='fld';
+    var q=document.createElement('div'); q.className='exp-note'; q.style.margin='0 0 2px';
+    q.innerHTML=(l.code?('<b>'+l.code+'</b> · '):'')+'<span>'+l.lbl+'</span>'
+      + ((l.src==='pct') ? '' : (' — <b>'+l.q.toFixed(l.u==='kg'?0:2)+'</b> '+l.u));
+    f.appendChild(q);
+    if(BORD.length && l.src!=='pct'){
+      var sel=document.createElement('select');
+      sel.style.cssText='width:100%;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:3px;font-size:11px;margin-bottom:3px;';
+      var o0=document.createElement('option'); o0.value=''; o0.textContent='— prix BPO indicatif —'; sel.appendChild(o0);
+      BORD.forEach(function(b){ var o=document.createElement('option');
+        o.value=(b.code||b.lbl); o.textContent=(b.code?b.code+' · ':'')+b.lbl+(b.u?(' ('+b.u+')'):'')+' — '+b.pu+' €';
+        if(BIND[l.id]===o.value) o.selected=true; sel.appendChild(o); });
+      sel.onchange=function(){ if(sel.value) BIND[l.id]=sel.value; else delete BIND[l.id]; bordSave(); rebuild(); };
+      f.appendChild(sel);
+      if(l.uWarn){ var w=document.createElement('div'); w.className='exp-note'; w.style.color='#e08a2e';
+        w.innerHTML='<span>⚠ Unités différentes : BPO mesure des</span> '+l.u
+          +' <span>, votre ligne est en</span> '+l.uBord+' <span>. Le total serait faux.</span>';
+        f.appendChild(w); }
+    }
+    var row=document.createElement('div'); row.className='fh';
+    row.innerHTML=(l.src==='pct') ? '<label>% des travaux</label>' : ('<label><span>PU</span> / '+l.u+'</label>');
+    var inp=document.createElement('input'); inp.type='number'; inp.step='0.1'; inp.min='0';
+    inp.value=(l.src==='pct')?l.q:l.pu;
+    inp.disabled=(l.src==='bord');   /* un prix venu du bordereau ne se modifie pas ici */
+    inp.style.cssText='width:88px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:3px;'+(l.src==='bord'?'opacity:.55;':'');
+    var tot=document.createElement('b'); tot.style.marginLeft='8px'; tot.textContent=eur(l.tot);
+    inp.oninput=function(){ var v=parseFloat(inp.value);
+      if(!isNaN(v) && v>=0){ PRIX[l.id]=v; prixSave(); rebuild(); } };
+    row.appendChild(inp); row.appendChild(tot); f.appendChild(row); target.appendChild(f);
+  });
+  var tt=document.createElement('div'); tt.className='wall-total'; tt.style.textAlign='left';
+  tt.innerHTML='<span>TOTAL indicatif HT</span> <b>'+eur(D.total)+'</b>';
+  target.appendChild(tt);
+  var bar=document.createElement('div'); bar.style.cssText='display:flex;gap:6px;margin-top:6px;';
+  function expClick(fn){ return function(){ var X=null; try{ X=objDQE(mode); }catch(e){}
+    if(X && X.lines.length) fn(X); }; }
+  var b1=document.createElement('button'); b1.className='tex-none'; b1.style.flex='1';
+  b1.textContent='⭳ Export tableur'; b1.onclick=expClick(dqeCSV); bar.appendChild(b1);
+  var b2=document.createElement('button'); b2.className='tex-none'; b2.style.flex='1';
+  b2.textContent='⭳ Planche PDF'; b2.onclick=expClick(dqePDF); bar.appendChild(b2);
+  target.appendChild(bar);
+}
+function objQuantHostUI(target){
+  var h=document.createElement('div'); h.id='objQuantHost';
+  target.appendChild(h); objChiffrageUI(h);
+}
+function objQuantRefresh(force){
+  var h=(typeof document!=='undefined')?document.getElementById('objQuantHost'):null;
+  if(!h) return;
+  if(!force && h.contains(document.activeElement) && /INPUT|SELECT/.test((document.activeElement||{}).tagName||'')) return;
+  h.innerHTML=''; try{ objChiffrageUI(h); }catch(e){}
 }
 function buildImmeubleUI(){
   var host=document.getElementById('params'); host.innerHTML='';
@@ -22145,6 +22640,8 @@ function refreshView(){
       else if(cat.id==='ombriere'){ buildOmbriereUI(); }
       else if(cat.id==='store'){ buildStoreUI(); }
       else { buildUI(); }
+      /* chiffrage (beta) en bas de panneau pour les outils mesurables (hors immeuble, qui a le sien) */
+      if(typeof MODE!=='undefined' && MODE!=='immeuble' && SCN_QUANT_MODES[MODE]){ var _oqh=document.getElementById('params'); if(_oqh) objQuantHostUI(_oqh); }
       buildFinishUI();   /* panneau Finition pour tous les objets parametriques */
       if(cat.id!=='scene' && cat.id!=='terrain') paramResetButton(refreshView);   /* barre Enregistrer/Réinitialiser sur TOUS les configurateurs */
       updateDims();
