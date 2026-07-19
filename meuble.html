@@ -4002,6 +4002,46 @@ function objDQE(mode){
   if(mode==='cuisine') return cuisineDQE();
   return null;
 }
+/* Bloc de chiffrage (DQE) inline dans le panneau d'un objet mesurable (mur, dalle,
+   piscine, hangar, véranda, cuisine) : mêmes lignes que le DQE de scène, prix éditables,
+   export CSV / planche PDF. L'immeuble garde son propre panneau (immQuantUI), plus riche. */
+function objChiffrageUI(host, mode){
+  if(!host || typeof objDQE!=='function') return;
+  var D=null; try{ D=objDQE(mode); }catch(e){}
+  if(!D || !D.lines || !D.lines.length) return;
+  var g=document.createElement('div'); g.className='slbl'; g.style.cssText='margin-top:12px;display:flex;align-items:baseline;gap:6px;';
+  var gt=document.createElement('span'); gt.textContent=T('Chiffrage'); g.appendChild(gt);
+  var gb=document.createElement('span'); gb.textContent='beta'; gb.style.cssText='font:600 9px system-ui;letter-spacing:.5px;text-transform:uppercase;color:#ff8a3d;opacity:.85;'; g.appendChild(gb);
+  host.appendChild(g);
+  var warn=document.createElement('div'); warn.className='exp-note';
+  warn.style.cssText='border-left:4px solid #e08a2e;background:rgba(224,138,46,.09);padding:7px 9px;margin-bottom:8px;border-radius:0 4px 4px 0;color:#ffc48a;font-size:11.5px;line-height:1.4;font-weight:600;';
+  warn.innerHTML='<span style="color:#ffb04d;font-weight:700;">NON CONTRACTUEL</span> <span>— ordres de grandeur indicatifs, à caler sur vos prix. Base</span> '+PRIX_BASE_DATE+'.';
+  host.appendChild(warn);
+  var lot=null;
+  D.lines.forEach(function(l){
+    if(l.lot!==lot){ lot=l.lot; var lh=document.createElement('div'); lh.className='slbl'; lh.style.marginTop='6px'; lh.innerHTML='<span>Lot</span> · <span>'+lot+'</span>'; host.appendChild(lh); }
+    var f=document.createElement('div'); f.className='fld';
+    var q=document.createElement('div'); q.className='exp-note'; q.style.margin='0 0 2px';
+    q.innerHTML='<span>'+l.lbl+'</span>'+((l.src==='pct')?'':(' — <b>'+l.q.toFixed(l.u==='kg'?0:2)+'</b> '+l.u));
+    f.appendChild(q);
+    var row=document.createElement('div'); row.className='fh';
+    row.innerHTML=(l.src==='pct')?'<label>% des travaux</label>':('<label><span>PU</span> / '+l.u+'</label>');
+    var inp=document.createElement('input'); inp.type='number'; inp.step='0.1'; inp.min='0';
+    inp.value=(l.src==='pct')?l.q:l.pu; inp.disabled=(l.src==='bord');
+    inp.style.cssText='width:88px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:3px;'+(l.src==='bord'?'opacity:.55;':'');
+    var tot=document.createElement('b'); tot.style.marginLeft='8px'; tot.textContent=eur(l.tot);
+    inp.onchange=function(){ var v=parseFloat(inp.value); if(!isNaN(v)&&v>=0){ PRIX[l.id]=v; if(typeof prixSave==='function') prixSave(); if(typeof refreshView==='function') refreshView(); } };
+    row.appendChild(inp); row.appendChild(tot); f.appendChild(row); host.appendChild(f);
+  });
+  var tt=document.createElement('div'); tt.className='wall-total'; tt.style.textAlign='left';
+  tt.innerHTML='<span>TOTAL indicatif HT</span> <b>'+eur(D.total)+'</b>';
+  host.appendChild(tt);
+  var bar=document.createElement('div'); bar.style.cssText='display:flex;gap:6px;margin-top:6px;';
+  function mkb(txt,fn){ var b=document.createElement('button'); b.className='tex-none'; b.style.flex='1'; b.textContent=txt; b.onclick=fn; return b; }
+  bar.appendChild(mkb('⭳ Export tableur', function(){ dqeCSV(D); }));
+  bar.appendChild(mkb('⭳ Planche PDF', function(){ dqePDF(D); }));
+  host.appendChild(bar);
+}
 function scnDQE(){
   var R={lines:[], total:0, n:0, skipped:{}, unpriced:[]};
   if(typeof SCENE==='undefined' || !SCENE.instances) return R;
@@ -5080,6 +5120,7 @@ function selectCat(catId){
   var _c=_catById(catId);
   if(_c && _c.locked){ return; }
   CAT = catId;
+  if(typeof CFG_CUR!=='undefined' && CFG_CUR!==null){ CFG_CUR=null; if(typeof cfgRender==='function') cfgRender(); }   /* on n'édite plus une config chargée */
   var cat = curCat();
   if(cat.id==='objet'){ MODE='meuble'; }
   else if(cat.id==='forme'){ MODE='forme'; }
@@ -5636,7 +5677,7 @@ function paramResetButton(rebuildFn){
   var _ex=host.querySelector('#paramTopBar'); if(_ex&&_ex.parentNode) _ex.parentNode.removeChild(_ex);   /* idempotent : une seule barre */
   if(!paramSnapObj()) return;              /* pas d'objet paramétrique (ex. Scène) → pas de bouton */
   ensureSnap();
-  var bar=document.createElement('div'); bar.id='paramTopBar'; bar.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:6px;margin:0 0 8px;';
+  var bar=document.createElement('div'); bar.id='paramTopBar'; bar.style.cssText='display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin:0 0 8px;';
   /* Enregistrer (gauche) : ajoute la config courante à « Ma bibliothèque » (d'où on la glisse en scène). */
   var sv=document.createElement('button'); sv.type='button'; sv.title='Enregistrer cette configuration dans Ma bibliothèque';
   sv.innerHTML='＋ <span>Enregistrer configuration</span>';
@@ -5645,6 +5686,25 @@ function paramResetButton(rebuildFn){
   sv.onmouseleave=function(){ sv.style.filter=''; };
   sv.onclick=function(){ if(typeof cfgAdd==='function') cfgAdd(); };
   bar.appendChild(sv);
+  /* Màj : met à jour la config actuellement éditée (affiché seulement si on en édite une). */
+  if(typeof CFG_CUR!=='undefined' && CFG_CUR){
+    var _cf=(typeof cfgLoad==='function')?cfgLoad().filter(function(c){return c.id===CFG_CUR;})[0]:null;
+    if(_cf){
+      var mj=document.createElement('button'); mj.type='button'; mj.title='Mettre à jour « '+_cf.name+' » avec les réglages actuels';
+      mj.innerHTML='⟳ <span>Màj</span>';
+      mj.style.cssText='font-size:11px;line-height:1;padding:5px 10px;border-radius:6px;cursor:pointer;color:var(--tx);background:transparent;border:1px solid var(--am);font-weight:600;';
+      mj.onmouseenter=function(){ mj.style.filter='brightness(1.12)'; }; mj.onmouseleave=function(){ mj.style.filter=''; };
+      mj.onclick=function(){ if(typeof cfgUpdate==='function'){ cfgUpdate(CFG_CUR); var _o=mj.innerHTML; mj.innerHTML='✓'; setTimeout(function(){ if(mj.parentNode) mj.innerHTML=_o; },1100); } };
+      bar.appendChild(mj);
+      /* 📷 : cadre la vignette de la config courante depuis la vue actuelle (orienter/zoomer puis cliquer). */
+      var ph=document.createElement('button'); ph.type='button'; ph.title='Cadrer la vignette : capture la vue actuelle comme miniature de « '+_cf.name+' »';
+      ph.innerHTML='📷';
+      ph.style.cssText='font-size:15px;line-height:1;padding:4px 11px;border-radius:6px;cursor:pointer;color:var(--tx);background:transparent;border:1px solid var(--dm);';
+      ph.onmouseenter=function(){ ph.style.borderColor='var(--am)'; if(typeof snapReticle==='function') snapReticle(true); }; ph.onmouseleave=function(){ ph.style.borderColor='var(--dm)'; if(typeof snapReticle==='function') snapReticle(false); };
+      ph.onclick=function(){ if(typeof snapReticle==='function') snapReticle(false); if(typeof cfgSetThumb==='function'){ cfgSetThumb(CFG_CUR); var _o=ph.innerHTML; ph.innerHTML='✓'; setTimeout(function(){ if(ph.parentNode) ph.innerHTML=_o; },1000); } };
+      bar.appendChild(ph);
+    }
+  }
   var b=document.createElement('button'); b.type='button'; b.title='Réinitialiser les paramètres';
   b.innerHTML='↺ <span>Réinitialiser</span>';
   b.style.cssText='font-size:11px;line-height:1;padding:5px 10px;border-radius:6px;cursor:pointer;color:var(--tx);background:transparent;border:1px solid var(--dm);opacity:.85;';
@@ -5703,6 +5763,47 @@ function resetTool(){
    paramétriques (ceux exposés par undoParams()).
    ============================================================================ */
 var CFG_KEY='BPO_CONFIGS_v1';
+var CFG_CUR=null;   /* id de la config en cours d'édition (bouton « Màj » + surlignage bibliothèque) */
+var CFG_OPEN={};   /* vignettes dépliées par config (id -> bool) ; repliées par défaut, chevron ▸/▾ */
+/* Miniature de l'objet courant depuis le canevas visible (logiciel ou WebGL). Le
+   contexte WebGL n'a pas preserveDrawingBuffer → on rend juste avant de capturer,
+   dans le même cycle JS, sinon le tampon est déjà vidé. Best-effort : '' si indispo. */
+function cfgSnap(){
+  try{
+    var cv2=document.getElementById('cv'), gl=document.getElementById('glcv'), src=null, isGL=false;
+    if(gl && gl.style.display!=='none' && gl.width>1){ src=gl; isGL=true; }
+    else if(cv2 && cv2.style.display!=='none' && cv2.width>1){ src=cv2; }
+    if(!src) return '';
+    if(isGL && typeof WGL!=='undefined' && WGL.render){ try{ WGL.render(); }catch(_e){} }
+    /* carré centré : on rogne les côtés de la vue pour une vignette 1:1 bien cadrée */
+    var sw=src.width, sh=src.height, side=Math.min(sw,sh), sx=(sw-side)/2, sy=(sh-side)/2;
+    var OUT=200, t=document.createElement('canvas'); t.width=OUT; t.height=OUT;
+    var c=t.getContext('2d'); c.fillStyle='#0d1526'; c.fillRect(0,0,OUT,OUT);
+    c.drawImage(src, sx, sy, side, side, 0, 0, OUT, OUT);
+    return t.toDataURL('image/jpeg',0.74);
+  }catch(e){ return ''; }
+}
+/* Cible de cadrage : superpose sur le viewport le carré RÉELLEMENT capturé par 📷,
+   le temps du survol du bouton appareil photo — pour cadrer sa vignette. */
+function snapReticle(on){
+  var vp=document.getElementById('vp'); if(!vp) return;
+  var el=document.getElementById('snapReticle');
+  if(!on){ if(el) el.style.display='none'; return; }
+  if(!el){
+    el=document.createElement('div'); el.id='snapReticle';
+    el.style.cssText='position:absolute;pointer-events:none;z-index:40;box-sizing:border-box;border:2px solid rgba(255,138,61,.9);border-radius:4px;box-shadow:0 0 0 1px rgba(0,0,0,.4),inset 0 0 0 1px rgba(0,0,0,.4);';
+    var lab=document.createElement('div'); lab.textContent='📷 vignette'; lab.style.cssText='position:absolute;top:-17px;left:-1px;font:600 10px system-ui;color:#ff8a3d;text-shadow:0 1px 2px rgba(0,0,0,.5);white-space:nowrap;';
+    el.appendChild(lab);
+    var ch=document.createElement('div'); ch.style.cssText='position:absolute;left:50%;top:50%;width:20px;height:20px;transform:translate(-50%,-50%);opacity:.85;background:linear-gradient(#ff8a3d,#ff8a3d) center/2px 100% no-repeat,linear-gradient(#ff8a3d,#ff8a3d) center/100% 2px no-repeat;';
+    el.appendChild(ch);
+    vp.appendChild(el);
+  }
+  var cs=getComputedStyle(vp); if(cs.position==='static') vp.style.position='relative';
+  var r=vp.getBoundingClientRect(), side=Math.min(r.width,r.height);
+  el.style.width=side+'px'; el.style.height=side+'px';
+  el.style.left=Math.round((r.width-side)/2)+'px'; el.style.top=Math.round((r.height-side)/2)+'px';
+  el.style.display='block';
+}
 function cfgEsc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function cfgLoad(){ try{ return JSON.parse(localStorage.getItem(CFG_KEY))||[]; }catch(e){ return []; } }
 function cfgStore(list){ try{ localStorage.setItem(CFG_KEY, JSON.stringify(list)); }catch(e){ alert('Sauvegarde impossible (stockage indisponible).'); } }
@@ -5744,6 +5845,8 @@ function cfgAdd(){
   list.unshift({ id:'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
     name:name, mode:MODE, label:(curCat().label||MODE),
     params:JSON.parse(JSON.stringify(o)), date:new Date().toLocaleDateString('fr-FR') });
+  try{ list[0].thumb=cfgSnap(); }catch(_e){}
+  CFG_CUR=list[0].id;
   cfgStore(list); cfgRender();
   var app=document.getElementById('app'); if(app) app.classList.add('save-open');
 }
@@ -5767,8 +5870,10 @@ function cfgApply(cfg){
   }
   var o=undoParams(); if(o){ for(var k in cfg.params) o[k]=JSON.parse(JSON.stringify(cfg.params[k])); }
   CUR_POLY=null; POLY_TARGET=null;                      /* le contour libre est reconstruit par build() */
+  CFG_CUR=cfg.id||null;                                 /* config en cours (bouton « Màj » + surlignage) */
   buildCatList(); refreshView();
   if(typeof undoReset==='function') undoReset();
+  if(typeof cfgRender==='function') cfgRender();          /* rafraîchit le surlignage de la bibliothèque */
 }
 /* Ouvre une instance de la scène dans son configurateur — même chemin que le bouton
    « Éditer » de la bibliothèque. Renvoie false si l'objet n'est pas paramétrique
@@ -5785,11 +5890,20 @@ function cfgUpdate(id){
   var list=cfgLoad(), it=list.filter(function(c){return c.id===id;})[0]; if(!it) return;
   if(it.mode!==MODE && !confirm(trI18N('La config')+" « "+it.label+" » "+trI18N("est d'un autre type que l'objet courant. Remplacer quand même ?"))) return;
   it.mode=MODE; it.label=(curCat().label||MODE); it.params=JSON.parse(JSON.stringify(o)); it.date=new Date().toLocaleDateString('fr-FR');
+  try{ it.thumb=cfgSnap(); }catch(_e){}
+  CFG_CUR=id;
   cfgStore(list); cfgRender();
   /* MAJ automatique des instances qui référencent cette config (scène en cours + scènes enregistrées) */
   function _syncInst(inst){ if(inst.cfgId===id || (!inst.cfgId && inst.mode===it.mode && inst.name===it.name)){ inst.cfgId=id; inst.mode=it.mode; inst.label=it.label; inst.params=JSON.parse(JSON.stringify(it.params)); return true; } return false; }
   if(typeof SCENE!=='undefined' && SCENE.instances){ var ch=false; SCENE.instances.forEach(function(inst){ if(_syncInst(inst)) ch=true; }); if(ch && MODE==='scene') refreshView(); }
   try{ var scl=scnLoad(), chS=false; scl.forEach(function(sc){ (sc.instances||[]).forEach(function(inst){ if(_syncInst(inst)) chS=true; }); }); if(chS) scnStore(scl); }catch(e){}
+}
+/* Met à jour UNIQUEMENT la vignette d'une config depuis la vue actuelle du viewer
+   (bouton 📷) — sans toucher aux paramètres : permet de cadrer sa miniature à volonté. */
+function cfgSetThumb(id){
+  var t=cfgSnap(); if(!t){ alert('Vue non capturable pour le moment (essayez en rendu Lissé/WebGL).'); return; }
+  var list=cfgLoad(), it=list.filter(function(c){return c.id===id;})[0]; if(!it) return;
+  it.thumb=t; cfgStore(list); cfgRender();
 }
 function cfgRename(id){ var list=cfgLoad(), it=list.filter(function(c){return c.id===id;})[0]; if(!it) return;
   var nn=prompt('Renommer :', it.name); if(nn===null) return; it.name=(nn.trim()||it.name); cfgStore(list); cfgRender(); }
@@ -5860,6 +5974,7 @@ function cfgRender(){
       if(cfg.type==='import' && window.BPO_import){ return window.BPO_import.makeItemEl(cfg); }
       var d=document.createElement('div'); d.className='save-item';
       d.innerHTML='<span class="nm" title="'+cfgEsc(cfg.name)+'">'+cfgEsc(cfg.name)+'</span><span class="meta">'+cfgEsc(cfg.label||cfg.mode)+' · '+cfgEsc(cfg.date||'')+'</span>';
+      if(typeof CFG_CUR!=='undefined' && CFG_CUR && cfg.id===CFG_CUR){ d.style.background='rgba(255,138,61,.13)'; d.style.borderColor='var(--am)'; }
       /* glisser une config dans le viewer → l'ajoute à la scène (bascule en mode Scène au besoin) */
       d.setAttribute('draggable','true');
       d.addEventListener('dragstart',function(e){ SCN_DRAG_CFG=cfg; if(e.dataTransfer){ try{ e.dataTransfer.setData('text/plain', cfg.id); }catch(_e){} } });
@@ -5868,9 +5983,24 @@ function cfgRender(){
       function mk(txt,title,fn){ var b=document.createElement('button'); b.textContent=txt; if(title) b.title=title; b.onclick=fn; return b; }
       row.appendChild(mk('Éditer','Charger et rééditer',function(){ cfgApply(cfg); }));
       row.appendChild(mk('Màj','Remplacer par la config actuelle',function(){ cfgUpdate(cfg.id); }));
-      row.appendChild(mk('✎','Renommer',function(){ cfgRename(cfg.id); }));
+      var _camb=mk('📷','Cadrer / prendre la vignette depuis la vue actuelle',function(){ cfgSetThumb(cfg.id); if(typeof snapReticle==='function') snapReticle(false); });
+      _camb.style.fontSize='15px'; _camb.style.verticalAlign='middle';   /* un peu plus gros mais aligné sur la barre */
+      _camb.onmouseenter=function(){ if(typeof snapReticle==='function') snapReticle(true); }; _camb.onmouseleave=function(){ if(typeof snapReticle==='function') snapReticle(false); };
+      row.appendChild(_camb);
+      var _edb=mk('✎','Renommer',function(){ cfgRename(cfg.id); }); _edb.style.fontSize='15px'; _edb.style.verticalAlign='middle'; row.appendChild(_edb);
       row.appendChild(mk('✕','Supprimer',function(){ cfgDelete(cfg.id); }));
-      d.appendChild(row); d.querySelector('.nm').onclick=function(){ cfgApply(cfg); };
+      d.appendChild(row);
+      /* vignette repliable SOUS la barre : chevron ▸ (masquée) / ▾ (affichée), par config */
+      if(cfg.thumb){
+        var _op=!!CFG_OPEN[cfg.id];
+        var _disc=document.createElement('button'); _disc.textContent=(_op?'▾':'▸')+' Vignette'; _disc.title='Afficher / masquer la vignette';
+        _disc.style.cssText='margin-top:4px;font-size:10px;padding:2px 7px;border-radius:5px;border:1px solid var(--ln);background:transparent;color:var(--dm);cursor:pointer;';
+        var _img=document.createElement('img'); _img.src=cfg.thumb; _img.alt='';
+        _img.style.cssText='width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:5px;display:'+(_op?'block':'none')+';margin-top:4px;background:#0d1526;border:1px solid var(--ln);';
+        _disc.onclick=function(e){ e.stopPropagation(); CFG_OPEN[cfg.id]=!CFG_OPEN[cfg.id]; var o2=CFG_OPEN[cfg.id]; _img.style.display=o2?'block':'none'; _disc.textContent=(o2?'▾':'▸')+' Vignette'; };
+        d.appendChild(_disc); d.appendChild(_img);
+      }
+      d.querySelector('.nm').onclick=function(){ cfgApply(cfg); };
       return d;
     }
   });
@@ -22189,6 +22319,8 @@ function refreshView(){
       else { buildUI(); }
       buildFinishUI();   /* panneau Finition pour tous les objets parametriques */
       if(cat.id!=='scene' && cat.id!=='terrain') paramResetButton(refreshView);   /* barre Enregistrer/Réinitialiser sur TOUS les configurateurs */
+      /* chiffrage inline pour les objets mesurables autres que l'immeuble (qui a immQuantUI) */
+      if(typeof objChiffrageUI==='function' && ['mur','dalle','piscine','hangar','veranda','cuisine'].indexOf(cat.id)>=0){ try{ objChiffrageUI(document.getElementById('params'), cat.id); }catch(_e){} }
       updateDims();
       undoOnView();
     }
@@ -23378,7 +23510,7 @@ refreshView();        /* affiche l'objet courant */
   /* onglets du panneau droit : Paramètres / Mise en page */
   var ptP=document.getElementById('pt-params'), ptM=document.getElementById('pt-mep'), ptS=document.getElementById('pt-scene');
   if(ptP) ptP.onclick=function(){ if(typeof MODE!=='undefined' && MODE==='scene'){ var pm=window._preSceneMode; if(pm && typeof selectCat==='function'){ try{ selectCat(pm); if(typeof buildCatList==='function')buildCatList(); if(typeof refreshView==='function')refreshView(); }catch(e){} } } setMEP(false); };
-  if(ptS) ptS.onclick=function(){ if(typeof enterSceneMode==='function') enterSceneMode(); };
+  if(ptS) ptS.onclick=function(){ if(typeof setMEP==='function') setMEP(false); if(typeof enterSceneMode==='function') enterSceneMode(); };   /* sortir de la Mise en page avant d'entrer en Scène (sinon on reste bloqué en mode papier) */
   if(ptM) ptM.onclick=function(){ setMEP(true); };
   /* réglages mise en page */
   var fmt=document.getElementById('plotFormat'), ori=document.getElementById('plotOrient');
