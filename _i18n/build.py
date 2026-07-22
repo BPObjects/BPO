@@ -156,13 +156,13 @@ def main():
         else:
             os.makedirs(os.path.join(ROOT, lg), exist_ok=True)
             path = os.path.join(ROOT, lg, 'index.html')
-        with io.open(path, 'w', encoding='utf-8') as f:
+        with io.open(path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(html)
         written.append((lg, os.path.relpath(path, ROOT), len(html)))
 
-    with io.open(os.path.join(ROOT, 'sitemap.xml'), 'w', encoding='utf-8') as f:
+    with io.open(os.path.join(ROOT, 'sitemap.xml'), 'w', encoding='utf-8', newline='\n') as f:
         f.write(sitemap(base, langs, default))
-    with io.open(os.path.join(ROOT, 'robots.txt'), 'w', encoding='utf-8') as f:
+    with io.open(os.path.join(ROOT, 'robots.txt'), 'w', encoding='utf-8', newline='\n') as f:
         f.write('User-agent: *\nAllow: /\n\nSitemap: %ssitemap.xml\n' % base)
 
     print('base :', base, '| défaut :', default, '| langues :', len(langs))

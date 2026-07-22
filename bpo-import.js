@@ -959,7 +959,7 @@
 
   /* ---- navigation vol dans la scene : clic DROIT glisse = regarder, FLECHES = avancer (axe du regard) ---- */
   var WALK = { on: false, keys: {}, raf: null, btn: null, look: null, eye: null, r0: 1 };
-  function walkBtnUpdate() { if (WALK.btn) { WALK.btn.style.background = WALK.on ? 'var(--am,#e08a3c)' : ''; WALK.btn.textContent = WALK.on ? 'Marche ON (Echap)' : 'Se deplacer'; } }
+  function walkBtnUpdate() { if (WALK.btn) { WALK.btn.style.background = WALK.on ? 'var(--am,#e08a3c)' : ''; WALK.btn.textContent = WALK.on ? 'Marche ON (Échap)' : 'Se déplacer'; } }
   function walkUpdateCam() {
     var W = glob.WGL, c = W && W.cam; if (!c || !W.camBasis || !WALK.eye) return;
     var b = W.camBasis();
@@ -1020,7 +1020,7 @@
     doc.addEventListener('contextmenu', function (e) { if (WALK.on) e.preventDefault(); }, true);
     var vp = doc.getElementById('vp'); if (vp && !doc.getElementById('bpoWalkBtn')) {
       var btn = doc.createElement('button'); btn.id = 'bpoWalkBtn'; btn.className = 'vp-btn';
-      btn.title = 'Navigation type Lumion : clic DROIT glisse = regarder a 360, FLECHES = se deplacer. Echap pour sortir.';
+      btn.title = 'Navigation type Lumion : clic DROIT glisse = regarder à 360°, FLÈCHES = se déplacer. Échap pour sortir.';
       btn.style.cssText = 'left:14px;bottom:14px;top:auto;right:auto;width:auto;padding:0 10px;';
       btn.onclick = walkToggle; vp.appendChild(btn); WALK.btn = btn; walkBtnUpdate();
     }

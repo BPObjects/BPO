@@ -12,11 +12,12 @@ async function setByCustomer(customerId: string, fields: Record<string, unknown>
 }
 
 Deno.serve(async (req) => {
-  const sig = req.headers.get("stripe-signature")!;
+  const sig = req.headers.get("stripe-signature");
+  if(!sig) return new Response("bad request", { status:400 });
   const body = await req.text();
   let evt: Stripe.Event;
   try{ evt = await stripe.webhooks.constructEventAsync(body, sig, WHSEC); }
-  catch(e){ return new Response("signature invalide: "+e, { status:400 }); }
+  catch(e){ console.error("stripe-webhook signature:", e); return new Response("bad request", { status:400 }); }
 
   try{
     switch(evt.type){
@@ -35,6 +36,10 @@ Deno.serve(async (req) => {
       case "customer.subscription.created": {
         const sub = evt.data.object as Stripe.Subscription;
         const ok = sub.status==="active" || sub.status==="trialing";
+        /* past_due = période de GRÂCE volontaire : Stripe relance la carte
+           plusieurs jours (Smart Retries) ; on ne coupe pas l'accès pendant ce
+           temps. Si la relance échoue définitivement, Stripe envoie ensuite
+           customer.subscription.deleted (ou status canceled/unpaid) -> coupure. */
         await setByCustomer(sub.customer as string, {
           plan: ok? "active" : (sub.status==="past_due"?"active":"expired"),
           subscription_status:sub.status, stripe_subscription_id:sub.id,
@@ -49,5 +54,5 @@ Deno.serve(async (req) => {
       }
     }
     return new Response("ok", { status:200 });
-  }catch(e){ return new Response("err: "+e, { status:500 }); }
+  }catch(e){ console.error("stripe-webhook:", e); return new Response("err", { status:500 }); }
 });

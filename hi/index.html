@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BPO — भवन घटकों की 3D सूची</title>
+<title>BPO — भवन घटकों और इमारतों का कॉन्फ़िगरेटर</title>
 <meta name="description" content="भवन घटकों को 3D में अपने आयामों के अनुसार कॉन्फ़िगर करें, अपनी फ़िनिश लगाएँ, और ArchiCAD, Revit तथा SketchUp के लिए IFC, DAE या OBJ में निर्यात करें।">
 <link rel="canonical" href="https://bpobjects.github.io/BPO/hi/">
 <link rel="alternate" hreflang="fr" href="https://bpobjects.github.io/BPO/">
@@ -23,7 +23,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Building Product Objects">
 <meta property="og:locale" content="hi_IN">
-<meta property="og:title" content="BPO — भवन घटकों की 3D सूची">
+<meta property="og:title" content="BPO — भवन घटकों और इमारतों का कॉन्फ़िगरेटर">
 <meta property="og:description" content="भवन घटकों को 3D में अपने आयामों के अनुसार कॉन्फ़िगर करें, अपनी फ़िनिश लगाएँ, और ArchiCAD, Revit तथा SketchUp के लिए IFC, DAE या OBJ में निर्यात करें।">
 <meta property="og:url" content="https://bpobjects.github.io/BPO/hi/">
 <meta property="og:image" content="https://bpobjects.github.io/BPO/assets/favicon-512.png">
@@ -33,6 +33,9 @@
 <link rel="alternate icon" href="favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="assets/favicon-180.png">
 <meta name="theme-color" content="#182034">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --ink:#0d1526;       /* titres / texte fort   */
@@ -59,7 +62,9 @@
   .wrap{max-width:1120px;margin:0 auto;padding:0 7vw;}
 
   /* ---------- boutons ---------- */
-  .btn{display:inline-flex;align-items:center;gap:9px;padding:13px 26px;border-radius:10px;
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px;}
+  ::selection{background:rgba(255,138,61,0.28);}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:12px 26px;border-radius:10px;
     font-size:15px;font-weight:500;text-decoration:none;cursor:pointer;border:1px solid transparent;
     transition:transform .18s, box-shadow .25s, background .2s, border-color .2s;}
   .btn:hover{transform:translateY(-2px);}
@@ -154,7 +159,9 @@
   .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
   .feat{border:1px solid var(--ln);border-radius:16px;padding:28px 26px;background:#fff;transition:box-shadow .3s, transform .25s;}
   .feat:hover{box-shadow:0 16px 38px rgba(20,35,60,0.07);transform:translateY(-3px);}
-  .feat .fi{font-size:22px;margin-bottom:14px;}
+  .feat .fi{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    background:rgba(229,112,28,0.10);color:#c25708;margin-bottom:14px;}
+  .feat .fi svg{width:22px;height:22px;display:block;}
   .feat h3{font-size:18px;font-weight:600;color:var(--ink);margin-bottom:8px;letter-spacing:0;}
   .feat p{font-size:14.5px;color:var(--dm);}
 
@@ -236,7 +243,7 @@
   <div class="wrap">
     <div class="hero-copy">
       <span class="eyebrow">Building Product Objects</span>
-      <h1><span class="grad">भवन घटकों</span> की 3D सूची।</h1>
+      <h1>भवन घटकों और इमारतों का <span class="grad">कॉन्फ़िगरेटर</span>।</h1>
       <p class="hero-sub">हर उत्पाद को अपने आयामों के अनुसार कॉन्फ़िगर करें, अपनी फ़िनिश लगाएँ, फिर IFC, DAE या OBJ में निर्यात करें — ArchiCAD, Revit या SketchUp में सीधे रखने के लिए तैयार।</p>
       <div class="hero-cta">
         <a href="../meuble.html" class="btn btn-primary">कॉन्फ़िगरेटर खोलें <span class="btn-arrow">→</span></a>
@@ -343,17 +350,29 @@
       <p>एक साधारण वस्तु हो या पूरी इमारत: सब कुछ तत्काल सेट होता है और सही प्रारूप में निकलता है।</p>
     </div>
     <div class="feat-grid">
-      <div class="feat"><div class="fi">🧩</div><h3>पैरामीट्रिक वस्तुएँ</h3>
+      <div class="feat"><div class="fi" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 19.6 7.6v8.8L12 20.8 4.4 16.4V7.6Z"/><path d="M12 12 19.6 7.6M12 12 4.4 7.6M12 12v8.8"/><g fill="currentColor" stroke="none"><circle cx="12" cy="3.2" r="1.4"/><circle cx="19.6" cy="7.6" r="1.4"/><circle cx="4.4" cy="7.6" r="1.4"/><circle cx="12" cy="12" r="1.6"/></g></svg>
+        </div><h3>पैरामीट्रिक वस्तुएँ</h3>
         <p>दीवारें, स्लैब, स्तंभ, बीम, रेलिंग, सीढ़ियाँ, फ़र्नीचर, प्रकाश उपकरण… आपके आयामों में।</p></div>
-      <div class="feat"><div class="fi">🏢</div><h3>पूरी इमारत</h3>
+      <div class="feat"><div class="fi" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/><path d="M11 21v-2.6h2V21"/></svg>
+        </div><h3>पूरी इमारत</h3>
         <p>मंज़िलें, स्तंभ जाल, अग्रभाग, विभाजन, स्लैब में छिद्र, और परिवारों को छिपाने हेतु परतें।</p></div>
-      <div class="feat"><div class="fi">📤</div><h3>BIM निर्यात</h3>
+      <div class="feat"><div class="fi" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="m8 8 4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        </div><h3>BIM निर्यात</h3>
         <p>IFC (ArchiCAD / Revit), DAE (SketchUp) और सार्वभौमिक OBJ — नेटिव तत्व, वास्तविक इकाइयों में।</p></div>
-      <div class="feat"><div class="fi">🎨</div><h3>फ़िनिश एवं सामग्री</h3>
+      <div class="feat"><div class="fi" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 4.5-8 4.5-8-4.5Z"/><path d="m4 12.5 8 4.5 8-4.5"/><path d="m4 17 8 4.5 8-4.5"/></svg>
+        </div><h3>फ़िनिश एवं सामग्री</h3>
         <p>RAL रंग, बनावट, या आपकी अपनी छवियाँ। आवरण, इन्सुलेशन, काँच, पर्दा-दीवारें।</p></div>
-      <div class="feat"><div class="fi">🌍</div><h3>बहुभाषी</h3>
+      <div class="feat"><div class="fi" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg>
+        </div><h3>बहुभाषी</h3>
         <p>इंटरफ़ेस 13 भाषाओं में उपलब्ध, फ़्रेंच से लेकर अरबी, जापानी और चीनी तक।</p></div>
-      <div class="feat"><div class="fi">🖨️</div><h3>पृष्ठ विन्यास</h3>
+      <div class="feat"><div class="fi" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3h10v5"/><path d="M7 16H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/></svg>
+        </div><h3>पृष्ठ विन्यास</h3>
         <p>A4→A0 शीट, मापक दृश्य, आयाम, अनुकूलन योग्य शीर्षक-खंड और PDF मुद्रण।</p></div>
     </div>
   </div>

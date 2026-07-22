@@ -19,11 +19,11 @@
   },
 
   "fr": {
-    "meta_title": "BPO — Le catalogue 3D des composants du bâtiment",
+    "meta_title": "BPO — Le configurateur de composants et de bâtiments",
     "meta_desc": "Configurez des composants du bâtiment en 3D à vos dimensions, habillez-les de vos finitions, puis exportez-les en IFC, DAE ou OBJ pour ArchiCAD, Revit et SketchUp.",
     "nav_acces": "Accès", "nav_fonctions": "Fonctionnalités", "nav_fabricants": "Fabricants",
     "nav_compte": "Mon compte", "nav_cta": "Ouvrir le configurateur",
-    "hero_h1": "Le catalogue 3D des <span class=\"grad\">composants du bâtiment</span>.",
+    "hero_h1": "Le configurateur de <span class=\"grad\">composants et de bâtiments</span>.",
     "hero_sub": "Configurez chaque produit à vos dimensions, habillez-le de vos finitions, puis exportez-le en IFC, DAE ou OBJ — prêt à poser dans ArchiCAD, Revit ou SketchUp.",
     "hero_cta2": "Vous êtes fabricant ?",
     "trust1": "Objets paramétriques", "trust2": "Export BIM natif", "trust3": "Aux cotes réelles",
@@ -65,11 +65,11 @@
   },
 
   "en": {
-    "meta_title": "BPO — The 3D catalogue of building components",
+    "meta_title": "BPO — The configurator for components and buildings",
     "meta_desc": "Configure building components in 3D to your own dimensions, apply your finishes, then export to IFC, DAE or OBJ for ArchiCAD, Revit and SketchUp.",
     "nav_acces": "Access", "nav_fonctions": "Features", "nav_fabricants": "Manufacturers",
     "nav_compte": "My account", "nav_cta": "Open the configurator",
-    "hero_h1": "The 3D catalogue of <span class=\"grad\">building components</span>.",
+    "hero_h1": "The configurator for <span class=\"grad\">components and buildings</span>.",
     "hero_sub": "Configure each product to your dimensions, apply your finishes, then export it as IFC, DAE or OBJ — ready to drop into ArchiCAD, Revit or SketchUp.",
     "hero_cta2": "Are you a manufacturer?",
     "trust1": "Parametric objects", "trust2": "Native BIM export", "trust3": "True dimensions",
@@ -111,11 +111,11 @@
   },
 
   "de": {
-    "meta_title": "BPO — Der 3D-Katalog der Bauteile",
+    "meta_title": "BPO — Der Konfigurator für Bauteile und Gebäude",
     "meta_desc": "Konfigurieren Sie Bauteile in 3D nach Ihren Maßen, versehen Sie sie mit Ihren Oberflächen und exportieren Sie sie als IFC, DAE oder OBJ für ArchiCAD, Revit und SketchUp.",
     "nav_acces": "Zugang", "nav_fonctions": "Funktionen", "nav_fabricants": "Hersteller",
     "nav_compte": "Mein Konto", "nav_cta": "Konfigurator öffnen",
-    "hero_h1": "Der 3D-Katalog der <span class=\"grad\">Bauteile</span>.",
+    "hero_h1": "Der Konfigurator für <span class=\"grad\">Bauteile und Gebäude</span>.",
     "hero_sub": "Konfigurieren Sie jedes Produkt nach Ihren Maßen, versehen Sie es mit Ihren Oberflächen und exportieren Sie es als IFC, DAE oder OBJ — direkt einsetzbar in ArchiCAD, Revit oder SketchUp.",
     "hero_cta2": "Sie sind Hersteller?",
     "trust1": "Parametrische Objekte", "trust2": "Nativer BIM-Export", "trust3": "Maßgetreu",
@@ -157,11 +157,11 @@
   },
 
   "es": {
-    "meta_title": "BPO — El catálogo 3D de los componentes de la construcción",
+    "meta_title": "BPO — El configurador de componentes y edificios",
     "meta_desc": "Configure componentes de construcción en 3D a sus dimensiones, aplique sus acabados y expórtelos en IFC, DAE u OBJ para ArchiCAD, Revit y SketchUp.",
     "nav_acces": "Acceso", "nav_fonctions": "Funciones", "nav_fabricants": "Fabricantes",
     "nav_compte": "Mi cuenta", "nav_cta": "Abrir el configurador",
-    "hero_h1": "El catálogo 3D de los <span class=\"grad\">componentes de la construcción</span>.",
+    "hero_h1": "El configurador de <span class=\"grad\">componentes y edificios</span>.",
     "hero_sub": "Configure cada producto a sus dimensiones, aplique sus acabados y expórtelo en IFC, DAE u OBJ — listo para colocar en ArchiCAD, Revit o SketchUp.",
     "hero_cta2": "¿Es usted fabricante?",
     "trust1": "Objetos paramétricos", "trust2": "Exportación BIM nativa", "trust3": "A medidas reales",
@@ -203,11 +203,11 @@
   },
 
   "it": {
-    "meta_title": "BPO — Il catalogo 3D dei componenti edilizi",
+    "meta_title": "BPO — Il configuratore di componenti ed edifici",
     "meta_desc": "Configura i componenti edilizi in 3D alle tue dimensioni, applica le tue finiture ed esportali in IFC, DAE o OBJ per ArchiCAD, Revit e SketchUp.",
     "nav_acces": "Accesso", "nav_fonctions": "Funzioni", "nav_fabricants": "Produttori",
     "nav_compte": "Il mio account", "nav_cta": "Apri il configuratore",
-    "hero_h1": "Il catalogo 3D dei <span class=\"grad\">componenti edilizi</span>.",
+    "hero_h1": "Il configuratore di <span class=\"grad\">componenti ed edifici</span>.",
     "hero_sub": "Configura ogni prodotto alle tue dimensioni, applica le tue finiture ed esportalo in IFC, DAE o OBJ — pronto da inserire in ArchiCAD, Revit o SketchUp.",
     "hero_cta2": "Sei un produttore?",
     "trust1": "Oggetti parametrici", "trust2": "Export BIM nativo", "trust3": "Misure reali",
@@ -249,11 +249,11 @@
   },
 
   "pt": {
-    "meta_title": "BPO — O catálogo 3D dos componentes de construção",
+    "meta_title": "BPO — O configurador de componentes e edifícios",
     "meta_desc": "Configure componentes de construção em 3D às suas dimensões, aplique os seus acabamentos e exporte-os em IFC, DAE ou OBJ para ArchiCAD, Revit e SketchUp.",
     "nav_acces": "Acesso", "nav_fonctions": "Funcionalidades", "nav_fabricants": "Fabricantes",
     "nav_compte": "A minha conta", "nav_cta": "Abrir o configurador",
-    "hero_h1": "O catálogo 3D dos <span class=\"grad\">componentes de construção</span>.",
+    "hero_h1": "O configurador de <span class=\"grad\">componentes e edifícios</span>.",
     "hero_sub": "Configure cada produto às suas dimensões, aplique os seus acabamentos e exporte-o em IFC, DAE ou OBJ — pronto a colocar no ArchiCAD, Revit ou SketchUp.",
     "hero_cta2": "É fabricante?",
     "trust1": "Objetos paramétricos", "trust2": "Exportação BIM nativa", "trust3": "Às medidas reais",
@@ -295,11 +295,11 @@
   },
 
   "hu": {
-    "meta_title": "BPO — Az épületszerkezeti elemek 3D katalógusa",
+    "meta_title": "BPO — Épületelemek és épületek konfigurátora",
     "meta_desc": "Állítsa be az épületszerkezeti elemeket 3D-ben saját méretre, adja hozzá felületképzéseit, majd exportálja IFC, DAE vagy OBJ formátumban ArchiCAD, Revit és SketchUp számára.",
     "nav_acces": "Hozzáférés", "nav_fonctions": "Funkciók", "nav_fabricants": "Gyártók",
     "nav_compte": "Fiókom", "nav_cta": "Konfigurátor megnyitása",
-    "hero_h1": "Az <span class=\"grad\">épületszerkezeti elemek</span> 3D katalógusa.",
+    "hero_h1": "Az <span class=\"grad\">épületelemek és épületek</span> konfigurátora.",
     "hero_sub": "Állítson be minden terméket saját méretére, adja hozzá felületképzéseit, majd exportálja IFC, DAE vagy OBJ formátumban — készen az ArchiCAD, Revit vagy SketchUp számára.",
     "hero_cta2": "Ön gyártó?",
     "trust1": "Parametrikus objektumok", "trust2": "Natív BIM export", "trust3": "Valós méretek",
@@ -341,11 +341,11 @@
   },
 
   "ru": {
-    "meta_title": "BPO — 3D-каталог строительных компонентов",
+    "meta_title": "BPO — Конфигуратор компонентов и зданий",
     "meta_desc": "Настраивайте строительные компоненты в 3D под свои размеры, задавайте отделку и экспортируйте в IFC, DAE или OBJ для ArchiCAD, Revit и SketchUp.",
     "nav_acces": "Доступ", "nav_fonctions": "Возможности", "nav_fabricants": "Производители",
     "nav_compte": "Мой аккаунт", "nav_cta": "Открыть конфигуратор",
-    "hero_h1": "3D-каталог <span class=\"grad\">строительных компонентов</span>.",
+    "hero_h1": "Конфигуратор <span class=\"grad\">компонентов и зданий</span>.",
     "hero_sub": "Настройте каждый продукт под свои размеры, задайте отделку и экспортируйте в IFC, DAE или OBJ — готово к вставке в ArchiCAD, Revit или SketchUp.",
     "hero_cta2": "Вы производитель?",
     "trust1": "Параметрические объекты", "trust2": "Нативный экспорт BIM", "trust3": "Реальные размеры",
@@ -387,11 +387,11 @@
   },
 
   "uk": {
-    "meta_title": "BPO — 3D-каталог будівельних компонентів",
+    "meta_title": "BPO — Конфігуратор компонентів і будівель",
     "meta_desc": "Налаштовуйте будівельні компоненти у 3D під свої розміри, задавайте оздоблення та експортуйте в IFC, DAE або OBJ для ArchiCAD, Revit і SketchUp.",
     "nav_acces": "Доступ", "nav_fonctions": "Можливості", "nav_fabricants": "Виробники",
     "nav_compte": "Мій акаунт", "nav_cta": "Відкрити конфігуратор",
-    "hero_h1": "3D-каталог <span class=\"grad\">будівельних компонентів</span>.",
+    "hero_h1": "Конфігуратор <span class=\"grad\">компонентів і будівель</span>.",
     "hero_sub": "Налаштуйте кожен продукт під свої розміри, задайте оздоблення та експортуйте в IFC, DAE або OBJ — готово до вставки в ArchiCAD, Revit чи SketchUp.",
     "hero_cta2": "Ви виробник?",
     "trust1": "Параметричні об'єкти", "trust2": "Нативний експорт BIM", "trust3": "Реальні розміри",
@@ -433,11 +433,11 @@
   },
 
   "zh": {
-    "meta_title": "BPO — 建筑构件三维目录",
+    "meta_title": "BPO — 建筑构件与建筑配置器",
     "meta_desc": "按您的尺寸在三维中配置建筑构件，套用您的饰面，然后导出为 IFC、DAE 或 OBJ，可直接用于 ArchiCAD、Revit 和 SketchUp。",
     "nav_acces": "使用方式", "nav_fonctions": "功能", "nav_fabricants": "制造商",
     "nav_compte": "我的账户", "nav_cta": "打开配置器",
-    "hero_h1": "<span class=\"grad\">建筑构件</span>三维目录。",
+    "hero_h1": "建筑构件与建筑的<span class=\"grad\">配置器</span>。",
     "hero_sub": "按您的尺寸配置每一件产品，套用您的饰面，再导出为 IFC、DAE 或 OBJ——可直接置入 ArchiCAD、Revit 或 SketchUp。",
     "hero_cta2": "您是制造商吗？",
     "trust1": "参数化构件", "trust2": "原生 BIM 导出", "trust3": "真实尺寸",
@@ -479,11 +479,11 @@
   },
 
   "ja": {
-    "meta_title": "BPO — 建築部材の3Dカタログ",
+    "meta_title": "BPO — 建築部材と建物のコンフィギュレーター",
     "meta_desc": "建築部材を3Dで自由な寸法に設定し、仕上げを適用して、IFC・DAE・OBJ でエクスポート。ArchiCAD、Revit、SketchUp にそのまま取り込めます。",
     "nav_acces": "ご利用方法", "nav_fonctions": "機能", "nav_fabricants": "メーカー",
     "nav_compte": "マイアカウント", "nav_cta": "コンフィギュレーターを開く",
-    "hero_h1": "<span class=\"grad\">建築部材</span>の3Dカタログ。",
+    "hero_h1": "建築部材と建物の<span class=\"grad\">コンフィギュレーター</span>。",
     "hero_sub": "各製品をご自身の寸法に設定し、仕上げを適用して、IFC・DAE・OBJ でエクスポート。ArchiCAD、Revit、SketchUp にそのまま配置できます。",
     "hero_cta2": "メーカーの方はこちら",
     "trust1": "パラメトリック部材", "trust2": "ネイティブ BIM 出力", "trust3": "実寸法",
@@ -525,11 +525,11 @@
   },
 
   "hi": {
-    "meta_title": "BPO — भवन घटकों की 3D सूची",
+    "meta_title": "BPO — भवन घटकों और इमारतों का कॉन्फ़िगरेटर",
     "meta_desc": "भवन घटकों को 3D में अपने आयामों के अनुसार कॉन्फ़िगर करें, अपनी फ़िनिश लगाएँ, और ArchiCAD, Revit तथा SketchUp के लिए IFC, DAE या OBJ में निर्यात करें।",
     "nav_acces": "पहुँच", "nav_fonctions": "विशेषताएँ", "nav_fabricants": "निर्माता",
     "nav_compte": "मेरा खाता", "nav_cta": "कॉन्फ़िगरेटर खोलें",
-    "hero_h1": "<span class=\"grad\">भवन घटकों</span> की 3D सूची।",
+    "hero_h1": "भवन घटकों और इमारतों का <span class=\"grad\">कॉन्फ़िगरेटर</span>।",
     "hero_sub": "हर उत्पाद को अपने आयामों के अनुसार कॉन्फ़िगर करें, अपनी फ़िनिश लगाएँ, फिर IFC, DAE या OBJ में निर्यात करें — ArchiCAD, Revit या SketchUp में सीधे रखने के लिए तैयार।",
     "hero_cta2": "क्या आप निर्माता हैं?",
     "trust1": "पैरामीट्रिक वस्तुएँ", "trust2": "नेटिव BIM निर्यात", "trust3": "वास्तविक आयामों में",
@@ -571,11 +571,11 @@
   },
 
   "ar": {
-    "meta_title": "BPO — الكتالوج ثلاثي الأبعاد لمكوّنات البناء",
+    "meta_title": "BPO — مُهيِّئ مكوّنات البناء والمباني",
     "meta_desc": "اضبط مكوّنات البناء ثلاثية الأبعاد على أبعادك، وطبّق تشطيباتك، ثم صدّرها بصيغة IFC أو DAE أو OBJ لبرامج ArchiCAD وRevit وSketchUp.",
     "nav_acces": "الوصول", "nav_fonctions": "المزايا", "nav_fabricants": "المصنّعون",
     "nav_compte": "حسابي", "nav_cta": "افتح المُهيّئ",
-    "hero_h1": "الكتالوج ثلاثي الأبعاد <span class=\"grad\">لمكوّنات البناء</span>.",
+    "hero_h1": "مُهيِّئ <span class=\"grad\">مكوّنات البناء والمباني</span>.",
     "hero_sub": "اضبط كل منتج على أبعادك، وطبّق تشطيباتك، ثم صدّره بصيغة IFC أو DAE أو OBJ — جاهز للوضع في ArchiCAD أو Revit أو SketchUp.",
     "hero_cta2": "هل أنت مصنّع؟",
     "trust1": "عناصر بارامترية", "trust2": "تصدير BIM أصلي", "trust3": "بأبعاد حقيقية",
