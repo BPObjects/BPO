@@ -477,8 +477,22 @@
     }
     var def = _name ? ('Terrain ' + _name.replace(/\.dxf$/i, '')) : 'Terrain';
     var nm = glob.prompt('Nom du terrain figé :', def); if (nm === null) return; nm = nm.trim() || def;
-    glob.BPO_import.bake(nm, pos, idx, groups).then(function () {
-      glob.alert('Terrain figé — disponible dans « Ma bibliothèque › Objets importés ». Posable en scène, sauvegardable, exportable (OBJ/DAE/IFC).');
+    /* v2.7 : la GRILLE accompagne l'objet figé (registre runtime, cle = pid).
+       L'export IFC la propage en pset BPO_Terrain -> le plugin ArchiCAD rebatit
+       un OUTIL MAILLAGE natif. Alt. finale par noeud (cm), -100000 = hors masque.
+       Meme formule que les sommets figes : y = zbase + (GZ - z0) * exag,
+       origines PRE-CENTREES (minX-cx / minY-cy) comme la geometrie. */
+    var _tg = null;
+    if (MESH.grid && MESH.grid.GZ) { var _g = MESH.grid, _ex = (+_g.exag || 1), _z = [];
+      for (var _gi = 0; _gi < _g.GZ.length; _gi++) {
+        var _on = (!_g.mask || _g.mask[_gi]) && (_g.GZ[_gi] === _g.GZ[_gi]);
+        _z.push(_on ? Math.round((_g.zbase + (_g.GZ[_gi] - _g.z0) * _ex) * 100) : -100000);
+      }
+      _tg = { nx: _g.nx, ny: _g.ny, step: _g.step, minX: _g.minX - (_g.cx || 0), minY: _g.minY - (_g.cy || 0), z: _z };
+    }
+    glob.BPO_import.bake(nm, pos, idx, groups).then(function (pid) {
+      if (_tg && pid) { glob.BPO_TERRAIN_GRIDS = glob.BPO_TERRAIN_GRIDS || {}; glob.BPO_TERRAIN_GRIDS[pid] = _tg; }
+      glob.alert('Terrain figé — disponible dans « Ma bibliothèque › Objets importés ». Posable en scène, sauvegardable, exportable (OBJ/DAE/IFC' + (_tg ? ' ; maillage natif ArchiCAD via le plugin' : '') + ').');
     }).catch(function (e) { glob.alert('Échec du figeage : ' + (e && e.message || e)); });
   }
 
