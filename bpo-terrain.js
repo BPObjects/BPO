@@ -490,7 +490,7 @@
       }
       _tg = { nx: _g.nx, ny: _g.ny, step: _g.step, minX: _g.minX - (_g.cx || 0), minY: _g.minY - (_g.cy || 0), z: _z };
     }
-    glob.BPO_import.bake(nm, pos, idx, groups).then(function (pid) {
+    glob.BPO_import.bake(nm, pos, idx, groups, _tg ? { tgrid: _tg } : null).then(function (pid) {
       if (_tg && pid) { glob.BPO_TERRAIN_GRIDS = glob.BPO_TERRAIN_GRIDS || {}; glob.BPO_TERRAIN_GRIDS[pid] = _tg; }
       glob.alert('Terrain figé — disponible dans « Ma bibliothèque › Objets importés ». Posable en scène, sauvegardable, exportable (OBJ/DAE/IFC' + (_tg ? ' ; maillage natif ArchiCAD via le plugin' : '') + ').');
     }).catch(function (e) { glob.alert('Échec du figeage : ' + (e && e.message || e)); });

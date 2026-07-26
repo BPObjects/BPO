@@ -547,8 +547,12 @@
     });
   }
 
-  function addImport(name, geo) {
+  function addImport(name, geo, extra) {
     var q = core.quantize(geo);
+    /* v2.7.1 : metadonnees PERSISTANTES portees par l'objet (ex. grille du
+       terrain fige — meta voyage avec le rec IndexedDB et TEX_OBJECTS, donc
+       l'export retrouve la grille dans TOUTE session future). */
+    if (extra && extra.tgrid) q.meta.tgrid = extra.tgrid;
     return gzipB64(q.raw).then(function (geoB64) {
       var pid = 'imp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       var orig = { geo: geoB64, meta: q.meta };
@@ -575,14 +579,14 @@
        idx    : Uint32Array (triangles)
        groups : [{start,count,col:[r,g,b]|null,tex:id|null,name}]  (couleurs par groupe)
      Renvoie une Promise -> pid. */
-  function bake(name, pos, idx, groups) {
+  function bake(name, pos, idx, groups, extra) {
     var geo = {
       pos: (pos instanceof Float32Array) ? pos : Float32Array.from(pos),
       idx: (idx instanceof Uint32Array) ? idx : Uint32Array.from(idx),
       groups: (groups && groups.length) ? groups : [{ start: 0, count: (idx.length), col: null, tex: null, name: 'Terrain' }]
     };
     core.ensureNormals(geo);
-    return addImport(name || 'Terrain', geo);
+    return addImport(name || 'Terrain', geo, extra);
   }
 
   /* transfo absolue depuis les champs numeriques */
