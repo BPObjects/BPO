@@ -12,3 +12,8 @@ export const TRIAL_DAYS = 15;
    (côté Supabase) : les garder cohérents. */
 export const PRICE_LABEL = "100 € / an";
 export const PRICE_LABEL_SHORT = "100 €/an";   /* pour les bandeaux étroits */
+/* Comptes PROPRIÉTAIRES : seuls ces comptes voient les marques marquées
+   `prive:'compte'` dans data/fabricants.js (catalogue fabricant intégré mais pas
+   encore ouvert au public, en attente de l'accord de la marque). Comparaison
+   insensible à la casse. Ajouter ici l'adresse EXACTE du compte BPO utilisé. */
+export const OWNER_EMAILS = ["al@architecture-al.com"];

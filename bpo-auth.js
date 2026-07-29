@@ -5,7 +5,7 @@
 /* supabase-js VENDORISÉ (2.110.7, bundle esm.sh rapatrié dans ./vendor/) :
    plus aucun code d'authentification chargé depuis un CDN externe. */
 import { createClient } from "./vendor/supabase-js-2.110.7.js";
-import { SUPABASE_URL, SUPABASE_ANON, PRICE_LABEL, PRICE_LABEL_SHORT } from "./bpo-config.js";
+import { SUPABASE_URL, SUPABASE_ANON, PRICE_LABEL, PRICE_LABEL_SHORT, OWNER_EMAILS } from "./bpo-config.js";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 /* Vérification d'accès CÔTÉ SERVEUR (fonction Edge check-access) — utilisée par
@@ -38,9 +38,22 @@ function banner(txt){
   else { document.body.style.paddingTop=h+"px"; }
 }
 
+/* Compte propriétaire : débloque les marques `prive:'compte'` (catalogue intégré,
+   accord fabricant en attente). L'attribut est posé APRÈS coup — meuble.html écoute
+   l'évènement pour reconstruire sa liste de marques. */
+function marquerProprietaire(session){
+  try{
+    const mail = (session?.user?.email || "").trim().toLowerCase();
+    if(!mail || !(OWNER_EMAILS||[]).some(m => String(m).trim().toLowerCase() === mail)) return;
+    document.documentElement.setAttribute("data-bpo-owner", "1");
+    window.dispatchEvent(new Event("bpo-owner"));
+  }catch(e){}
+}
+
 (async () => {
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ location.replace("compte.html"); return; }
+  marquerProprietaire(session);
   const { data: prof } = await sb.from("profiles").select("plan,trial_ends_at").eq("id", session.user.id).single();
   const active = prof?.plan === "active";
   const left = prof? Math.ceil((new Date(prof.trial_ends_at)-Date.now())/86400000) : 0;
