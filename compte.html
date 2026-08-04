@@ -554,7 +554,10 @@ async function render(){
   const trialLeft = prof? Math.ceil((new Date(prof.trial_ends_at)-Date.now())/86400000) : 0;
   const trialing = !active && trialLeft>0;
   const b=$("statusBadge");
-  if(active){ b.textContent=T("Abonné"); b.className="badge b-ok"; $("periodLbl").textContent=T("Abonnement jusqu'au"); $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe")); show($("portal")); show($("skpGet")); hide($("skpLock")); }
+  if(active){ b.textContent=T("Abonné"); b.className="badge b-ok"; $("periodLbl").textContent=T("Abonnement jusqu'au"); $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe"));
+    /* NFR / comptes offerts : pas de client Stripe -> pas de portail à gérer */
+    if(prof?.stripe_customer_id){ show($("portal")); } else { hide($("portal")); }
+    show($("skpGet")); hide($("skpLock")); }
   else if(trialing){ b.textContent=T("Essai"); b.className="badge b-warn"; $("periodLbl").textContent=T("Jours d'essai restants"); $("periodVal").textContent = trialLeft; show($("subscribe")); hide($("portal")); hide($("skpGet")); show($("skpLock")); }
   else { b.textContent=T("Expiré"); b.className="badge b-no"; $("periodLbl").textContent=T("Essai terminé"); $("periodVal").textContent="—"; show($("subscribe")); hide($("portal")); hide($("skpGet")); show($("skpLock"));
          /* fin d'essai douce : l'atelier reste ouvert en découverte, le bouton reste actif */ }
