@@ -91,7 +91,7 @@
       <p class="sub" style="margin-bottom:4px;">Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.</p>
       <div id="skpGet" class="hidden">
         <a class="btnlink" href="downloads/BPO-SketchUp-v1.15.rbz" download>Télécharger le plugin (.rbz)</a>
-        <a class="btnlink alt" href="downloads/BPO-SketchUp-installation.pdf" target="_blank">Guide d'installation (PDF)</a>
+        <a class="btnlink alt" id="skpGuide" href="downloads/BPO-SketchUp-installation.pdf" target="_blank">Guide d'installation (PDF)</a>
         <div class="dl-note">Compris dans votre abonnement — les mises à jour paraîtront ici même.</div>
       </div>
       <div id="skpLock" class="hidden">
@@ -117,6 +117,73 @@ if(String(SUPABASE_URL).includes("VOTRE-PROJET")){
 }
 const $ = id => document.getElementById(id);
 
+/* ---- i18n FR/EN — convention de l'app : la chaîne FRANÇAISE est la clé.
+   Langue : ?lang=en|fr (test/forçage), sinon langue du navigateur.
+   Les dates passent par toLocaleDateString (déjà localisé). ---- */
+const EN = {
+  "Connexion":"Sign in",
+  "Accédez à votre compte.":"Access your account.",
+  "Nom complet":"Full name",
+  "E-mail":"Email",
+  "Mot de passe":"Password",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"Receive the newsletter (new features, updates).",
+  "Se connecter":"Sign in",
+  "Aucune carte bancaire demandée.":"No credit card required.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" The 15-day trial is completely free — you only enter a payment method the day you choose to subscribe. With no card on file, no charge is possible.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"No account yet? Create one (15-day free trial)",
+  "Recevoir un lien de connexion par e-mail":"Email me a sign-in link",
+  "Créer un compte":"Create an account",
+  "Créer mon compte":"Create my account",
+  "Déjà un compte ? Se connecter":"Already have an account? Sign in",
+  "Mon compte":"My account",
+  "Statut":"Status",
+  "Essai":"Trial",
+  "Ouvrir le configurateur":"Open the configurator",
+  "S'abonner":"Subscribe",
+  "Gérer mon abonnement":"Manage my subscription",
+  "Préférences":"Preferences",
+  "Abonné à la newsletter":"Subscribed to the newsletter",
+  "Se déconnecter":"Sign out",
+  "Plugin SketchUp":"SketchUp plugin",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 or newer",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"The full configurator opens right inside SketchUp: your objects land as native components, textures included.",
+  "Télécharger le plugin (.rbz)":"Download the plugin (.rbz)",
+  "Guide d'installation (PDF)":"Installation guide (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"Included in your subscription — updates will appear right here.",
+  "S'abonner pour l'obtenir":"Subscribe to get it",
+  "Le plugin SketchUp est compris dans l'abonnement.":"The SketchUp plugin is included in the subscription.",
+  "E-mail et mot de passe requis.":"Email and password required.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"An account already exists with this email. Sign in, or use the email sign-in link.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"Account created. Check your inbox to confirm, then sign in.",
+  "Saisissez votre e-mail.":"Enter your email.",
+  "Lien de connexion envoyé par e-mail.":"Sign-in link sent by email.",
+  "Erreur.":"Error.",
+  "Erreur":"Error",
+  "Abonné":"Subscribed",
+  "Abonnement jusqu'au":"Subscribed until",
+  "Jours d'essai restants":"Trial days left",
+  "Essai terminé":"Trial ended",
+  "Expiré":"Expired",
+  "Redirection vers le paiement…":"Redirecting to payment…",
+  "Merci ! Votre abonnement est en cours d'activation.":"Thank you! Your subscription is being activated."
+};
+const LANG = (() => {
+  try{ const p = new URLSearchParams(location.search).get("lang"); if(p==="en"||p==="fr") return p; }catch(e){}
+  return (navigator.language||"fr").toLowerCase().startsWith("fr") ? "fr" : "en";
+})();
+const T = s => (LANG==="en" && EN[s]) || s;
+if(LANG==="en"){
+  document.documentElement.lang = "en";
+  document.title = "My account — Building Product Objects";
+  /* traduit tous les nœuds texte statiques (espaces insécables normalisées) */
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for(let n; (n = w.nextNode()); ){
+    const t = n.nodeValue.replace(/ /g," ").trim();
+    if(t && EN[t]) n.nodeValue = EN[t];
+  }
+  const g = $("skpGuide"); if(g) g.href = "downloads/BPO-SketchUp-installation-en.pdf";
+}
+
 /* Attribution d'origine (campagnes : ?ref=dias, ?ref=linkedin…) — mémorisée
    pour survivre à la navigation et aux visites ultérieures sans le paramètre.
    Recopiée dans profiles.ref_source par le trigger handle_new_user. */
@@ -127,7 +194,7 @@ const BPO_REF = (() => {
     return localStorage.getItem("bpoRef") || "";
   }catch(e){ return ""; }
 })();
-$("subscribe").textContent = "S'abonner — " + PRICE_LABEL;   /* libellé piloté par la config */
+$("subscribe").textContent = T("S'abonner") + " — " + PRICE_LABEL;   /* libellé piloté par la config */
 let mode = "login"; // login | signup
 
 function show(el){ el.classList.remove("hidden"); } function hide(el){ el.classList.add("hidden"); }
@@ -136,10 +203,10 @@ function setMsg(el,t,ok){ el.textContent=t||""; el.className="msg "+(ok?"ok":"er
 $("toggle").onclick = () => {
   mode = mode==="login" ? "signup" : "login";
   const sign = mode==="signup";
-  $("authTitle").textContent = sign ? "Créer un compte" : "Connexion";
-  $("authSub").textContent = sign ? "Essai de "+TRIAL_DAYS+" jours, sans carte bancaire." : "Accédez à votre compte.";
-  $("doAuth").textContent = sign ? "Créer mon compte" : "Se connecter";
-  $("toggle").textContent = sign ? "Déjà un compte ? Se connecter" : "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)";
+  $("authTitle").textContent = sign ? T("Créer un compte") : T("Connexion");
+  $("authSub").textContent = sign ? (LANG==="en" ? TRIAL_DAYS+"-day trial, no credit card." : "Essai de "+TRIAL_DAYS+" jours, sans carte bancaire.") : T("Accédez à votre compte.");
+  $("doAuth").textContent = sign ? T("Créer mon compte") : T("Se connecter");
+  $("toggle").textContent = sign ? T("Déjà un compte ? Se connecter") : T("Pas encore de compte ? Créer un compte (essai 15 jours gratuit)");
   $("nameFld").classList.toggle("hidden", !sign);
   $("nlFld").classList.toggle("hidden", !sign);
   $("noCb").classList.toggle("hidden", !sign);
@@ -148,7 +215,7 @@ $("toggle").onclick = () => {
 
 $("doAuth").onclick = async () => {
   const email=$("email").value.trim(), pwd=$("pwd").value;
-  if(!email||!pwd){ return setMsg($("authMsg"),"E-mail et mot de passe requis."); }
+  if(!email||!pwd){ return setMsg($("authMsg"),T("E-mail et mot de passe requis.")); }
   $("doAuth").disabled=true;
   try{
     if(mode==="signup"){
@@ -159,23 +226,23 @@ $("doAuth").onclick = async () => {
          (anti-énumération) — l'indice fiable est data.user.identities vide.
          Sans ce test on affichait « Compte créé » alors que rien n'était parti. */
       if(data && data.user && Array.isArray(data.user.identities) && data.user.identities.length===0){
-        setMsg($("authMsg"),"Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.");
+        setMsg($("authMsg"),T("Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail."));
       } else {
-        setMsg($("authMsg"),"Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.",true);
+        setMsg($("authMsg"),T("Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous."),true);
       }
     } else {
       const { error } = await sb.auth.signInWithPassword({ email, password:pwd });
       if(error) throw error;
       await render();
     }
-  } catch(e){ setMsg($("authMsg"), e.message||"Erreur."); }
+  } catch(e){ setMsg($("authMsg"), e.message||T("Erreur.")); }
   $("doAuth").disabled=false;
 };
 
 $("magic").onclick = async () => {
-  const email=$("email").value.trim(); if(!email) return setMsg($("authMsg"),"Saisissez votre e-mail.");
+  const email=$("email").value.trim(); if(!email) return setMsg($("authMsg"),T("Saisissez votre e-mail."));
   const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: SITE_URL+"/compte.html" } });
-  setMsg($("authMsg"), error? error.message : "Lien de connexion envoyé par e-mail.", !error);
+  setMsg($("authMsg"), error? error.message : T("Lien de connexion envoyé par e-mail."), !error);
 };
 
 $("logout").onclick = async () => { await sb.auth.signOut(); await render(); };
@@ -195,12 +262,12 @@ async function callFn(name){
   return rr.json();
 }
 $("subscribe").onclick = async () => {
-  setMsg($("accMsg"),"Redirection vers le paiement…",true);
-  try{ const j=await callFn("create-checkout"); if(j.url) location.href=j.url; else throw new Error(j.error||"Erreur"); }
+  setMsg($("accMsg"),T("Redirection vers le paiement…"),true);
+  try{ const j=await callFn("create-checkout"); if(j.url) location.href=j.url; else throw new Error(j.error||T("Erreur")); }
   catch(e){ setMsg($("accMsg"), e.message); }
 };
 $("portal").onclick = async () => {
-  try{ const j=await callFn("create-portal"); if(j.url) location.href=j.url; else throw new Error(j.error||"Erreur"); }
+  try{ const j=await callFn("create-portal"); if(j.url) location.href=j.url; else throw new Error(j.error||T("Erreur")); }
   catch(e){ setMsg($("accMsg"), e.message); }
 };
 
@@ -215,12 +282,12 @@ async function render(){
   const trialLeft = prof? Math.ceil((new Date(prof.trial_ends_at)-Date.now())/86400000) : 0;
   const trialing = !active && trialLeft>0;
   const b=$("statusBadge");
-  if(active){ b.textContent="Abonné"; b.className="badge b-ok"; $("periodLbl").textContent="Abonnement jusqu'au"; $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe")); show($("portal")); show($("skpGet")); hide($("skpLock")); }
-  else if(trialing){ b.textContent="Essai"; b.className="badge b-warn"; $("periodLbl").textContent="Jours d'essai restants"; $("periodVal").textContent = trialLeft; show($("subscribe")); hide($("portal")); hide($("skpGet")); show($("skpLock")); }
-  else { b.textContent="Expiré"; b.className="badge b-no"; $("periodLbl").textContent="Essai terminé"; $("periodVal").textContent="—"; show($("subscribe")); hide($("portal")); hide($("skpGet")); show($("skpLock"));
+  if(active){ b.textContent=T("Abonné"); b.className="badge b-ok"; $("periodLbl").textContent=T("Abonnement jusqu'au"); $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe")); show($("portal")); show($("skpGet")); hide($("skpLock")); }
+  else if(trialing){ b.textContent=T("Essai"); b.className="badge b-warn"; $("periodLbl").textContent=T("Jours d'essai restants"); $("periodVal").textContent = trialLeft; show($("subscribe")); hide($("portal")); hide($("skpGet")); show($("skpLock")); }
+  else { b.textContent=T("Expiré"); b.className="badge b-no"; $("periodLbl").textContent=T("Essai terminé"); $("periodVal").textContent="—"; show($("subscribe")); hide($("portal")); hide($("skpGet")); show($("skpLock"));
          /* fin d'essai douce : l'atelier reste ouvert en découverte, le bouton reste actif */ }
   $("nlToggle").checked = !!prof?.newsletter_opt_in;
-  if(new URLSearchParams(location.search).get("paid")) setMsg($("accMsg"),"Merci ! Votre abonnement est en cours d'activation.",true);
+  if(new URLSearchParams(location.search).get("paid")) setMsg($("accMsg"),T("Merci ! Votre abonnement est en cours d'activation."),true);
 }
 /* la session vient de l'événement d'auth (fournie directement) -> évite tout blocage de getSession au démarrage */
 sb.auth.onAuthStateChange((_e, s)=>{ CUR=s; render(); });
