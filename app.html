@@ -491,7 +491,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 #ps-sheet .cart .rd{color:#c0281e;font-weight:700;}#ps-sheet .cart .b34{font-size:3.4mm;}#ps-sheet .cart .b4{font-size:4mm;}#ps-sheet .cart .b5{font-size:5mm;}#ps-sheet .cart b{color:#111;}
 </style>
 </head>
-<body>
+<body><!-- mw-boot --><style>#mw-boot{position:fixed;inset:0;z-index:4999;background:#0d1526}</style><div id="mw-boot"></div><script>setTimeout(function(){var b=document.getElementById('mw-boot');if(b&&b.parentNode&&!document.getElementById('made-with'))b.parentNode.removeChild(b);},5000);</script><!-- /mw-boot -->
 <script type="module" src="bpo-auth.js"></script>
 <div id="app">
   <header>
@@ -713,17 +713,21 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 
 
 
+
+
+
 /* ---- MADE WITH BPO : diaporama d'ouverture sur le viewer. Immeubles concus
    avec BPO — data/madewith/liste.json (ajouter une image = deposer le .jpg et
    completer la liste). Zooms alternes + derives diagonales, settle d'exposition,
    titre en cascade, musique des intros ; ferme au premier pointeur ou Echap ;
    image fixe si prefers-reduced-motion. ---- */
 function madeWith(){
+  function mwBootOff(){ var b=document.getElementById('mw-boot'); if(b&&b.parentNode)b.parentNode.removeChild(b); }
   try{
   fetch('data/madewith/liste.json?v='+(typeof DATA_VER!=='undefined'?DATA_VER:'0')).then(function(r){
     if(!r.ok)throw 0; return r.json();
   }).then(function(L){
-    if(!L||!L.length)return;
+    if(!L||!L.length){ mwBootOff(); return; }
     var reduit=false; try{ reduit=matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
     var st=document.createElement('style');
     st.textContent='@keyframes mwTitre{0%{opacity:0;letter-spacing:.02em;transform:translateY(16px)}100%{opacity:1;letter-spacing:.34em;transform:translateY(0)}}'
@@ -770,6 +774,7 @@ function madeWith(){
     cred.onmouseleave=function(){ cred.style.color='#ff8a3d'; };
     w.appendChild(cred);
     document.body.appendChild(w);
+    mwBootOff();                                  /* le voile de demarrage cede la place */
     /* 4 motifs de mouvement : zoom avant / arriere, derives diagonales croisees */
     var MOTIFS=[
       ['scale(1.02) translate(1.6%,1.1%)',  'scale(1.17) translate(-1.2%,-0.9%)'],
@@ -817,8 +822,8 @@ function madeWith(){
     function surPointeur(ev){ if(ev&&ev.target&&ev.target.closest&&ev.target.closest('#mw-credit'))return; ferme(); }
     document.addEventListener('pointerdown',surPointeur,true);
     document.addEventListener('keydown',surTouche,true);
-  }).catch(function(){});
-  }catch(e){}
+  }).catch(function(){ mwBootOff(); });
+  }catch(e){ mwBootOff(); }
 }
 window.addEventListener('load',function(){ setTimeout(madeWith,150); });
 
