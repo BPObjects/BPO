@@ -158,7 +158,7 @@ function ecranAbo(){
 window.__bpoAtelier={ get exportOk(){return EXPORT_OK;}, set exportOk(v){EXPORT_OK=!!v;}, ecran:ecranAbo };
 document.addEventListener("click",function(e){
   if(EXPORT_OK)return;
-  const t=e.target&&e.target.closest?e.target.closest("#b-zip,#b-gsm,#b-skp,#b-dl"):null;
+  const t=e.target&&e.target.closest?e.target.closest("#b-zip,#b-gsm,#b-skp,#b-dl,#b-lib"):null;
   if(!t)return;
   e.preventDefault(); e.stopPropagation();
   ecranAbo();
@@ -185,6 +185,205 @@ try{
     }
   }
 }catch(e){ ouvre(); }
+</script>
+<script>
+(function(){
+"use strict";
+function gzB64(u8){
+  if(typeof CompressionStream==="undefined")return Promise.reject(new Error("Navigateur trop ancien (CompressionStream absent)."));
+  var cs=new CompressionStream("gzip");
+  return new Response(new Blob([u8]).stream().pipeThrough(cs)).arrayBuffer().then(function(ab){
+    var v=new Uint8Array(ab),s="",CH=32768;
+    for(var i=0;i<v.length;i+=CH)s+=String.fromCharCode.apply(null,v.subarray(i,i+CH));
+    return btoa(s);
+  });
+}
+function idbPutRec(rec){
+  return new Promise(function(res,rej){
+    if(!window.indexedDB){ rej(new Error("IndexedDB indisponible")); return; }
+    var rq=indexedDB.open("BPO_imports",1);
+    rq.onupgradeneeded=function(){ var db=rq.result;
+      if(!db.objectStoreNames.contains("meshes"))db.createObjectStore("meshes",{keyPath:"pid"}); };
+    rq.onsuccess=function(){ var db=rq.result;
+      var tx=db.transaction("meshes","readwrite"); tx.objectStore("meshes").put(rec);
+      tx.oncomplete=function(){ db.close(); res(); };
+      tx.onerror=function(){ rej(tx.error); }; };
+    rq.onerror=function(){ rej(rq.error); };
+  });
+}
+function blobDataURL(bl){
+  return new Promise(function(res,rej){ var r=new FileReader();
+    r.onload=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); };
+    r.readAsDataURL(bl); });
+}
+function bibEnvoi(){
+  if(typeof OUT==="undefined"||!OUT||typeof SRC==="undefined"||!SRC)
+    return Promise.reject(new Error("Préparez d’abord un objet (glissez un fichier, puis Alléger)."));
+  var ex=buildExport();
+  /* 1) OBJ exporté -> tampons plats, sommets dédoublés par triplet v/vt/vn
+        (une position peut porter plusieurs UV selon la matière) */
+  var V=[],VT=[],VN=[],runs=[],pos=[],uvA=[],nrm=[],idx=[],map={},cur=null;
+  ex.obj.split("\n").forEach(function(L){
+    if(L.lastIndexOf("v ",0)===0){ var p=L.slice(2).trim().split(/\s+/); V.push([+p[0],+p[1],+p[2]]); }
+    else if(L.lastIndexOf("vt ",0)===0){ var q=L.slice(3).trim().split(/\s+/); VT.push([+q[0],+q[1]]); }
+    else if(L.lastIndexOf("vn ",0)===0){ var r=L.slice(3).trim().split(/\s+/); VN.push([+r[0],+r[1],+r[2]]); }
+    else if(L.lastIndexOf("usemtl ",0)===0){ cur={name:L.slice(7).trim(),start:idx.length,count:0}; runs.push(cur); }
+    else if(L.lastIndexOf("f ",0)===0){
+      var cs=L.slice(2).trim().split(/\s+/);
+      for(var k=0;k<3;k++){ var key=cs[k], vid=map[key];
+        if(vid===undefined){ var t=key.split("/");
+          vid=pos.length/3; map[key]=vid;
+          var a=V[(+t[0])-1]; pos.push(a[0],a[1],a[2]);
+          var b=(t[1]!==""&&t[1]!==undefined)?VT[(+t[1])-1]:null; uvA.push(b?b[0]:0,b?b[1]:0);
+          var c=(t[2]!==""&&t[2]!==undefined)?VN[(+t[2])-1]:null; nrm.push(c?c[0]:0,c?c[1]:0,c?c[2]:1);
+        }
+        idx.push(vid); if(cur)cur.count++;
+      }
+    }
+  });
+  var nv=pos.length/3,i;
+  if(!nv||!idx.length)return Promise.reject(new Error("Géométrie vide."));
+  /* 2) axe vertical : la Moulinette travaille en Z-up pour les exports SketchUp,
+        la bibliothèque BPO est en Y-up */
+  if(typeof VIEW!=="undefined"&&VIEW.up==="Z"){
+    for(i=0;i<nv;i++){ var y=pos[i*3+1],z=pos[i*3+2]; pos[i*3+1]=z; pos[i*3+2]=-y;
+      var ny=nrm[i*3+1],nz=nrm[i*3+2]; nrm[i*3+1]=nz; nrm[i*3+2]=-ny; }
+  }
+  /* 3) conventions bibliothèque : base à y=0, recentré en X/Z (métres) */
+  var bb=[1e30,1e30,1e30,-1e30,-1e30,-1e30];
+  for(i=0;i<nv;i++)for(var a2=0;a2<3;a2++){ var w=pos[i*3+a2];
+    if(w<bb[a2])bb[a2]=w; if(w>bb[a2+3])bb[a2+3]=w; }
+  var cx=(bb[0]+bb[3])/2,cz=(bb[2]+bb[5])/2,my=bb[1];
+  for(i=0;i<nv;i++){ pos[i*3]-=cx; pos[i*3+1]-=my; pos[i*3+2]-=cz; }
+  bb=[bb[0]-cx,0,bb[2]-cz,bb[3]-cx,bb[4]-my,bb[5]-cz];
+  var pid="imp_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  /* 4) groupes par matière : couleur effective, opacité, métal, texture */
+  function matByName(n){ for(var j=0;j<SRC.mats.length;j++)if(SRC.mats[j].name===n)return SRC.mats[j]; return null; }
+  function texNameOf(m){ var o=effOv(m);
+    if(o.type==="bpo")return "bpo_"+o.name+".jpg";
+    if(o.type==="imp")return o.name;
+    if(o.type==="orig"&&m.mapKd)return m.mapKd;
+    return null; }
+  var texIdOf={},texNoms=[];
+  var groups=runs.filter(function(r){return r.count>0;}).map(function(r){
+    var m=matByName(r.name),g={start:r.start,count:r.count,name:r.name};
+    if(m){ var kd=effKd(m); g.col=[+kd[0].toFixed(4),+kd[1].toFixed(4),+kd[2].toFixed(4)];
+      var al=effAl(m); if(al<0.999)g.al=+al.toFixed(3);
+      if(m.met)g.met=+(+m.met).toFixed(2);
+      var tn=texNameOf(m);
+      if(tn){ if(!(tn in texIdOf)){ texIdOf[tn]=pid+"_t"+texNoms.length; texNoms.push(tn); } g.tex=texIdOf[tn]; }
+    }
+    return g;
+  });
+  /* 5) textures -> dataURL (jeu de textures du paquet .zip, déjà résolu) */
+  var pTex=Promise.resolve({});
+  if(texNoms.length){
+    pTex=Promise.all(texNoms.map(function(tn){
+      var e=null; for(var j=0;j<ex.texs.length;j++)if(ex.texs[j].name===tn){e=ex.texs[j];break;}
+      return (e&&e.blob)?blobDataURL(e.blob).then(function(d){return [tn,d];}):Promise.resolve([tn,null]);
+    })).then(function(paires){
+      var dict={},absentes={};
+      paires.forEach(function(pr){ if(pr[1])dict[texIdOf[pr[0]]]=pr[1]; else absentes[texIdOf[pr[0]]]=1; });
+      groups.forEach(function(g){ if(g.tex&&absentes[g.tex])delete g.tex; });
+      return dict;
+    });
+  }
+  return pTex.then(function(texDict){
+    /* 6) quantification au format exact de bpo-import (u16 pos ‖ i8 nrm ‖ f32 uv ‖ u32 idx) */
+    var dx=bb[3]-bb[0]||1,dy=bb[4]-bb[1]||1,dz=bb[5]-bb[2]||1;
+    var posQ=new Uint16Array(nv*3),nrmQ=new Int8Array(nv*3);
+    function c01(x){ return x<0?0:(x>1?1:x); }
+    for(i=0;i<nv;i++){
+      posQ[i*3]  =Math.round(c01((pos[i*3]  -bb[0])/dx)*65535);
+      posQ[i*3+1]=Math.round(c01((pos[i*3+1]-bb[1])/dy)*65535);
+      posQ[i*3+2]=Math.round(c01((pos[i*3+2]-bb[2])/dz)*65535);
+      var L2=Math.hypot(nrm[i*3],nrm[i*3+1],nrm[i*3+2])||1;
+      nrmQ[i*3]  =Math.max(-127,Math.min(127,Math.round(nrm[i*3]/L2*127)));
+      nrmQ[i*3+1]=Math.max(-127,Math.min(127,Math.round(nrm[i*3+1]/L2*127)));
+      nrmQ[i*3+2]=Math.max(-127,Math.min(127,Math.round(nrm[i*3+2]/L2*127)));
+    }
+    var uvF=Float32Array.from(uvA),idxA=Uint32Array.from(idx);
+    var meta={plen:posQ.byteLength,nlen:nrmQ.byteLength,uvlen:uvF.byteLength,ilen:idxA.byteLength,
+              bb:bb,nv:nv,dim:[bb[3]-bb[0],bb[4]-bb[1],bb[5]-bb[2]]};
+    var raw=new Uint8Array(meta.plen+meta.nlen+meta.uvlen+meta.ilen),off=0;
+    raw.set(new Uint8Array(posQ.buffer),off); off+=meta.plen;
+    raw.set(new Uint8Array(nrmQ.buffer),off); off+=meta.nlen;
+    raw.set(new Uint8Array(uvF.buffer),off); off+=meta.uvlen;
+    raw.set(new Uint8Array(idxA.buffer),off);
+    return gzB64(raw).then(function(geoB64){
+      var base=ex.base,D={geo:geoB64,meta:meta,groups:groups};
+      var aTex=false; for(var k2 in texDict){ aTex=true; break; }
+      if(aTex)D.tex=texDict;
+      var rec={pid:pid,name:base,date:new Date().toISOString(),groups:groups,
+               xform:{rx:0,ry:0,rz:0,sc:100},orig:{geo:geoB64,meta:meta},D:D};
+      return idbPutRec(rec).then(function(){
+        /* 7) dossier + carte de liste du configurateur (mêmes clés que app.html) */
+        try{
+          var doss=JSON.parse(localStorage.getItem("BPO_CFG_FOLDERS_v1"))||[];
+          if(!doss.some(function(f){return f.id==="imp_objets";})){
+            doss.unshift({id:"imp_objets",name:"Objets importes",parent:null,open:true});
+            localStorage.setItem("BPO_CFG_FOLDERS_v1",JSON.stringify(doss));
+          }
+          var liste=JSON.parse(localStorage.getItem("BPO_CONFIGS_v1"))||[];
+          liste.unshift({id:"c"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+            type:"import",mode:"fabprod",prod:pid,name:base,label:"objet importe",
+            parent:"imp_objets",date:new Date().toLocaleDateString("fr-FR")});
+          localStorage.setItem("BPO_CONFIGS_v1",JSON.stringify(liste));
+        }catch(e){}
+        return {pid:pid,nom:base,nTex:Object.keys(texDict).length,tris:idxA.length/3};
+      });
+    });
+  });
+}
+function bibToast(res){
+  var o=document.createElement("div");
+  o.style.cssText="position:fixed;right:16px;bottom:16px;z-index:99998;background:#101a30;"
+    +"border:1px solid rgba(255,138,61,.5);border-radius:12px;padding:16px 18px;max-width:44ch;"
+    +"color:#c3cbd9;font:13px/1.55 Inter,system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)";
+  o.innerHTML="<b style=\"color:#e8ecf4\">« "+res.nom+" » est dans votre bibliothèque BPO</b><br>"
+    +"Dossier « Objets importés » — "+res.tris+" triangles"
+    +(res.nTex?(", "+res.nTex+" texture"+(res.nTex>1?"s":"")):"")+".<br><br>"
+    +"<a href=\"app.html\" style=\"display:inline-block;background:#ff8a3d;color:#1a1d23;font-weight:700;"
+    +"padding:8px 14px;border-radius:8px;text-decoration:none\">Ouvrir BPO</a> "
+    +"<a href=\"#\" id=\"bib-ok\" style=\"color:#8a93a8;margin-left:10px;text-decoration:none\">Rester ici</a>";
+  document.body.appendChild(o);
+  o.querySelector("#bib-ok").onclick=function(e){ e.preventDefault(); o.remove(); };
+  setTimeout(function(){ if(o.parentNode)o.remove(); },30000);
+}
+function pret(fn){ if(document.readyState!=="loading")fn(); else document.addEventListener("DOMContentLoaded",fn); }
+pret(function(){
+  /* lien de retour vers le configurateur, dans la barre de titre */
+  var top=document.getElementById("top");
+  if(top&&!document.getElementById("bpo-retour")){
+    var a=document.createElement("a");
+    a.id="bpo-retour"; a.href="app.html"; a.textContent="← Revenir à BPO";
+    a.style.cssText="margin-left:auto;pointer-events:auto;color:#c3cbd9;text-decoration:none;"
+      +"font-size:12.5px;padding:7px 13px;border:1px solid rgba(255,255,255,.22);border-radius:9px;"
+      +"background:rgba(13,21,38,.55)";
+    a.onmouseenter=function(){ a.style.borderColor="#ff8a3d"; a.style.color="#ff8a3d"; };
+    a.onmouseleave=function(){ a.style.borderColor="rgba(255,255,255,.22)"; a.style.color="#c3cbd9"; };
+    top.appendChild(a);
+  }
+  /* bouton d'envoi, sous « Paquet BPO (.zip) », même cycle activé/désactivé */
+  var ref=document.getElementById("b-zip");
+  if(!ref||document.getElementById("b-lib"))return;
+  var row=document.createElement("div"); row.className="btns";
+  var b=document.createElement("button");
+  b.id="b-lib"; b.disabled=ref.disabled; b.textContent="→ Ma bibliothèque BPO";
+  b.title="Envoie l’objet préparé directement dans votre bibliothèque BPO (dossier « Objets importés ») : couleurs, textures, opacité et métal — prêt à poser en scène.";
+  row.appendChild(b);
+  ref.parentNode.parentNode.insertBefore(row,ref.parentNode.nextSibling);
+  new MutationObserver(function(){ b.disabled=ref.disabled; })
+    .observe(ref,{attributes:true,attributeFilter:["disabled"]});
+  b.addEventListener("click",function(){
+    if(b.disabled)return;
+    var tx=b.textContent; b.disabled=true; b.textContent="Envoi…";
+    bibEnvoi().then(function(res){ b.textContent=tx; b.disabled=ref.disabled; bibToast(res); })
+      .catch(function(e){ b.textContent=tx; b.disabled=ref.disabled;
+        alert("Envoi impossible : "+(e&&e.message||e)); });
+  });
+});
+})();
 </script>
 <canvas id="gl"></canvas>
 <div id="top"><svg width="26" height="26" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="14" fill="#0d1526" stroke="rgba(255,255,255,.14)"/><g stroke="#0d1526" stroke-width="1.6" stroke-linejoin="round"><path d="M32 9 8 27 32 31Z" fill="#f08a3e"/><path d="M32 9 56 27 32 31Z" fill="#e5701c"/><path d="M8 27 21 54 32 31Z" fill="#c85f14"/><path d="M56 27 43 54 32 31Z" fill="#a84e0f"/><path d="M21 54 43 54 32 31Z" fill="#8f420c"/></g></svg><b><i>BPO</i> · Moulinette 3D</b><span>OBJ · DAE · SKP · 3DS → objet allégé (QEM)</span></div>
