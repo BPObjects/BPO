@@ -304,6 +304,7 @@ try{
     <div class="uvrow"><label>Éch. U</label><input type="range" id="uvs-su" min="0.05" max="8" step="0.05" value="1"><input class="uvnum" id="uv-su" value="1"></div>
     <div class="uvrow"><label>Éch. V</label><input type="range" id="uvs-sv" min="0.05" max="8" step="0.05" value="1"><input class="uvnum" id="uv-sv" value="1"></div>
     <div class="uvrow"><label>Rot. °</label><input type="range" id="uvs-rot" min="-180" max="180" step="1" value="0"><input class="uvnum" id="uv-rot" value="0"></div>
+    <div class="uvrow"><label>Métal</label><input type="range" id="uvs-met" min="0" max="1" step="0.05" value="0" title="Réflexion métallique du studio (chrome ≈ 0,9). Automatique pour les matières nommées chromé / inox / poli."><input class="uvnum" id="uv-met" value="0"></div>
     <div class="uvrow"><label>Déc. U</label><input type="range" id="uvs-ou" min="-1" max="1" step="0.005" value="0"><input class="uvnum" id="uv-ou" value="0"></div>
     <div class="uvrow"><label>Déc. V</label><input type="range" id="uvs-ov" min="-1" max="1" step="0.005" value="0"><input class="uvnum" id="uv-ov" value="0"></div>
   </div>
@@ -765,7 +766,7 @@ $('m-copy').addEventListener('click',function(){ if(!SRC)return;
     ov:o?{type:o.type,name:o.name,code:o.code,hex:o.hex,
           rgb:o.rgb?o.rgb.slice():undefined,dataURL:o.dataURL,blob:o.blob}:null,
     uvT:Object.assign({},getUV(m)),
-    mapKd:m.mapKd, mapPath:m.mapPath, tex:m.tex, texBlob:m.texBlob, thumb:m.thumb};
+    mapKd:m.mapKd, mapPath:m.mapPath, tex:m.tex, texBlob:m.texBlob, thumb:m.thumb, met:m.met||0};
   $('m-paste').disabled=false;
   dropMsg(''); });
 $('m-paste').addEventListener('click',function(){ if(!SRC||!CLIPMAT)return;
@@ -775,7 +776,7 @@ $('m-paste').addEventListener('click',function(){ if(!SRC||!CLIPMAT)return;
     m.ov=CLIPMAT.ov?Object.assign({},CLIPMAT.ov):null;
     m.uvT=Object.assign({},CLIPMAT.uvT);
     m.mapKd=CLIPMAT.mapKd; m.mapPath=CLIPMAT.mapPath;
-    m.tex=CLIPMAT.tex; m.texBlob=CLIPMAT.texBlob; m.thumb=CLIPMAT.thumb;
+    m.tex=CLIPMAT.tex; m.texBlob=CLIPMAT.texBlob; m.thumb=CLIPMAT.thumb; m.met=CLIPMAT.met||0;
     if(m.glTex)gl.deleteTexture(m.glTex);
     m.glTex=null; m.glKey=null; m.glLoad=null;
     refreshMatTile(i); });
@@ -990,6 +991,7 @@ function syncUVUI(){ var m=SRC?SRC.mats[TSEL]:null; if(!m)return; var t=getUV(m)
   $('uv-ou').value=t.ou; $('uv-ov').value=t.ov; $('uv-mode').value=''+t.mode;
   $('uvs-su').value=t.su; $('uvs-sv').value=t.sv; $('uvs-rot').value=t.rot;
   $('uvs-ou').value=t.ou; $('uvs-ov').value=t.ov;
+  $('uv-met').value=(m.met||0); $('uvs-met').value=(m.met||0);
   $('uv-mu').classList.toggle('on',!!t.mu); $('uv-mv').classList.toggle('on',!!t.mv);
   $('uv-sw').classList.toggle('on',!!t.swap); }
 
@@ -1208,7 +1210,9 @@ function parseMTL(text,mats){
     else if(cur&&L.toLowerCase().lastIndexOf('map_kd',0)===0){ var s=L.slice(6).trim();
       cur.mapPath=s.replace(/\\/g,'/'); cur.mapKd=s.split(/[\\\/]/).pop(); }
     else if(cur&&(L.lastIndexOf('d ',0)===0)){ var dv=parseFloat(L.slice(2));
-      if(isFinite(dv))cur.alpha=Math.max(0,Math.min(1,dv)); } }
+      if(isFinite(dv))cur.alpha=Math.max(0,Math.min(1,dv)); }
+    else if(cur&&L.lastIndexOf('Pm',0)===0){ var pv=parseFloat(L.slice(2));
+      if(isFinite(pv))cur.met=Math.max(0,Math.min(1,pv)); } }
 }
 
 /* ============================ parser 3DS (binaire a chunks, little-endian) ============================
@@ -1860,6 +1864,7 @@ function afterParse(name,t0){
       $('left').style.display='block';
       $('drop').style.display='none';
       /* la matiere a-t-elle des UV d'origine ? (guide les surcharges texture) */
+      SRC.mats.forEach(function(m){ if(m.met===undefined){ var _a=metAuto(m.name); if(_a)m.met=_a; } });
       SRC.mats.forEach(function(m){ m.hasUV=false; });
       for(var ct=0;ct<SRC.triMat.length;ct++){
         if(SRC.corners.t[ct*3]>=0||SRC.corners.t[ct*3+1]>=0||SRC.corners.t[ct*3+2]>=0)
@@ -2059,6 +2064,7 @@ function buildExport(){
   SRC.mats.forEach(function(m2){
     var o=effOv(m2), kd=effKd(m2);
     ml.push('newmtl '+m2.name,'Kd '+kd[0].toFixed(4)+' '+kd[1].toFixed(4)+' '+kd[2].toFixed(4));
+    if(m2.met)ml.push('Pm '+(+m2.met).toFixed(2));   /* metallicite (extension PBR du MTL) */
     if(effAl(m2)<0.999)ml.push('d '+effAl(m2).toFixed(3));
     if(o.type==='bpo'){ var bn='bpo_'+o.name+'.jpg';
       ml.push('map_Kd textures/'+bn);
@@ -2482,7 +2488,7 @@ function initGL(){
   var vs='attribute vec3 aP;attribute vec3 aN;attribute vec2 aT;uniform mat4 uMVP;uniform mat3 uNrm;varying vec3 vN;varying vec3 vNm;varying vec3 vP;varying vec2 vT;void main(){vN=uNrm*aN;vNm=aN;vP=aP;vT=aT;gl_Position=uMVP*vec4(aP,1.0);}';
   var fs='precision mediump float;varying vec3 vN;varying vec3 vNm;varying vec3 vP;varying vec2 vT;'
     +'uniform vec3 uKd;uniform int uTex;uniform sampler2D uS;uniform int uFlat;uniform int uCut;'
-    +'uniform vec4 uUVa;uniform vec2 uUVo;uniform int uMode;uniform int uHi;uniform float uAl;uniform float uExpo;'
+    +'uniform vec4 uUVa;uniform vec2 uUVo;uniform int uMode;uniform int uHi;uniform float uAl;uniform float uExpo;uniform float uMet;uniform vec3 uEye;uniform float uUpZ;'
     +'void main(){vec3 n=normalize(vN);'
     +'if(!gl_FrontFacing)n=-n;'	/* eclairage double face : faces mal orientees eclairees correctement */
     +'float dK=abs(dot(n,normalize(vec3(.3,.5,.8))));'		/* principale, symetrique */
@@ -2501,7 +2507,27 @@ function initGL(){
     +'if(uCut==1&&ts.a<0.5)discard;'	/* textures a decoupe alpha (aubes, moyeux, decalcos) */
     +'kd=ts.rgb;}'
     +'if(uHi==1){kd=mix(kd,vec3(0.98,0.55,0.2),0.45);}'
-    +'if(uFlat==1){gl_FragColor=vec4(uKd,1.0);}else{gl_FragColor=vec4(kd*li+vec3(sp+.03),uAl);}}';
+    +'vec3 outCol=kd*li+vec3(sp+.03);'
+    /* METAL : reflexion d'un studio procedural le long du vecteur reflechi.
+       Tout est en espace MODELE (vNm, vP, uEye) — aucun melange d'espaces. */
+    +'if(uMet>0.01){'
+    +'vec3 nm=normalize(vNm);if(!gl_FrontFacing)nm=-nm;'
+    +'vec3 Vv=normalize(uEye-vP);'
+    +'vec3 R=reflect(-Vv,nm);'
+    +'float vv=(uUpZ>0.5)?R.z:R.y;'
+    +'float az=(uUpZ>0.5)?atan(R.x,R.y):atan(R.x,R.z);'
+    +'float ciel=mix(.68,.26,smoothstep(.04,.78,vv));'
+    +'float sol=mix(.15,.42,smoothstep(-.78,-.04,vv));'
+    +'float base=(vv>=0.)?ciel:sol;'
+    +'float halo=exp(-pow(vv*4.0,2.0))*.5;'
+    +'float bandes=pow(abs(cos(az*2.0+.6)),60.0)*smoothstep(-.1,.55,vv)*.8;'
+    +'float e=clamp(base+halo+bandes,0.,1.6);'
+    +'vec3 env=vec3(e)*vec3(.965,.985,1.03);'
+    +'float F=.35+.65*pow(1.-max(dot(nm,Vv),0.),3.0);'
+    +'vec3 metCol=kd*env*(0.5+0.9*F)*uExpo;'
+    +'metCol+=vec3(pow(max(dot(R,normalize(vec3(.3,.5,.8))),0.),90.0))*.85;'
+    +'outCol=mix(outCol,metCol,uMet);}'
+    +'if(uFlat==1){gl_FragColor=vec4(uKd,1.0);}else{gl_FragColor=vec4(outCol,uAl);}}';
   var p=gl.createProgram();
   gl.attachShader(p,sh(gl.VERTEX_SHADER,vs)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
   gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw gl.getProgramInfoLog(p);
@@ -2511,12 +2537,14 @@ function initGL(){
         uS:gl.getUniformLocation(p,'uS'), uFlat:gl.getUniformLocation(p,'uFlat'),
         uUVa:gl.getUniformLocation(p,'uUVa'), uUVo:gl.getUniformLocation(p,'uUVo'),
         uMode:gl.getUniformLocation(p,'uMode'), uHi:gl.getUniformLocation(p,'uHi'),
-        uAl:gl.getUniformLocation(p,'uAl'), uExpo:gl.getUniformLocation(p,'uExpo')};
+        uAl:gl.getUniformLocation(p,'uAl'), uExpo:gl.getUniformLocation(p,'uExpo'),uMet:gl.getUniformLocation(p,'uMet'),uEye:gl.getUniformLocation(p,'uEye'),uUpZ:gl.getUniformLocation(p,'uUpZ')};
 }
 initGL();
 /* surcharge de matiere : null=origine, {type:'bpo',name}, {type:'ral',code,hex,rgb},
    {type:'imp',name,dataURL,blob} — appliquee au rendu ET a l'export */
 function effOv(m){ return m.ov||{type:'orig'}; }
+/* metal d'office pour les noms sans ambiguite — le reste s'ajuste au curseur */
+function metAuto(nom){ return /chrom|inox|poli\b|chrome|nickel/i.test(nom||'')?0.9:0; }
 function effKd(m){ var o=effOv(m); return (o.type==='ral')?o.rgb:m.kd; }
 function effAl(m){ return (m.alpha===undefined||m.alpha===null)?1:m.alpha; }
 function uploadTex(src){ var t=gl.createTexture();
@@ -2640,6 +2668,8 @@ function draw(){
   window.LAST_MVP=MVP;		/* reutilisee par la passe de selection (pinceau) */
   gl.useProgram(prog.p);
   gl.uniform1f(prog.uExpo,LUM);
+  gl.uniform3f(prog.uEye,ex,ey,ez);            /* oeil en espace modele (reflets) */
+  gl.uniform1f(prog.uUpZ,VIEW.up==='Z'?1.0:0.0);
   gl.uniformMatrix4fv(prog.uMVP,false,MVP);
   gl.uniformMatrix3fv(prog.uNrm,false,new Float32Array([xx,yx,zx, xy,yy,zy, xz,yz,zz]));
   function drawBatch(b){
@@ -2652,6 +2682,7 @@ function draw(){
     gl.uniform1i(prog.uFlat,0);
     gl.uniform3f(prog.uKd,kd[0],kd[1],kd[2]);
     gl.uniform1f(prog.uAl,effAl(b.mat));
+    gl.uniform1f(prog.uMet,(b.mat&&b.mat.met)?+b.mat.met:0.0);
     var tv=getUV(b.mat), M=uvMat(tv);
     gl.uniform4f(prog.uUVa,M[0],M[1],M[2],M[3]);
     gl.uniform2f(prog.uUVo,tv.ou,tv.ov);
@@ -2889,6 +2920,11 @@ $('m-iso').addEventListener('click',function(){
   $('m-iso').classList.toggle('on',VIEW.iso);
   if(OUT)buildPickBuf();                       /* le pinceau suit ce qui est visible */
   draw(); });
+$('uvs-met').addEventListener('input',function(){ if(!SRC)return;
+  SRC.mats[TSEL].met=+this.value; $('uv-met').value=this.value; draw(); });
+$('uv-met').addEventListener('change',function(){ if(!SRC)return;
+  var x=Math.max(0,Math.min(1,parseFloat(this.value)||0));
+  SRC.mats[TSEL].met=x; this.value=x; $('uvs-met').value=x; draw(); });
 $('pt-r').addEventListener('input',function(){ PAINT.r=+this.value; $('pt-rv').value=this.value; });
 $('pt-rv').addEventListener('change',function(){ var x=Math.max(1,Math.min(160,+this.value|0));
   PAINT.r=x; this.value=x; $('pt-r').value=Math.min(80,x); });
