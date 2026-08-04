@@ -188,7 +188,74 @@ try{
 </script>
 <canvas id="gl"></canvas>
 <div id="top"><svg width="26" height="26" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="14" fill="#0d1526" stroke="rgba(255,255,255,.14)"/><g stroke="#0d1526" stroke-width="1.6" stroke-linejoin="round"><path d="M32 9 8 27 32 31Z" fill="#f08a3e"/><path d="M32 9 56 27 32 31Z" fill="#e5701c"/><path d="M8 27 21 54 32 31Z" fill="#c85f14"/><path d="M56 27 43 54 32 31Z" fill="#a84e0f"/><path d="M21 54 43 54 32 31Z" fill="#8f420c"/></g></svg><b><i>BPO</i> · Moulinette 3D</b><span>OBJ · DAE · SKP · 3DS → objet allégé (QEM)</span></div>
-<div id="drop"><div class="card" id="dropcard"><b>Glissez un fichier .obj, .dae, .skp ou .3ds ici</b>
+<div id="drop"><style>#drop{flex-direction:column}
+#drop>.card,#bpo-accueil{position:relative;z-index:1}</style>
+<canvas id="bpo-accueil-anim" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0"></canvas>
+<script>
+/* Fond d'accueil : une sphère filaire en rotation dont le maillage S'ALLÈGE par
+   paliers — le geste même de la Moulinette — puis se recharge et recommence.
+   Canvas 2D minuscule, mis en veille dès que la zone de dépôt est cachée, coupé
+   si l'utilisateur préfère réduire les animations. */
+(function(){
+  var cv=document.getElementById("bpo-accueil-anim"), drop=document.getElementById("drop");
+  if(!cv||!drop)return;
+  try{ if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)return; }catch(e){}
+  var g=cv.getContext("2d"), t=0;
+  var NIV=[26,18,13,9,6,4];          /* méridiens : dense -> décimé */
+  var ni=0, prochaine=0, fondu=1;
+  function boucle(ts){
+    requestAnimationFrame(boucle);
+    if(drop.style.display==="none")return;          /* en veille pendant le travail */
+    var w=drop.clientWidth, h=drop.clientHeight, d=window.devicePixelRatio||1;
+    if(!w||!h)return;
+    if(cv.width!==Math.round(w*d)||cv.height!==Math.round(h*d)){ cv.width=Math.round(w*d); cv.height=Math.round(h*d); }
+    if(!prochaine)prochaine=ts+2200;
+    if(ts>prochaine){ ni=(ni+1)%NIV.length; prochaine=ts+(ni===NIV.length-1?2800:2200); fondu=0; }
+    if(fondu<1)fondu=Math.min(1,fondu+0.06);
+    g.setTransform(d,0,0,d,0,0); g.clearRect(0,0,w,h);
+    t+=0.0038;
+    var cy=Math.cos(t),sy=Math.sin(t),cx=Math.cos(t*0.42),sx=Math.sin(t*0.42);
+    var R=Math.min(w,h)*0.40, ox=w/2, oy=h/2;
+    function proj(x,y,z){
+      var x1=x*cy+z*sy, z1=-x*sy+z*cy;
+      var y1=y*cx-z1*sx, z2=y*sx+z1*cx;
+      var k=1.9/(3.1+z2);
+      return [ox+x1*R*k, oy+y1*R*k, k];
+    }
+    var m=NIV[ni], par=Math.max(2,Math.round(m*0.55)), PAS=Math.PI/18;
+    g.lineWidth=1.25; g.lineCap="round";
+    function trace(pts){
+      var km=0; for(var i2=0;i2<pts.length;i2++)km+=pts[i2][2]; km/=pts.length;
+      var al=(0.05+0.11*(km-0.45))*fondu;
+      g.strokeStyle="rgba(240,138,62,"+Math.max(0.045,Math.min(0.19,al)).toFixed(3)+")";
+      g.beginPath(); g.moveTo(pts[0][0],pts[0][1]);
+      for(var i3=1;i3<pts.length;i3++)g.lineTo(pts[i3][0],pts[i3][1]);
+      g.stroke();
+    }
+    for(var j=0;j<m;j++){                            /* méridiens */
+      var phi=j*Math.PI/m, cf=Math.cos(phi), sf=Math.sin(phi), pts=[];
+      for(var th=0;th<=2*Math.PI+0.001;th+=PAS)
+        pts.push(proj(Math.sin(th)*cf, Math.cos(th), Math.sin(th)*sf));
+      trace(pts);
+    }
+    for(var p2=1;p2<=par;p2++){                      /* parallèles */
+      var th2=Math.PI*p2/(par+1), st=Math.sin(th2), ct=Math.cos(th2), pts2=[];
+      for(var f2=0;f2<=2*Math.PI+0.001;f2+=PAS)
+        pts2.push(proj(st*Math.cos(f2), ct, st*Math.sin(f2)));
+      trace(pts2);
+    }
+  }
+  requestAnimationFrame(boucle);
+})();
+</script>
+<div id="bpo-accueil" style="max-width:62ch;text-align:center;margin-bottom:22px;padding:0 18px">
+  <div style="font-size:22px;font-weight:800;color:#e8ecf4;letter-spacing:-.01em;margin-bottom:9px">🌀 Bienvenue dans la Moulinette 3D</div>
+  <div style="font-size:13.5px;line-height:1.65;color:#8a93a8">Cet outil vous permet de préparer des objets 3D externes — les alléger,
+  nommer leurs matières, affecter textures et finitions — pour vos bibliothèques et scènes BPO
+  comme pour vos logiciels&nbsp;: ArchiCAD&nbsp;(.gsm), SketchUp&nbsp;(.dae)…
+  <br><span style="color:#c3cbd9">Cette application vous est offerte avec l’abonnement BPO.</span></div>
+</div>
+<div class="card" id="dropcard"><b>Glissez un fichier .obj, .dae, .skp ou .3ds ici</b>
   <p>ou le dossier complet (avec .mtl et textures)<br>
   <u style="cursor:pointer" id="pickfile">cliquez pour choisir des fichiers</u> ·
   <u style="cursor:pointer" id="pickdir">choisir un dossier</u><br>
