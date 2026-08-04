@@ -707,6 +707,9 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 
 
 
+
+
+
 /* ---- MADE WITH BPO : diaporama d'ouverture sur le viewer. Immeubles concus
    avec BPO — data/madewith/liste.json (ajouter une image = deposer le .jpg et
    completer la liste). Zooms alternes + derives diagonales, settle d'exposition,
@@ -756,8 +759,8 @@ function madeWith(){
     /* credit musique : discret, cliquable SANS fermer le diaporama */
     var cred=document.createElement('a');
     cred.id='mw-credit'; cred.href='https://ajl.hearnow.com/'; cred.target='_blank'; cred.rel='noopener';
-    cred.textContent='♪ Logic — by AJL';
-    cred.title='La musique : « Logic » par AJL — écouter';
+    cred.textContent='♪ Music © AJL — Logic';
+    cred.title='Copyright musique © AJL — « Logic » — écouter';
     cred.style.cssText='position:absolute;bottom:12px;right:16px;color:#8a93a8;font-size:11.5px;letter-spacing:.07em;text-decoration:none;pointer-events:auto;'
       +(reduit?'opacity:.85':'animation:mwPied 3.6s ease both');
     cred.onmouseenter=function(){ cred.style.color='#ff8a3d'; };
