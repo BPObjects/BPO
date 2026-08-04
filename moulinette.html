@@ -215,7 +215,7 @@ try{
     g.setTransform(d,0,0,d,0,0); g.clearRect(0,0,w,h);
     t+=0.0038;
     var cy=Math.cos(t),sy=Math.sin(t),cx=Math.cos(t*0.42),sx=Math.sin(t*0.42);
-    var R=Math.min(w,h)*0.40, ox=w/2, oy=h/2;
+    var R=Math.min(w,h)*0.68, ox=w/2, oy=h/2;   /* plein cadre : la sphere deborde le petit cote */
     function proj(x,y,z){
       var x1=x*cy+z*sy, z1=-x*sy+z*cy;
       var y1=y*cx-z1*sx, z2=y*sx+z1*cx;
@@ -223,11 +223,11 @@ try{
       return [ox+x1*R*k, oy+y1*R*k, k];
     }
     var m=NIV[ni], par=Math.max(2,Math.round(m*0.55)), PAS=Math.PI/18;
-    g.lineWidth=1.25; g.lineCap="round";
+    g.lineWidth=1.6; g.lineCap="round";
     function trace(pts){
       var km=0; for(var i2=0;i2<pts.length;i2++)km+=pts[i2][2]; km/=pts.length;
-      var al=(0.05+0.11*(km-0.45))*fondu;
-      g.strokeStyle="rgba(240,138,62,"+Math.max(0.045,Math.min(0.19,al)).toFixed(3)+")";
+      var al=(0.16+0.42*(km-0.42))*fondu;         /* orange vif, module par la profondeur */
+      g.strokeStyle="rgba(255,138,61,"+Math.max(0.14,Math.min(0.55,al)).toFixed(3)+")";
       g.beginPath(); g.moveTo(pts[0][0],pts[0][1]);
       for(var i3=1;i3<pts.length;i3++)g.lineTo(pts[i3][0],pts[i3][1]);
       g.stroke();
