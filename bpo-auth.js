@@ -7,7 +7,7 @@
    du compte, le MÊME utilisateur est converti (travail conservé, essai 15 j).
    Essai en cours -> bandeau N jours ; essai terminé -> mode découverte
    (data-bpo-demo + bpo-demo-gate.js). Capture aussi ?ref= (attribution).
-   Bandeaux localisés (13 langues, ?lang=xx sinon navigateur). */
+   Bandeaux localisés (13 langues) et EN FLUX (v5 : plus de chevauchement). */
 /* supabase-js VENDORISÉ (2.110.7, bundle esm.sh rapatrié dans ./vendor/) :
    plus aucun code d'authentification chargé depuis un CDN externe. */
 import { createClient } from "./vendor/supabase-js-2.110.7.js";
@@ -58,15 +58,21 @@ try{
 }catch(e){}
 
 function banner(txt, ctaLabel){
+  /* v5 : bandeau DANS LE FLUX (premier enfant du body) — il pousse tout le
+     document naturellement, aucun chevauchement possible ; la hauteur de #app
+     est recalee (et suivie par ResizeObserver : zoom, retour a la ligne...). */
   const b=document.createElement("div");
-  b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100000;background:#ff8a3d;color:#1a1d23;font:600 12px system-ui;text-align:center;padding:6px;line-height:1.3;";
+  b.style.cssText="position:relative;z-index:100000;background:#ff8a3d;color:#1a1d23;font:600 12px system-ui;text-align:center;padding:6px;line-height:1.3;";
   const cta = ctaLabel || (AT("S’abonner")+' ('+PRICE_LABEL_SHORT+')');
   b.innerHTML=txt+' &nbsp;<a href="compte.html" style="color:#1a1d23;text-decoration:underline;">'+cta+'</a>';
-  document.body.appendChild(b);
-  /* pousse l'appli sous le bandeau pour ne rien recouvrir */
-  const h=b.offsetHeight||28, app=document.getElementById("app");
-  if(app){ app.style.marginTop=h+"px"; app.style.height="calc(100dvh - "+h+"px)"; }
-  else { document.body.style.paddingTop=h+"px"; }
+  document.body.insertBefore(b, document.body.firstChild);
+  const cale = () => {
+    const h=b.offsetHeight||28, app=document.getElementById("app");
+    if(app){ app.style.height="calc(100dvh - "+h+"px)"; }
+  };
+  cale();
+  if(window.ResizeObserver){ new ResizeObserver(cale).observe(b); }
+  window.addEventListener("resize", cale);
 }
 
 /* Compte propriétaire : débloque les marques `prive:'compte'` (catalogue intégré,
