@@ -117,10 +117,12 @@ if(String(SUPABASE_URL).includes("VOTRE-PROJET")){
 }
 const $ = id => document.getElementById(id);
 
-/* ---- i18n FR/EN — convention de l'app : la chaîne FRANÇAISE est la clé.
-   Langue : ?lang=en|fr (test/forçage), sinon langue du navigateur.
+/* ---- i18n — convention de l'app : la chaîne FRANÇAISE est la clé.
+   13 langues du site. Langue : ?lang=xx (test/forçage), sinon navigateur.
+   Clés spéciales : __TRIAL__ (gabarit à {n}), titre du document.
    Les dates passent par toLocaleDateString (déjà localisé). ---- */
-const EN = {
+const I18N = {};
+I18N.en = {
   "Connexion":"Sign in",
   "Accédez à votre compte.":"Access your account.",
   "Nom complet":"Full name",
@@ -165,21 +167,291 @@ const EN = {
   "Essai terminé":"Trial ended",
   "Expiré":"Expired",
   "Redirection vers le paiement…":"Redirecting to payment…",
-  "Merci ! Votre abonnement est en cours d'activation.":"Thank you! Your subscription is being activated."
+  "Merci ! Votre abonnement est en cours d'activation.":"Thank you! Your subscription is being activated.",
+  "Mon compte — Building Product Objects":"My account — Building Product Objects",
+  "__TRIAL__":"{n}-day trial, no credit card."
+};
+I18N.de = {
+  "Connexion":"Anmeldung","Accédez à votre compte.":"Zugang zu Ihrem Konto.","Nom complet":"Vollständiger Name","E-mail":"E-Mail","Mot de passe":"Passwort",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"Newsletter erhalten (Neuheiten, Updates).","Se connecter":"Anmelden",
+  "Aucune carte bancaire demandée.":"Keine Kreditkarte erforderlich.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" Die 15-tägige Testphase ist völlig kostenlos — Zahlungsdaten geben Sie erst an dem Tag ein, an dem Sie sich für ein Abonnement entscheiden. Ohne hinterlegte Karte ist keine Abbuchung möglich.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"Noch kein Konto? Konto erstellen (15 Tage kostenlos testen)",
+  "Recevoir un lien de connexion par e-mail":"Anmeldelink per E-Mail erhalten","Créer un compte":"Konto erstellen","Créer mon compte":"Mein Konto erstellen",
+  "Déjà un compte ? Se connecter":"Bereits ein Konto? Anmelden","Mon compte":"Mein Konto","Statut":"Status","Essai":"Testphase",
+  "Ouvrir le configurateur":"Konfigurator öffnen","S'abonner":"Abonnieren","Gérer mon abonnement":"Mein Abonnement verwalten","Préférences":"Einstellungen",
+  "Abonné à la newsletter":"Newsletter abonniert","Se déconnecter":"Abmelden","Plugin SketchUp":"SketchUp-Plugin",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 oder neuer",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"Der komplette Konfigurator öffnet sich direkt in SketchUp: Ihre Objekte landen als native Komponenten im Modell, Texturen inklusive.",
+  "Télécharger le plugin (.rbz)":"Plugin herunterladen (.rbz)","Guide d'installation (PDF)":"Installationsanleitung (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"In Ihrem Abonnement enthalten — Updates erscheinen genau hier.",
+  "S'abonner pour l'obtenir":"Zum Erhalt abonnieren","Le plugin SketchUp est compris dans l'abonnement.":"Das SketchUp-Plugin ist im Abonnement enthalten.",
+  "E-mail et mot de passe requis.":"E-Mail und Passwort erforderlich.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"Mit dieser E-Mail existiert bereits ein Konto. Melden Sie sich an oder nutzen Sie den Anmeldelink per E-Mail.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"Konto erstellt. Bestätigen Sie es über die E-Mail und melden Sie sich dann an.",
+  "Saisissez votre e-mail.":"Geben Sie Ihre E-Mail ein.","Lien de connexion envoyé par e-mail.":"Anmeldelink per E-Mail gesendet.",
+  "Erreur.":"Fehler.","Erreur":"Fehler","Abonné":"Abonniert","Abonnement jusqu'au":"Abonnement bis","Jours d'essai restants":"Verbleibende Testtage",
+  "Essai terminé":"Testphase beendet","Expiré":"Abgelaufen","Redirection vers le paiement…":"Weiterleitung zur Zahlung…",
+  "Merci ! Votre abonnement est en cours d'activation.":"Danke! Ihr Abonnement wird gerade aktiviert.",
+  "Mon compte — Building Product Objects":"Mein Konto — Building Product Objects","__TRIAL__":"{n} Tage kostenlos testen, ohne Kreditkarte."
+};
+I18N.es = {
+  "Connexion":"Iniciar sesión","Accédez à votre compte.":"Acceda a su cuenta.","Nom complet":"Nombre completo","E-mail":"Correo electrónico","Mot de passe":"Contraseña",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"Recibir la newsletter (novedades, actualizaciones).","Se connecter":"Iniciar sesión",
+  "Aucune carte bancaire demandée.":"No se pide tarjeta bancaria.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" La prueba de 15 días es totalmente gratuita — solo introducirá un medio de pago el día que decida suscribirse. Sin tarjeta registrada, no es posible ningún cargo.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"¿Aún sin cuenta? Cree una (prueba gratuita de 15 días)",
+  "Recevoir un lien de connexion par e-mail":"Recibir un enlace de acceso por correo","Créer un compte":"Crear una cuenta","Créer mon compte":"Crear mi cuenta",
+  "Déjà un compte ? Se connecter":"¿Ya tiene cuenta? Iniciar sesión","Mon compte":"Mi cuenta","Statut":"Estado","Essai":"Prueba",
+  "Ouvrir le configurateur":"Abrir el configurador","S'abonner":"Suscribirse","Gérer mon abonnement":"Gestionar mi suscripción","Préférences":"Preferencias",
+  "Abonné à la newsletter":"Suscrito a la newsletter","Se déconnecter":"Cerrar sesión","Plugin SketchUp":"Plugin SketchUp",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 o más reciente",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"El configurador completo se abre directamente en SketchUp: sus objetos llegan al modelo como componentes nativos, texturas incluidas.",
+  "Télécharger le plugin (.rbz)":"Descargar el plugin (.rbz)","Guide d'installation (PDF)":"Guía de instalación (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"Incluido en su suscripción — las actualizaciones aparecerán aquí mismo.",
+  "S'abonner pour l'obtenir":"Suscribirse para obtenerlo","Le plugin SketchUp est compris dans l'abonnement.":"El plugin SketchUp está incluido en la suscripción.",
+  "E-mail et mot de passe requis.":"Correo y contraseña requeridos.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"Ya existe una cuenta con este correo. Inicie sesión o use el enlace de acceso por correo.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"Cuenta creada. Revise su correo para confirmar y luego inicie sesión.",
+  "Saisissez votre e-mail.":"Introduzca su correo.","Lien de connexion envoyé par e-mail.":"Enlace de acceso enviado por correo.",
+  "Erreur.":"Error.","Erreur":"Error","Abonné":"Suscrito","Abonnement jusqu'au":"Suscripción hasta el","Jours d'essai restants":"Días de prueba restantes",
+  "Essai terminé":"Prueba finalizada","Expiré":"Caducada","Redirection vers le paiement…":"Redirigiendo al pago…",
+  "Merci ! Votre abonnement est en cours d'activation.":"¡Gracias! Su suscripción se está activando.",
+  "Mon compte — Building Product Objects":"Mi cuenta — Building Product Objects","__TRIAL__":"Prueba de {n} días, sin tarjeta bancaria."
+};
+I18N.it = {
+  "Connexion":"Accesso","Accédez à votre compte.":"Accedi al tuo account.","Nom complet":"Nome completo","E-mail":"E-mail","Mot de passe":"Password",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"Ricevere la newsletter (novità, aggiornamenti).","Se connecter":"Accedi",
+  "Aucune carte bancaire demandée.":"Nessuna carta di credito richiesta.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" La prova di 15 giorni è completamente gratuita — inserirai un metodo di pagamento solo il giorno in cui deciderai di abbonarti. Senza carta registrata, nessun addebito è possibile.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"Non hai un account? Creane uno (prova gratuita di 15 giorni)",
+  "Recevoir un lien de connexion par e-mail":"Ricevi un link di accesso via e-mail","Créer un compte":"Crea un account","Créer mon compte":"Crea il mio account",
+  "Déjà un compte ? Se connecter":"Hai già un account? Accedi","Mon compte":"Il mio account","Statut":"Stato","Essai":"Prova",
+  "Ouvrir le configurateur":"Apri il configuratore","S'abonner":"Abbonati","Gérer mon abonnement":"Gestisci il mio abbonamento","Préférences":"Preferenze",
+  "Abonné à la newsletter":"Iscritto alla newsletter","Se déconnecter":"Esci","Plugin SketchUp":"Plugin SketchUp",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 o più recente",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"Il configuratore completo si apre direttamente in SketchUp: i tuoi oggetti arrivano nel modello come componenti nativi, texture comprese.",
+  "Télécharger le plugin (.rbz)":"Scarica il plugin (.rbz)","Guide d'installation (PDF)":"Guida all'installazione (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"Incluso nel tuo abbonamento — gli aggiornamenti appariranno proprio qui.",
+  "S'abonner pour l'obtenir":"Abbonati per ottenerlo","Le plugin SketchUp est compris dans l'abonnement.":"Il plugin SketchUp è incluso nell'abbonamento.",
+  "E-mail et mot de passe requis.":"E-mail e password obbligatorie.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"Esiste già un account con questa e-mail. Accedi, oppure usa il link di accesso via e-mail.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"Account creato. Controlla la posta per confermare, poi accedi.",
+  "Saisissez votre e-mail.":"Inserisci la tua e-mail.","Lien de connexion envoyé par e-mail.":"Link di accesso inviato via e-mail.",
+  "Erreur.":"Errore.","Erreur":"Errore","Abonné":"Abbonato","Abonnement jusqu'au":"Abbonamento fino al","Jours d'essai restants":"Giorni di prova rimanenti",
+  "Essai terminé":"Prova terminata","Expiré":"Scaduta","Redirection vers le paiement…":"Reindirizzamento al pagamento…",
+  "Merci ! Votre abonnement est en cours d'activation.":"Grazie! Il tuo abbonamento è in corso di attivazione.",
+  "Mon compte — Building Product Objects":"Il mio account — Building Product Objects","__TRIAL__":"Prova di {n} giorni, senza carta di credito."
+};
+I18N.pt = {
+  "Connexion":"Iniciar sessão","Accédez à votre compte.":"Aceda à sua conta.","Nom complet":"Nome completo","E-mail":"E-mail","Mot de passe":"Palavra-passe",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"Receber a newsletter (novidades, atualizações).","Se connecter":"Iniciar sessão",
+  "Aucune carte bancaire demandée.":"Nenhum cartão bancário pedido.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" O período de teste de 15 dias é totalmente gratuito — só introduz um meio de pagamento no dia em que decidir subscrever. Sem cartão registado, nenhuma cobrança é possível.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"Ainda sem conta? Crie uma (teste gratuito de 15 dias)",
+  "Recevoir un lien de connexion par e-mail":"Receber um link de acesso por e-mail","Créer un compte":"Criar uma conta","Créer mon compte":"Criar a minha conta",
+  "Déjà un compte ? Se connecter":"Já tem conta? Iniciar sessão","Mon compte":"A minha conta","Statut":"Estado","Essai":"Teste",
+  "Ouvrir le configurateur":"Abrir o configurador","S'abonner":"Subscrever","Gérer mon abonnement":"Gerir a minha subscrição","Préférences":"Preferências",
+  "Abonné à la newsletter":"Subscrito à newsletter","Se déconnecter":"Terminar sessão","Plugin SketchUp":"Plugin SketchUp",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 ou mais recente",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"O configurador completo abre-se diretamente no SketchUp: os seus objetos chegam ao modelo como componentes nativos, texturas incluídas.",
+  "Télécharger le plugin (.rbz)":"Transferir o plugin (.rbz)","Guide d'installation (PDF)":"Guia de instalação (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"Incluído na sua subscrição — as atualizações aparecerão aqui mesmo.",
+  "S'abonner pour l'obtenir":"Subscrever para o obter","Le plugin SketchUp est compris dans l'abonnement.":"O plugin SketchUp está incluído na subscrição.",
+  "E-mail et mot de passe requis.":"E-mail e palavra-passe obrigatórios.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"Já existe uma conta com este e-mail. Inicie sessão ou use o link de acesso por e-mail.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"Conta criada. Verifique o seu e-mail para confirmar e depois inicie sessão.",
+  "Saisissez votre e-mail.":"Introduza o seu e-mail.","Lien de connexion envoyé par e-mail.":"Link de acesso enviado por e-mail.",
+  "Erreur.":"Erro.","Erreur":"Erro","Abonné":"Subscrito","Abonnement jusqu'au":"Subscrição até","Jours d'essai restants":"Dias de teste restantes",
+  "Essai terminé":"Teste terminado","Expiré":"Expirado","Redirection vers le paiement…":"A redirecionar para o pagamento…",
+  "Merci ! Votre abonnement est en cours d'activation.":"Obrigado! A sua subscrição está a ser ativada.",
+  "Mon compte — Building Product Objects":"A minha conta — Building Product Objects","__TRIAL__":"Teste de {n} dias, sem cartão bancário."
+};
+I18N.hu = {
+  "Connexion":"Bejelentkezés","Accédez à votre compte.":"Lépjen be a fiókjába.","Nom complet":"Teljes név","E-mail":"E-mail","Mot de passe":"Jelszó",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"Hírlevél fogadása (újdonságok, frissítések).","Se connecter":"Bejelentkezés",
+  "Aucune carte bancaire demandée.":"Nem kérünk bankkártyát.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" A 15 napos próbaidőszak teljesen ingyenes — fizetési adatokat csak azon a napon ad meg, amikor az előfizetés mellett dönt. Rögzített kártya nélkül semmilyen terhelés nem lehetséges.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"Nincs még fiókja? Hozzon létre egyet (15 napos ingyenes próba)",
+  "Recevoir un lien de connexion par e-mail":"Bejelentkezési link kérése e-mailben","Créer un compte":"Fiók létrehozása","Créer mon compte":"Fiókom létrehozása",
+  "Déjà un compte ? Se connecter":"Már van fiókja? Bejelentkezés","Mon compte":"Fiókom","Statut":"Állapot","Essai":"Próbaidőszak",
+  "Ouvrir le configurateur":"Konfigurátor megnyitása","S'abonner":"Előfizetés","Gérer mon abonnement":"Előfizetésem kezelése","Préférences":"Beállítások",
+  "Abonné à la newsletter":"Feliratkozva a hírlevélre","Se déconnecter":"Kijelentkezés","Plugin SketchUp":"SketchUp bővítmény",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 vagy újabb",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"A teljes konfigurátor közvetlenül a SketchUpban nyílik meg: objektumai natív komponensként érkeznek a modellbe, textúrákkal együtt.",
+  "Télécharger le plugin (.rbz)":"Bővítmény letöltése (.rbz)","Guide d'installation (PDF)":"Telepítési útmutató (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"Az előfizetés része — a frissítések itt jelennek meg.",
+  "S'abonner pour l'obtenir":"Előfizetés a letöltéshez","Le plugin SketchUp est compris dans l'abonnement.":"A SketchUp bővítmény az előfizetés része.",
+  "E-mail et mot de passe requis.":"E-mail és jelszó szükséges.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"Ezzel az e-maillel már létezik fiók. Jelentkezzen be, vagy használja az e-mailes bejelentkezési linket.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"Fiók létrehozva. Erősítse meg e-mailben, majd jelentkezzen be.",
+  "Saisissez votre e-mail.":"Adja meg az e-mail-címét.","Lien de connexion envoyé par e-mail.":"Bejelentkezési link elküldve e-mailben.",
+  "Erreur.":"Hiba.","Erreur":"Hiba","Abonné":"Előfizető","Abonnement jusqu'au":"Előfizetés eddig:","Jours d'essai restants":"Hátralévő próbanapok",
+  "Essai terminé":"Próbaidőszak lejárt","Expiré":"Lejárt","Redirection vers le paiement…":"Átirányítás a fizetéshez…",
+  "Merci ! Votre abonnement est en cours d'activation.":"Köszönjük! Előfizetése aktiválás alatt áll.",
+  "Mon compte — Building Product Objects":"Fiókom — Building Product Objects","__TRIAL__":"{n} napos próba, bankkártya nélkül."
+};
+I18N.ru = {
+  "Connexion":"Вход","Accédez à votre compte.":"Войдите в свой аккаунт.","Nom complet":"Полное имя","E-mail":"Эл. почта","Mot de passe":"Пароль",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"Получать рассылку (новинки, обновления).","Se connecter":"Войти",
+  "Aucune carte bancaire demandée.":"Банковская карта не требуется.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" 15-дневный пробный период полностью бесплатен — платёжные данные вы вводите только в день, когда решите оформить подписку. Без сохранённой карты списание невозможно.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"Ещё нет аккаунта? Создайте его (15 дней бесплатно)",
+  "Recevoir un lien de connexion par e-mail":"Получить ссылку для входа по почте","Créer un compte":"Создать аккаунт","Créer mon compte":"Создать мой аккаунт",
+  "Déjà un compte ? Se connecter":"Уже есть аккаунт? Войти","Mon compte":"Мой аккаунт","Statut":"Статус","Essai":"Пробный период",
+  "Ouvrir le configurateur":"Открыть конфигуратор","S'abonner":"Подписаться","Gérer mon abonnement":"Управлять подпиской","Préférences":"Настройки",
+  "Abonné à la newsletter":"Подписан на рассылку","Se déconnecter":"Выйти","Plugin SketchUp":"Плагин SketchUp",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 или новее",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"Полный конфигуратор открывается прямо в SketchUp: ваши объекты попадают в модель как нативные компоненты, вместе с текстурами.",
+  "Télécharger le plugin (.rbz)":"Скачать плагин (.rbz)","Guide d'installation (PDF)":"Руководство по установке (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"Входит в вашу подписку — обновления будут появляться здесь.",
+  "S'abonner pour l'obtenir":"Подписаться, чтобы получить","Le plugin SketchUp est compris dans l'abonnement.":"Плагин SketchUp входит в подписку.",
+  "E-mail et mot de passe requis.":"Требуются эл. почта и пароль.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"Аккаунт с этой почтой уже существует. Войдите или используйте ссылку для входа по почте.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"Аккаунт создан. Подтвердите его по почте, затем войдите.",
+  "Saisissez votre e-mail.":"Введите вашу эл. почту.","Lien de connexion envoyé par e-mail.":"Ссылка для входа отправлена по почте.",
+  "Erreur.":"Ошибка.","Erreur":"Ошибка","Abonné":"Подписан","Abonnement jusqu'au":"Подписка до","Jours d'essai restants":"Осталось дней пробного периода",
+  "Essai terminé":"Пробный период завершён","Expiré":"Истёк","Redirection vers le paiement…":"Перенаправление к оплате…",
+  "Merci ! Votre abonnement est en cours d'activation.":"Спасибо! Ваша подписка активируется.",
+  "Mon compte — Building Product Objects":"Мой аккаунт — Building Product Objects","__TRIAL__":"Пробный период {n} дней, без банковской карты."
+};
+I18N.uk = {
+  "Connexion":"Вхід","Accédez à votre compte.":"Увійдіть до свого акаунта.","Nom complet":"Повне ім'я","E-mail":"Ел. пошта","Mot de passe":"Пароль",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"Отримувати розсилку (новинки, оновлення).","Se connecter":"Увійти",
+  "Aucune carte bancaire demandée.":"Банківська картка не потрібна.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" 15-денний пробний період повністю безкоштовний — платіжні дані ви вводите лише в день, коли вирішите оформити підписку. Без збереженої картки списання неможливе.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"Ще немає акаунта? Створіть його (15 днів безкоштовно)",
+  "Recevoir un lien de connexion par e-mail":"Отримати посилання для входу поштою","Créer un compte":"Створити акаунт","Créer mon compte":"Створити мій акаунт",
+  "Déjà un compte ? Se connecter":"Вже є акаунт? Увійти","Mon compte":"Мій акаунт","Statut":"Статус","Essai":"Пробний період",
+  "Ouvrir le configurateur":"Відкрити конфігуратор","S'abonner":"Підписатися","Gérer mon abonnement":"Керувати підпискою","Préférences":"Налаштування",
+  "Abonné à la newsletter":"Підписаний на розсилку","Se déconnecter":"Вийти","Plugin SketchUp":"Плагін SketchUp",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 або новіша",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"Повний конфігуратор відкривається просто в SketchUp: ваші об'єкти потрапляють у модель як нативні компоненти, разом із текстурами.",
+  "Télécharger le plugin (.rbz)":"Завантажити плагін (.rbz)","Guide d'installation (PDF)":"Посібник зі встановлення (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"Входить у вашу підписку — оновлення з'являтимуться тут.",
+  "S'abonner pour l'obtenir":"Підписатися, щоб отримати","Le plugin SketchUp est compris dans l'abonnement.":"Плагін SketchUp входить у підписку.",
+  "E-mail et mot de passe requis.":"Потрібні ел. пошта та пароль.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"Акаунт із цією поштою вже існує. Увійдіть або скористайтеся посиланням для входу поштою.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"Акаунт створено. Підтвердьте його поштою, потім увійдіть.",
+  "Saisissez votre e-mail.":"Введіть вашу ел. пошту.","Lien de connexion envoyé par e-mail.":"Посилання для входу надіслано поштою.",
+  "Erreur.":"Помилка.","Erreur":"Помилка","Abonné":"Підписаний","Abonnement jusqu'au":"Підписка до","Jours d'essai restants":"Залишилося днів проби",
+  "Essai terminé":"Пробний період завершено","Expiré":"Минув","Redirection vers le paiement…":"Перенаправлення до оплати…",
+  "Merci ! Votre abonnement est en cours d'activation.":"Дякуємо! Ваша підписка активується.",
+  "Mon compte — Building Product Objects":"Мій акаунт — Building Product Objects","__TRIAL__":"Пробний період {n} днів, без банківської картки."
+};
+I18N.zh = {
+  "Connexion":"登录","Accédez à votre compte.":"访问您的账户。","Nom complet":"全名","E-mail":"电子邮箱","Mot de passe":"密码",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"接收新闻通讯（新功能、更新）。","Se connecter":"登录",
+  "Aucune carte bancaire demandée.":"无需银行卡。",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" 15 天试用完全免费——只有在您决定订阅的那天才需要填写付款方式。未登记银行卡，不可能产生任何扣款。",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"还没有账户？创建一个（15 天免费试用）",
+  "Recevoir un lien de connexion par e-mail":"通过电子邮件接收登录链接","Créer un compte":"创建账户","Créer mon compte":"创建我的账户",
+  "Déjà un compte ? Se connecter":"已有账户？登录","Mon compte":"我的账户","Statut":"状态","Essai":"试用",
+  "Ouvrir le configurateur":"打开配置器","S'abonner":"订阅","Gérer mon abonnement":"管理我的订阅","Préférences":"偏好设置",
+  "Abonné à la newsletter":"已订阅新闻通讯","Se déconnecter":"退出登录","Plugin SketchUp":"SketchUp 插件",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 或更新版本",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"完整配置器直接在 SketchUp 中打开：您的对象以原生组件的形式进入模型，并包含纹理。",
+  "Télécharger le plugin (.rbz)":"下载插件 (.rbz)","Guide d'installation (PDF)":"安装指南 (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"包含在您的订阅中——更新将在此处发布。",
+  "S'abonner pour l'obtenir":"订阅以获取","Le plugin SketchUp est compris dans l'abonnement.":"SketchUp 插件包含在订阅中。",
+  "E-mail et mot de passe requis.":"需要邮箱和密码。",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"该邮箱已注册账户。请登录，或使用邮箱登录链接。",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"账户已创建。请查收邮件确认，然后登录。",
+  "Saisissez votre e-mail.":"请输入您的邮箱。","Lien de connexion envoyé par e-mail.":"登录链接已发送至邮箱。",
+  "Erreur.":"错误。","Erreur":"错误","Abonné":"已订阅","Abonnement jusqu'au":"订阅有效期至","Jours d'essai restants":"剩余试用天数",
+  "Essai terminé":"试用已结束","Expiré":"已过期","Redirection vers le paiement…":"正在跳转到支付页面……",
+  "Merci ! Votre abonnement est en cours d'activation.":"谢谢！您的订阅正在激活。",
+  "Mon compte — Building Product Objects":"我的账户 — Building Product Objects","__TRIAL__":"{n} 天试用，无需银行卡。"
+};
+I18N.ja = {
+  "Connexion":"ログイン","Accédez à votre compte.":"アカウントにアクセスします。","Nom complet":"氏名","E-mail":"メールアドレス","Mot de passe":"パスワード",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"ニュースレターを受け取る（新機能・更新情報）。","Se connecter":"ログイン",
+  "Aucune carte bancaire demandée.":"クレジットカードは不要です。",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" 15日間のトライアルは完全無料です。お支払い方法の入力は、購読を決めた日にのみ行います。カード未登録のため、請求が発生することはありません。",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"アカウントをお持ちでない方は作成（15日間無料トライアル）",
+  "Recevoir un lien de connexion par e-mail":"ログインリンクをメールで受け取る","Créer un compte":"アカウントを作成","Créer mon compte":"アカウントを作成する",
+  "Déjà un compte ? Se connecter":"すでにアカウントをお持ちの方はログイン","Mon compte":"マイアカウント","Statut":"ステータス","Essai":"トライアル",
+  "Ouvrir le configurateur":"コンフィギュレーターを開く","S'abonner":"購読する","Gérer mon abonnement":"購読を管理","Préférences":"設定",
+  "Abonné à la newsletter":"ニュースレター購読中","Se déconnecter":"ログアウト","Plugin SketchUp":"SketchUp プラグイン",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 以降",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"フル機能のコンフィギュレーターが SketchUp 内で直接開きます。オブジェクトはテクスチャ込みのネイティブコンポーネントとしてモデルに配置されます。",
+  "Télécharger le plugin (.rbz)":"プラグインをダウンロード (.rbz)","Guide d'installation (PDF)":"インストールガイド (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"購読に含まれています。更新はここに掲載されます。",
+  "S'abonner pour l'obtenir":"購読して入手","Le plugin SketchUp est compris dans l'abonnement.":"SketchUp プラグインは購読に含まれています。",
+  "E-mail et mot de passe requis.":"メールアドレスとパスワードが必要です。",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"このメールアドレスのアカウントは既に存在します。ログインするか、メールのログインリンクをご利用ください。",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"アカウントを作成しました。メールで確認後、ログインしてください。",
+  "Saisissez votre e-mail.":"メールアドレスを入力してください。","Lien de connexion envoyé par e-mail.":"ログインリンクをメールで送信しました。",
+  "Erreur.":"エラー。","Erreur":"エラー","Abonné":"購読中","Abonnement jusqu'au":"購読期限","Jours d'essai restants":"残りトライアル日数",
+  "Essai terminé":"トライアル終了","Expiré":"期限切れ","Redirection vers le paiement…":"支払いページへ移動中…",
+  "Merci ! Votre abonnement est en cours d'activation.":"ありがとうございます！購読を有効化しています。",
+  "Mon compte — Building Product Objects":"マイアカウント — Building Product Objects","__TRIAL__":"{n}日間トライアル、クレジットカード不要。"
+};
+I18N.hi = {
+  "Connexion":"लॉगिन","Accédez à votre compte.":"अपने खाते तक पहुँचें।","Nom complet":"पूरा नाम","E-mail":"ईमेल","Mot de passe":"पासवर्ड",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"न्यूज़लेटर प्राप्त करें (नई सुविधाएँ, अपडेट)।","Se connecter":"लॉगिन करें",
+  "Aucune carte bancaire demandée.":"किसी बैंक कार्ड की आवश्यकता नहीं।",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" 15 दिनों का परीक्षण पूरी तरह निःशुल्क है — भुगतान विवरण आप केवल उसी दिन देंगे जिस दिन सदस्यता लेने का निर्णय करेंगे। बिना पंजीकृत कार्ड के कोई शुल्क संभव नहीं।",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"अभी तक खाता नहीं? एक बनाएँ (15 दिनों का निःशुल्क परीक्षण)",
+  "Recevoir un lien de connexion par e-mail":"ईमेल से लॉगिन लिंक प्राप्त करें","Créer un compte":"खाता बनाएँ","Créer mon compte":"मेरा खाता बनाएँ",
+  "Déjà un compte ? Se connecter":"पहले से खाता है? लॉगिन करें","Mon compte":"मेरा खाता","Statut":"स्थिति","Essai":"परीक्षण",
+  "Ouvrir le configurateur":"कॉन्फ़िगरेटर खोलें","S'abonner":"सदस्यता लें","Gérer mon abonnement":"मेरी सदस्यता प्रबंधित करें","Préférences":"प्राथमिकताएँ",
+  "Abonné à la newsletter":"न्यूज़लेटर की सदस्यता ली","Se déconnecter":"लॉगआउट","Plugin SketchUp":"SketchUp प्लगइन",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 या नया",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"पूरा कॉन्फ़िगरेटर सीधे SketchUp में खुलता है: आपके ऑब्जेक्ट टेक्सचर सहित नेटिव कंपोनेंट के रूप में मॉडल में आते हैं।",
+  "Télécharger le plugin (.rbz)":"प्लगइन डाउनलोड करें (.rbz)","Guide d'installation (PDF)":"इंस्टॉलेशन गाइड (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"आपकी सदस्यता में शामिल — अपडेट यहीं दिखाई देंगे।",
+  "S'abonner pour l'obtenir":"पाने के लिए सदस्यता लें","Le plugin SketchUp est compris dans l'abonnement.":"SketchUp प्लगइन सदस्यता में शामिल है।",
+  "E-mail et mot de passe requis.":"ईमेल और पासवर्ड आवश्यक।",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"इस ईमेल से खाता पहले से मौजूद है। लॉगिन करें, या ईमेल लॉगिन लिंक का उपयोग करें।",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"खाता बन गया। पुष्टि के लिए ईमेल देखें, फिर लॉगिन करें।",
+  "Saisissez votre e-mail.":"अपना ईमेल दर्ज करें।","Lien de connexion envoyé par e-mail.":"लॉगिन लिंक ईमेल से भेजा गया।",
+  "Erreur.":"त्रुटि।","Erreur":"त्रुटि","Abonné":"सदस्य","Abonnement jusqu'au":"सदस्यता की अवधि:","Jours d'essai restants":"परीक्षण के शेष दिन",
+  "Essai terminé":"परीक्षण समाप्त","Expiré":"समाप्त","Redirection vers le paiement…":"भुगतान की ओर भेजा जा रहा है…",
+  "Merci ! Votre abonnement est en cours d'activation.":"धन्यवाद! आपकी सदस्यता सक्रिय हो रही है।",
+  "Mon compte — Building Product Objects":"मेरा खाता — Building Product Objects","__TRIAL__":"{n} दिनों का परीक्षण, बिना बैंक कार्ड।"
+};
+I18N.ar = {
+  "Connexion":"تسجيل الدخول","Accédez à votre compte.":"ادخل إلى حسابك.","Nom complet":"الاسم الكامل","E-mail":"البريد الإلكتروني","Mot de passe":"كلمة المرور",
+  "Recevoir la newsletter (nouveautés, mises à jour).":"استلام النشرة الإخبارية (الجديد والتحديثات).","Se connecter":"تسجيل الدخول",
+  "Aucune carte bancaire demandée.":"لا حاجة لأي بطاقة بنكية.",
+  "L'essai de 15 jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.":" التجربة لمدة 15 يومًا مجانية بالكامل — لن تُدخل وسيلة دفع إلا في اليوم الذي تقرر فيه الاشتراك. وبدون بطاقة مسجّلة، لا يمكن حدوث أي خصم.",
+  "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)":"لا حساب بعد؟ أنشئ حسابًا (تجربة مجانية 15 يومًا)",
+  "Recevoir un lien de connexion par e-mail":"استلام رابط الدخول عبر البريد","Créer un compte":"إنشاء حساب","Créer mon compte":"إنشاء حسابي",
+  "Déjà un compte ? Se connecter":"لديك حساب؟ تسجيل الدخول","Mon compte":"حسابي","Statut":"الحالة","Essai":"التجربة",
+  "Ouvrir le configurateur":"افتح المُهيّئ","S'abonner":"اشترك","Gérer mon abonnement":"إدارة اشتراكي","Préférences":"التفضيلات",
+  "Abonné à la newsletter":"مشترك في النشرة الإخبارية","Se déconnecter":"تسجيل الخروج","Plugin SketchUp":"إضافة SketchUp",
+  "v1.15 · SketchUp Pro 2021 ou plus récent":"v1.15 · SketchUp Pro 2021 أو أحدث",
+  "Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.":"يفتح المُهيّئ الكامل مباشرة داخل SketchUp: تصل عناصرك إلى النموذج كمكوّنات أصلية مع خاماتها.",
+  "Télécharger le plugin (.rbz)":"تنزيل الإضافة (rbz.)","Guide d'installation (PDF)":"دليل التثبيت (PDF)",
+  "Compris dans votre abonnement — les mises à jour paraîtront ici même.":"مشمولة في اشتراكك — ستظهر التحديثات هنا.",
+  "S'abonner pour l'obtenir":"اشترك للحصول عليها","Le plugin SketchUp est compris dans l'abonnement.":"إضافة SketchUp مشمولة في الاشتراك.",
+  "E-mail et mot de passe requis.":"البريد الإلكتروني وكلمة المرور مطلوبان.",
+  "Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail.":"يوجد حساب بهذا البريد بالفعل. سجّل الدخول أو استخدم رابط الدخول عبر البريد.",
+  "Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.":"تم إنشاء الحساب. تحقق من بريدك للتأكيد ثم سجّل الدخول.",
+  "Saisissez votre e-mail.":"أدخل بريدك الإلكتروني.","Lien de connexion envoyé par e-mail.":"أُرسل رابط الدخول عبر البريد.",
+  "Erreur.":"خطأ.","Erreur":"خطأ","Abonné":"مشترك","Abonnement jusqu'au":"الاشتراك حتى","Jours d'essai restants":"أيام التجربة المتبقية",
+  "Essai terminé":"انتهت التجربة","Expiré":"منتهية","Redirection vers le paiement…":"جارٍ التحويل إلى الدفع…",
+  "Merci ! Votre abonnement est en cours d'activation.":"شكرًا! اشتراكك قيد التفعيل.",
+  "Mon compte — Building Product Objects":"حسابي — Building Product Objects","__TRIAL__":"تجربة {n} يومًا، بدون بطاقة بنكية."
 };
 const LANG = (() => {
-  try{ const p = new URLSearchParams(location.search).get("lang"); if(p==="en"||p==="fr") return p; }catch(e){}
-  return (navigator.language||"fr").toLowerCase().startsWith("fr") ? "fr" : "en";
+  try{ const p = new URLSearchParams(location.search).get("lang"); if(p==="fr" || I18N[p]) return p; }catch(e){}
+  const n = (navigator.language||"fr").toLowerCase().slice(0,2);
+  return n==="fr" ? "fr" : (I18N[n] ? n : "en");
 })();
-const T = s => (LANG==="en" && EN[s]) || s;
-if(LANG==="en"){
-  document.documentElement.lang = "en";
-  document.title = "My account — Building Product Objects";
+const DICT = LANG==="fr" ? null : (I18N[LANG] || I18N.en);
+const T = s => (DICT && DICT[s]) || s;
+const TTRIAL = () => ((DICT && DICT["__TRIAL__"]) || "Essai de {n} jours, sans carte bancaire.").replace("{n}", TRIAL_DAYS);
+if(DICT){
+  document.documentElement.lang = LANG;
+  if(LANG==="ar") document.documentElement.dir = "rtl";
+  document.title = T("Mon compte — Building Product Objects");
   /* traduit tous les nœuds texte statiques (espaces insécables normalisées) */
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for(let n; (n = w.nextNode()); ){
     const t = n.nodeValue.replace(/ /g," ").trim();
-    if(t && EN[t]) n.nodeValue = EN[t];
+    if(t && DICT[t]) n.nodeValue = DICT[t];
   }
   const g = $("skpGuide"); if(g) g.href = "downloads/BPO-SketchUp-installation-en.pdf";
 }
@@ -204,7 +476,7 @@ $("toggle").onclick = () => {
   mode = mode==="login" ? "signup" : "login";
   const sign = mode==="signup";
   $("authTitle").textContent = sign ? T("Créer un compte") : T("Connexion");
-  $("authSub").textContent = sign ? (LANG==="en" ? TRIAL_DAYS+"-day trial, no credit card." : "Essai de "+TRIAL_DAYS+" jours, sans carte bancaire.") : T("Accédez à votre compte.");
+  $("authSub").textContent = sign ? TTRIAL() : T("Accédez à votre compte.");
   $("doAuth").textContent = sign ? T("Créer mon compte") : T("Se connecter");
   $("toggle").textContent = sign ? T("Déjà un compte ? Se connecter") : T("Pas encore de compte ? Créer un compte (essai 15 jours gratuit)");
   $("nameFld").classList.toggle("hidden", !sign);
