@@ -193,7 +193,7 @@ try{
   <div class="btns mini"><button id="b-orient" title="Harmoniser l'orientation des faces (par coque, vote majoritaire) — assainit l'export">Orienter les faces</button>
     <button id="b-holes" title="Reboucher les petits trous (boucles de bord de 3 à 5 arêtes = triangles manquants)">Reboucher trous</button></div>
   <div class="uvrow"><label>Lumière</label><input type="range" id="lum" min="0.4" max="3" step="0.05" value="1.2"><input class="uvnum" id="lumv" value="1.2"></div>
-  <div class="btns mini"><button id="bg-d" class="on" title="Fond sombre (viewer uniquement)">Fond noir</button><button id="bg-l" title="Fond blanc studio (viewer uniquement)">Fond blanc</button></div>
+  <div class="btns mini"><button id="bg-d" class="on" title="Fond sombre (viewer uniquement)">Fond noir</button><button id="bg-l" title="Fond blanc uni (viewer uniquement)">Fond blanc</button><button id="bg-s" title="Cyclo studio : fond blanc sans angle, sol et ombre douce sous l'objet (viewer uniquement)">Studio</button></div>
   <h3>Réglages texture</h3>
   <select id="uv-mode" style="margin-top:6px">
     <option value="0">Projection : UV d'origine</option>
@@ -385,8 +385,97 @@ var OUT=null;      /* resultat decimation {vx,vy,vz,tri,triMat,srcIndex,srcTri} 
 var FILES={};      /* basename lowercase -> File (drop dossier : textures, mtl) */
 var VIEW={mode:'ap', wf:false, up:'Z', hiOn:false, hoverMat:-1, iso:false};	/* SketchUp exporte en Z-haut par defaut */
 var LUM=1.2;			/* exposition de la scene (curseur Lumiere) */
-var BG='dark';			/* fond de la vue : 'dark' | 'light' */
-function bgRGB(){ return BG==='light'?[0.937,0.945,0.957]:[0.051,0.082,0.149]; }
+var BG='dark';			/* fond de la vue : 'dark' | 'light' | 'studio' */
+function bgRGB(){
+  if(BG==='studio')return [1,1,1];               /* cyclo : blanc pur, aucun horizon */
+  return BG==='light'?[0.937,0.945,0.957]:[0.051,0.082,0.149];
+}
+/* ---- mode STUDIO : cyclo blanc + ombre douce au sol ----------------------------
+   Le « cyclo sans angle » est obtenu par construction : fond ET sol sont blanc pur,
+   la seule chose qui revele le sol est l'ombre. Celle-ci est la VRAIE silhouette de
+   l'objet, projetee selon l'axe vertical dans un canvas puis floutee — recalculee
+   une fois par maillage (jamais par image), le quad texture est ensuite gratuit. */
+var STUDIO={forOut:null,up:null,tex:null,prog:null,buf:null,rect:null};
+function studioProg(){
+  if(STUDIO.prog)return STUDIO.prog;
+  var p=gl.createProgram();
+  gl.attachShader(p,sh(gl.VERTEX_SHADER,'attribute vec3 aP;attribute vec2 aT;uniform mat4 uMVP;varying vec2 vT;void main(){vT=aT;gl_Position=uMVP*vec4(aP,1.0);}'));
+  gl.attachShader(p,sh(gl.FRAGMENT_SHADER,'precision mediump float;varying vec2 vT;uniform sampler2D uS;void main(){float a=texture2D(uS,vT).a;gl_FragColor=vec4(0.07,0.08,0.10,a*0.38);}'));
+  gl.linkProgram(p);
+  STUDIO.prog={p:p,aP:gl.getAttribLocation(p,'aP'),aT:gl.getAttribLocation(p,'aT'),
+               uMVP:gl.getUniformLocation(p,'uMVP'),uS:gl.getUniformLocation(p,'uS')};
+  return STUDIO.prog;
+}
+function studioBuild(){
+  /* silhouette au sol : projection des triangles selon l'axe vertical */
+  var upZ=(VIEW.up==='Z'), n=OUT.triMat.length;
+  var A=upZ?OUT.vx:OUT.vx, B=upZ?OUT.vy:OUT.vz, H=upZ?OUT.vz:OUT.vy;
+  var a0=1e30,a1=-1e30,b0=1e30,b1=-1e30,h0=1e30;
+  for(var i=0;i<A.length;i++){
+    if(A[i]<a0)a0=A[i]; if(A[i]>a1)a1=A[i];
+    if(B[i]<b0)b0=B[i]; if(B[i]>b1)b1=B[i];
+    if(H[i]<h0)h0=H[i]; }
+  var la=a1-a0||1e-6, lb=b1-b0||1e-6, m=0.34*Math.max(la,lb);   /* marge du halo */
+  var ra0=a0-m, rb0=b0-m, rla=la+2*m, rlb=lb+2*m;
+  var S=256, c=document.createElement('canvas'); c.width=c.height=S;
+  var g=c.getContext('2d');
+  g.fillStyle='#000';
+  g.beginPath();
+  for(var t=0;t<n;t++){
+    var i0=OUT.tri[t*3],i1=OUT.tri[t*3+1],i2=OUT.tri[t*3+2];
+    var xa=(A[i0]-ra0)/rla*S, ya=(B[i0]-rb0)/rlb*S;
+    var xb=(A[i1]-ra0)/rla*S, yb=(B[i1]-rb0)/rlb*S;
+    var xc=(A[i2]-ra0)/rla*S, yc=(B[i2]-rb0)/rlb*S;
+    /* ENROULEMENT NORMALISE : projetees au sol, les faces du dessus et du dessous
+       d'un volume ferme tournent en sens opposes — en regle nonzero elles
+       s'ANNULENT et la silhouette sort vide. On force le meme sens partout. */
+    if((xb-xa)*(yc-ya)-(yb-ya)*(xc-xa)<0){ var tx=xb; xb=xc; xc=tx; var ty=yb; yb=yc; yc=ty; }
+    g.moveTo(xa,ya); g.lineTo(xb,yb); g.lineTo(xc,yc); g.closePath();
+  }
+  g.fill();
+  /* flou en deux passes : halo large + noyau plus present */
+  var c2=document.createElement('canvas'); c2.width=c2.height=S;
+  var g2=c2.getContext('2d');
+  g2.filter='blur(11px)'; g2.globalAlpha=0.85; g2.drawImage(c,0,0);
+  g2.filter='blur(4px)';  g2.globalAlpha=0.55; g2.drawImage(c,0,0);
+  if(!STUDIO.tex)STUDIO.tex=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,STUDIO.tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c2);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  /* quad au sol, legerement sous l'objet pour eviter tout z-fighting au contact */
+  var eps=0.0015*Math.max(la,lb,1e-3), h=h0-eps;
+  var q=upZ
+    ?[ra0,rb0,h,0,0,  ra0+rla,rb0,h,1,0,  ra0+rla,rb0+rlb,h,1,1,
+      ra0,rb0,h,0,0,  ra0+rla,rb0+rlb,h,1,1,  ra0,rb0+rlb,h,0,1]
+    :[ra0,h,rb0,0,0,  ra0+rla,h,rb0,1,0,  ra0+rla,h,rb0+rlb,1,1,
+      ra0,h,rb0,0,0,  ra0+rla,h,rb0+rlb,1,1,  ra0,h,rb0+rlb,0,1];
+  if(!STUDIO.buf)STUDIO.buf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,STUDIO.buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(q),gl.STATIC_DRAW);
+  STUDIO.forOut=OUT; STUDIO.up=VIEW.up;
+}
+function drawStudioSol(MVP){
+  if(!OUT)return;
+  if(STUDIO.forOut!==OUT||STUDIO.up!==VIEW.up)studioBuild();
+  var P=studioProg();
+  gl.useProgram(P.p);
+  gl.uniformMatrix4fv(P.uMVP,false,MVP);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D,STUDIO.tex);
+  gl.uniform1i(P.uS,0);
+  for(var a2=0;a2<8;a2++)gl.disableVertexAttribArray(a2);   /* purge (regle racine) */
+  gl.bindBuffer(gl.ARRAY_BUFFER,STUDIO.buf);
+  gl.enableVertexAttribArray(P.aP); gl.vertexAttribPointer(P.aP,3,gl.FLOAT,false,20,0);
+  gl.enableVertexAttribArray(P.aT); gl.vertexAttribPointer(P.aT,2,gl.FLOAT,false,20,12);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(false);
+  gl.drawArrays(gl.TRIANGLES,0,6);
+  gl.depthMask(true); gl.disable(gl.BLEND);
+}
 /* --- reglages de texture par matiere (appliques au rendu ET cuits a l'export) */
 var TSEL=0;
 var SELSET=new Set([0]);	/* multi-selection de matieres (Ctrl/Shift+clic) ; TSEL = principale */
@@ -743,10 +832,13 @@ function harmonizeFaces(){
 }
 $('b-orient').addEventListener('click',function(){ if(SRC&&WELD)harmonizeFaces(); });
 $('b-holes').addEventListener('click',function(){ if(SRC&&WELD)fixHoles(); });
-$('bg-d').addEventListener('click',function(){ BG='dark';
-  this.classList.add('on'); $('bg-l').classList.remove('on'); draw(); });
-$('bg-l').addEventListener('click',function(){ BG='light';
-  this.classList.add('on'); $('bg-d').classList.remove('on'); draw(); });
+function setBG(mode){ BG=mode;
+  [['bg-d','dark'],['bg-l','light'],['bg-s','studio']].forEach(function(x){
+    $(x[0]).classList.toggle('on',BG===x[1]); });
+  draw(); }
+$('bg-d').addEventListener('click',function(){ setBG('dark'); });
+$('bg-l').addEventListener('click',function(){ setBG('light'); });
+$('bg-s').addEventListener('click',function(){ setBG('studio'); });
 $('lum').addEventListener('input',function(){ LUM=+this.value; $('lumv').value=this.value; draw(); });
 $('lumv').addEventListener('change',function(){ var x=parseFloat(this.value);
   if(!isFinite(x))return; x=Math.max(0.2,Math.min(4,x));
@@ -2473,6 +2565,8 @@ function draw(){
     else{ gl.uniform1i(prog.uTex,0); gl.uniform1i(prog.uCut,0); }
     gl.drawArrays(gl.TRIANGLES,0,b.n);
   }
+  if(BG==='studio'&&OUT){ drawStudioSol(MVP);   /* sol + ombre du cyclo… */
+    gl.useProgram(prog.p); }                    /* …puis retour au programme principal */
   /* opaque d'abord, puis transparents en fusion alpha (sans ecriture Z) */
   var bs=batches[VIEW.mode], op=[], tr=[];
   for(var i=0;i<bs.length;i++){ if(!matVisible(bs[i].mi))continue;   /* mode Isoler */
@@ -2833,6 +2927,7 @@ function resetModel(){
   $('b-ap').classList.add('on'); $('b-av').classList.remove('on');
   $('b-wf').classList.remove('on'); $('uv-hi').classList.remove('on');
   updateUpBtn();
+  STUDIO.forOut=null;                       /* l'ombre du studio suit le nouveau modele */
   $('s-dim').textContent='—'; $('unitrow').style.display='none';
   $('b-dl').disabled=true; $('b-zip').disabled=true;
   $('b-gsm').disabled=true; $('b-skp').disabled=true;
