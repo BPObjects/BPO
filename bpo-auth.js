@@ -7,7 +7,10 @@
    du compte, le MÊME utilisateur est converti (travail conservé, essai 15 j).
    Essai en cours -> bandeau N jours ; essai terminé -> mode découverte
    (data-bpo-demo + bpo-demo-gate.js). Capture aussi ?ref= (attribution).
-   Bandeaux localisés (13 langues) et EN FLUX (v5 : plus de chevauchement). */
+   Bandeaux localisés (13 langues) et EN FLUX (v5 : plus de chevauchement).
+   v6 — la langue suit CELLE DU SITE : ?lang= sinon localStorage bpo_lang
+   (posé par le sélecteur de langue de l'app) sinon navigateur ; et le bandeau
+   se re-rend à chaud sur l'évènement `bpo-lang` émis par setLang() d'app.html. */
 /* supabase-js VENDORISÉ (2.110.7, bundle esm.sh rapatrié dans ./vendor/) :
    plus aucun code d'authentification chargé depuis un CDN externe. */
 import { createClient } from "./vendor/supabase-js-2.110.7.js";
@@ -42,13 +45,21 @@ const AUTH_I18N = {
   hi:{"S’abonner":"सदस्यता लें","Créer mon compte":"मेरा खाता बनाएँ","__TRIAL_LEFT__":"निःशुल्क परीक्षण: {n} दिन शेष।","__ANON_LEFT__":"मुक्त परीक्षण: {n} दिन शेष — अपना काम सहेजने हेतु निःशुल्क खाता बनाएँ।","__ANON_ENDED__":"मुक्त परीक्षण समाप्त — निःशुल्क खाता बनाएँ: 15 दिनों का पूर्ण परीक्षण, आपका काम सुरक्षित।","Essai terminé — l’atelier reste ouvert en découverte. Exports et impression réservés aux abonnés.":"परीक्षण समाप्त — कार्यशाला खोज मोड में खुली है। निर्यात और प्रिंटिंग सदस्यों के लिए।"},
   ar:{"S’abonner":"اشترك","Créer mon compte":"إنشاء حسابي","__TRIAL_LEFT__":"تجربة مجانية: بقي {n} يومًا.","__ANON_LEFT__":"تجربة حرة: بقي {n} يومًا — أنشئ حسابًا مجانيًا للاحتفاظ بعملك.","__ANON_ENDED__":"انتهت التجربة الحرة — أنشئ حسابًا مجانيًا: 15 يومًا من التجربة الكاملة، وعملك محفوظ.","Essai terminé — l’atelier reste ouvert en découverte. Exports et impression réservés aux abonnés.":"انتهت التجربة — تبقى الورشة مفتوحة في وضع الاستكشاف. التصدير والطباعة للمشتركين."}
 };
-const ALANG = (() => {
+/* v6 : la langue du bandeau = celle du SITE. Ordre : ?lang= (test/forçage)
+   -> localStorage bpo_lang (posé par le sélecteur de langue d'app.html)
+   -> navigateur. bpo_lang peut porter une langue hors AUTH_I18N (sv/da/fi/no/pl) :
+   repli anglais, cohérent avec le reste du site. */
+function pickLang(){
   try{
     const p = /[?&]lang=([a-z]{2})/.exec(location.search);
-    const n = (p && p[1]) || (navigator.language||"fr").toLowerCase().slice(0,2);
+    let n = (p && p[1]) || "";
+    if(!n){ try{ n = localStorage.getItem("bpo_lang") || ""; }catch(e){} }
+    if(!n) n = navigator.language || "fr";
+    n = n.toLowerCase().slice(0,2);
     return n==="fr" ? null : (AUTH_I18N[n] || AUTH_I18N.en);
   }catch(e){ return null; }
-})();
+}
+let ALANG = pickLang();
 const AT = s => (ALANG && ALANG[s]) || s;
 
 /* Attribution d'origine : ?ref=<canal> capté dès l'app (même clé que compte.html) */
@@ -57,14 +68,19 @@ try{
   if(m) localStorage.setItem("bpoRef", m[1].toLowerCase());
 }catch(e){}
 
-function banner(txt, ctaLabel){
+function banner(mkTxt, mkCta){
   /* v5 : bandeau DANS LE FLUX (premier enfant du body) — il pousse tout le
      document naturellement, aucun chevauchement possible ; la hauteur de #app
-     est recalee (et suivie par ResizeObserver : zoom, retour a la ligne...). */
+     est recalee (et suivie par ResizeObserver : zoom, retour a la ligne...).
+     v6 : mkTxt/mkCta sont des FABRIQUES de texte — le bandeau se re-rend au
+     changement de langue du site (évènement `bpo-lang` émis par setLang). */
   const b=document.createElement("div");
   b.style.cssText="position:relative;z-index:100000;background:#ff8a3d;color:#1a1d23;font:600 12px system-ui;text-align:center;padding:6px;line-height:1.3;";
-  const cta = ctaLabel || (AT("S’abonner")+' ('+PRICE_LABEL_SHORT+')');
-  b.innerHTML=txt+' &nbsp;<a href="compte.html" style="color:#1a1d23;text-decoration:underline;">'+cta+'</a>';
+  const rendre = () => {
+    const cta = (mkCta && mkCta()) || (AT("S’abonner")+' ('+PRICE_LABEL_SHORT+')');
+    b.innerHTML=mkTxt()+' &nbsp;<a href="compte.html" style="color:#1a1d23;text-decoration:underline;">'+cta+'</a>';
+  };
+  rendre();
   document.body.insertBefore(b, document.body.firstChild);
   const cale = () => {
     const h=b.offsetHeight||28, app=document.getElementById("app");
@@ -73,6 +89,7 @@ function banner(txt, ctaLabel){
   cale();
   if(window.ResizeObserver){ new ResizeObserver(cale).observe(b); }
   window.addEventListener("resize", cale);
+  document.addEventListener("bpo-lang", () => { ALANG = pickLang(); rendre(); cale(); });
 }
 
 /* Compte propriétaire : débloque les marques `prive:'compte'` (catalogue intégré,
@@ -105,11 +122,11 @@ function marquerProprietaire(session){
   if(active) return;                         /* abonné : accès complet */
   if(left > 0){
     if(anon){
-      banner((ALANG ? AT("__ANON_LEFT__") : "Essai libre : {n} j — créez votre compte gratuit pour conserver votre travail.").replace("{n}", left),
-             AT("Créer mon compte"));
+      banner(() => (ALANG ? AT("__ANON_LEFT__") : "Essai libre : {n} j — créez votre compte gratuit pour conserver votre travail.").replace("{n}", left),
+             () => AT("Créer mon compte"));
     } else {
-      banner(ALANG ? AT("__TRIAL_LEFT__").replace("{n}", left)
-                   : "Essai gratuit : "+left+" jour"+(left>1?"s":"")+" restant"+(left>1?"s":"")+".");
+      banner(() => ALANG ? AT("__TRIAL_LEFT__").replace("{n}", left)
+                         : "Essai gratuit : "+left+" jour"+(left>1?"s":"")+" restant"+(left>1?"s":"")+".");
     }
     return;
   }
@@ -119,10 +136,10 @@ function marquerProprietaire(session){
   document.documentElement.setAttribute("data-bpo-demo","1");
   window.dispatchEvent(new Event("bpo-demo"));
   if(anon){
-    banner(ALANG ? AT("__ANON_ENDED__")
-                 : "Essai libre terminé — créez votre compte gratuit : 15 jours d'essai complet, votre travail est conservé.",
-           AT("Créer mon compte"));
+    banner(() => ALANG ? AT("__ANON_ENDED__")
+                       : "Essai libre terminé — créez votre compte gratuit : 15 jours d'essai complet, votre travail est conservé.",
+           () => AT("Créer mon compte"));
   } else {
-    banner(AT("Essai terminé — l’atelier reste ouvert en découverte. Exports et impression réservés aux abonnés."));
+    banner(() => AT("Essai terminé — l’atelier reste ouvert en découverte. Exports et impression réservés aux abonnés."));
   }
 })();
