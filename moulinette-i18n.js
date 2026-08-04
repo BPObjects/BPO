@@ -1,175 +1,239 @@
-/* moulinette-i18n.js — traduction FR -> EN de la Moulinette 3D (moulinette.html).
-   Convention du site : la chaîne FRANÇAISE est la clé ; hors français, tout le
-   monde reçoit l'ANGLAIS (outil pro, jargon anglais). Langue : ?lang=xx sinon
-   localStorage bpo_lang (posé par le sélecteur d'app.html) sinon navigateur.
-   Nœuds texte via TreeWalker (clé NORMALISÉE : trim, blancs repliés, NBSP→espace,
-   ’→') + attributs title/placeholder + MutationObserver (l'UI se construit en JS).
+/* moulinette-i18n.js v3 — Moulinette 3D en 13 LANGUES + sélecteur.
+   Convention du site : la chaîne FRANÇAISE est la clé ; valeurs en tableau
+   ordonné ORDER = en,es,it,de,pt,hu,zh,ja,hi,ru,uk,ar (I18N_ORDER7 de l'app).
+   Langue au chargement : ?lang=xx sinon localStorage bpo_lang (posé par le
+   sélecteur d'app.html) sinon navigateur ; langue inconnue → anglais.
+   Le sélecteur (construit ICI pour survivre aux régénérations de
+   moulinette.html) bascule SANS recharger — traduction réversible par memos
+   __fr — et écrit bpo_lang pour que tout le site suive.
+   Nœuds texte via TreeWalker (clé NORMALISÉE : trim, blancs repliés,
+   NBSP→espace, ’→') + attributs title/placeholder + MutationObserver.
+   L'arabe reste en mise en page LTR (outil 3D : panneaux stables), le texte
+   s'affiche naturellement RTL dans son fil (bidi).
    ⚠ moulinette.html est RÉGÉNÉRÉ par build-moulinette.py : après un rebuild,
    re-vérifier que la ligne <script src="moulinette-i18n.js"> est toujours là. */
 (function(){
   "use strict";
-  var n="";
-  try{
-    var p=/[?&]lang=([a-z]{2})/.exec(location.search);
-    n=(p&&p[1])||"";
-    if(!n){ try{ n=localStorage.getItem("bpo_lang")||""; }catch(e){} }
-    if(!n) n=(navigator.language||"fr");
-    n=n.toLowerCase().slice(0,2);
-  }catch(e){ n="fr"; }
-  if(n==="fr") return;                       /* français : rien à faire */
+
+  var ORDER=["en","es","it","de","pt","hu","zh","ja","hi","ru","uk","ar"];
+  var NOMS={fr:"Français",en:"English",es:"Español",it:"Italiano",de:"Deutsch",pt:"Português",hu:"Magyar",zh:"中文",ja:"日本語",hi:"हिन्दी",ru:"Русский",uk:"Українська",ar:"العربية"};
 
   var D={
   /* --- garde d'accès --- */
-  "Vérification de l'accès…":"Checking access…",
-  "Exports réservés aux abonnés":"Exports are for subscribers",
-  "Préparez et prévisualisez librement — l'export des paquets BPO, ArchiCAD (.gsm) et SketchUp (.dae) est inclus dans l'abonnement BPO.":"Prepare and preview freely — exporting BPO packages, ArchiCAD (.gsm) and SketchUp (.dae) is included in the BPO subscription.",
-  "S'abonner":"Subscribe",
-  "S'abonner — 100 €/an":"Subscribe — €100/yr",
-  "← Continuer sans exporter":"← Continue without exporting",
+  "Vérification de l'accès…":["Checking access…","Comprobando el acceso…","Verifica dell'accesso…","Zugriffsprüfung…","A verificar o acesso…","Hozzáférés ellenőrzése…","正在检查访问权限…","アクセスを確認中…","पहुँच जाँची जा रही है…","Проверка доступа…","Перевірка доступу…","جارٍ التحقق من الوصول…"],
+  "Exports réservés aux abonnés":["Exports are for subscribers","Las exportaciones son para suscriptores","Le esportazioni sono per gli abbonati","Exporte sind Abonnenten vorbehalten","As exportações são para subscritores","Az exportálás az előfizetőké","导出为订阅用户专享","エクスポートは購読者向けです","निर्यात केवल सदस्यों के लिए","Экспорт — для подписчиков","Експорт — для підписників","التصدير للمشتركين فقط"],
+  "Préparez et prévisualisez librement — l'export des paquets BPO, ArchiCAD (.gsm) et SketchUp (.dae) est inclus dans l'abonnement BPO.":["Prepare and preview freely — exporting BPO packages, ArchiCAD (.gsm) and SketchUp (.dae) is included in the BPO subscription.","Prepara y previsualiza libremente — la exportación de paquetes BPO, ArchiCAD (.gsm) y SketchUp (.dae) está incluida en la suscripción BPO.","Prepara e visualizza liberamente — l'esportazione dei pacchetti BPO, ArchiCAD (.gsm) e SketchUp (.dae) è inclusa nell'abbonamento BPO.","Frei vorbereiten und ansehen — der Export von BPO-Paketen, ArchiCAD (.gsm) und SketchUp (.dae) ist im BPO-Abo enthalten.","Prepare e pré-visualize livremente — a exportação de pacotes BPO, ArchiCAD (.gsm) e SketchUp (.dae) está incluída na subscrição BPO.","Készíts elő és tekintsd meg szabadon — a BPO-csomagok, az ArchiCAD (.gsm) és a SketchUp (.dae) exportja az előfizetés része.","自由准备与预览——导出 BPO 包、ArchiCAD (.gsm) 和 SketchUp (.dae) 已包含在 BPO 订阅中。","準備とプレビューは自由 — BPO パッケージ、ArchiCAD (.gsm)、SketchUp (.dae) のエクスポートは BPO サブスクリプションに含まれます。","स्वतंत्र रूप से तैयार करें और देखें — BPO पैकेज, ArchiCAD (.gsm) और SketchUp (.dae) का निर्यात BPO सदस्यता में शामिल है।","Готовьте и просматривайте свободно — экспорт пакетов BPO, ArchiCAD (.gsm) и SketchUp (.dae) входит в подписку BPO.","Готуйте та переглядайте вільно — експорт пакетів BPO, ArchiCAD (.gsm) і SketchUp (.dae) входить у підписку BPO.","جهّز وعاين بحرّية — تصدير حزم BPO وArchiCAD (.gsm) وSketchUp (.dae) مضمّن في اشتراك BPO."],
+  "S'abonner":["Subscribe","Suscribirse","Abbonati","Abonnieren","Subscrever","Előfizetés","订阅","購読する","सदस्यता लें","Подписаться","Підписатися","اشترك"],
+  "S'abonner — 100 €/an":["Subscribe — €100/yr","Suscribirse — 100 €/año","Abbonati — 100 €/anno","Abonnieren — 100 €/Jahr","Subscrever — 100 €/ano","Előfizetés — 100 €/év","订阅 — 每年 100 €","購読する — 年間 100 €","सदस्यता — €100/वर्ष","Подписаться — 100 €/год","Підписатися — 100 €/рік","اشترك — 100 € سنويًا"],
+  "← Continuer sans exporter":["← Continue without exporting","← Continuar sin exportar","← Continua senza esportare","← Ohne Export fortfahren","← Continuar sem exportar","← Folytatás exportálás nélkül","← 不导出继续","← エクスポートせずに続行","← बिना निर्यात जारी रखें","← Продолжить без экспорта","← Продовжити без експорту","← المتابعة دون تصدير"],
   /* --- entête + accueil --- */
-  "OBJ · DAE · SKP · 3DS → objet allégé (QEM)":"OBJ · DAE · SKP · 3DS → lightened object (QEM)",
-  "← Revenir à BPO":"← Back to BPO",
-  "Bienvenue dans la Moulinette 3D":"Welcome to Moulinette 3D",
-  "Cet outil vous permet de préparer des objets 3D externes — les alléger, nommer leurs matières, affecter textures et finitions — pour vos bibliothèques et scènes BPO comme pour vos logiciels : ArchiCAD (.gsm), SketchUp (.dae)…":"This tool prepares external 3D objects — lighten them, name their materials, assign textures and finishes — for your BPO libraries and scenes as well as your CAD software: ArchiCAD (.gsm), SketchUp (.dae)…",
-  "Cette application vous est offerte avec l'abonnement BPO.":"This application is included with your BPO subscription.",
-  "Glissez un fichier .obj, .dae, .skp ou .3ds ici":"Drop an .obj, .dae, .skp or .3ds file here",
-  "ou le dossier complet (avec .mtl et textures)":"or the whole folder (with .mtl and textures)",
-  "cliquez pour choisir des fichiers":"click to choose files",
-  "choisir un dossier":"choose a folder",
-  "La géométrie est allégée localement — rien ne quitte ce poste.":"Geometry is lightened locally — nothing leaves this computer.",
-  "Chargement…":"Loading…",
+  "OBJ · DAE · SKP · 3DS → objet allégé (QEM)":["OBJ · DAE · SKP · 3DS → lightened object (QEM)","OBJ · DAE · SKP · 3DS → objeto aligerado (QEM)","OBJ · DAE · SKP · 3DS → oggetto alleggerito (QEM)","OBJ · DAE · SKP · 3DS → verschlanktes Objekt (QEM)","OBJ · DAE · SKP · 3DS → objeto aligeirado (QEM)","OBJ · DAE · SKP · 3DS → könnyített objektum (QEM)","OBJ · DAE · SKP · 3DS → 轻量化对象（QEM）","OBJ · DAE · SKP · 3DS → 軽量化オブジェクト（QEM）","OBJ · DAE · SKP · 3DS → हल्का ऑब्जेक्ट (QEM)","OBJ · DAE · SKP · 3DS → облегчённый объект (QEM)","OBJ · DAE · SKP · 3DS → полегшений об'єкт (QEM)","OBJ · DAE · SKP · 3DS → عنصر مخفَّف (QEM)"],
+  "← Revenir à BPO":["← Back to BPO","← Volver a BPO","← Torna a BPO","← Zurück zu BPO","← Voltar ao BPO","← Vissza a BPO-hoz","← 返回 BPO","← BPO に戻る","← BPO पर वापस","← Назад в BPO","← Назад до BPO","← العودة إلى BPO"],
+  "Bienvenue dans la Moulinette 3D":["Welcome to Moulinette 3D","Bienvenido a Moulinette 3D","Benvenuto in Moulinette 3D","Willkommen bei Moulinette 3D","Bem-vindo ao Moulinette 3D","Üdvözöl a Moulinette 3D","欢迎使用 Moulinette 3D","Moulinette 3D へようこそ","Moulinette 3D में स्वागत है","Добро пожаловать в Moulinette 3D","Ласкаво просимо до Moulinette 3D","مرحبًا بك في Moulinette 3D"],
+  "Cet outil vous permet de préparer des objets 3D externes — les alléger, nommer leurs matières, affecter textures et finitions — pour vos bibliothèques et scènes BPO comme pour vos logiciels : ArchiCAD (.gsm), SketchUp (.dae)…":["This tool prepares external 3D objects — lighten them, name their materials, assign textures and finishes — for your BPO libraries and scenes as well as your CAD software: ArchiCAD (.gsm), SketchUp (.dae)…","Esta herramienta prepara objetos 3D externos — aligéralos, nombra sus materiales, asigna texturas y acabados — para tus bibliotecas y escenas BPO y para tus programas: ArchiCAD (.gsm), SketchUp (.dae)…","Questo strumento prepara oggetti 3D esterni — alleggerirli, nominare i materiali, assegnare texture e finiture — per le tue librerie e scene BPO e per i tuoi software: ArchiCAD (.gsm), SketchUp (.dae)…","Dieses Werkzeug bereitet externe 3D-Objekte vor — verschlanken, Materialien benennen, Texturen und Oberflächen zuweisen — für Ihre BPO-Bibliotheken und -Szenen wie für Ihre Software: ArchiCAD (.gsm), SketchUp (.dae)…","Esta ferramenta prepara objetos 3D externos — aligeirá-los, nomear os materiais, atribuir texturas e acabamentos — para as suas bibliotecas e cenas BPO e para os seus programas: ArchiCAD (.gsm), SketchUp (.dae)…","Ez az eszköz külső 3D-objektumokat készít elő — könnyítés, anyagok elnevezése, textúrák és felületek hozzárendelése — a BPO-könyvtáraidhoz és -jeleneteidhez, valamint a szoftvereidhez: ArchiCAD (.gsm), SketchUp (.dae)…","此工具用于准备外部 3D 对象——轻量化、命名材质、指定纹理与饰面——用于您的 BPO 库和场景，以及您的软件：ArchiCAD (.gsm)、SketchUp (.dae)…","このツールは外部 3D オブジェクトを準備します — 軽量化、マテリアルの命名、テクスチャと仕上げの割り当て — BPO のライブラリやシーン、そして ArchiCAD (.gsm) や SketchUp (.dae) などのソフトウェアのために…","यह उपकरण बाहरी 3D ऑब्जेक्ट तैयार करता है — उन्हें हल्का करें, सामग्रियों के नाम दें, बनावट और फ़िनिश लगाएँ — आपकी BPO लाइब्रेरी और दृश्यों तथा आपके सॉफ़्टवेयर के लिए: ArchiCAD (.gsm), SketchUp (.dae)…","Этот инструмент готовит внешние 3D-объекты — облегчить, назвать материалы, назначить текстуры и отделки — для ваших библиотек и сцен BPO и для ваших программ: ArchiCAD (.gsm), SketchUp (.dae)…","Цей інструмент готує зовнішні 3D-об'єкти — полегшити, назвати матеріали, призначити текстури й опорядження — для ваших бібліотек і сцен BPO та ваших програм: ArchiCAD (.gsm), SketchUp (.dae)…","تجهّز هذه الأداة عناصر 3D خارجية — تخفيفها وتسمية موادها وإسناد الخامات واللمسات — لمكتباتك ومشاهدك في BPO ولبرامجك: ArchiCAD (.gsm)، SketchUp (.dae)…"],
+  "Cette application vous est offerte avec l'abonnement BPO.":["This application is included with your BPO subscription.","Esta aplicación está incluida en tu suscripción BPO.","Questa applicazione è inclusa nel tuo abbonamento BPO.","Diese Anwendung ist in Ihrem BPO-Abo enthalten.","Esta aplicação está incluída na sua subscrição BPO.","Ez az alkalmazás a BPO-előfizetésed része.","此应用已包含在您的 BPO 订阅中。","このアプリは BPO サブスクリプションに含まれています。","यह ऐप आपकी BPO सदस्यता में शामिल है।","Это приложение входит в вашу подписку BPO.","Цей застосунок входить у вашу підписку BPO.","هذا التطبيق مضمّن في اشتراكك في BPO."],
+  "Glissez un fichier .obj, .dae, .skp ou .3ds ici":["Drop an .obj, .dae, .skp or .3ds file here","Arrastra aquí un archivo .obj, .dae, .skp o .3ds","Trascina qui un file .obj, .dae, .skp o .3ds","Ziehen Sie eine .obj-, .dae-, .skp- oder .3ds-Datei hierher","Largue aqui um ficheiro .obj, .dae, .skp ou .3ds","Húzz ide egy .obj, .dae, .skp vagy .3ds fájlt","将 .obj、.dae、.skp 或 .3ds 文件拖到此处",".obj / .dae / .skp / .3ds ファイルをここにドロップ",".obj, .dae, .skp या .3ds फ़ाइल यहाँ खींचें","Перетащите сюда файл .obj, .dae, .skp или .3ds","Перетягніть сюди файл .obj, .dae, .skp або .3ds","اسحب ملف ‎.obj أو ‎.dae أو ‎.skp أو ‎.3ds إلى هنا"],
+  "ou le dossier complet (avec .mtl et textures)":["or the whole folder (with .mtl and textures)","o la carpeta completa (con .mtl y texturas)","o la cartella completa (con .mtl e texture)","oder den ganzen Ordner (mit .mtl und Texturen)","ou a pasta completa (com .mtl e texturas)","vagy a teljes mappát (.mtl és textúrák)","或整个文件夹（含 .mtl 和纹理）","またはフォルダーごと（.mtl とテクスチャを含む）","या पूरा फ़ोल्डर (.mtl और बनावट सहित)","или всю папку (с .mtl и текстурами)","або всю теку (з .mtl і текстурами)","أو المجلد كاملًا (مع ‎.mtl والخامات)"],
+  "cliquez pour choisir des fichiers":["click to choose files","haz clic para elegir archivos","clicca per scegliere i file","klicken, um Dateien zu wählen","clique para escolher ficheiros","kattints fájlok kiválasztásához","点击选择文件","クリックしてファイルを選択","फ़ाइलें चुनने हेतु क्लिक करें","нажмите, чтобы выбрать файлы","натисніть, щоб вибрати файли","انقر لاختيار الملفات"],
+  "choisir un dossier":["choose a folder","elegir una carpeta","scegli una cartella","Ordner wählen","escolher uma pasta","mappa kiválasztása","选择文件夹","フォルダーを選択","फ़ोल्डर चुनें","выбрать папку","вибрати теку","اختر مجلدًا"],
+  "La géométrie est allégée localement — rien ne quitte ce poste.":["Geometry is lightened locally — nothing leaves this computer.","La geometría se aligera localmente — nada sale de este equipo.","La geometria è alleggerita in locale — nulla lascia questo computer.","Die Geometrie wird lokal verschlankt — nichts verlässt diesen Rechner.","A geometria é aligeirada localmente — nada sai deste computador.","A geometria helyben könnyül — semmi sem hagyja el a gépet.","几何体在本地轻量化——不会离开这台电脑。","ジオメトリはローカルで軽量化 — このパソコンから何も出ません。","ज्यामिति स्थानीय रूप से हल्की होती है — कुछ भी इस कंप्यूटर से बाहर नहीं जाता।","Геометрия облегчается локально — ничто не покидает этот компьютер.","Геометрія полегшується локально — ніщо не залишає цей комп'ютер.","تُخفَّف الهندسة محليًا — لا شيء يغادر هذا الجهاز."],
+  "Chargement…":["Loading…","Cargando…","Caricamento…","Laden…","A carregar…","Betöltés…","加载中…","読み込み中…","लोड हो रहा है…","Загрузка…","Завантаження…","جارٍ التحميل…"],
   /* --- panneau gauche --- */
-  "Fichier":"File",
-  "↺ Nouveau · page vierge":"↺ New · blank page",
-  "Maillage":"Mesh",
-  "Unité source":"Source unit",
-  "mètres":"meters",
-  "centimètres":"centimeters",
-  "millimètres":"millimeters",
-  "pouces":"inches",
-  "pieds":"feet",
-  "Allégé":"Lightened",
-  "Matières":"Materials",
-  "Temps":"Time",
-  "Sortie":"Output",
-  "Cible (triangles)":"Target (triangles)",
-  "Mouliner":"Crunch",
-  "Affichage":"Display",
-  "Avant":"Before",
-  "Après":"After",
-  "Filaire":"Wireframe",
-  "Orienter les faces":"Orient faces",
-  "Reboucher trous":"Fill holes",
-  "Lumière":"Light",
-  "Fond noir":"Dark background",
-  "Fond blanc":"White background",
+  "Fichier":["File","Archivo","File","Datei","Ficheiro","Fájl","文件","ファイル","फ़ाइल","Файл","Файл","ملف"],
+  "↺ Nouveau · page vierge":["↺ New · blank page","↺ Nuevo · página en blanco","↺ Nuovo · pagina vuota","↺ Neu · leere Seite","↺ Novo · página em branco","↺ Új · üres lap","↺ 新建 · 空白页","↺ 新規 · 白紙","↺ नया · खाली पृष्ठ","↺ Новый · чистая страница","↺ Новий · чиста сторінка","↺ جديد · صفحة فارغة"],
+  "Maillage":["Mesh","Malla","Mesh","Netz","Malha","Háló","网格","メッシュ","मेश","Сетка","Сітка","شبكة"],
+  "Unité source":["Source unit","Unidad de origen","Unità di origine","Quelleinheit","Unidade de origem","Forrás mértékegység","源单位","元の単位","स्रोत इकाई","Исходная единица","Вихідна одиниця","وحدة المصدر"],
+  "mètres":["meters","metros","metri","Meter","metros","méter","米","メートル","मीटर","метры","метри","أمتار"],
+  "centimètres":["centimeters","centímetros","centimetri","Zentimeter","centímetros","centiméter","厘米","センチメートル","सेंटीमीटर","сантиметры","сантиметри","سنتيمترات"],
+  "millimètres":["millimeters","milímetros","millimetri","Millimeter","milímetros","milliméter","毫米","ミリメートル","मिलीमीटर","миллиметры","міліметри","مليمترات"],
+  "pouces":["inches","pulgadas","pollici","Zoll","polegadas","hüvelyk","英寸","インチ","इंच","дюймы","дюйми","بوصات"],
+  "pieds":["feet","pies","piedi","Fuß","pés","láb","英尺","フィート","फ़ीट","футы","фути","أقدام"],
+  "Allégé":["Lightened","Aligerado","Alleggerito","Verschlankt","Aligeirado","Könnyítve","已轻量化","軽量化済み","हल्का किया गया","Облегчено","Полегшено","مخفَّف"],
+  "Matières":["Materials","Materiales","Materiali","Materialien","Materiais","Anyagok","材质","マテリアル","सामग्रियाँ","Материалы","Матеріали","المواد"],
+  "Temps":["Time","Tiempo","Tempo","Zeit","Tempo","Idő","耗时","時間","समय","Время","Час","الوقت"],
+  "Sortie":["Output","Salida","Uscita","Ausgabe","Saída","Kimenet","输出","出力","आउटपुट","Вывод","Вивід","الإخراج"],
+  "Cible (triangles)":["Target (triangles)","Objetivo (triángulos)","Obiettivo (triangoli)","Ziel (Dreiecke)","Alvo (triângulos)","Cél (háromszögek)","目标（三角形）","目標（三角形）","लक्ष्य (त्रिभुज)","Цель (треугольники)","Ціль (трикутники)","الهدف (مثلثات)"],
+  "Mouliner":["Crunch","Triturar","Macina","Verarbeiten","Triturar","Darálás","开始处理","実行","प्रोसेस करें","Обработать","Обробити","معالجة"],
+  "Affichage":["Display","Visualización","Visualizzazione","Anzeige","Visualização","Megjelenítés","显示","表示","प्रदर्शन","Отображение","Відображення","العرض"],
+  "Avant":["Before","Antes","Prima","Vorher","Antes","Előtte","处理前","前","पहले","До","До","قبل"],
+  "Après":["After","Después","Dopo","Nachher","Depois","Utána","处理后","後","बाद","После","Після","بعد"],
+  "Filaire":["Wireframe","Alámbrico","Wireframe","Drahtgitter","Wireframe","Drótváz","线框","ワイヤーフレーム","वायरफ़्रेम","Каркас","Каркас","سلكي"],
+  "Orienter les faces":["Orient faces","Orientar las caras","Orienta le facce","Flächen ausrichten","Orientar as faces","Lapok tájolása","统一面朝向","面の向きを揃える","फलकों की दिशा ठीक करें","Ориентировать грани","Орієнтувати грані","توجيه الأوجه"],
+  "Reboucher trous":["Fill holes","Rellenar agujeros","Chiudi i fori","Löcher füllen","Tapar buracos","Lyukak tömése","填补孔洞","穴を埋める","छेद भरें","Заделать отверстия","Заповнити отвори","سد الثقوب"],
+  "Lumière":["Light","Luz","Luce","Licht","Luz","Fény","光照","ライト","प्रकाश","Свет","Світло","الإضاءة"],
+  "Fond noir":["Dark background","Fondo negro","Sfondo nero","Dunkler Hintergrund","Fundo preto","Fekete háttér","黑色背景","黒背景","काली पृष्ठभूमि","Тёмный фон","Темне тло","خلفية داكنة"],
+  "Fond blanc":["White background","Fondo blanco","Sfondo bianco","Weißer Hintergrund","Fundo branco","Fehér háttér","白色背景","白背景","सफ़ेद पृष्ठभूमि","Белый фон","Біле тло","خلفية بيضاء"],
   /* --- réglages texture --- */
-  "Réglages texture":"Texture settings",
-  "Projection : UV d'origine":"Projection: original UVs",
-  "Projection : plan XY":"Projection: XY plane",
-  "Projection : plan XZ":"Projection: XZ plane",
-  "Projection : plan YZ":"Projection: YZ plane",
-  "Projection : boîte (auto)":"Projection: box (auto)",
-  "Éch. U":"Scale U",
-  "Éch. V":"Scale V",
-  "Métal":"Metal",
-  "Déc. U":"Offset U",
-  "Déc. V":"Offset V",
-  "Mir U":"Flip U",
-  "Mir V":"Flip V",
-  "Réinit":"Reset",
-  "→ toutes":"→ all",
+  "Réglages texture":["Texture settings","Ajustes de textura","Impostazioni texture","Textur-Einstellungen","Definições de textura","Textúra-beállítások","纹理设置","テクスチャ設定","बनावट सेटिंग","Настройки текстуры","Налаштування текстури","إعدادات الخامة"],
+  "Projection : UV d'origine":["Projection: original UVs","Proyección: UV originales","Proiezione: UV originali","Projektion: Original-UVs","Projeção: UV originais","Vetítés: eredeti UV-k","投影：原始 UV","投影：元の UV","प्रक्षेपण: मूल UV","Проекция: исходные UV","Проєкція: вихідні UV","الإسقاط: UV الأصلية"],
+  "Projection : plan XY":["Projection: XY plane","Proyección: plano XY","Proiezione: piano XY","Projektion: XY-Ebene","Projeção: plano XY","Vetítés: XY sík","投影：XY 平面","投影：XY 平面","प्रक्षेपण: XY तल","Проекция: плоскость XY","Проєкція: площина XY","الإسقاط: مستوى XY"],
+  "Projection : plan XZ":["Projection: XZ plane","Proyección: plano XZ","Proiezione: piano XZ","Projektion: XZ-Ebene","Projeção: plano XZ","Vetítés: XZ sík","投影：XZ 平面","投影：XZ 平面","प्रक्षेपण: XZ तल","Проекция: плоскость XZ","Проєкція: площина XZ","الإسقاط: مستوى XZ"],
+  "Projection : plan YZ":["Projection: YZ plane","Proyección: plano YZ","Proiezione: piano YZ","Projektion: YZ-Ebene","Projeção: plano YZ","Vetítés: YZ sík","投影：YZ 平面","投影：YZ 平面","प्रक्षेपण: YZ तल","Проекция: плоскость YZ","Проєкція: площина YZ","الإسقاط: مستوى YZ"],
+  "Projection : boîte (auto)":["Projection: box (auto)","Proyección: caja (auto)","Proiezione: scatola (auto)","Projektion: Box (auto)","Projeção: caixa (auto)","Vetítés: doboz (auto)","投影：盒式（自动）","投影：ボックス（自動）","प्रक्षेपण: बॉक्स (स्वतः)","Проекция: бокс (авто)","Проєкція: бокс (авто)","الإسقاط: صندوق (تلقائي)"],
+  "Éch. U":["Scale U","Esc. U","Scala U","Skal. U","Esc. U","U skála","U 缩放","Uスケール","U स्केल","Масшт. U","Масшт. U","مقياس U"],
+  "Éch. V":["Scale V","Esc. V","Scala V","Skal. V","Esc. V","V skála","V 缩放","Vスケール","V स्केल","Масшт. V","Масшт. V","مقياس V"],
+  "Métal":["Metal","Metal","Metallo","Metall","Metal","Fém","金属","メタル","धातु","Металл","Метал","معدن"],
+  "Déc. U":["Offset U","Despl. U","Sfals. U","Vers. U","Desl. U","U eltolás","U 偏移","Uオフセット","U ऑफ़सेट","Смещ. U","Зсув U","إزاحة U"],
+  "Déc. V":["Offset V","Despl. V","Sfals. V","Vers. V","Desl. V","V eltolás","V 偏移","Vオフセット","V ऑफ़सेट","Смещ. V","Зсув V","إزاحة V"],
+  "Mir U":["Flip U","Espejo U","Specchia U","Spiegel U","Espelho U","U tükrözés","U 镜像","U反転","U मिरर","Отраж. U","Віддзерк. U","عكس U"],
+  "Mir V":["Flip V","Espejo V","Specchia V","Spiegel V","Espelho V","V tükrözés","V 镜像","V反転","V मिरर","Отраж. V","Віддзерк. V","عكس V"],
+  "Réinit":["Reset","Restablecer","Reimposta","Zurücksetzen","Repor","Alaphelyzet","重置","リセット","रीसेट","Сброс","Скинути","إعادة تعيين"],
+  "→ toutes":["→ all","→ todas","→ tutte","→ alle","→ todas","→ mind","→ 全部","→ すべて","→ सभी","→ все","→ усі","→ الكل"],
   /* --- export --- */
-  "Paquet BPO (.zip)":"BPO package (.zip)",
-  "« L.obj » + « L.mtl » seuls":"“L.obj” + “L.mtl” only",
-  "→ Ma bibliothèque BPO":"→ My BPO library",
+  "Paquet BPO (.zip)":["BPO package (.zip)","Paquete BPO (.zip)","Pacchetto BPO (.zip)","BPO-Paket (.zip)","Pacote BPO (.zip)","BPO-csomag (.zip)","BPO 包（.zip）","BPO パッケージ（.zip）","BPO पैकेज (.zip)","Пакет BPO (.zip)","Пакет BPO (.zip)","حزمة BPO ‏(.zip)"],
+  "« L.obj » + « L.mtl » seuls":["“L.obj” + “L.mtl” only","Solo «L.obj» + «L.mtl»","Solo «L.obj» + «L.mtl»","Nur „L.obj“ + „L.mtl“","Apenas «L.obj» + «L.mtl»","Csak „L.obj” + „L.mtl”","仅 “L.obj”+“L.mtl”","「L.obj」+「L.mtl」のみ","केवल “L.obj” + “L.mtl”","Только «L.obj» + «L.mtl»","Лише «L.obj» + «L.mtl»","‏«L.obj» + «L.mtl» فقط"],
+  "→ Ma bibliothèque BPO":["→ My BPO library","→ Mi biblioteca BPO","→ La mia libreria BPO","→ Meine BPO-Bibliothek","→ A minha biblioteca BPO","→ BPO-könyvtáram","→ 我的 BPO 库","→ マイ BPO ライブラリ","→ मेरी BPO लाइब्रेरी","→ Моя библиотека BPO","→ Моя бібліотека BPO","→ مكتبتي BPO"],
   /* --- objets / matières --- */
-  "Objets":"Objects",
-  "Surligner":"Highlight",
-  "Isoler":"Isolate",
-  "✎ Nom":"✎ Name",
-  "Copier":"Copy",
-  "Coller":"Paste",
-  "＋ Nouv.":"＋ New",
-  "Suppr.":"Delete",
-  "Pinceau":"Brush",
-  "Forme":"Shape",
-  "Nettoyer identiques":"Merge identical",
-  "Rayon":"Radius",
-  "Origine":"Origin",
-  "Opacité":"Opacity",
-  "glisser = orbite · molette = zoom · clic droit = translation":"drag = orbit · wheel = zoom · right-click = pan",
-  "Aucun petit trou détecté":"No small holes detected",
+  "Objets":["Objects","Objetos","Oggetti","Objekte","Objetos","Objektumok","对象","オブジェクト","ऑब्जेक्ट","Объекты","Об'єкти","العناصر"],
+  "Surligner":["Highlight","Resaltar","Evidenzia","Hervorheben","Realçar","Kiemelés","高亮","ハイライト","हाइलाइट","Подсветить","Підсвітити","تمييز"],
+  "Isoler":["Isolate","Aislar","Isola","Isolieren","Isolar","Izolálás","隔离","分離","अलग करें","Изолировать","Ізолювати","عزل"],
+  "✎ Nom":["✎ Name","✎ Nombre","✎ Nome","✎ Name","✎ Nome","✎ Név","✎ 名称","✎ 名前","✎ नाम","✎ Имя","✎ Ім'я","✎ الاسم"],
+  "Copier":["Copy","Copiar","Copia","Kopieren","Copiar","Másolás","复制","コピー","कॉपी","Копировать","Копіювати","نسخ"],
+  "Coller":["Paste","Pegar","Incolla","Einfügen","Colar","Beillesztés","粘贴","貼り付け","पेस्ट","Вставить","Вставити","لصق"],
+  "＋ Nouv.":["＋ New","＋ Nuevo","＋ Nuovo","＋ Neu","＋ Novo","＋ Új","＋ 新建","＋ 新規","＋ नया","＋ Новый","＋ Новий","＋ جديد"],
+  "Suppr.":["Delete","Eliminar","Elimina","Löschen","Eliminar","Törlés","删除","削除","हटाएँ","Удалить","Видалити","حذف"],
+  "Pinceau":["Brush","Pincel","Pennello","Pinsel","Pincel","Ecset","画笔","ブラシ","ब्रश","Кисть","Пензель","فرشاة"],
+  "Forme":["Shape","Forma","Forma","Form","Forma","Alakzat","形状","シェイプ","आकृति","Форма","Форма","شكل"],
+  "Nettoyer identiques":["Merge identical","Fusionar idénticos","Unisci identici","Identische zusammenführen","Fundir idênticos","Azonosak egyesítése","合并相同项","同一を統合","समान मिलाएँ","Объединить одинаковые","Об'єднати однакові","دمج المتطابقات"],
+  "Rayon":["Radius","Radio","Raggio","Radius","Raio","Sugár","半径","半径","त्रिज्या","Радиус","Радіус","نصف القطر"],
+  "Origine":["Origin","Origen","Origine","Ursprung","Origem","Origó","原点","原点","मूल","Начало","Початок","الأصل"],
+  "Opacité":["Opacity","Opacidad","Opacità","Deckkraft","Opacidade","Átlátszatlanság","不透明度","不透明度","अपारदर्शिता","Непрозрачность","Непрозорість","العتامة"],
+  "glisser = orbite · molette = zoom · clic droit = translation":["drag = orbit · wheel = zoom · right-click = pan","arrastrar = órbita · rueda = zoom · clic derecho = desplazar","trascina = orbita · rotella = zoom · clic destro = pan","Ziehen = Orbit · Rad = Zoom · Rechtsklick = Verschieben","arrastar = órbita · roda = zoom · clique direito = deslocar","húzás = forgatás · görgő = zoom · jobb klikk = eltolás","拖动 = 环绕 · 滚轮 = 缩放 · 右键 = 平移","ドラッグ = 回転 · ホイール = ズーム · 右クリック = 移動","खींचें = परिक्रमा · व्हील = ज़ूम · दायाँ क्लिक = खिसकाएँ","перетаскивание = орбита · колесо = зум · правая кнопка = сдвиг","перетягування = орбіта · коліщатко = зум · права кнопка = зсув","سحب = دوران · عجلة = تكبير · زر أيمن = إزاحة"],
+  "Aucun petit trou détecté":["No small holes detected","Ningún agujero pequeño detectado","Nessun piccolo foro rilevato","Keine kleinen Löcher gefunden","Nenhum buraco pequeno detetado","Nem található kis lyuk","未检测到小孔","小さな穴は見つかりません","कोई छोटा छेद नहीं मिला","Малых отверстий не найдено","Малих отворів не знайдено","لا ثقوب صغيرة"],
   /* --- infobulles --- */
-  "Le format .3ds (comme .obj) ne stocke aucune unité : la taille est déduite, corrigez-la ici si besoin":"The .3ds format (like .obj) stores no unit: size is inferred — fix it here if needed",
-  "Axe vertical du modèle":"Model up axis",
-  "Harmoniser l'orientation des faces (par coque, vote majoritaire) — assainit l'export":"Harmonize face orientation (per shell, majority vote) — cleans up the export",
-  "Reboucher les petits trous (boucles de bord de 3 à 5 arêtes = triangles manquants)":"Fill small holes (boundary loops of 3–5 edges = missing triangles)",
-  "Fond sombre (viewer uniquement)":"Dark background (viewer only)",
-  "Fond blanc uni (viewer uniquement)":"Plain white background (viewer only)",
-  "Cyclo studio : fond blanc sans angle, sol et ombre douce sous l'objet (viewer uniquement)":"Studio cyc: seamless white background, floor and soft shadow under the object (viewer only)",
-  "Réflexion métallique du studio (chrome ≈ 0,9). Automatique pour les matières nommées chromé / inox / poli.":"Studio metallic reflection (chrome ≈ 0.9). Automatic for materials named chrome / stainless / polished.",
-  "Miroir horizontal":"Flip horizontally",
-  "Miroir vertical":"Flip vertically",
-  "Échanger U et V":"Swap U and V",
-  "Réinitialiser cette matière":"Reset this material",
-  "Lier les échelles U et V":"Link U and V scales",
-  "Copier ces réglages sur toutes les matières":"Copy these settings to all materials",
-  "Objet GDL ArchiCAD : HSF + bat de conversion (LP_XMLConverter d'AC 26-29)":"ArchiCAD GDL object: HSF + conversion .bat (AC 26-29 LP_XMLConverter)",
-  "COLLADA pour SketchUp (textures incluses)":"COLLADA for SketchUp (textures included)",
-  "Teinter en continu la matière sélectionnée":"Continuously tint the selected material",
-  "N'afficher QUE la ou les matières sélectionnées (le pinceau ne mord plus sur le reste)":"Show ONLY the selected material(s) (the brush no longer bites the rest)",
-  "Renommer la matière":"Rename the material",
-  "Copier l'apparence de la matière":"Copy the material appearance",
-  "Coller l'apparence copiée sur la matière sélectionnée":"Paste the copied appearance onto the selected material",
-  "Créer une matière neuve (grise)":"Create a new (gray) material",
-  "Supprimer la ou les matières sélectionnées (Ctrl+clic = multi-sélection) ET leur géométrie":"Delete the selected material(s) (Ctrl+click = multi-select) AND their geometry",
-  "Peindre des facettes vers la matière sélectionnée (Ctrl+Z pour annuler)":"Paint facets into the selected material (Ctrl+Z to undo)",
-  "Cliquer une FORME entière (pièce d'un seul tenant) pour lui donner la matière sélectionnée":"Click a whole SHAPE (one connected piece) to give it the selected material",
-  "Fusionner les matières identiques (couleur, texture, opacité, réglages) et purger celles sans géométrie":"Merge identical materials (color, texture, opacity, settings) and purge those without geometry",
-  "1 = une facette à la fois. Le pinceau reste dans la matière visée au centre ; Ctrl enfoncé pour déborder.":"1 = one facet at a time. The brush stays within the material under the center; hold Ctrl to spill over.",
-  "Envoie l'objet préparé directement dans votre bibliothèque BPO (dossier « Objets importés ») : couleurs, textures, opacité et métal — prêt à poser en scène.":"Sends the prepared object straight to your BPO library (“Imported objects” folder): colors, textures, opacity and metal — ready to place in a scene.",
-  "filtrer les textures BPO…":"filter BPO textures…"
+  "Le format .3ds (comme .obj) ne stocke aucune unité : la taille est déduite, corrigez-la ici si besoin":["The .3ds format (like .obj) stores no unit: size is inferred — fix it here if needed","El formato .3ds (como .obj) no guarda unidad: el tamaño se deduce — corrígelo aquí si hace falta","Il formato .3ds (come .obj) non memorizza unità: la dimensione è dedotta — correggila qui se serve","Das .3ds-Format speichert (wie .obj) keine Einheit: die Größe wird geschätzt — hier bei Bedarf korrigieren","O formato .3ds (como .obj) não guarda unidade: o tamanho é deduzido — corrija-o aqui se necessário","A .3ds formátum (mint az .obj) nem tárol mértékegységet: a méret becsült — itt javítható",".3ds 格式（与 .obj 一样）不存储单位：尺寸为推断值——如有需要在此修正",".3ds 形式は（.obj 同様）単位を持ちません。サイズは推定 — 必要ならここで修正",".3ds प्रारूप (.obj की तरह) कोई इकाई नहीं रखता: आकार अनुमानित है — ज़रूरत हो तो यहाँ ठीक करें","Формат .3ds (как и .obj) не хранит единицу: размер выводится — при необходимости исправьте здесь","Формат .3ds (як і .obj) не зберігає одиницю: розмір виводиться — за потреби виправте тут","صيغة ‎.3ds (مثل ‎.obj) لا تخزّن وحدة: الحجم مستنتج — صحّحه هنا عند الحاجة"],
+  "Axe vertical du modèle":["Model up axis","Eje vertical del modelo","Asse verticale del modello","Vertikale Achse des Modells","Eixo vertical do modelo","A modell függőleges tengelye","模型竖直轴","モデルの上方向軸","मॉडल की ऊर्ध्व धुरी","Вертикальная ось модели","Вертикальна вісь моделі","المحور الرأسي للنموذج"],
+  "Harmoniser l'orientation des faces (par coque, vote majoritaire) — assainit l'export":["Harmonize face orientation (per shell, majority vote) — cleans up the export","Armoniza la orientación de las caras (por casco, voto mayoritario) — sanea la exportación","Armonizza l'orientamento delle facce (per guscio, voto di maggioranza) — risana l'esportazione","Flächenausrichtung vereinheitlichen (je Schale, Mehrheitsvotum) — bereinigt den Export","Harmoniza a orientação das faces (por casca, voto maioritário) — sanea a exportação","A lapok tájolásának egységesítése (héjanként, többségi szavazás) — tisztább export","统一面朝向（按壳体多数表决）——让导出更干净","面の向きを統一（シェル単位・多数決）— エクスポートを健全化","फलकों की दिशा एकरूप करें (प्रति शेल, बहुमत) — निर्यात साफ़ होता है","Согласовать ориентацию граней (по оболочке, большинством) — оздоравливает экспорт","Узгодити орієнтацію граней (по оболонці, більшістю) — оздоровлює експорт","توحيد اتجاه الأوجه (لكل غلاف، بالأغلبية) — يحسّن التصدير"],
+  "Reboucher les petits trous (boucles de bord de 3 à 5 arêtes = triangles manquants)":["Fill small holes (boundary loops of 3–5 edges = missing triangles)","Tapa agujeros pequeños (bucles de borde de 3–5 aristas = triángulos ausentes)","Chiude i piccoli fori (anelli di bordo di 3–5 spigoli = triangoli mancanti)","Kleine Löcher füllen (Randschleifen mit 3–5 Kanten = fehlende Dreiecke)","Tapa buracos pequenos (anéis de bordo de 3–5 arestas = triângulos em falta)","Kis lyukak tömése (3–5 élből álló peremhurok = hiányzó háromszögek)","填补小孔（3–5 条边的边界环 = 缺失的三角形）","小さな穴を埋める（3〜5辺の境界ループ＝欠けた三角形）","छोटे छेद भरें (3–5 किनारों के बॉर्डर लूप = लुप्त त्रिभुज)","Заделать малые отверстия (граничные петли из 3–5 рёбер = недостающие треугольники)","Заповнити малі отвори (межові петлі з 3–5 ребер = відсутні трикутники)","سد الثقوب الصغيرة (حلقات حدّية من 3–5 حواف = مثلثات ناقصة)"],
+  "Fond sombre (viewer uniquement)":["Dark background (viewer only)","Fondo oscuro (solo visor)","Sfondo scuro (solo viewer)","Dunkler Hintergrund (nur Viewer)","Fundo escuro (apenas visualizador)","Sötét háttér (csak a nézetben)","深色背景（仅查看器）","暗い背景（ビューアのみ）","गहरी पृष्ठभूमि (केवल व्यूअर)","Тёмный фон (только просмотр)","Темне тло (лише переглядач)","خلفية داكنة (العارض فقط)"],
+  "Fond blanc uni (viewer uniquement)":["Plain white background (viewer only)","Fondo blanco liso (solo visor)","Sfondo bianco uniforme (solo viewer)","Rein weißer Hintergrund (nur Viewer)","Fundo branco liso (apenas visualizador)","Egyszínű fehér háttér (csak a nézetben)","纯白背景（仅查看器）","白一色の背景（ビューアのみ）","सादी सफ़ेद पृष्ठभूमि (केवल व्यूअर)","Однотонный белый фон (только просмотр)","Однотонне біле тло (лише переглядач)","خلفية بيضاء صافية (العارض فقط)"],
+  "Cyclo studio : fond blanc sans angle, sol et ombre douce sous l'objet (viewer uniquement)":["Studio cyc: seamless white background, floor and soft shadow under the object (viewer only)","Ciclorama de estudio: fondo blanco sin ángulo, suelo y sombra suave bajo el objeto (solo visor)","Ciclorama da studio: sfondo bianco senza angoli, pavimento e ombra morbida sotto l'oggetto (solo viewer)","Studio-Hohlkehle: nahtlos weißer Hintergrund, Boden und weicher Schatten unter dem Objekt (nur Viewer)","Ciclorama de estúdio: fundo branco sem ângulo, chão e sombra suave sob o objeto (apenas visualizador)","Stúdió-ciklóráma: sarok nélküli fehér háttér, padló és lágy árnyék az objektum alatt (csak a nézetben)","影棚无缝背景：纯白无角背景、地面及物体下柔和阴影（仅查看器）","スタジオ・サイクロラマ：継ぎ目のない白背景、床とオブジェクト下の柔らかい影（ビューアのみ）","स्टूडियो साइक: निर्बाध सफ़ेद पृष्ठभूमि, फ़र्श और वस्तु के नीचे कोमल छाया (केवल व्यूअर)","Студийная циклорама: бесшовный белый фон, пол и мягкая тень под объектом (только просмотр)","Студійна циклорама: безшовне біле тло, підлога та м'яка тінь під об'єктом (лише переглядач)","سيكلوراما الاستوديو: خلفية بيضاء دون زاوية وأرضية وظل ناعم تحت العنصر (العارض فقط)"],
+  "Réflexion métallique du studio (chrome ≈ 0,9). Automatique pour les matières nommées chromé / inox / poli.":["Studio metallic reflection (chrome ≈ 0.9). Automatic for materials named chrome / stainless / polished.","Reflejo metálico del estudio (cromo ≈ 0,9). Automático para materiales llamados cromado / inox / pulido.","Riflesso metallico dello studio (cromo ≈ 0,9). Automatico per materiali chiamati cromato / inox / lucidato.","Metallische Studio-Reflexion (Chrom ≈ 0,9). Automatisch bei Materialien namens Chrom / Edelstahl / poliert.","Reflexo metálico do estúdio (cromado ≈ 0,9). Automático para materiais chamados cromado / inox / polido.","Stúdió fémes tükröződés (króm ≈ 0,9). Automatikus a króm / inox / polírozott nevű anyagoknál.","影棚金属反射（铬 ≈ 0.9）。名为 chrome / inox / poli 的材质自动应用。","スタジオの金属反射（クロム ≈ 0.9）。chrome / inox / poli という名のマテリアルには自動適用。","स्टूडियो धातु परावर्तन (क्रोम ≈ 0.9)। chrome / inox / poli नामक सामग्रियों हेतु स्वतः।","Металлическое отражение студии (хром ≈ 0,9). Автоматически для материалов chrome / inox / poli.","Металеве відбиття студії (хром ≈ 0,9). Автоматично для матеріалів chrome / inox / poli.","انعكاس معدني للاستوديو (كروم ≈ 0.9). تلقائي للمواد المسماة chrome / inox / poli."],
+  "Miroir horizontal":["Flip horizontally","Espejo horizontal","Specchio orizzontale","Horizontal spiegeln","Espelho horizontal","Vízszintes tükrözés","水平镜像","左右反転","क्षैतिज मिरर","Отразить по горизонтали","Віддзеркалити горизонтально","عكس أفقي"],
+  "Miroir vertical":["Flip vertically","Espejo vertical","Specchio verticale","Vertikal spiegeln","Espelho vertical","Függőleges tükrözés","垂直镜像","上下反転","ऊर्ध्व मिरर","Отразить по вертикали","Віддзеркалити вертикально","عكس رأسي"],
+  "Échanger U et V":["Swap U and V","Intercambiar U y V","Scambia U e V","U und V tauschen","Trocar U e V","U és V felcserélése","交换 U 和 V","U と V を入れ替え","U और V बदलें","Поменять U и V","Поміняти U і V","تبديل U وV"],
+  "Réinitialiser cette matière":["Reset this material","Restablecer este material","Reimposta questo materiale","Dieses Material zurücksetzen","Repor este material","Anyag alaphelyzetbe","重置此材质","このマテリアルをリセット","यह सामग्री रीसेट करें","Сбросить этот материал","Скинути цей матеріал","إعادة تعيين هذه المادة"],
+  "Lier les échelles U et V":["Link U and V scales","Vincular las escalas U y V","Collega le scale U e V","U- und V-Skalen koppeln","Ligar as escalas U e V","U és V skála összekapcsolása","联动 U/V 缩放","U/V スケールを連動","U-V स्केल जोड़ें","Связать масштабы U и V","Зв'язати масштаби U і V","ربط مقياسي U وV"],
+  "Copier ces réglages sur toutes les matières":["Copy these settings to all materials","Copiar estos ajustes a todos los materiales","Copia queste impostazioni su tutti i materiali","Diese Einstellungen auf alle Materialien kopieren","Copiar estas definições para todos os materiais","Beállítások másolása minden anyagra","将这些设置复制到所有材质","この設定をすべてのマテリアルへコピー","ये सेटिंग सभी सामग्रियों पर कॉपी करें","Скопировать эти настройки на все материалы","Скопіювати ці налаштування на всі матеріали","نسخ هذه الإعدادات إلى كل المواد"],
+  "Objet GDL ArchiCAD : HSF + bat de conversion (LP_XMLConverter d'AC 26-29)":["ArchiCAD GDL object: HSF + conversion .bat (AC 26-29 LP_XMLConverter)","Objeto GDL de ArchiCAD: HSF + .bat de conversión (LP_XMLConverter de AC 26-29)","Oggetto GDL ArchiCAD: HSF + .bat di conversione (LP_XMLConverter di AC 26-29)","ArchiCAD-GDL-Objekt: HSF + Konvertierungs-.bat (LP_XMLConverter von AC 26-29)","Objeto GDL ArchiCAD: HSF + .bat de conversão (LP_XMLConverter do AC 26-29)","ArchiCAD GDL-objektum: HSF + konvertáló .bat (AC 26-29 LP_XMLConverter)","ArchiCAD GDL 对象：HSF + 转换 .bat（AC 26-29 LP_XMLConverter）","ArchiCAD GDL オブジェクト：HSF + 変換 .bat（AC 26-29 の LP_XMLConverter）","ArchiCAD GDL ऑब्जेक्ट: HSF + रूपांतरण .bat (AC 26-29 LP_XMLConverter)","GDL-объект ArchiCAD: HSF + .bat конвертации (LP_XMLConverter AC 26-29)","GDL-об'єкт ArchiCAD: HSF + .bat конвертації (LP_XMLConverter AC 26-29)","عنصر GDL لأركيكاد: HSF + ملف ‎.bat للتحويل (LP_XMLConverter لـ AC 26-29)"],
+  "COLLADA pour SketchUp (textures incluses)":["COLLADA for SketchUp (textures included)","COLLADA para SketchUp (texturas incluidas)","COLLADA per SketchUp (texture incluse)","COLLADA für SketchUp (Texturen enthalten)","COLLADA para SketchUp (texturas incluídas)","COLLADA SketchUphoz (textúrákkal)","用于 SketchUp 的 COLLADA（含纹理）","SketchUp 用 COLLADA（テクスチャ込み）","SketchUp हेतु COLLADA (बनावट सहित)","COLLADA для SketchUp (с текстурами)","COLLADA для SketchUp (з текстурами)","COLLADA لسكتش أب (مع الخامات)"],
+  "Teinter en continu la matière sélectionnée":["Continuously tint the selected material","Teñir en continuo el material seleccionado","Tinteggia in continuo il materiale selezionato","Ausgewähltes Material stufenlos einfärben","Tingir em contínuo o material selecionado","A kijelölt anyag folyamatos színezése","连续为所选材质上色","選択マテリアルを連続的に着色","चयनित सामग्री को लगातार रंगें","Непрерывно тонировать выбранный материал","Безперервно тонувати вибраний матеріал","تلوين المادة المحددة باستمرار"],
+  "N'afficher QUE la ou les matières sélectionnées (le pinceau ne mord plus sur le reste)":["Show ONLY the selected material(s) (the brush no longer bites the rest)","Mostrar SOLO los materiales seleccionados (el pincel ya no muerde el resto)","Mostra SOLO i materiali selezionati (il pennello non morde più il resto)","NUR die gewählten Materialien zeigen (der Pinsel greift den Rest nicht mehr an)","Mostrar APENAS os materiais selecionados (o pincel já não morde o resto)","CSAK a kijelölt anyagok mutatása (az ecset nem fogja a többit)","仅显示所选材质（画笔不再影响其他部分）","選択マテリアルのみ表示（ブラシが他へはみ出さない）","केवल चयनित सामग्रियाँ दिखाएँ (ब्रश बाक़ी को नहीं छुएगा)","Показывать ТОЛЬКО выбранные материалы (кисть не задевает остальное)","Показувати ЛИШЕ вибрані матеріали (пензель не чіпає решту)","إظهار المواد المحددة فقط (لن تمس الفرشاة الباقي)"],
+  "Renommer la matière":["Rename the material","Renombrar el material","Rinomina il materiale","Material umbenennen","Renomear o material","Anyag átnevezése","重命名材质","マテリアル名を変更","सामग्री का नाम बदलें","Переименовать материал","Перейменувати матеріал","إعادة تسمية المادة"],
+  "Copier l'apparence de la matière":["Copy the material appearance","Copiar la apariencia del material","Copia l'aspetto del materiale","Materialdarstellung kopieren","Copiar a aparência do material","Anyagmegjelenés másolása","复制材质外观","マテリアルの外観をコピー","सामग्री का रूप कॉपी करें","Скопировать вид материала","Скопіювати вигляд матеріалу","نسخ مظهر المادة"],
+  "Coller l'apparence copiée sur la matière sélectionnée":["Paste the copied appearance onto the selected material","Pegar la apariencia copiada en el material seleccionado","Incolla l'aspetto copiato sul materiale selezionato","Kopierte Darstellung auf das gewählte Material übertragen","Colar a aparência copiada no material selecionado","A másolt megjelenés beillesztése a kijelölt anyagra","将复制的外观粘贴到所选材质","コピーした外観を選択マテリアルへ貼り付け","कॉपी किया रूप चयनित सामग्री पर लगाएँ","Вставить скопированный вид на выбранный материал","Вставити скопійований вигляд на вибраний матеріал","لصق المظهر المنسوخ على المادة المحددة"],
+  "Créer une matière neuve (grise)":["Create a new (gray) material","Crear un material nuevo (gris)","Crea un materiale nuovo (grigio)","Neues (graues) Material anlegen","Criar um material novo (cinzento)","Új (szürke) anyag létrehozása","新建（灰色）材质","新しい（グレーの）マテリアルを作成","नई (धूसर) सामग्री बनाएँ","Создать новый (серый) материал","Створити новий (сірий) матеріал","إنشاء مادة جديدة (رمادية)"],
+  "Supprimer la ou les matières sélectionnées (Ctrl+clic = multi-sélection) ET leur géométrie":["Delete the selected material(s) (Ctrl+click = multi-select) AND their geometry","Eliminar los materiales seleccionados (Ctrl+clic = multiselección) Y su geometría","Elimina i materiali selezionati (Ctrl+clic = multiselezione) E la loro geometria","Gewählte Materialien löschen (Strg+Klick = Mehrfachauswahl) SAMT ihrer Geometrie","Eliminar os materiais selecionados (Ctrl+clique = multisseleção) E a sua geometria","A kijelölt anyagok törlése (Ctrl+katt = többes kijelölés) a geometriájukkal EGYÜTT","删除所选材质（Ctrl+点击 = 多选）及其几何体","選択マテリアルを削除（Ctrl+クリック＝複数選択）。ジオメトリも削除","चयनित सामग्रियाँ हटाएँ (Ctrl+क्लिक = बहु-चयन) और उनकी ज्यामिति भी","Удалить выбранные материалы (Ctrl+клик = мультивыбор) ВМЕСТЕ с их геометрией","Видалити вибрані матеріали (Ctrl+клік = мультивибір) РАЗОМ з їхньою геометрією","حذف المواد المحددة (Ctrl+نقر = تحديد متعدد) مع هندستها"],
+  "Peindre des facettes vers la matière sélectionnée (Ctrl+Z pour annuler)":["Paint facets into the selected material (Ctrl+Z to undo)","Pintar facetas hacia el material seleccionado (Ctrl+Z para deshacer)","Dipingi le faccette verso il materiale selezionato (Ctrl+Z per annullare)","Facetten in das gewählte Material malen (Strg+Z zum Rückgängigmachen)","Pintar facetas para o material selecionado (Ctrl+Z para anular)","Lapkák festése a kijelölt anyagba (Ctrl+Z a visszavonáshoz)","将面片涂到所选材质（Ctrl+Z 撤销）","ファセットを選択マテリアルへ塗る（Ctrl+Z で元に戻す）","फलक चयनित सामग्री में रंगें (Ctrl+Z से पूर्ववत)","Красить фасеты в выбранный материал (Ctrl+Z — отмена)","Фарбувати фасети у вибраний матеріал (Ctrl+Z — скасувати)","طلاء الأوجه إلى المادة المحددة (Ctrl+Z للتراجع)"],
+  "Cliquer une FORME entière (pièce d'un seul tenant) pour lui donner la matière sélectionnée":["Click a whole SHAPE (one connected piece) to give it the selected material","Haz clic en una FORMA entera (pieza conexa) para asignarle el material seleccionado","Clicca una FORMA intera (pezzo unico connesso) per assegnarle il materiale selezionato","Ganze FORM anklicken (zusammenhängendes Stück), um ihr das gewählte Material zu geben","Clique numa FORMA inteira (peça contínua) para lhe dar o material selecionado","Kattints egy egész ALAKZATRA (összefüggő darab), hogy megkapja a kijelölt anyagot","点击整个形状（相连的一整块）以赋予所选材质","つながった一続きのシェイプをクリックして選択マテリアルを適用","पूरी आकृति (एक जुड़ा टुकड़ा) पर क्लिक कर चयनित सामग्री दें","Кликните ЦЕЛУЮ форму (связный кусок), чтобы задать ей выбранный материал","Клацніть ЦІЛУ форму (зв'язний шматок), щоб надати їй вибраний матеріал","انقر شكلًا كاملًا (قطعة متصلة) لمنحه المادة المحددة"],
+  "Fusionner les matières identiques (couleur, texture, opacité, réglages) et purger celles sans géométrie":["Merge identical materials (color, texture, opacity, settings) and purge those without geometry","Fusionar materiales idénticos (color, textura, opacidad, ajustes) y purgar los que no tienen geometría","Unisci i materiali identici (colore, texture, opacità, impostazioni) ed elimina quelli senza geometria","Identische Materialien zusammenführen (Farbe, Textur, Deckkraft, Einstellungen) und leere entfernen","Fundir materiais idênticos (cor, textura, opacidade, definições) e purgar os sem geometria","Azonos anyagok egyesítése (szín, textúra, átlátszatlanság, beállítások), és a geometria nélküliek törlése","合并相同材质（颜色、纹理、不透明度、设置）并清除无几何体的材质","同一マテリアルを統合（色・テクスチャ・不透明度・設定）し、ジオメトリのないものを削除","समान सामग्रियाँ मिलाएँ (रंग, बनावट, अपारदर्शिता, सेटिंग) और बिना ज्यामिति वाली हटाएँ","Объединить одинаковые материалы (цвет, текстура, непрозрачность, настройки) и удалить пустые","Об'єднати однакові матеріали (колір, текстура, непрозорість, налаштування) і видалити порожні","دمج المواد المتطابقة (اللون والخامة والعتامة والإعدادات) وحذف ما بلا هندسة"],
+  "1 = une facette à la fois. Le pinceau reste dans la matière visée au centre ; Ctrl enfoncé pour déborder.":["1 = one facet at a time. The brush stays within the material under the center; hold Ctrl to spill over.","1 = una faceta a la vez. El pincel se queda en el material bajo el centro; mantén Ctrl para desbordar.","1 = una faccetta alla volta. Il pennello resta nel materiale al centro; tieni Ctrl per debordare.","1 = eine Facette auf einmal. Der Pinsel bleibt im Material unter der Mitte; Strg halten zum Übergreifen.","1 = uma faceta de cada vez. O pincel fica no material sob o centro; segure Ctrl para transbordar.","1 = egyszerre egy lapka. Az ecset a középpont alatti anyagban marad; Ctrl nyomva túlléphet.","1 = 一次一个面片。画笔限于中心处的材质；按住 Ctrl 可越界。","1＝一度に1ファセット。ブラシは中心のマテリアル内に留まる。Ctrl ではみ出し可。","1 = एक बार में एक फलक। ब्रश केंद्र की सामग्री में रहता है; Ctrl दबाकर बाहर जाएँ।","1 = по одной фасете. Кисть остаётся в материале под центром; Ctrl — выход за границы.","1 = по одній фасеті. Пензель лишається в матеріалі під центром; Ctrl — вихід за межі.","1 = وجه واحد كل مرة. تبقى الفرشاة في مادة المركز؛ اضغط Ctrl للتجاوز."],
+  "Envoie l'objet préparé directement dans votre bibliothèque BPO (dossier « Objets importés ») : couleurs, textures, opacité et métal — prêt à poser en scène.":["Sends the prepared object straight to your BPO library (“Imported objects” folder): colors, textures, opacity and metal — ready to place in a scene.","Envía el objeto preparado directamente a tu biblioteca BPO (carpeta «Objetos importados»): colores, texturas, opacidad y metal — listo para colocar en escena.","Invia l'oggetto preparato direttamente nella tua libreria BPO (cartella «Oggetti importati»): colori, texture, opacità e metallo — pronto da posare in scena.","Sendet das vorbereitete Objekt direkt in Ihre BPO-Bibliothek (Ordner „Importierte Objekte“): Farben, Texturen, Deckkraft und Metall — bereit zum Platzieren.","Envia o objeto preparado diretamente para a sua biblioteca BPO (pasta «Objetos importados»): cores, texturas, opacidade e metal — pronto a colocar em cena.","Az előkészített objektumot közvetlenül a BPO-könyvtáradba küldi („Importált objektumok” mappa): színek, textúrák, átlátszatlanság és fém — jelenetbe helyezésre kész.","将准备好的对象直接送入您的 BPO 库（「导入的对象」文件夹）：颜色、纹理、不透明度与金属——即刻可入场景。","準備済みオブジェクトを BPO ライブラリ（「インポートしたオブジェクト」フォルダー）へ直接送信：色・テクスチャ・不透明度・メタル — すぐシーンに配置可能。","तैयार ऑब्जेक्ट सीधे आपकी BPO लाइब्रेरी (“आयातित ऑब्जेक्ट” फ़ोल्डर) में भेजता है: रंग, बनावट, अपारदर्शिता और धातु — दृश्य में रखने हेतु तैयार।","Отправляет подготовленный объект прямо в вашу библиотеку BPO (папка «Импортированные объекты»): цвета, текстуры, непрозрачность и металл — готово к размещению в сцене.","Надсилає підготовлений об'єкт просто у вашу бібліотеку BPO (тека «Імпортовані об'єкти»): кольори, текстури, непрозорість і метал — готово до сцени.","يرسل العنصر الجاهز مباشرة إلى مكتبتك BPO (مجلد «العناصر المستوردة»): الألوان والخامات والعتامة والمعدن — جاهز للوضع في المشهد."],
+  "filtrer les textures BPO…":["filter BPO textures…","filtrar texturas BPO…","filtra le texture BPO…","BPO-Texturen filtern…","filtrar texturas BPO…","BPO-textúrák szűrése…","筛选 BPO 纹理…","BPO テクスチャを絞り込む…","BPO बनावट छाँटें…","фильтр текстур BPO…","фільтр текстур BPO…","تصفية خامات BPO…"]
   };
 
   /* clé normalisée : blancs (dont NBSP) repliés, apostrophe droite */
-  function norm(s){ return String(s).replace(/’/g,"'").replace(/[\s ]+/g," ").trim(); }
+  function norm(s){ return String(s).replace(/’/g,"'").replace(/[\s ]+/g," ").trim(); }
 
-  function traduire(){
+  /* langue affichée au chargement : ?lang → bpo_lang → navigateur */
+  function initiale(){
+    var l="";
+    try{
+      var p=/[?&]lang=([a-z]{2})/.exec(location.search);
+      l=(p&&p[1])||"";
+      if(!l){ try{ l=localStorage.getItem("bpo_lang")||""; }catch(e){} }
+      if(!l) l=(navigator.language||"fr");
+      l=l.toLowerCase().slice(0,2);
+    }catch(e){ l="fr"; }
+    if(l==="fr") return "fr";
+    return ORDER.indexOf(l)>=0 ? l : "en";
+  }
+  var LANGUE = initiale();
+
+  function tr(cle){
+    if(LANGUE==="fr") return null;
+    var a=D[cle]; if(!a) return null;
+    var i=ORDER.indexOf(LANGUE);
+    return a[i>=0?i:0] || a[0];
+  }
+
+  function marche(nds){
+    for(var i=0;i<nds.length;i++){ var t=nds[i];
+      if(t.__fr===undefined) t.__fr=t.nodeValue;
+      var v = tr(norm(t.__fr));
+      var out = (v!=null) ? v : t.__fr;
+      if(t.nodeValue!==out) t.nodeValue=out;
+    }
+    var att=document.body.querySelectorAll("[title],[placeholder]");
+    for(var a=0;a<att.length;a++){ var el=att[a];
+      ["title","placeholder"].forEach(function(k){
+        var raw=el.getAttribute(k); if(raw==null||raw==="") return;
+        if(el["__fr_"+k]===undefined) el["__fr_"+k]=raw;
+        var tv = tr(norm(el["__fr_"+k]));
+        var fin = (tv!=null) ? tv : el["__fr_"+k];
+        if(raw!==fin) el.setAttribute(k,fin);
+      });
+    }
+  }
+  function tous(){
+    var l=[];
     try{
       var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(nd){
         var pn=nd.parentNode?nd.parentNode.nodeName:"";
         return (pn==="SCRIPT"||pn==="STYLE"||pn==="TEXTAREA")?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT;
       }});
-      var nd,l=[];
-      while(nd=w.nextNode()) l.push(nd);
-      for(var i=0;i<l.length;i++){ var t=l[i];
-        if(t.__fr===undefined) t.__fr=t.nodeValue;
-        var v=D[norm(t.__fr)];
-        if(v!=null && t.nodeValue!==v) t.nodeValue=v;
-      }
-      var att=document.body.querySelectorAll("[title],[placeholder]");
-      for(var a=0;a<att.length;a++){ var el=att[a];
-        ["title","placeholder"].forEach(function(k){
-          var raw=el.getAttribute(k); if(raw==null||raw==="") return;
-          if(el["__fr_"+k]===undefined) el["__fr_"+k]=raw;
-          var tv=D[norm(el["__fr_"+k])];
-          if(tv!=null && raw!==tv) el.setAttribute(k,tv);
-        });
-      }
+      var nd; while(nd=w.nextNode()) l.push(nd);
+    }catch(e){}
+    return l;
+  }
+  function applique(){
+    try{ marche(tous()); }catch(e){}
+    try{ document.documentElement.lang=LANGUE; }catch(e){}
+    try{ var s=document.getElementById("moul-lang"); if(s && s.value!==LANGUE) s.value=LANGUE; }catch(e){}
+  }
+
+  /* sélecteur de langue dans la barre de titre, à droite du lien « Revenir à BPO »
+     (construit après DOMContentLoaded : le lien retour est créé par la page à ce
+     moment-là ; l'ordre des écouteurs garantit qu'il existe déjà). */
+  function construitSel(){
+    try{
+      var top=document.getElementById("top");
+      if(!top || document.getElementById("moul-lang")) return;
+      var sel=document.createElement("select");
+      sel.id="moul-lang"; sel.title="Langue / Language";
+      sel.style.cssText="margin-left:8px;pointer-events:auto;color:#c3cbd9;font:inherit;font-size:12.5px;"
+        +"padding:6px 8px;border:1px solid rgba(255,255,255,.22);border-radius:9px;"
+        +"background:rgba(13,21,38,.55);cursor:pointer;outline:none;max-width:130px";
+      ["fr"].concat(ORDER).forEach(function(c){
+        var o=document.createElement("option"); o.value=c; o.textContent=NOMS[c]||c.toUpperCase();
+        o.style.background="#0d1526"; sel.appendChild(o);
+      });
+      sel.value=LANGUE;
+      if(!document.getElementById("bpo-retour")) sel.style.marginLeft="auto";
+      sel.onchange=function(){
+        LANGUE = (NOMS[sel.value]) ? sel.value : "en";
+        try{ if((localStorage.getItem("bpo_lang")||"")!==LANGUE) localStorage.setItem("bpo_lang",LANGUE); }catch(e){}
+        applique();
+      };
+      top.appendChild(sel);
     }catch(e){}
   }
 
   function arme(){
-    traduire();
+    applique();
+    construitSel();
     try{
       var pend=false;
       new MutationObserver(function(){
         if(pend) return; pend=true;
-        setTimeout(function(){ pend=false; traduire(); },60);
+        setTimeout(function(){ pend=false; if(LANGUE!=="fr") applique(); },60);
       }).observe(document.body,{childList:true,subtree:true});
     }catch(e){}
-    try{ document.documentElement.lang=n; }catch(e){}
   }
-  if(document.body) arme(); else document.addEventListener("DOMContentLoaded",arme);
+  /* script chargé en defer : DOMContentLoaded n'est pas encore passé, et notre
+     écouteur (enregistré après ceux de la page) verra le lien retour déjà créé */
+  if(document.readyState==="loading" || document.readyState==="interactive"){
+    document.addEventListener("DOMContentLoaded",arme);
+    if(document.readyState==="interactive") setTimeout(function(){ if(!document.getElementById("moul-lang")) arme(); },300);
+  } else arme();
 })();
