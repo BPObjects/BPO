@@ -36,13 +36,18 @@
     hi:{"Mode découverte":"खोज मोड","Votre essai est terminé — l’atelier reste ouvert.":"आपका परीक्षण समाप्त हो गया — कार्यशाला खुली रहती है।","Continuez à configurer librement. Les exports IFC, DAE et OBJ, le rendu photo, l’impression et les sorties du chiffrage font partie de l’abonnement.":"स्वतंत्र रूप से कॉन्फ़िगर करते रहें। IFC, DAE और OBJ निर्यात, फोटो रेंडर, प्रिंटिंग और लागत-अनुमान आउटपुट सदस्यता का हिस्सा हैं।","S’abonner":"सदस्यता लें","Continuer en découverte":"खोज मोड में जारी रखें"},
     ar:{"Mode découverte":"وضع الاستكشاف","Votre essai est terminé — l’atelier reste ouvert.":"انتهت تجربتك — تبقى الورشة مفتوحة.","Continuez à configurer librement. Les exports IFC, DAE et OBJ, le rendu photo, l’impression et les sorties du chiffrage font partie de l’abonnement.":"واصل الضبط بحرّية. تصدير IFC وDAE وOBJ، والعرض الواقعي، والطباعة، ومخرجات التقدير كلها ضمن الاشتراك.","S’abonner":"اشترك","Continuer en découverte":"المتابعة في وضع الاستكشاف"}
   };
-  var GDICT = (function(){
+  /* langue = celle du SITE : ?lang= sinon localStorage bpo_lang (posé par le
+     sélecteur d'app.html) sinon navigateur ; re-choisie sur l'évènement bpo-lang. */
+  function gPick(){
     try{
       var p = /[?&]lang=([a-z]{2})/.exec(location.search);
-      var n = (p && p[1]) || ((typeof navigator!=="undefined" && navigator.language) || "fr").toLowerCase().slice(0,2);
+      var sl = ""; try{ sl = (typeof localStorage!=="undefined" && localStorage.getItem("bpo_lang")) || ""; }catch(e){}
+      var n = ((p && p[1]) || sl || ((typeof navigator!=="undefined" && navigator.language) || "fr")).toLowerCase().slice(0,2);
       return n==="fr" ? null : (GATE_I18N[n] || GATE_I18N.en);
     }catch(e){ return null; }
-  })();
+  }
+  var GDICT = gPick();
+  try{ if(typeof document!=="undefined") document.addEventListener("bpo-lang", function(){ GDICT = gPick(); }); }catch(e){}
   function GT(s){ return (GDICT && GDICT[s]) || s; }
 
   /* 1) Boutons à identifiant stable : exports de configuration + impressions.

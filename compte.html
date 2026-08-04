@@ -473,6 +473,8 @@ I18N.ar = {
 };
 const LANG = (() => {
   try{ const p = new URLSearchParams(location.search).get("lang"); if(p==="fr" || I18N[p]) return p; }catch(e){}
+  /* langue choisie dans l'app (sélecteur d'app.html) : le funnel reste cohérent */
+  try{ const s = localStorage.getItem("bpo_lang"); if(s==="fr" || I18N[s]) return s; }catch(e){}
   const n = (navigator.language||"fr").toLowerCase().slice(0,2);
   return n==="fr" ? "fr" : (I18N[n] ? n : "en");
 })();
