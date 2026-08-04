@@ -701,6 +701,9 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 
 
 
+
+
+
 /* ---- MADE WITH BPO : diaporama d'ouverture sur le viewer. Immeubles concus
    avec BPO — data/madewith/liste.json (ajouter une image = deposer le .jpg et
    completer la liste). Zooms alternes + derives diagonales, settle d'exposition,
@@ -708,12 +711,10 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
    image fixe si prefers-reduced-motion. ---- */
 function madeWith(){
   try{
-  var vp=document.getElementById('vp'); if(!vp)return;
   fetch('data/madewith/liste.json?v='+(typeof DATA_VER!=='undefined'?DATA_VER:'0')).then(function(r){
     if(!r.ok)throw 0; return r.json();
   }).then(function(L){
     if(!L||!L.length)return;
-    if(getComputedStyle(vp).position==='static')vp.style.position='relative';
     var reduit=false; try{ reduit=matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
     var st=document.createElement('style');
     st.textContent='@keyframes mwTitre{0%{opacity:0;letter-spacing:.02em;transform:translateY(16px)}100%{opacity:1;letter-spacing:.34em;transform:translateY(0)}}'
@@ -722,8 +723,15 @@ function madeWith(){
       +'@keyframes mwGlow{0%,100%{text-shadow:0 0 18px rgba(255,138,61,.55),0 0 46px rgba(255,138,61,.22)}50%{text-shadow:0 0 30px rgba(255,138,61,.95),0 0 72px rgba(255,138,61,.4)}}'
       +'#made-with .mw-c{position:absolute;inset:-5%;background-size:cover;background-position:center;opacity:0;will-change:transform,opacity,filter}';
     document.head.appendChild(st);
+    /* plein cadre SOUS le menu : seules les commandes du haut restent visibles,
+       palettes laterales et viewer sont recouverts */
+    var hd=document.querySelector('#app>header')||document.querySelector('header');
+    function hautMenu(){ return hd?Math.max(0,Math.round(hd.getBoundingClientRect().bottom)):0; }
     var w=document.createElement('div'); w.id='made-with';
-    w.style.cssText='position:absolute;inset:0;z-index:40;overflow:hidden;background:#0d1526;cursor:pointer';
+    w.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:5000;overflow:hidden;background:#0d1526;cursor:pointer';
+    w.style.top=hautMenu()+'px';
+    var surRedim=function(){ w.style.top=hautMenu()+'px'; };
+    window.addEventListener('resize',surRedim);
     var A=document.createElement('div'), B=document.createElement('div');
     A.className='mw-c'; B.className='mw-c';
     w.appendChild(A); w.appendChild(B);
@@ -742,7 +750,7 @@ function madeWith(){
       +(reduit?'opacity:.9':'animation:mwPied 3.6s ease both');
     pied.textContent='cliquer pour entrer';
     w.appendChild(pied);
-    vp.appendChild(w);
+    document.body.appendChild(w);
     /* 4 motifs de mouvement : zoom avant / arriere, derives diagonales croisees */
     var MOTIFS=[
       ['scale(1.02) translate(1.6%,1.1%)',  'scale(1.17) translate(-1.2%,-0.9%)'],
@@ -779,6 +787,7 @@ function madeWith(){
       if(fait)return; fait=true;
       document.removeEventListener('keydown',surTouche,true);
       document.removeEventListener('pointerdown',surPointeur,true);
+      window.removeEventListener('resize',surRedim);
       if(tm)clearInterval(tm);
       if(typeof introSon==='function')introSon(false);
       w.style.transition='opacity .5s, transform .5s'; w.style.opacity=0; w.style.transform='scale(1.04)';
