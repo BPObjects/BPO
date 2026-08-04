@@ -6,7 +6,7 @@
      - lit la caméra (cam) et le ciel/soleil (PREFS / WGL),
      - lance BPO_RT (WebGPU) en surimpression, convergence progressive,
      - panneau : échantillons, export PNG, fermer.
-   Aucune dépendance interne à meuble.html au-delà des globales lues.
+   Aucune dépendance interne à app.html au-delà des globales lues.
    Repli : si WebGPU absent, message clair (le viewer WebGL reste dispo).
    ============================================================================ */
 (function () {
@@ -327,7 +327,7 @@
     host = null;
   }
 
-  /* Point d'entrée global : permet à un bouton de meuble.html (celui qui a remplacé
+  /* Point d'entrée global : permet à un bouton de app.html (celui qui a remplacé
      le rendu IA dans les paramètres) de lancer le rendu photo. */
   try { window.BPO_photoRender = launch; } catch (e) {}
 

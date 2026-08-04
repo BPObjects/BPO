@@ -1,4 +1,4 @@
-/* Traductions Russe + Ukrainien (652 clés) — copie de référence du bloc I18N_RUUK inliné dans meuble.html (à garder synchronisés) */
+/* Traductions Russe + Ukrainien (652 clés) — copie de référence du bloc I18N_RUUK inliné dans app.html (à garder synchronisés) */
 var I18N_RUUK={
 "Catalogues et configurateurs d'objets 3D":{"ru":"Каталоги и конфигураторы 3D-объектов","uk":"Каталоги та конфігуратори 3D-об'єктів"},
 "Génériques":{"ru":"Типовые","uk":"Типові"},

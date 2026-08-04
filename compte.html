@@ -24,9 +24,23 @@
  .link{color:var(--cy);font-size:12px;text-align:center;cursor:pointer;margin-top:12px;display:block;}
  .check{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--dm);margin-top:10px;}
  .check input{width:auto;margin-top:2px;}
+ .reassure{display:flex;gap:9px;align-items:flex-start;background:rgba(72,199,142,.10);border:1px solid rgba(72,199,142,.35);border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.55;color:var(--tx);margin-top:14px;}
+ .reassure b{color:var(--gr);} .reassure .tick{color:var(--gr);font-weight:700;}
  .msg{font-size:12px;margin-top:10px;text-align:center;min-height:16px;}
  .msg.err{color:var(--rd);} .msg.ok{color:var(--gr);}
  .hidden{display:none;}
+ /* connecté : la carte plugin passe à droite sur écran large */
+ @media(min-width:920px){
+   body:has(#account:not(.hidden)) .wrap{max-width:900px;}
+   #account{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+ }
+ .skp-head{display:flex;gap:12px;align-items:center;margin-bottom:10px;}
+ .skp-head svg{flex:none;display:block;border-radius:9px;}
+ .skp-sub{color:var(--dm);font-size:12px;}
+ a.btnlink{display:block;text-align:center;background:var(--am);color:#1a1d23;border-radius:8px;padding:11px;font-size:14px;font-weight:700;text-decoration:none;margin-top:14px;}
+ a.btnlink.alt{background:transparent;border:1px solid var(--ln);color:var(--tx);font-weight:600;}
+ a.btnlink:hover{filter:brightness(1.06);}
+ .dl-note{font-size:11px;color:var(--dm);margin-top:10px;text-align:center;}
 </style></head>
 <body>
 <header><span class="dot"></span><b>Building Product Objects</b></header>
@@ -41,6 +55,7 @@
     <label>Mot de passe</label><input id="pwd" type="password" autocomplete="current-password">
     <label class="check hidden" id="nlFld"><input id="nl" type="checkbox" checked><span>Recevoir la newsletter (nouveautés, mises à jour).</span></label>
     <button id="doAuth">Se connecter</button>
+    <div class="reassure hidden" id="noCb"><span class="tick">&#10003;</span><span><b>Aucune carte bancaire demandée.</b> L'essai de 15&nbsp;jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.</span></div>
     <span class="link" id="toggle">Pas encore de compte ? Créer un compte (essai 15 jours gratuit)</span>
     <span class="link" id="magic">Recevoir un lien de connexion par e-mail</span>
     <div class="msg" id="authMsg"></div>
@@ -48,20 +63,41 @@
 
   <!-- COMPTE (connecté) -->
   <div id="account" class="hidden">
-    <div class="card">
-      <h1>Mon compte</h1>
-      <p class="sub" id="who"></p>
-      <div class="row"><span>Statut</span><span id="statusBadge" class="badge"></span></div>
-      <div class="row"><span id="periodLbl">Essai</span><span id="periodVal"></span></div>
-      <button id="openApp">Ouvrir le configurateur</button>
-      <button id="subscribe" class="hidden">S'abonner</button>
-      <button id="portal" class="alt hidden">Gérer mon abonnement</button>
-      <div class="msg" id="accMsg"></div>
+    <div>
+      <div class="card">
+        <h1>Mon compte</h1>
+        <p class="sub" id="who"></p>
+        <div class="row"><span>Statut</span><span id="statusBadge" class="badge"></span></div>
+        <div class="row"><span id="periodLbl">Essai</span><span id="periodVal"></span></div>
+        <button id="openApp">Ouvrir le configurateur</button>
+        <button id="subscribe" class="hidden">S'abonner</button>
+        <button id="portal" class="alt hidden">Gérer mon abonnement</button>
+        <div class="msg" id="accMsg"></div>
+      </div>
+      <div class="card">
+        <h2>Préférences</h2>
+        <label class="check"><input id="nlToggle" type="checkbox"><span>Abonné à la newsletter</span></label>
+        <button id="logout" class="alt">Se déconnecter</button>
+      </div>
     </div>
-    <div class="card">
-      <h2>Préférences</h2>
-      <label class="check"><input id="nlToggle" type="checkbox"><span>Abonné à la newsletter</span></label>
-      <button id="logout" class="alt">Se déconnecter</button>
+    <div class="card" id="skpCard">
+      <div class="skp-head">
+        <svg width="40" height="40" viewBox="0 0 48 48" role="img" aria-label="SketchUp">
+          <rect x="0" y="0" width="48" height="48" rx="10" fill="#E63C24"/>
+          <path d="M15 33 V15 H33 V33 H21 V21 H29 V27" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div><h2 style="margin-bottom:2px;">Plugin SketchUp</h2><div class="skp-sub">v1.15 · SketchUp Pro 2021 ou plus récent</div></div>
+      </div>
+      <p class="sub" style="margin-bottom:4px;">Le configurateur complet s'ouvre directement dans SketchUp : vos objets s'y posent en composants natifs, textures comprises.</p>
+      <div id="skpGet" class="hidden">
+        <a class="btnlink" href="downloads/BPO-SketchUp-v1.15.rbz" download>Télécharger le plugin (.rbz)</a>
+        <a class="btnlink alt" href="downloads/BPO-SketchUp-installation.pdf" target="_blank">Guide d'installation (PDF)</a>
+        <div class="dl-note">Compris dans votre abonnement — les mises à jour paraîtront ici même.</div>
+      </div>
+      <div id="skpLock" class="hidden">
+        <a class="btnlink" id="skpSub" href="#">S'abonner pour l'obtenir</a>
+        <div class="dl-note">Le plugin SketchUp est compris dans l'abonnement.</div>
+      </div>
     </div>
   </div>
 
@@ -95,6 +131,7 @@ $("toggle").onclick = () => {
   $("toggle").textContent = sign ? "Déjà un compte ? Se connecter" : "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)";
   $("nameFld").classList.toggle("hidden", !sign);
   $("nlFld").classList.toggle("hidden", !sign);
+  $("noCb").classList.toggle("hidden", !sign);
   setMsg($("authMsg"),"");
 };
 
@@ -131,7 +168,8 @@ $("magic").onclick = async () => {
 };
 
 $("logout").onclick = async () => { await sb.auth.signOut(); await render(); };
-$("openApp").onclick = () => { location.href = "./meuble.html"; };
+$("openApp").onclick = () => { location.href = "./app.html"; };
+$("skpSub").onclick = (e) => { e.preventDefault(); $("subscribe").click(); };
 let CUR=null;
 $("nlToggle").onchange = async () => {
   if(!CUR) return;
@@ -166,9 +204,10 @@ async function render(){
   const trialLeft = prof? Math.ceil((new Date(prof.trial_ends_at)-Date.now())/86400000) : 0;
   const trialing = !active && trialLeft>0;
   const b=$("statusBadge");
-  if(active){ b.textContent="Abonné"; b.className="badge b-ok"; $("periodLbl").textContent="Abonnement jusqu'au"; $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe")); show($("portal")); }
-  else if(trialing){ b.textContent="Essai"; b.className="badge b-warn"; $("periodLbl").textContent="Jours d'essai restants"; $("periodVal").textContent = trialLeft; show($("subscribe")); hide($("portal")); }
-  else { b.textContent="Expiré"; b.className="badge b-no"; $("periodLbl").textContent="Essai terminé"; $("periodVal").textContent="—"; show($("subscribe")); hide($("portal")); $("openApp").disabled=true; }
+  if(active){ b.textContent="Abonné"; b.className="badge b-ok"; $("periodLbl").textContent="Abonnement jusqu'au"; $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe")); show($("portal")); show($("skpGet")); hide($("skpLock")); }
+  else if(trialing){ b.textContent="Essai"; b.className="badge b-warn"; $("periodLbl").textContent="Jours d'essai restants"; $("periodVal").textContent = trialLeft; show($("subscribe")); hide($("portal")); hide($("skpGet")); show($("skpLock")); }
+  else { b.textContent="Expiré"; b.className="badge b-no"; $("periodLbl").textContent="Essai terminé"; $("periodVal").textContent="—"; show($("subscribe")); hide($("portal")); hide($("skpGet")); show($("skpLock"));
+         /* fin d'essai douce : l'atelier reste ouvert en découverte, le bouton reste actif */ }
   $("nlToggle").checked = !!prof?.newsletter_opt_in;
   if(new URLSearchParams(location.search).get("paid")) setMsg($("accMsg"),"Merci ! Votre abonnement est en cours d'activation.",true);
 }

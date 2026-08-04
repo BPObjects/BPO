@@ -1,6 +1,6 @@
 /* ============================================================================
    BPO - import d'objets exterieurs (OBJ, STL, glTF/glb, DAE, IFC)
-   Module externe, charge APRES le moteur de meuble.html.
+   Module externe, charge APRES le moteur de app.html.
    Objet importe -> entree TEX_OBJECTS[pid] au format lu par fabDecode().
    Conventions catalogue : Y-up, base a y=0, objet recentre en X/Z, en METRES.
    ============================================================================ */
