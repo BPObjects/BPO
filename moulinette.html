@@ -121,39 +121,70 @@
 </style>
 </head>
 <body>
-<!-- ============== GARDE D'ACCÈS — Atelier Moulinette (v1 : rodage propriétaire) ==============
-     L'atelier fait partie du compte BPO. Voile posé en SYNCHRONE (rien n'est visible avant
-     le verdict), puis :
-       - serveur local (localhost / 127.0.0.1) : outil libre — banc de dev ;
-       - pas de session Supabase -> compte.html (même règle que le configurateur) ;
-       - session d'un compte NON propriétaire : écran « bientôt » (rodage).
-     POUR OUVRIR AUX ABONNÉS : remplacer le test OWNER_EMAILS ci-dessous par l'appel à la
-     fonction Edge check-access (cf. bpo-auth.js) — une seule condition à changer.
+<!-- ============== GARDE D'ACCÈS — Atelier Moulinette ==============
+     L'ATELIER s'ouvre à tout compte connecté ; ce sont les EXPORTS (Paquet BPO,
+     ArchiCAD .gsm, SketchUp .dae, « L.obj ») qui exigent l'abonnement — le même
+     modèle que les exports DQE du configurateur (fonction Edge check-access).
+       - serveur local (localhost / 127.0.0.1) : tout est libre — banc de dev ;
+       - pas de session Supabase -> compte.html ;
+       - session : outil ouvert, verdict d'export calculé en tâche de fond
+         (propriétaire OWNER_EMAILS = toujours oui) ;
+       - clic export sans accès : écran d'abonnement, refermable — l'outil reste
+         utilisable, seul l'export est retenu.
      Un HTML se lit toujours en clair : cette garde est un péage, pas un coffre-fort. -->
 <div id="bpo-garde" style="position:fixed;inset:0;z-index:99999;background:#0d1526;display:flex;align-items:center;justify-content:center;color:#8a93a8;font:14px Inter,system-ui,'Segoe UI',sans-serif">Vérification de l’accès…</div>
 <script type="module">
 const veil=document.getElementById("bpo-garde");
 function ouvre(){ if(veil&&veil.parentNode)veil.parentNode.removeChild(veil); }
-function bientot(){ veil.innerHTML="<div style=\"text-align:center;max-width:42ch;line-height:1.65;padding:24px\">"
-  +"<div style=\"font-size:40px;margin-bottom:12px\">🌀</div>"
-  +"<h2 style=\"color:#e8ecf4;margin:0 0 10px;font-weight:800\">Moulinette 3D</h2>"
-  +"L’atelier d’allègement et de préparation des objets 3D arrive dans votre abonnement BPO."
-  +"<br><br><a href=\"./\" style=\"color:#f08a3e;text-decoration:none\">← Retour à BPO</a></div>"; }
+let EXPORT_OK=false, PRIX="";
+function ecranAbo(){
+  let o=document.getElementById("bpo-garde-abo");
+  if(o){ o.style.display="flex"; return; }
+  o=document.createElement("div");
+  o.id="bpo-garde-abo";
+  o.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(13,21,38,.94);display:flex;align-items:center;justify-content:center;color:#8a93a8;font:14px Inter,system-ui,sans-serif";
+  o.innerHTML="<div style=\"text-align:center;max-width:46ch;line-height:1.65;padding:24px\">"
+    +"<div style=\"font-size:40px;margin-bottom:12px\">🌀</div>"
+    +"<h2 style=\"color:#e8ecf4;margin:0 0 10px;font-weight:800\">Exports réservés aux abonnés</h2>"
+    +"Préparez et prévisualisez librement — l’export des paquets BPO, ArchiCAD (.gsm) "
+    +"et SketchUp (.dae) est inclus dans l’abonnement BPO."
+    +"<br><br><a href=\"compte.html\" style=\"display:inline-block;background:#ff8a3d;color:#1a1d23;font-weight:700;padding:11px 22px;border-radius:8px;text-decoration:none\">S’abonner"+(PRIX?" — "+PRIX:"")+"</a>"
+    +"<br><br><a href=\"#\" id=\"bpo-garde-continuer\" style=\"color:#f08a3e;text-decoration:none\">← Continuer sans exporter</a></div>";
+  document.body.appendChild(o);
+  document.getElementById("bpo-garde-continuer").onclick=function(e){ e.preventDefault(); o.style.display="none"; };
+}
+/* barrage des exports en phase CAPTURE sur document : passe AVANT les
+   écouteurs de l'application, quel que soit leur ordre d'enregistrement */
+window.__bpoAtelier={ get exportOk(){return EXPORT_OK;}, set exportOk(v){EXPORT_OK=!!v;}, ecran:ecranAbo };
+document.addEventListener("click",function(e){
+  if(EXPORT_OK)return;
+  const t=e.target&&e.target.closest?e.target.closest("#b-zip,#b-gsm,#b-skp,#b-dl"):null;
+  if(!t)return;
+  e.preventDefault(); e.stopPropagation();
+  ecranAbo();
+},true);
 try{
-  if(/^(localhost|127[.]0[.]0[.]1|[[]::1[]])$/.test(location.hostname)){ ouvre(); }
+  if(/^(localhost|127[.]0[.]0[.]1|[[]::1[]])$/.test(location.hostname)){ EXPORT_OK=true; ouvre(); }
   else{
     const { createClient } = await import("./vendor/supabase-js-2.110.7.js");
     const cfg = await import("./bpo-config.js");
+    PRIX=cfg.PRICE_LABEL||"";
     const sb = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON);
     const { data:{ session } } = await sb.auth.getSession();
     if(!session){ location.replace("compte.html"); }
     else{
+      ouvre();                                   /* l'atelier s'ouvre, verdict d'export en fond */
       const mail=(session.user && session.user.email ? session.user.email : "").trim().toLowerCase();
-      const ok=(cfg.OWNER_EMAILS||[]).some(m=>String(m).trim().toLowerCase()===mail);
-      if(ok){ ouvre(); } else { bientot(); }
+      if((cfg.OWNER_EMAILS||[]).some(m=>String(m).trim().toLowerCase()===mail)){ EXPORT_OK=true; }
+      else{
+        const r=await fetch(cfg.SUPABASE_URL+"/functions/v1/check-access",
+          { method:"POST", headers:{ "Authorization":"Bearer "+session.access_token } });
+        const j=await r.json().catch(()=>({}));
+        EXPORT_OK=(j.access===true);
+      }
     }
   }
-}catch(e){ bientot(); }
+}catch(e){ ouvre(); }
 </script>
 <canvas id="gl"></canvas>
 <div id="top"><svg width="26" height="26" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="14" fill="#0d1526" stroke="rgba(255,255,255,.14)"/><g stroke="#0d1526" stroke-width="1.6" stroke-linejoin="round"><path d="M32 9 8 27 32 31Z" fill="#f08a3e"/><path d="M32 9 56 27 32 31Z" fill="#e5701c"/><path d="M8 27 21 54 32 31Z" fill="#c85f14"/><path d="M56 27 43 54 32 31Z" fill="#a84e0f"/><path d="M21 54 43 54 32 31Z" fill="#8f420c"/></g></svg><b><i>BPO</i> · Moulinette 3D</b><span>OBJ · DAE · SKP · 3DS → objet allégé (QEM)</span></div>

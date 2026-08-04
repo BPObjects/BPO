@@ -170,8 +170,8 @@ header{display:flex;align-items:center;justify-content:space-between;
 .dot{width:22px;height:22px;display:block;flex:none;border-radius:0;background:none;}
 .copyr{font-weight:400;font-size:9px;color:var(--am);line-height:1.1;white-space:nowrap;}
 #brandCol{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1.15;}
-#acctLink{color:var(--cy);font-size:11px;text-decoration:none;white-space:nowrap;background:var(--p2);border:1px solid var(--ln);border-radius:6px;padding:4px 9px;cursor:pointer;outline:none;display:inline-flex;align-items:center;line-height:1;}
-#acctLink:hover{border-color:var(--cy);color:var(--cy);text-decoration:none;}
+#acctLink,#moulLink{color:var(--cy);font-size:11px;text-decoration:none;white-space:nowrap;background:var(--p2);border:1px solid var(--ln);border-radius:6px;padding:4px 9px;cursor:pointer;outline:none;display:inline-flex;align-items:center;line-height:1;}
+#acctLink:hover,#moulLink:hover{border-color:var(--cy);color:var(--cy);text-decoration:none;}
 
 /* Viewport 3D */
 #vp{position:relative;overflow:hidden;}
@@ -500,7 +500,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
       </div>
     </div>
     <div id="langbar">
-      <a href="compte.html" id="acctLink">Mon compte</a>
+      <a href="moulinette.html" id="moulLink" title="Moulinette 3D — l’atelier d’allègement et de préparation des objets 3D, inclus dans votre compte BPO">🌀 Moulinette 3D</a> <a href="compte.html" id="acctLink">Mon compte</a>
       <button id="aboutBtn" title="À propos de BPO" onclick="try{playAbout();}catch(e){}">À propos</button>
       <button id="prefsBtn" title="Préférences" onclick="try{togglePrefs();}catch(e){}" style="background:#ff8a3d;color:#3a3a3a;border:1px solid #ff8a3d;font-size:18px;line-height:1;padding:2px 8px;">⚙&#xFE0E;</button>
       <span id="langflag" style="display:inline-block;width:22px;height:15px;border:1px solid var(--ln);border-radius:2px;overflow:hidden;text-align:center;"></span>
