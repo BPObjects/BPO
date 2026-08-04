@@ -150,5 +150,73 @@
     <div class="foot-sig">Powered by <b>Architecture-AL</b> · by architects, for architects</div>
   </div>
 </footer>
+
+<script>
+/* i18n FR/EN — même convention que compte.html : la chaîne française est la clé.
+   Langue : ?lang=en|fr sinon navigateur. Les champs du formulaire (name, champs
+   cachés FormSubmit) ne changent JAMAIS — seuls les libellés visibles. */
+(function(){
+  var EN = {
+    "Aller au contenu":"Skip to content",
+    "← Retour au site":"← Back to site",
+    "Ouvrir le configurateur →":"Open the configurator →",
+    "Fabricants & industriels":"Manufacturers & industry",
+    "Référencez vos produits en 3D paramétrique":"List your products in parametric 3D",
+    "Vous fabriquez du mobilier, de la menuiserie, des façades ou des éléments de structure ? Nous intégrons vos produits comme objets 3D configurables — finitions RAL, textures, exports OBJ / DAE / IFC pour ArchiCAD, Revit et SketchUp — et les plaçons devant les architectes au moment où ils conçoivent.":"You manufacture furniture, joinery, facades or structural elements? We turn your products into configurable 3D objects — RAL finishes, textures, OBJ / DAE / IFC exports for ArchiCAD, Revit and SketchUp — and place them in front of architects at the very moment they design.",
+    "Vous nous écrivez":"You write to us",
+    "Présentez vos produits et vos fichiers via le formulaire ci-dessous.":"Introduce your products and files with the form below.",
+    "Audit & devis":"Audit & quote",
+    "Nous étudions vos objets, formats et besoins, puis nous chiffrons.":"We review your objects, formats and needs, then we quote.",
+    "Mise en ligne":"Go live",
+    "Vos produits deviennent configurables dans le catalogue.":"Your products become configurable in the catalog.",
+    "Parlez-nous de vos produits":"Tell us about your products",
+    "Nous réalisons un":"We carry out an ",
+    "audit de vos objets":"audit of your objects",
+    "et vous adressons un":" and send you a ",
+    "devis":"quote",
+    "— réponse sous quelques jours ouvrés.":" — reply within a few business days.",
+    "Société":"Company",
+    "Nom du contact":"Contact name",
+    "E-mail":"Email",
+    "Téléphone":"Phone",
+    "Site web":"Website",
+    "Type de produits":"Product type",
+    "Mobilier":"Furniture",
+    "Menuiserie (portes / fenêtres)":"Joinery (doors / windows)",
+    "Façade / mur-rideau":"Facade / curtain wall",
+    "Structure / charpente":"Structure / framing",
+    "Sols / revêtements":"Flooring / finishes",
+    "Autre":"Other",
+    "Nombre d'objets":"Number of objects",
+    "approximatif":"approximate",
+    "Formats disponibles":"Available formats",
+    "Lien vers vos fichiers":"Link to your files",
+    "Votre besoin":"Your needs",
+    "Je souhaite recevoir la newsletter Building Product Objects (nouveautés, mises à jour). Désinscription possible à tout moment.":"I would like to receive the Building Product Objects newsletter (news, updates). Unsubscribe anytime.",
+    "J'accepte que mes données soient utilisées pour traiter ma demande (RGPD).":"I agree to my data being used to process my request (GDPR).",
+    "Envoyer ma demande":"Send my request ",
+    "Vos informations ne servent qu'au traitement de votre demande et ne sont jamais revendues. Réponse à l'adresse":"Your information is used only to process your request and is never resold. Replies come from ",
+    "© 2026 Building Product Objects — Antoine Lacronique, architecte":"© 2026 Building Product Objects — Antoine Lacronique, architect",
+    "Mentions légales":"Legal notice",
+    "CGU":"Terms of Use",
+    "CGV":"Terms of Sale",
+    "Confidentialité":"Privacy",
+    "Accueil":"Home"
+  };
+  var lang;
+  try{ var p = new URLSearchParams(location.search).get("lang"); if(p==="en"||p==="fr") lang = p; }catch(e){}
+  if(!lang) lang = ((navigator.language||"fr").toLowerCase().indexOf("fr")===0) ? "fr" : "en";
+  if(lang !== "en") return;
+  document.documentElement.lang = "en";
+  document.title = "Manufacturers — Building Product Objects";
+  var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for(var n; (n = w.nextNode()); ){
+    var t = n.nodeValue.replace(/ /g," ").replace(/\s+/g," ").trim();
+    if(t && EN[t] !== undefined) n.nodeValue = EN[t];
+  }
+  var ph = { "f-nb":"e.g. 12", "f-msg":"Describe your products, expectations, timeline…" };
+  for(var id in ph){ var el = document.getElementById(id); if(el) el.placeholder = ph[id]; }
+})();
+</script>
 </body>
 </html>
