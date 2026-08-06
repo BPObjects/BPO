@@ -1,0 +1,43 @@
+# Deploiement Pages MAISON (2026-08-06) — remplace le workflow automatique
+# « pages-build-deployment » dont l'etape deploy est plafonnee a 10 min :
+# avec notre artefact de ~132 Mo (data/ catalogues fabricants), les soirs ou
+# le backend Pages est lent, elle meurt en « Timeout reached, aborting! »
+# (4 echecs consecutifs le 06/08). Ici : 30 min et 15 sondages d'erreur.
+#
+# ACTIVATION (une fois) : Settings > Pages > Build and deployment >
+# Source = « GitHub Actions ». Des lors le workflow automatique se tait
+# (plus de faux e-mails d'echec) et celui-ci fait foi.
+#
+# Declencheurs : push sur main (deploiement normal) + bouton « Run
+# workflow » (relance manuelle sans commit vide).
+name: pages-bpo
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages-bpo
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 1800000
+          error_count: 15
