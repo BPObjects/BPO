@@ -115,6 +115,11 @@ function marquerProprietaire(session){
     }catch(e){ location.replace("compte.html"); return; }
   }
   marquerProprietaire(session);
+  /* L'ATELIER SUIT LE COMPTE (2026-08-06) : projets/préférences synchronisés
+     par bpo-sync.js (fenêtre SketchUp comprise). Import dynamique : si le
+     module manque ou casse, l'accès fonctionne exactement comme avant. */
+  import("./bpo-sync.js").then(m => m.startSync(sb))
+    .catch(e => { try{ console.warn("BPO sync : module indisponible ("+(e&&e.message)+")"); }catch(_){} });
   const anon = !!session.user?.is_anonymous;
   const { data: prof } = await sb.from("profiles").select("plan,trial_ends_at").eq("id", session.user.id).single();
   const active = prof?.plan === "active";
