@@ -1,8 +1,15 @@
 # Deploiement Pages MAISON (2026-08-06) — remplace le workflow automatique
-# « pages-build-deployment » dont l'etape deploy est plafonnee a 10 min :
-# avec notre artefact de ~132 Mo (data/ catalogues fabricants), les soirs ou
-# le backend Pages est lent, elle meurt en « Timeout reached, aborting! »
-# (4 echecs consecutifs le 06/08). Ici : 30 min et 15 sondages d'erreur.
+# « pages-build-deployment ».
+#
+# ⚠ LECON DU 06/08 : `actions/deploy-pages` PLAFONNE son timeout a 600 000 ms
+# (annotation « timeout value is greater than the allowed maximum »). Demander
+# 30 min ne sert donc a RIEN : avec notre artefact de ~132 Mo (data/ =
+# catalogues fabricants), les soirs de lenteur Pages l'etape meurt en
+# « Timeout reached, aborting! » — 8 echecs d'affilee le 06/08. La seule
+# parade cote workflow est de REESSAYER (chaque tentative re-sonde 10 min) ;
+# la parade de fond est d'ALLEGER l'artefact (cf. MDs/REPRISE-2026-08-06).
+# Bonus : avec continue-on-error, le run n'echoue (et ne notifie) que si les
+# TROIS tentatives ratent — fini les e-mails a chaque hoquet.
 #
 # ACTIVATION (une fois) : Settings > Pages > Build and deployment >
 # Source = « GitHub Actions ». Des lors le workflow automatique se tait
@@ -27,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: https://bpobjects.github.io/BPO/
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,9 +42,25 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
-      - name: Deploy to GitHub Pages
-        id: deployment
+      - name: Deploiement (tentative 1)
+        id: d1
+        continue-on-error: true
         uses: actions/deploy-pages@v4
         with:
-          timeout: 1800000
+          timeout: 600000
+          error_count: 15
+      - name: Deploiement (tentative 2)
+        id: d2
+        if: steps.d1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000
+          error_count: 15
+      - name: Deploiement (tentative 3)
+        id: d3
+        if: steps.d1.outcome == 'failure' && steps.d2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000
           error_count: 15
