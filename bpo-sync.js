@@ -55,6 +55,12 @@ const RAW = {
 };
 
 function now(){ return new Date().toISOString(); }
+/* Fenêtre SketchUp (CEF 2021) : un appel Supabase peut PENDRE indéfiniment
+   (verrou/réseau) — chaque appel est borné ; au délai, l'atelier reste local
+   pour la session et on le dit, jamais de blocage muet. */
+function withTimeout(p, ms){
+  return Promise.race([ p, new Promise(res => setTimeout(() => res({ __timeout: true }), ms)) ]);
+}
 function log(m){ try{ console.log("BPO sync : " + m); }catch(e){} }
 function warn(m){ try{ console.warn("BPO sync : " + m); }catch(e){} }
 
@@ -177,7 +183,8 @@ export function startSync(sb){
     if(S.disabled) return;
     let row = null;
     try{
-      const r = await sb.from("workspaces").select("data,updated_at").eq("id", S.uid).maybeSingle();
+      const r = await withTimeout(sb.from("workspaces").select("data,updated_at").eq("id", S.uid).maybeSingle(), 8000);
+      if(r.__timeout){ warn("lecture sans réponse (8 s) — l'atelier reste local pour cette session."); return; }
       if(r.error){
         const msg = (r.error.message || "") + " " + (r.error.code || "");
         if(/PGRST205|42P01|Could not find the table/i.test(msg)){
@@ -225,8 +232,8 @@ export function startSync(sb){
       let merged = pre;
       if(!merged){
         try{
-          const r = await sb.from("workspaces").select("data,updated_at").eq("id", S.uid).maybeSingle();
-          if(!r.error && r.data && r.data.updated_at !== S.serverStamp){
+          const r = await withTimeout(sb.from("workspaces").select("data,updated_at").eq("id", S.uid).maybeSingle(), 4000);
+          if(!r.__timeout && !r.error && r.data && r.data.updated_at !== S.serverStamp){
             S.server = r.data.data || {}; S.serverStamp = r.data.updated_at;
           }
         }catch(e){}
@@ -234,10 +241,11 @@ export function startSync(sb){
         if(m.applied.length) applyLocally(m.merged, m.applied);
         merged = m.merged;
       }
-      const r2 = await sb.from("workspaces")
+      const r2 = await withTimeout(sb.from("workspaces")
         .upsert({ id: S.uid, data: merged }, { onConflict: "id" })
-        .select("updated_at").maybeSingle();
-      if(r2 && r2.error){ warn("écriture impossible (" + (r2.error.message||"") + ") — nouvel essai à la prochaine modification."); }
+        .select("updated_at").maybeSingle(), 8000);
+      if(r2 && r2.__timeout){ warn("écriture sans réponse (8 s) — nouvel essai à la prochaine modification."); }
+      else if(r2 && r2.error){ warn("écriture impossible (" + (r2.error.message||"") + ") — nouvel essai à la prochaine modification."); }
       else{
         S.server = merged;
         if(r2 && r2.data) S.serverStamp = r2.data.updated_at;
