@@ -105,6 +105,10 @@ function marquerProprietaire(session){
 }
 
 (async () => {
+  /* Voie compat moteurs anciens (bpo-es5.js) : quand elle possède la page
+     (vraie fenêtre SketchUp 2021, ou banc forcé ?es5=1), on s'efface —
+     sur moteur ancien ce module ne se charge de toute façon jamais. */
+  if (window.BPO_OLD_ENGINE) return;
   let { data:{ session } } = await sb.auth.getSession();
   if(!session){
     /* ESSAI LIBRE : session anonyme (2 jours côté serveur). Repli : compte.html. */

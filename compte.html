@@ -43,6 +43,19 @@
  .dl-note{font-size:11px;color:var(--dm);margin-top:10px;text-align:center;}
 </style></head>
 <body>
+<script>
+/* Moteur ancien (fenetre SketchUp 2021 = Chromium 64) : la syntaxe ?. y est
+   FATALE — le module compte (supabase-js) ne se charge pas. Detection par
+   essai de compilation (+ forcage ?es5=1 pour les bancs) -> voie bpo-es5.js
+   (connexion + vue compte + synchro, en ES5/fetch). */
+try { new Function('return a?.b'); if (/[?&]es5=1/.test(location.search)) { throw 0; } }
+catch (e) {
+  window.BPO_OLD_ENGINE = 1;
+  var __bpoEs5 = document.createElement('script');
+  __bpoEs5.src = 'bpo-es5.js?v=1';
+  document.head.appendChild(__bpoEs5);
+}
+</script>
 <header><span class="dot"></span><b>Building Product Objects</b></header>
 <div class="wrap">
 
