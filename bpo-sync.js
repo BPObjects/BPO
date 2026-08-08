@@ -36,8 +36,19 @@ const KEYS = {
   "BPO_CATGRP_ORDER_v1":         "lww",   /* ordre des groupes du catalogue   */
   "BPO_PREFS_v1":                "lww",   /* préférences d'atelier            */
   "BPO_ANNOT_v1":                "lww",   /* annotations                      */
-  "BPO_TEXADJ_v1":               "lww"    /* réglages de textures             */
+  "BPO_TEXADJ_v1":               "lww",   /* réglages de textures             */
+  "BPO_SYNC_TOMB_v1":            "tomb"   /* identifiants supprimés (voir plus bas) */
 };
+/* PIERRES TOMBALES (08/08/2026) — une fusion par UNION ne peut pas voir une
+   suppression : l'élément absent d'un côté est repris de l'autre, et ce qu'on
+   supprimait revenait à la synchro suivante (constat utilisateur). On transporte
+   donc les identifiants supprimés avec leur date, et l'union les écarte.
+   Écrire un élément lève sa pierre (côté app) : un identifiant présent dans une
+   liste ne peut pas être un identifiant supprimé. Les pierres de plus de six
+   mois sont oubliées — passé ce délai, l'appareil qui n'a pas synchronisé a de
+   toute façon divergé bien au-delà de cette question. */
+const TOMB_KEY = "BPO_SYNC_TOMB_v1";
+const TOMB_TTL = 180*24*3600*1000;
 /* Volontairement HORS synchro : bpo_lang, BPO_PANEL_HID, BPO_INTRO_VOL
    (propres à l'appareil), BPO_AIKEY_v1 / bpoClaudeKey (secrets — ne montent
    jamais), bpoRef / bpoInterne (attribution / interne), sb-* (session). */
@@ -69,15 +80,47 @@ function writeMeta(m){ try{ RAW.set(META_KEY, JSON.stringify(m)); }catch(e){} }
 
 /* Union de listes à id. `win`/`lose` = chaînes JSON. Rend null si la forme ne
    s'y prête pas (pas deux tableaux d'objets) -> repli dernier-écrit-gagne. */
-function mergeIds(win, lose){
+function mergeIds(win, lose, morts){
   let a, b;
   try{ a = JSON.parse(win); b = JSON.parse(lose); }catch(e){ return null; }
   if(!Array.isArray(a) || !Array.isArray(b)) return null;
   const okItem = x => x && typeof x === "object" && ("id" in x);
   if(!(a.every(okItem) && b.every(okItem))) return null;
+  const mort = id => !!(morts && morts[String(id)]);
   const seen = new Set(a.map(x => String(x.id)));
-  const out = a.slice();
-  for(const it of b) if(!seen.has(String(it.id))) out.push(it);
+  const out = a.filter(x => !mort(x.id));
+  for(const it of b) if(!seen.has(String(it.id)) && !mort(it.id)) out.push(it);
+  return JSON.stringify(out);
+}
+/* Retire d'une liste JSON les éléments dont l'identifiant est sous pierre.
+   Rend la valeur inchangée s'il n'y a rien à retirer, null si la forme ne s'y
+   prête pas. */
+function filtreMorts(v, morts){
+  let a;
+  try{ a = JSON.parse(v); }catch(e){ return null; }
+  if(!Array.isArray(a)) return null;
+  const out = a.filter(x => !(x && typeof x === "object" && ("id" in x) && morts[String(x.id)]));
+  return (out.length === a.length) ? v : JSON.stringify(out);
+}
+/* Deux jeux de pierres tombales : on garde pour chaque identifiant la date la
+   PLUS RÉCENTE, et on oublie les plus vieilles que TOMB_TTL. */
+function mergeTomb(av, bv){
+  let a, b;
+  try{ a = av ? JSON.parse(av) : {}; }catch(e){ a = {}; }
+  try{ b = bv ? JSON.parse(bv) : {}; }catch(e){ b = {}; }
+  const out = {}, limite = Date.now() - TOMB_TTL;
+  for(const src of [a, b]){
+    if(!src || typeof src !== "object") continue;
+    for(const k in src){
+      const m = src[k]; if(!m || typeof m !== "object") continue;
+      const dst = out[k] = out[k] || {};
+      for(const id in m){
+        const d = Date.parse(m[id]); if(!(d > limite)) continue;
+        if(!dst[id] || Date.parse(dst[id]) < d) dst[id] = m[id];
+      }
+      if(!Object.keys(dst).length) delete out[k];
+    }
+  }
   return JSON.stringify(out);
 }
 
@@ -135,6 +178,20 @@ export function startSync(sb){
   function merge(loc, srv){
     const merged = {}, applied = [], dirty = [];
     const keys = new Set([...Object.keys(loc), ...Object.keys(srv)]);
+    /* Les pierres tombales D'ABORD : l'union des listes doit connaître TOUTES les
+       suppressions, celles d'ici comme celles d'une autre machine. */
+    let morts = {};
+    {
+      const L = loc[TOMB_KEY], R = srv[TOMB_KEY];
+      const u = mergeTomb(L ? L.v : null, R ? R.v : null);
+      try{ morts = JSON.parse(u) || {}; }catch(e){ morts = {}; }
+      if(L || R){
+        merged[TOMB_KEY] = { v: u, t: now() };
+        if(!R || u !== R.v) dirty.push(TOMB_KEY);
+        if(!L || u !== L.v) applied.push(TOMB_KEY);
+      }
+      keys.delete(TOMB_KEY);
+    }
     for(const k of keys){
       if(!(k in KEYS)) continue;                    /* le serveur peut porter des clés d'une version future */
       const L = loc[k], R = srv[k];
@@ -150,7 +207,8 @@ export function startSync(sb){
       const rt = R.t ? Date.parse(R.t) : 0;
       /* listes à id : UNION, le côté le plus récent gagne les collisions */
       if(KEYS[k] === "ids" && L.v !== null && R.v !== null){
-        const u = (rt >= lt) ? mergeIds(R.v, L.v) : mergeIds(L.v, R.v);
+        const mk = morts[k] || null;
+        const u = (rt >= lt) ? mergeIds(R.v, L.v, mk) : mergeIds(L.v, R.v, mk);
         if(u !== null){
           merged[k] = { v: u, t: now() };
           if(u !== R.v) dirty.push(k);
@@ -163,6 +221,22 @@ export function startSync(sb){
         merged[k] = R; applied.push(k);
       } else {                                       /* le local gagne */
         merged[k] = { v: L.v, t: L.t }; dirty.push(k);
+      }
+    }
+    /* FILET — quelle que soit la branche empruntée (union, serveur gagne, local
+       gagne, ou un seul côté présent), aucune liste ne doit ressortir avec un
+       identifiant supprimé. Sans lui, un appareil qui découvre la liste du
+       serveur ressusciterait les éléments effacés ailleurs, et plus rien ne les
+       filtrerait ensuite puisque les deux côtés seraient devenus identiques. */
+    for(const k in merged){
+      if(KEYS[k] !== "ids") continue;
+      const e = merged[k]; if(!e || e.v == null) continue;
+      const mk = morts[k]; if(!mk || !Object.keys(mk).length) continue;
+      const f = filtreMorts(e.v, mk);
+      if(f !== null && f !== e.v){
+        merged[k] = { v: f, t: now() };
+        if(dirty.indexOf(k) < 0) dirty.push(k);
+        if(applied.indexOf(k) < 0) applied.push(k);
       }
     }
     return { merged, applied, dirty };
