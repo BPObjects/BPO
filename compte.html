@@ -71,6 +71,7 @@ catch (e) {
     <div class="reassure hidden" id="noCb"><span class="tick">&#10003;</span><span><b>Aucune carte bancaire demandée.</b> L'essai de 15&nbsp;jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.</span></div>
     <span class="link" id="toggle">Pas encore de compte ? Créer un compte (essai 15 jours gratuit)</span>
     <span class="link" id="magic">Recevoir un lien de connexion par e-mail</span>
+    <span class="link" id="forgot">Mot de passe oublié ?</span>
     <div class="msg" id="authMsg"></div>
   </div>
 
@@ -90,6 +91,8 @@ catch (e) {
       <div class="card">
         <h2>Préférences</h2>
         <label class="check"><input id="nlToggle" type="checkbox"><span>Abonné à la newsletter</span></label>
+        <label>Nouveau mot de passe</label><input id="npwd" type="password" autocomplete="new-password">
+        <button id="setPwd" class="alt">Définir mon mot de passe</button>
         <button id="logout" class="alt">Se déconnecter</button>
       </div>
     </div>
@@ -484,6 +487,23 @@ I18N.ar = {
   "Votre travail est conservé — et 15 jours d'essai complet s'ouvrent.":"عملك محفوظ — وتبدأ تجربة كاملة لمدة 15 يومًا.",
   "Compte créé. Vérifiez vos e-mails pour confirmer votre adresse — votre travail est conservé.":"تم إنشاء الحساب. تحقق من بريدك لتأكيد عنوانك — عملك محفوظ."
 };
+/* 13/08 — libellés arrivés avec la sortie de l'impasse anonyme et la
+   récupération de mot de passe. Fusion NON destructive : une clé déjà présente
+   dans un dictionnaire n'est jamais écrasée. Clés = français à apostrophe
+   DROITE, comme les appels T() correspondants. */
+const I18N_AUTH2 = {
+  "J'ai déjà un compte — me connecter":{en:"I already have an account — sign in",es:"Ya tengo una cuenta — iniciar sesión",it:"Ho già un account — accedi",de:"Ich habe bereits ein Konto — anmelden",pt:"Já tenho uma conta — iniciar sessão",hu:"Már van fiókom — bejelentkezés",zh:"我已有账户 — 登录",ja:"すでにアカウントをお持ちの方 — ログイン",hi:"मेरा खाता पहले से है — साइन इन करें",ru:"У меня уже есть аккаунт — войти",uk:"У мене вже є акаунт — увійти",ar:"لديّ حساب بالفعل — تسجيل الدخول"},
+  "Créer mon compte et conserver mon travail":{en:"Create my account and keep my work",es:"Crear mi cuenta y conservar mi trabajo",it:"Crea il mio account e conserva il lavoro",de:"Mein Konto erstellen und meine Arbeit behalten",pt:"Criar a minha conta e conservar o meu trabalho",hu:"Fiók létrehozása és a munkám megőrzése",zh:"创建账户并保留我的工作",ja:"アカウントを作成して作業を保持する",hi:"मेरा खाता बनाएँ और काम सहेजें",ru:"Создать аккаунт и сохранить работу",uk:"Створити акаунт і зберегти роботу",ar:"إنشاء حسابي والاحتفاظ بعملي"},
+  "Mot de passe oublié ?":{en:"Forgot your password?",es:"¿Olvidó su contraseña?",it:"Password dimenticata?",de:"Passwort vergessen?",pt:"Esqueceu a palavra-passe?",hu:"Elfelejtette a jelszavát?",zh:"忘记密码？",ja:"パスワードをお忘れですか？",hi:"पासवर्ड भूल गए?",ru:"Забыли пароль?",uk:"Забули пароль?",ar:"هل نسيت كلمة المرور؟"},
+  "Lien de réinitialisation envoyé — vérifiez vos e-mails.":{en:"Reset link sent — check your email.",es:"Enlace de restablecimiento enviado — revise su correo.",it:"Link di reimpostazione inviato — controlla la tua email.",de:"Link zum Zurücksetzen gesendet — prüfen Sie Ihre E-Mails.",pt:"Link de reposição enviado — verifique o seu e-mail.",hu:"Visszaállító link elküldve — ellenőrizze e-mailjeit.",zh:"重置链接已发送——请查收邮件。",ja:"再設定リンクを送信しました — メールをご確認ください。",hi:"रीसेट लिंक भेजा गया — अपना ई-मेल देखें।",ru:"Ссылка для сброса отправлена — проверьте почту.",uk:"Посилання для скидання надіслано — перевірте пошту.",ar:"تم إرسال رابط إعادة التعيين — تحقق من بريدك."},
+  "Nouveau mot de passe":{en:"New password",es:"Nueva contraseña",it:"Nuova password",de:"Neues Passwort",pt:"Nova palavra-passe",hu:"Új jelszó",zh:"新密码",ja:"新しいパスワード",hi:"नया पासवर्ड",ru:"Новый пароль",uk:"Новий пароль",ar:"كلمة مرور جديدة"},
+  "Définir mon mot de passe":{en:"Set my password",es:"Establecer mi contraseña",it:"Imposta la mia password",de:"Mein Passwort festlegen",pt:"Definir a minha palavra-passe",hu:"Jelszavam beállítása",zh:"设置我的密码",ja:"パスワードを設定する",hi:"मेरा पासवर्ड सेट करें",ru:"Задать пароль",uk:"Задати пароль",ar:"تعيين كلمة المرور"},
+  "Mot de passe mis à jour.":{en:"Password updated.",es:"Contraseña actualizada.",it:"Password aggiornata.",de:"Passwort aktualisiert.",pt:"Palavra-passe atualizada.",hu:"A jelszó frissítve.",zh:"密码已更新。",ja:"パスワードを更新しました。",hi:"पासवर्ड अपडेट हो गया।",ru:"Пароль обновлён.",uk:"Пароль оновлено.",ar:"تم تحديث كلمة المرور."},
+  "Mot de passe trop court (6 caractères minimum).":{en:"Password too short (6 characters minimum).",es:"Contraseña demasiado corta (mínimo 6 caracteres).",it:"Password troppo corta (minimo 6 caratteri).",de:"Passwort zu kurz (mindestens 6 Zeichen).",pt:"Palavra-passe demasiado curta (mínimo 6 caracteres).",hu:"Túl rövid jelszó (legalább 6 karakter).",zh:"密码太短（至少 6 个字符）。",ja:"パスワードが短すぎます（6文字以上）。",hi:"पासवर्ड बहुत छोटा है (कम से कम 6 अक्षर)।",ru:"Слишком короткий пароль (минимум 6 символов).",uk:"Занадто короткий пароль (щонайменше 6 символів).",ar:"كلمة المرور قصيرة جدًا (6 أحرف على الأقل)."},
+  "Le paiement n'a pas pu démarrer. Réessayez, ou écrivez-nous.":{en:"Payment could not start. Please try again, or write to us.",es:"No se pudo iniciar el pago. Inténtelo de nuevo o escríbanos.",it:"Impossibile avviare il pagamento. Riprova, o scrivici.",de:"Die Zahlung konnte nicht gestartet werden. Bitte erneut versuchen oder schreiben Sie uns.",pt:"Não foi possível iniciar o pagamento. Tente novamente ou escreva-nos.",hu:"A fizetés nem indult el. Próbálja újra, vagy írjon nekünk.",zh:"支付未能启动。请重试，或与我们联系。",ja:"決済を開始できませんでした。もう一度お試しいただくか、ご連絡ください。",hi:"भुगतान शुरू नहीं हो सका। पुनः प्रयास करें, या हमें लिखें।",ru:"Не удалось начать оплату. Попробуйте ещё раз или напишите нам.",uk:"Не вдалося почати оплату. Спробуйте ще раз або напишіть нам.",ar:"تعذّر بدء الدفع. أعد المحاولة أو راسلنا."}
+};
+for(const _k in I18N_AUTH2){ const _t=I18N_AUTH2[_k];
+  for(const _lg in _t){ if(I18N[_lg] && I18N[_lg][_k]===undefined) I18N[_lg][_k]=_t[_lg]; } }
 const LANG = (() => {
   try{ const p = new URLSearchParams(location.search).get("lang"); if(p==="fr" || I18N[p]) return p; }catch(e){}
   /* langue choisie dans l'app (sélecteur d'app.html) : le funnel reste cohérent */
@@ -527,10 +547,15 @@ function setMsg(el,t,ok){ el.textContent=t||""; el.className="msg "+(ok?"ok":"er
 $("toggle").onclick = () => {
   mode = mode==="login" ? "signup" : "login";
   const sign = mode==="signup";
-  $("authTitle").textContent = sign ? T("Créer un compte") : T("Connexion");
-  $("authSub").textContent = sign ? TTRIAL() : T("Accédez à votre compte.");
+  /* En session ANONYME, « créer un compte » veut dire CONVERTIR (le travail est
+     conservé) : on garde les libellés de conversion au lieu de ceux d'une
+     inscription neuve, y compris après un aller-retour par la connexion. */
+  $("authTitle").textContent = sign ? (ANON ? T("Créez votre compte") : T("Créer un compte")) : T("Connexion");
+  $("authSub").textContent = sign ? (ANON ? T("Votre travail est conservé — et 15 jours d'essai complet s'ouvrent.") : TTRIAL()) : T("Accédez à votre compte.");
   $("doAuth").textContent = sign ? T("Créer mon compte") : T("Se connecter");
-  $("toggle").textContent = sign ? T("Déjà un compte ? Se connecter") : T("Pas encore de compte ? Créer un compte (essai 15 jours gratuit)");
+  $("toggle").textContent = sign ? T("J'ai déjà un compte — me connecter")
+                                 : (ANON ? T("Créer mon compte et conserver mon travail")
+                                         : T("Pas encore de compte ? Créer un compte (essai 15 jours gratuit)"));
   $("nameFld").classList.toggle("hidden", !sign);
   $("nlFld").classList.toggle("hidden", !sign);
   $("noCb").classList.toggle("hidden", !sign);
@@ -548,7 +573,19 @@ $("doAuth").onclick = async () => {
            le trigger serveur ré-arme l'essai à 15 jours quand l'e-mail est confirmé. */
         const { error } = await sb.auth.updateUser({ email, password:pwd,
           data:{ full_name:$("fname").value.trim(), newsletter:$("nl").checked, ref:BPO_REF } });
-        if(error) throw error;
+        /* 13/08 — le garde-fou « adresse déjà prise » existait dans la branche
+           d'inscription normale (plus bas) mais PAS ici : un abonné qui saisissait
+           SA propre adresse lisait « Compte créé » en VERT alors que rien ne
+           partait. On l'oriente désormais vers la connexion. */
+        if(error){
+          const m=(error.message||"").toLowerCase();
+          if(m.indexOf("already")>=0 || m.indexOf("exist")>=0 || m.indexOf("registered")>=0 || m.indexOf("taken")>=0){
+            setMsg($("authMsg"),T("Un compte existe déjà avec cet e-mail. Connectez-vous, ou utilisez le lien de connexion par e-mail."));
+            show($("toggle")); show($("magic")); show($("forgot"));
+            $("doAuth").disabled=false; return;
+          }
+          throw error;
+        }
         setMsg($("authMsg"),T("Compte créé. Vérifiez vos e-mails pour confirmer votre adresse — votre travail est conservé."),true);
         $("doAuth").disabled=false;
         return;
@@ -577,6 +614,23 @@ $("magic").onclick = async () => {
   const email=$("email").value.trim(); if(!email) return setMsg($("authMsg"),T("Saisissez votre e-mail."));
   const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: SITE_URL+"/compte.html" } });
   setMsg($("authMsg"), error? error.message : T("Lien de connexion envoyé par e-mail."), !error);
+};
+
+/* 13/08 — récupération de mot de passe. Indispensable depuis la fenêtre SketchUp,
+   où la création de compte et le lien magique sont masqués : sans ça, un compte
+   créé par lien magique et déconnecté n'a AUCUNE voie de retour. */
+$("forgot").onclick = async () => {
+  const email=$("email").value.trim(); if(!email) return setMsg($("authMsg"),T("Saisissez votre e-mail."));
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: SITE_URL+"/compte.html" });
+  setMsg($("authMsg"), error? error.message : T("Lien de réinitialisation envoyé — vérifiez vos e-mails."), !error);
+};
+
+$("setPwd").onclick = async () => {
+  const p=$("npwd").value;
+  if(!p || p.length<6) return setMsg($("accMsg"), T("Mot de passe trop court (6 caractères minimum)."));
+  const { error } = await sb.auth.updateUser({ password:p });
+  setMsg($("accMsg"), error? error.message : T("Mot de passe mis à jour."), !error);
+  if(!error) $("npwd").value="";
 };
 
 $("logout").onclick = async () => {
@@ -609,11 +663,13 @@ async function callFn(name){
 $("subscribe").onclick = async () => {
   setMsg($("accMsg"),T("Redirection vers le paiement…"),true);
   try{ const j=await callFn("create-checkout"); if(j.url) location.href=j.url; else throw new Error(j.error||T("Erreur")); }
-  catch(e){ setMsg($("accMsg"), e.message); }
+  /* 13/08 — on affichait e.message brut : sur une coupure réseau ou un blocage
+     CORS l'abonné lisait « Failed to fetch » en anglais sur la page de paiement. */
+  catch(e){ setMsg($("accMsg"), T("Le paiement n'a pas pu démarrer. Réessayez, ou écrivez-nous.")); }
 };
 $("portal").onclick = async () => {
   try{ const j=await callFn("create-portal"); if(j.url) location.href=j.url; else throw new Error(j.error||T("Erreur")); }
-  catch(e){ setMsg($("accMsg"), e.message); }
+  catch(e){ setMsg($("accMsg"), T("Le paiement n'a pas pu démarrer. Réessayez, ou écrivez-nous.")); }
 };
 
 async function render(){
@@ -628,7 +684,15 @@ async function render(){
     $("authSub").textContent = T("Votre travail est conservé — et 15 jours d'essai complet s'ouvrent.");
     $("doAuth").textContent = T("Créer mon compte");
     show($("nameFld")); show($("nlFld")); show($("noCb"));
-    $("toggle").classList.add("hidden"); $("magic").classList.add("hidden");
+    /* 13/08 — CORRECTIF : on masquait ICI le passage en connexion ET le lien
+       magique, et « Se déconnecter » vit dans #account, lui-même caché : un
+       ABONNÉ arrivant sur un navigateur neuf (autre poste, navigation privée,
+       cache vidé) recevait une session anonyme et n'avait plus AUCUNE voie de
+       retour vers son compte payé. Les deux voies restent désormais visibles.
+       (Se connecter par mot de passe depuis une session anonyme remplace bien
+       la session : doAuth part dans la branche `else` -> signInWithPassword.) */
+    show($("toggle")); show($("magic")); show($("forgot"));
+    $("toggle").textContent = T("J'ai déjà un compte — me connecter");
     return;
   }
   ANON = false;
