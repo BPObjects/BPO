@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://bpobjects.github.io/BPO/sitemap.xml
+Sitemap: https://bpo.archi/sitemap.xml
