@@ -110,6 +110,7 @@
   function extractScene() {
     var faces = gatherFaces();
     var tris = [], mats = [], matMap = {};
+    var vegLayers = {}, vegList = [];   /* tuile -> couche du tableau de textures */
     var bb = [1e30, 1e30, 1e30, -1e30, -1e30, -1e30];
     function matIndex(f) {
       var col = f.col, al = f.al, tex = f.tex || '';
@@ -118,9 +119,11 @@
       if (f.veg && tex) {
         var kV = 'veg_' + tex;
         if (matMap[kV] != null) return matMap[kV];
+        if (vegLayers[tex] == null) { vegLayers[tex] = vegList.length; vegList.push(tex); }
         var vs = vegStat(tex);
         var mV = { albedo: [srgb2lin(vs.col[0] / 255), srgb2lin(vs.col[1] / 255), srgb2lin(vs.col[2] / 255)],
-                   metal: 0, rough: 0.85, alpha: 1, ior: 1.5, leaf: vs.cover, emissive: [0, 0, 0] };
+                   metal: 0, rough: 0.85, alpha: 1, ior: 1.5,
+                   leaf: 1, leafLayer: vegLayers[tex] + 1, emissive: [0, 0, 0] };
         var iV = mats.length; mats.push(mV); matMap[kV] = iV; return iV;
       }
       var r = (col && col[0]) | 0, g = (col && col[1]) | 0, b = (col && col[2]) | 0;
@@ -149,8 +152,10 @@
     for (var i = 0; i < faces.length; i++) {
       var f = faces[i], vs = f.verts; if (!vs || vs.length < 3) continue;
       var mi = matIndex(f);
+      var hasUV = !!(f.veg && f.uv && f.uv.length === vs.length);
       for (var k = 1; k < vs.length - 1; k++) {
-        tris.push({ a: vs[0], b: vs[k], c: vs[k + 1], mat: mi });
+        tris.push({ a: vs[0], b: vs[k], c: vs[k + 1], mat: mi,
+                    uv: hasUV ? [f.uv[0], f.uv[k], f.uv[k + 1]] : null });
       }
       for (var v = 0; v < vs.length; v++) {
         var p = vs[v];
@@ -172,7 +177,7 @@
     var S = 8000;
     tris.push({ a: [-S, gy, -S], b: [S, gy, -S], c: [S, gy, S], mat: gm });
     tris.push({ a: [-S, gy, -S], b: [S, gy, S], c: [-S, gy, S], mat: gm });
-    return { triangles: tris, materials: mats, bb: bb };
+    return { triangles: tris, materials: mats, bb: bb, vegTiles: vegList };
   }
 
   /* ---- caméra : WGL.cam (vue WebGL à l'écran), repli sur cam global ---- */
@@ -320,6 +325,12 @@
       var sc = extractScene();
       if (!sc.triangles.length) { alert('Aucune géométrie à rendre.'); close(); return; }
       renderer.setScene({ triangles: sc.triangles, materials: sc.materials });
+      /* tuiles de feuillage -> tableau de textures du moteur (ordre = couches) */
+      if (sc.vegTiles && sc.vegTiles.length && renderer.setVegTiles) {
+        renderer.setVegTiles(sc.vegTiles.map(function (n) {
+          var T = (window.TEX_IMAGES && TEX_IMAGES[n]); return (T && T.data) ? T : null;
+        }));
+      }
       renderer.setCamera(getCamera(W / H));
       renderer.setEnv(env);
       renderer.setOpts({ bounces: 5 });

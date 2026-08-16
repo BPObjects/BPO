@@ -109,12 +109,18 @@
     const bvh = buildBVH(tris);
     const nT = tris.length;
     // triangles réordonnés : 3 vec4 chacun (xyz + matIndex dans .w du 1er)
+    // + buffer d'UV PARALLÈLE (3 vec2 par triangle, même ordre BVH) pour les feuillages
     const triBuf = new Float32Array(nT * 12);
+    const uvBuf = new Float32Array(nT * 6);
     for (let i = 0; i < nT; i++) {
       const t = tris[bvh.order[i]], o = i * 12;
       triBuf[o] = t.a[0]; triBuf[o + 1] = t.a[1]; triBuf[o + 2] = t.a[2]; triBuf[o + 3] = t.mat + 0.5;
       triBuf[o + 4] = t.b[0]; triBuf[o + 5] = t.b[1]; triBuf[o + 6] = t.b[2]; triBuf[o + 7] = 0;
       triBuf[o + 8] = t.c[0]; triBuf[o + 9] = t.c[1]; triBuf[o + 10] = t.c[2]; triBuf[o + 11] = 0;
+      if (t.uv) { const q = i * 6;
+        uvBuf[q] = t.uv[0][0]; uvBuf[q + 1] = t.uv[0][1];
+        uvBuf[q + 2] = t.uv[1][0]; uvBuf[q + 3] = t.uv[1][1];
+        uvBuf[q + 4] = t.uv[2][0]; uvBuf[q + 5] = t.uv[2][1]; }
     }
     // matériaux : 3 vec4 chacun
     const nM = mats.length;
@@ -126,14 +132,14 @@
       /* mode surface : 0 aplat, 1 herbe procédurale, 2 béton, 3 gazon mappé, 4 feuillage */
       matBuf[o + 6] = m.ior || 1.5; matBuf[o + 7] = m.leaf ? 4 : (m.grass || 0);
       matBuf[o + 8] = e[0]; matBuf[o + 9] = e[1]; matBuf[o + 10] = e[2];
-      matBuf[o + 11] = m.leaf || 0;   /* mode 4 : taux de couverture de la tuile de feuilles */
+      matBuf[o + 11] = m.leafLayer || 0;   /* mode 4 : couche de la tuile de feuilles + 1 (0 = sans tuile) */
     }
     // nœuds BVH : 2 vec4 chacun (min+left, max+count) + enfant droit dans buffer u32 séparé
     const nN = bvh.nodeCount;
     const nodeBuf = bvh.nodes;                 // déjà 8 floats/nœud
     const rightBuf = new Int32Array(Math.max(1, nN));
     for (let i = 0; i < nN; i++) rightBuf[i] = bvh.rightIdx[i];
-    return { triBuf, matBuf, nodeBuf, rightBuf, nT, nM, nN };
+    return { triBuf, matBuf, nodeBuf, rightBuf, uvBuf, nT, nM, nN };
   }
 
   /* ---------- Shader WGSL (compute path tracer + présentation) ---------- */
@@ -162,6 +168,17 @@ struct Uniforms {
    Toujours liée (1 px vert par défaut) — layout auto oblige. */
 @group(0) @binding(7) var gsamp : sampler;
 @group(0) @binding(8) var gtex : texture_2d<f32>;
+/* FEUILLAGES (16/08 soir) : UV par triangle (3 vec2, ordre BVH) + tuiles de
+   feuilles en tableau de textures — la découpe se fait à l'ALPHA DU TEXEL
+   (silhouette réelle des feuilles, comme au viewer), y compris pour les
+   rayons d'ombre (lumière tachetée sous les arbres). */
+@group(0) @binding(9) var<storage, read> uvs : array<vec2f>;
+@group(0) @binding(10) var vtex : texture_2d_array<f32>;
+
+fn uvAt(tri : u32, b : vec2f) -> vec2f {
+  let u0 = uvs[tri * 3u]; let u1 = uvs[tri * 3u + 1u]; let u2 = uvs[tri * 3u + 2u];
+  return u0 * (1.0 - b.x - b.y) + u1 * b.x + u2 * b.y;
+}
 
 const PI = 3.14159265;
 const INF = 1e30;
@@ -247,22 +264,22 @@ fn skyColor(d : vec3f) -> vec3f {
   return c * U.skyGround.w;
 }
 
-struct Hit { t : f32, p : vec3f, n : vec3f, mat : i32, hit : bool };
+struct Hit { t : f32, p : vec3f, n : vec3f, mat : i32, hit : bool, bary : vec2f, tri : i32 };
 
-fn triHit(ro : vec3f, rd : vec3f, i : u32, tmax : f32) -> vec2f {
-  // renvoie (t, matIndexAsF32) ; t<0 si pas de hit
+fn triHit(ro : vec3f, rd : vec3f, i : u32, tmax : f32) -> vec4f {
+  // renvoie (t, matIndexAsF32, u, v) ; t<0 si pas de hit — u/v = barycentriques (poids de b et c)
   let a = tris[i * 3u].xyz;
   let b = tris[i * 3u + 1u].xyz;
   let c = tris[i * 3u + 2u].xyz;
   let e1 = b - a; let e2 = c - a;
   let pv = cross(rd, e2); let det = dot(e1, pv);
-  if (abs(det) < 1e-9) { return vec2f(-1.0, 0.0); }
+  if (abs(det) < 1e-9) { return vec4f(-1.0, 0.0, 0.0, 0.0); }
   let inv = 1.0 / det; let tv = ro - a;
-  let u = dot(tv, pv) * inv; if (u < 0.0 || u > 1.0) { return vec2f(-1.0, 0.0); }
-  let qv = cross(tv, e1); let v = dot(rd, qv) * inv; if (v < 0.0 || u + v > 1.0) { return vec2f(-1.0, 0.0); }
+  let u = dot(tv, pv) * inv; if (u < 0.0 || u > 1.0) { return vec4f(-1.0, 0.0, 0.0, 0.0); }
+  let qv = cross(tv, e1); let v = dot(rd, qv) * inv; if (v < 0.0 || u + v > 1.0) { return vec4f(-1.0, 0.0, 0.0, 0.0); }
   let t = dot(e2, qv) * inv;
-  if (t < 1e-4 || t > tmax) { return vec2f(-1.0, 0.0); }
-  return vec2f(t, tris[i * 3u].w);
+  if (t < 1e-4 || t > tmax) { return vec4f(-1.0, 0.0, 0.0, 0.0); }
+  return vec4f(t, tris[i * 3u].w, u, v);
 }
 
 fn slab(ro : vec3f, invD : vec3f, lo : vec3f, hi : vec3f, tmax : f32) -> f32 {
@@ -288,12 +305,28 @@ fn traverse(ro : vec3f, rd : vec3f, tmax : f32, occ : bool) -> Hit {
       for (var k = 0; k < count; k = k + 1) {
         let r = triHit(ro, rd, u32(first + k), h.t);
         if (r.x > 0.0) {
-          h.hit = true; h.t = r.x; h.mat = i32(r.y);
-          if (occ) { return h; }
-          let ii = u32(first + k);
-          let a = tris[ii * 3u].xyz; let b = tris[ii * 3u + 1u].xyz; let c = tris[ii * 3u + 2u].xyz;
-          h.n = normalize(cross(b - a, c - a));
-          h.p = ro + rd * r.x;
+          let mi = i32(r.y);
+          /* FEUILLAGE (mode 4) : la carte n'existe qu'aux texels opaques de sa
+             tuile — testé à l'alpha du point d'impact, pour la CAMÉRA comme
+             pour les OMBRES (rnd stochastique : converge en douceur). */
+          var trou = false;
+          if (mats[u32(mi) * 3u + 1u].w > 3.5) {
+            let layer = i32(mats[u32(mi) * 3u + 2u].w + 0.5) - 1;
+            if (layer >= 0) {
+              let uvh = uvAt(u32(first + k), r.zw);
+              let aH = textureSampleLevel(vtex, gsamp, uvh, layer, 0.0).a;
+              trou = (rnd() > aH);
+            }
+          }
+          if (!trou) {
+            h.hit = true; h.t = r.x; h.mat = mi;
+            if (occ) { return h; }
+            let ii = u32(first + k);
+            let a = tris[ii * 3u].xyz; let b = tris[ii * 3u + 1u].xyz; let c = tris[ii * 3u + 2u].xyz;
+            h.n = normalize(cross(b - a, c - a));
+            h.p = ro + rd * r.x;
+            h.bary = r.zw; h.tri = i32(ii);
+          }
         }
       }
     } else {
@@ -349,17 +382,22 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
     var n = ng; if (dot(n, rd) > 0.0) { n = -n; }
     let m0 = mats[u32(h.mat) * 3u]; let m1 = mats[u32(h.mat) * 3u + 1u]; let m2 = mats[u32(h.mat) * 3u + 2u];
     var albedo = m0.rgb; let metal = m0.w; let rough = m1.x; let alpha = m1.y; let ior = m1.z;
-    if (m1.w > 3.5) {                                        // FEUILLAGE : carte à trous stochastiques + translucidité
-      if (rnd() > m2.w) { ro = h.p + rd * 1e-3; spec = true; continue; }   // trou de la tuile : le rayon file
-      if (rnd() < 0.32) {                                    // lumière AU TRAVERS de la feuille (contre-jour)
+    if (m1.w > 3.5) {                                        // FEUILLAGE : couleur du texel + translucidité
+      // (la découpe aux trous de la tuile est déjà faite dans traverse)
+      let layerL = i32(m2.w + 0.5) - 1;
+      if (layerL >= 0) {
+        let txL = textureSampleLevel(vtex, gsamp, uvAt(u32(h.tri), h.bary), layerL, 0.0);
+        albedo = pow(txL.rgb, vec3f(2.2));
+      }
+      if (rnd() < 0.30) {                                    // lumière AU TRAVERS de la feuille (contre-jour)
         thr = thr * albedo * 0.9; ro = h.p + rd * 1e-3; spec = true; continue;
       }
       // sinon : feuille pleine -> diffuse standard ci-dessous
     }
     else if (m1.w > 2.5) {                                   // gazon MAPPÉ : tuile photo répétée (monde)
-      var tg = textureSampleLevel(gtex, gsamp, h.p.xz / 2.0, 0.0).rgb;
+      var tg = textureSampleLevel(gtex, gsamp, h.p.xz / 2.2, 0.0).rgb;   // ~2,2 m : même échelle que le viewer (gScale 0.45)
       tg = pow(tg, vec3f(2.2));                              // sRGB -> linéaire
-      tg = tg * (0.82 + 0.36 * fbm2(h.p.xz * 0.33));         // modelé lent : casse la répétition de la tuile
+      tg = tg * (0.93 + 0.14 * fbm2(h.p.xz * 0.07));         // modelé TRÈS discret (le ±36 % faisait un marbre)
       albedo = tg;
     }
     else if (m1.w > 1.5) { albedo = concreteColor(h.p); }    // sol béton procédural
@@ -527,6 +565,33 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
     R.gsampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat' });
     R.gtex = device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
     device.queue.writeTexture({ texture: R.gtex }, new Uint8Array([96, 128, 64, 255]), { bytesPerRow: 256 }, [1, 1]);
+    /* Tuiles de FEUILLAGE : tableau de textures (couches 512x512 rgba). Défaut :
+       1x1x1 vert. setVegTiles([{data,w,h},...]) — l'ordre = les couches des
+       matériaux (leafLayer = index + 1). writeTexture n'exige pas d'alignement. */
+    R.vtex = device.createTexture({ size: [1, 1, 1], format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    device.queue.writeTexture({ texture: R.vtex }, new Uint8Array([80, 120, 60, 255]), { bytesPerRow: 4 }, [1, 1, 1]);
+    R.setVegTiles = function (tiles) {
+      try {
+        tiles = tiles || [];
+        var ref = null; for (var i = 0; i < tiles.length; i++) { if (tiles[i] && tiles[i].data) { ref = tiles[i]; break; } }
+        if (!ref) return;
+        var S = ref.w, n = Math.max(1, tiles.length);
+        var t = device.createTexture({ size: [S, S, n], format: 'rgba8unorm',
+          usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+        for (var l = 0; l < n; l++) {
+          var T = tiles[l];
+          if (T && T.data && T.w === S && T.h === S) {
+            device.queue.writeTexture({ texture: t, origin: [0, 0, l] },
+              (T.data.buffer ? new Uint8Array(T.data.buffer, T.data.byteOffset || 0, T.data.byteLength) : T.data),
+              { bytesPerRow: S * 4, rowsPerImage: S }, [S, S, 1]);
+          }
+        }
+        if (R.vtex) { try { R.vtex.destroy(); } catch (e) {} }
+        R.vtex = t;
+        if (R.buffers.tris) { R._makeBinds(); R.reset(); }
+      } catch (e) { console.warn('setVegTiles:', e); }
+    };
     /* Fournit la tuile photo (ImageBitmap) — reset de l'accumulateur, la scène repart propre. */
     R.setGroundTex = function (bmp) {
       try {
@@ -546,6 +611,7 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       R.buffers.mats = mkStorage(P.matBuf);
       R.buffers.nodes = mkStorage(P.nodeBuf);
       R.buffers.rights = mkStorage(P.rightBuf);
+      R.buffers.uvs = mkStorage(P.uvBuf);
       R._allocAccum();
       R._makeBinds();
       R.reset();
@@ -569,7 +635,9 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
           { binding: 5, resource: { buffer: R.buffers.accum } },
           { binding: 6, resource: { buffer: R.buffers.lights } },
           { binding: 7, resource: R.gsampler },
-          { binding: 8, resource: R.gtex.createView() }
+          { binding: 8, resource: R.gtex.createView() },
+          { binding: 9, resource: { buffer: R.buffers.uvs } },
+          { binding: 10, resource: R.vtex.createView({ dimension: '2d-array' }) }
         ]
       });
       R.pbind = device.createBindGroup({
