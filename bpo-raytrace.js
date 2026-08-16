@@ -398,6 +398,17 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
       var tg = textureSampleLevel(gtex, gsamp, h.p.xz / 2.2, 0.0).rgb;   // ~2,2 m : même échelle que le viewer (gScale 0.45)
       tg = pow(tg, vec3f(2.2));                              // sRGB -> linéaire
       tg = tg * (0.93 + 0.14 * fbm2(h.p.xz * 0.07));         // modelé TRÈS discret (le ±36 % faisait un marbre)
+      /* le ciel bleuté + le tonemapping DÉLAVENT l'albédo : on rend au gazon la
+         vivacité qu'il a au viewer (saturation +35 %, luminance +15 %) et un
+         grain de brins près de la caméra (comme l'herbe procédurale). */
+      let lumG = dot(tg, vec3f(0.30, 0.59, 0.11));
+      tg = clamp((tg - vec3f(lumG)) * 1.35 + vec3f(lumG * 1.15), vec3f(0.0), vec3f(1.0));
+      let dcamG = length(h.p - U.camPos.xyz);
+      let fadeG = clamp(1.0 - dcamG * 0.035, 0.0, 1.0);
+      if (fadeG > 0.01) {
+        let brins = vnoise(h.p.xz * 42.0) * 0.6 + vnoise(h.p.xz * 130.0) * 0.4;
+        tg = tg * (1.0 + fadeG * 0.30 * (brins - 0.5));
+      }
       albedo = tg;
     }
     else if (m1.w > 1.5) { albedo = concreteColor(h.p); }    // sol béton procédural
