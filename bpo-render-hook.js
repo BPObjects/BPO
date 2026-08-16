@@ -35,8 +35,21 @@
   }
 
   /* ---- extraction de la scène (triangles + matériaux) ---- */
-  /* Mode du sol du rendu : 0 = aplat (couleur PREFS), 1 = herbe, 2 = béton. */
+  /* Mode du sol du rendu : 0 = aplat (couleur PREFS), 1 = herbe, 2 = béton.
+     (3 = gazon photo mappé, choisi automatiquement quand la tuile est chargée.) */
   var GROUND_MODE = 1;
+  /* Tuile de gazon du viewer (data/textures/gazon.jpg) pour le rendu : chargée
+     une fois, poussée au moteur (setGroundTex). Tant qu'elle n'est pas là,
+     l'herbe reste procédurale — jamais bloquant. */
+  var GAZON_BMP = null;
+  function loadGazon(renderer, done) {
+    if (GAZON_BMP) { try { renderer.setGroundTex(GAZON_BMP); } catch (e) {} if (done) done(); return; }
+    var v = (typeof DATA_VER !== 'undefined') ? ('?v=' + DATA_VER) : '';
+    fetch('data/textures/gazon.jpg' + v).then(function (r) { return r.ok ? r.blob() : null; })
+      .then(function (b) { return b ? createImageBitmap(b) : null; })
+      .then(function (bmp) { if (!bmp) return; GAZON_BMP = bmp; try { renderer.setGroundTex(bmp); } catch (e) {} if (done) done(); })
+      .catch(function () {});
+  }
   /* Éclairage intérieur auto (toggle) + lampes manuelles (issues de la scène). */
   var INTERIOR_ON = false;
 
@@ -102,7 +115,7 @@
       var metallic = (!glass && !tex && !horiz && mx > 150 && sat < 0.14) ? 0.75 : 0.0;
       var m = { albedo: alb, metal: metallic, rough: metallic > 0 ? 0.22 : 0.62,
                 alpha: glass ? 0.25 : 1.0, ior: 1.5, emissive: [0, 0, 0] };
-      if (/gazon|grass/i.test(String(tex))) m.grass = 1;   /* gazon au sol : vraie herbe au rendu */
+      if (/gazon|grass/i.test(String(tex))) m.grass = 3;   /* gazon au sol : tuile photo mappée au rendu */
       var idx = mats.length; mats.push(m); matMap[key] = idx; return idx;
     }
     for (var i = 0; i < faces.length; i++) {
@@ -298,10 +311,15 @@
     /* Sélecteur de SOL : change le mode du matériau sol et recharge la scène
        (rebuild BVH + reset accumulateur). herbe / béton / aplat. */
     var groundMat = null; for (var _gi = 0; _gi < sc.materials.length; _gi++) { if (sc.materials[_gi]._ground) groundMat = sc.materials[_gi]; }
+    /* herbe = tuile photo mappée dès qu'elle est chargée (repli : procédurale) */
+    function solEffectif(mode) { return (mode === 1 && GAZON_BMP) ? 3 : mode; }
     menu.appendChild(mkGroundSelect(function (mode) {
       GROUND_MODE = mode;
-      if (groundMat) { groundMat.grass = mode; renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
+      if (groundMat) { groundMat.grass = solEffectif(mode); renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
     }));
+    loadGazon(renderer, function () {
+      if (GROUND_MODE === 1 && groundMat && groundMat.grass !== 3) { groundMat.grass = 3; renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
+    });
     /* Lumières : éclairage intérieur auto (toggle) + lampes manuelles de la scène. */
     function applyLights() { renderer.setLights((INTERIOR_ON ? autoInteriorLights(sc.bb) : []).concat(gatherManualLights())); }
     applyLights();

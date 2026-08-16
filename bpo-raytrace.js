@@ -156,6 +156,10 @@ struct Uniforms {
 @group(0) @binding(4) var<storage, read> rights : array<i32>;
 @group(0) @binding(5) var<storage, read_write> accum : array<vec4f>;
 @group(0) @binding(6) var<storage, read> lights : array<vec4f>;  // 2 vec4 / lampe : (pos.xyz, rayon) (col.rgb, intensité)
+/* Gazon MAPPÉ (16/08) : la tuile photo du viewer, répétée en coordonnées monde.
+   Toujours liée (1 px vert par défaut) — layout auto oblige. */
+@group(0) @binding(7) var gsamp : sampler;
+@group(0) @binding(8) var gtex : texture_2d<f32>;
 
 const PI = 3.14159265;
 const INF = 1e30;
@@ -343,8 +347,14 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
     var n = ng; if (dot(n, rd) > 0.0) { n = -n; }
     let m0 = mats[u32(h.mat) * 3u]; let m1 = mats[u32(h.mat) * 3u + 1u]; let m2 = mats[u32(h.mat) * 3u + 2u];
     var albedo = m0.rgb; let metal = m0.w; let rough = m1.x; let alpha = m1.y; let ior = m1.z;
-    if (m1.w > 1.5) { albedo = concreteColor(h.p); }        // sol béton procédural
-    else if (m1.w > 0.5) { albedo = grassColor(h.p); }      // sol herbe procédurale
+    if (m1.w > 2.5) {                                        // gazon MAPPÉ : tuile photo répétée (monde)
+      var tg = textureSampleLevel(gtex, gsamp, h.p.xz / 2.0, 0.0).rgb;
+      tg = pow(tg, vec3f(2.2));                              // sRGB -> linéaire
+      tg = tg * (0.82 + 0.36 * fbm2(h.p.xz * 0.33));         // modelé lent : casse la répétition de la tuile
+      albedo = tg;
+    }
+    else if (m1.w > 1.5) { albedo = concreteColor(h.p); }    // sol béton procédural
+    else if (m1.w > 0.5) { albedo = grassColor(h.p); }       // sol herbe procédurale
     L = L + thr * m2.rgb;                        // émissif
     let p = h.p + n * 1e-3;
 
@@ -503,6 +513,22 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
     /* Lampes ponctuelles : buffer par défaut vide (1 vec4 factice) ; setLights le remplit. */
     R.nLights = 0;
     R.buffers.lights = mkStorage(new Float32Array(4));
+    /* Texture de gazon : 1 px vert tant que setGroundTex n'a pas fourni la tuile
+       (le layout auto exige une liaison permanente pour les bindings 7/8). */
+    R.gsampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat' });
+    R.gtex = device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+    device.queue.writeTexture({ texture: R.gtex }, new Uint8Array([96, 128, 64, 255]), { bytesPerRow: 256 }, [1, 1]);
+    /* Fournit la tuile photo (ImageBitmap) — reset de l'accumulateur, la scène repart propre. */
+    R.setGroundTex = function (bmp) {
+      try {
+        var t = device.createTexture({ size: [bmp.width, bmp.height], format: 'rgba8unorm',
+          usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+        device.queue.copyExternalImageToTexture({ source: bmp }, { texture: t }, [bmp.width, bmp.height]);
+        if (R.gtex) { try { R.gtex.destroy(); } catch (e) {} }
+        R.gtex = t;
+        if (R.buffers.tris) { R._makeBinds(); R.reset(); }
+      } catch (e) { console.warn('setGroundTex:', e); }
+    };
 
     R.setScene = function (scene) {
       const P = packScene(scene);
@@ -532,7 +558,9 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
           { binding: 3, resource: { buffer: R.buffers.nodes } },
           { binding: 4, resource: { buffer: R.buffers.rights } },
           { binding: 5, resource: { buffer: R.buffers.accum } },
-          { binding: 6, resource: { buffer: R.buffers.lights } }
+          { binding: 6, resource: { buffer: R.buffers.lights } },
+          { binding: 7, resource: R.gsampler },
+          { binding: 8, resource: R.gtex.createView() }
         ]
       });
       R.pbind = device.createBindGroup({
