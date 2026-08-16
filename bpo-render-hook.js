@@ -52,6 +52,12 @@
   }
   /* Éclairage intérieur auto (toggle) + lampes manuelles (issues de la scène). */
   var INTERIOR_ON = false;
+  /* Réglages du panneau PERSISTANTS (16/08, demande AL « mettre ces paramètres
+     par défaut ») : chaque changement est mémorisé, l'ouverture suivante repart
+     des DERNIERS réglages de l'utilisateur — ses valeurs sont ses défauts. */
+  var RP_KEY = 'BPO_RENDER_PREFS';
+  function rpLoad() { try { return JSON.parse(localStorage.getItem(RP_KEY)) || null; } catch (e) { return null; } }
+  function rpSave(o) { try { localStorage.setItem(RP_KEY, JSON.stringify(o)); } catch (e) {} }
 
   /* Grille de lampes chaudes près des plafonds, dans le volume du bâtiment (bbox).
      Pos en mètres (repère monde du rendu). Intensité ~ selon la taille de maille. */
@@ -213,12 +219,12 @@
 
   /* ---- ciel + soleil depuis PREFS / WGL ---- */
   function getEnv() {
-    var top = hexOr(window.prefHex01, (window.PREFS && PREFS.skyTop), [0.40, 0.60, 0.86]);
-    var hor = hexOr(window.prefHex01, (window.PREFS && PREFS.skyHor), [0.87, 0.91, 0.96]);
-    /* Défaut : lumière RASANTE de trois-quarts (hauteur ~34°) plutôt qu'un soleil
-       quasi zénithal. Un soleil bas donne de longues ombres portées qui posent le
-       bâtiment au sol, et du relief sur les trumeaux — c'est ce qui manquait. */
-    var sd = dirFromAzEl(126, 34), sc = sunTint(34);
+    var top = hexOr(window.prefHex01, (window.PREFS && PREFS.skyTop), [0.20, 0.45, 0.83]);   /* défauts = « Grand beau » */
+    var hor = hexOr(window.prefHex01, (window.PREFS && PREFS.skyHor), [0.72, 0.83, 0.94]);
+    /* Défaut (16/08, réglages retenus par AL) : preset « Grand beau » — soleil
+       franc à 62°, expo 0,75. Les derniers réglages de l'utilisateur (persistés)
+       reprennent ensuite la main. */
+    var sd = dirFromAzEl(126, 62), sc = sunTint(62);
     try {
       var e = window.WGL && WGL.ENVS ? WGL.ENVS[WGL.env] : null;
       /* on ne prend le soleil de la scène QUE s'il est réellement activé : sinon
@@ -226,9 +232,9 @@
       if (e && WGL.sunVec && window.SUN && SUN.on) { var s = WGL.sunVec(e.L[0]); if (s) { sd = s.slice(); if (sd[1] < 0) { sd[0] = -sd[0]; sd[1] = -sd[1]; sd[2] = -sd[2]; } sc = sunTint(azElFromDir(sd)[1]); } }
     } catch (err) {}
     return {
-      sunDir: sd, sunColor: sc, sunIntensity: 3.4, sunAngle: 0.025,
-      skyTop: top, skyHor: hor, skyGround: [hor[0] * 0.5, hor[1] * 0.47, hor[2] * 0.42], skyInt: 0.58,
-      expo: 0.45, warm: 0.5
+      sunDir: sd, sunColor: sc, sunIntensity: 4.4, sunAngle: 0.020,
+      skyTop: top, skyHor: hor, skyGround: [hor[0] * 0.5, hor[1] * 0.47, hor[2] * 0.42], skyInt: 0.64,
+      expo: 0.75, warm: 0.45
     };
   }
 
@@ -320,6 +326,20 @@
     } catch (e) { alert('Init WebGPU échouée : ' + e.message); close(); return; }
 
     var env = getEnv();
+    /* les DERNIERS réglages de l'utilisateur priment sur les défauts */
+    var RP = rpLoad();
+    if (RP) {
+      if (RP.sun != null) env.sunIntensity = RP.sun;
+      if (RP.warm != null) env.warm = RP.warm;
+      if (RP.expo != null) env.expo = RP.expo;
+      if (RP.skyTop && RP.skyHor && RP.skyGround) {
+        env.skyTop = RP.skyTop; env.skyHor = RP.skyHor; env.skyGround = RP.skyGround;
+        if (RP.skyInt != null) env.skyInt = RP.skyInt;
+        if (RP.sunAngle != null) env.sunAngle = RP.sunAngle;
+      }
+      if (RP.ground != null) GROUND_MODE = RP.ground;
+      if (RP.interior != null) INTERIOR_ON = !!RP.interior;
+    }
     try {
       try { await ensureMeshesDecoded(); } catch (e) {}
       var sc = extractScene();
@@ -339,14 +359,22 @@
        l'accumulateur via setEnv/reset ; exposition et ambiance sont du
        post-traitement, instantanés (pas de reset). */
     var ae = azElFromDir(env.sunDir), az = ae[0], el = ae[1];
+    /* soleil mémorisé — sauf si la scène impose le sien (SUN.on) */
+    if (RP && RP.az != null && !(window.SUN && SUN.on)) { az = RP.az; el = RP.el != null ? RP.el : el;
+      env.sunDir = dirFromAzEl(az, el); env.sunColor = sunTint(el); renderer.setEnv(env); }
+    function rpSnap() {
+      rpSave({ sun: env.sunIntensity, warm: env.warm, expo: env.expo, az: az, el: el,
+        skyTop: env.skyTop, skyHor: env.skyHor, skyGround: env.skyGround, skyInt: env.skyInt,
+        sunAngle: env.sunAngle, ground: GROUND_MODE, interior: INTERIOR_ON });
+    }
     function applySun() {
       env.sunDir = dirFromAzEl(az, el);
       env.sunColor = sunTint(el);
       renderer.setEnv(env);                 // recharge les uniformes + reset
     }
-    var sSun = mkSlider('☀', 0, 6, 0.1, env.sunIntensity, function (v) { env.sunIntensity = v; renderer.setEnv(env); });
-    var sEl  = mkSlider('↕', 4, 85, 1, el, function (v) { el = v; applySun(); });                // hauteur
-    var sAmb = mkSlider(tr('Amb'), 0, 1, 0.05, env.warm, function (v) { env.warm = v; });
+    var sSun = mkSlider('☀', 0, 6, 0.1, env.sunIntensity, function (v) { env.sunIntensity = v; renderer.setEnv(env); rpSnap(); });
+    var sEl  = mkSlider('↕', 4, 85, 1, el, function (v) { el = v; applySun(); rpSnap(); });      // hauteur
+    var sAmb = mkSlider(tr('Amb'), 0, 1, 0.05, env.warm, function (v) { env.warm = v; rpSnap(); });
     /* Sélecteur de SOL : change le mode du matériau sol et recharge la scène
        (rebuild BVH + reset accumulateur). herbe / béton / aplat. */
     var groundMat = null; for (var _gi = 0; _gi < sc.materials.length; _gi++) { if (sc.materials[_gi]._ground) groundMat = sc.materials[_gi]; }
@@ -355,6 +383,7 @@
     menu.appendChild(mkGroundSelect(function (mode) {
       GROUND_MODE = mode;
       if (groundMat) { groundMat.grass = solEffectif(mode); renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
+      rpSnap();
     }));
     loadGazon(renderer, function () {
       if (GROUND_MODE === 1 && groundMat && groundMat.grass !== 3) { groundMat.grass = 3; renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
@@ -366,7 +395,7 @@
     bInt.onmouseenter = null; bInt.onmouseleave = null;
     function updIntBtn() { bInt.style.background = INTERIOR_ON ? 'rgba(255,138,61,.95)' : '#242a33'; bInt.style.color = INTERIOR_ON ? '#151515' : '#e8e9ec'; bInt.style.borderColor = INTERIOR_ON ? '#ff8a3d' : '#3a4150'; }
     updIntBtn();
-    bInt.onclick = function () { INTERIOR_ON = !INTERIOR_ON; updIntBtn(); applyLights(); };
+    bInt.onclick = function () { INTERIOR_ON = !INTERIOR_ON; updIntBtn(); applyLights(); rpSnap(); };
     menu.appendChild(bInt);
     /* Sélecteur d'AMBIANCE DE CIEL : applique un preset (dégradé + soleil) et
        resynchronise les curseurs soleil/hauteur/ambiance. */
@@ -376,11 +405,12 @@
       env.sunColor = sunTint(el); env.sunDir = dirFromAzEl(az, el);
       renderer.setEnv(env);
       setSliderVal(sSun, p.sun); setSliderVal(sEl, p.el); setSliderVal(sAmb, p.warm);
+      rpSnap();
     }));
     menu.appendChild(sSun);
-    menu.appendChild(mkSlider('⟳', 0, 360, 1, az, function (v) { az = v; applySun(); }));        // azimut
+    menu.appendChild(mkSlider('⟳', 0, 360, 1, az, function (v) { az = v; applySun(); rpSnap(); }));   // azimut
     menu.appendChild(sEl);
-    menu.appendChild(mkSlider(tr('Expo'), 0.1, 2, 0.05, env.expo, function (v) { env.expo = v; }));
+    menu.appendChild(mkSlider(tr('Expo'), 0.1, 2, 0.05, env.expo, function (v) { env.expo = v; rpSnap(); }));
     menu.appendChild(sAmb);
     renderer.onProgress(function (n) { lbl.textContent = n + ' ' + tr('échantillons'); });
     bPng.onclick = function () { var a = document.createElement('a'); a.download = 'BPO-rendu.png'; a.href = renderer.toPNG(); a.click(); };
@@ -452,6 +482,7 @@
     [['1', 'Herbe'], ['2', 'Béton'], ['0', 'Uni']].forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; s.appendChild(op); });
     s.onmouseenter = function () { s.style.borderColor = '#ff8a3d'; };
     s.onmouseleave = function () { s.style.borderColor = '#3a4150'; };
+    s.value = String(GROUND_MODE);   /* affiche le mode courant (restauré des préférences) */
     s.onchange = function () { fn(+s.value); };
     w.appendChild(document.createTextNode('Sol')); w.appendChild(s); return w;
   }
