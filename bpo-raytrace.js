@@ -123,8 +123,10 @@
       const m = mats[i], o = i * 12, e = m.emissive || [0, 0, 0];
       matBuf[o] = m.albedo[0]; matBuf[o + 1] = m.albedo[1]; matBuf[o + 2] = m.albedo[2]; matBuf[o + 3] = m.metal || 0;
       matBuf[o + 4] = (m.rough == null ? 0.5 : m.rough); matBuf[o + 5] = (m.alpha == null ? 1 : m.alpha);
-      matBuf[o + 6] = m.ior || 1.5; matBuf[o + 7] = (m.grass || 0);   /* mode sol : 0 aplat, 1 herbe, 2 béton */
-      matBuf[o + 8] = e[0]; matBuf[o + 9] = e[1]; matBuf[o + 10] = e[2]; matBuf[o + 11] = 0;
+      /* mode surface : 0 aplat, 1 herbe procédurale, 2 béton, 3 gazon mappé, 4 feuillage */
+      matBuf[o + 6] = m.ior || 1.5; matBuf[o + 7] = m.leaf ? 4 : (m.grass || 0);
+      matBuf[o + 8] = e[0]; matBuf[o + 9] = e[1]; matBuf[o + 10] = e[2];
+      matBuf[o + 11] = m.leaf || 0;   /* mode 4 : taux de couverture de la tuile de feuilles */
     }
     // nœuds BVH : 2 vec4 chacun (min+left, max+count) + enfant droit dans buffer u32 séparé
     const nN = bvh.nodeCount;
@@ -347,7 +349,14 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
     var n = ng; if (dot(n, rd) > 0.0) { n = -n; }
     let m0 = mats[u32(h.mat) * 3u]; let m1 = mats[u32(h.mat) * 3u + 1u]; let m2 = mats[u32(h.mat) * 3u + 2u];
     var albedo = m0.rgb; let metal = m0.w; let rough = m1.x; let alpha = m1.y; let ior = m1.z;
-    if (m1.w > 2.5) {                                        // gazon MAPPÉ : tuile photo répétée (monde)
+    if (m1.w > 3.5) {                                        // FEUILLAGE : carte à trous stochastiques + translucidité
+      if (rnd() > m2.w) { ro = h.p + rd * 1e-3; spec = true; continue; }   // trou de la tuile : le rayon file
+      if (rnd() < 0.32) {                                    // lumière AU TRAVERS de la feuille (contre-jour)
+        thr = thr * albedo * 0.9; ro = h.p + rd * 1e-3; spec = true; continue;
+      }
+      // sinon : feuille pleine -> diffuse standard ci-dessous
+    }
+    else if (m1.w > 2.5) {                                   // gazon MAPPÉ : tuile photo répétée (monde)
       var tg = textureSampleLevel(gtex, gsamp, h.p.xz / 2.0, 0.0).rgb;
       tg = pow(tg, vec3f(2.2));                              // sRGB -> linéaire
       tg = tg * (0.82 + 0.36 * fbm2(h.p.xz * 0.33));         // modelé lent : casse la répétition de la tuile

@@ -89,12 +89,40 @@
     } catch (e) {}
     return out;
   }
+  /* Feuillage végétation (16/08) : teinte moyenne PONDÉRÉE PAR L'ALPHA et taux de
+     couverture de la tuile (TEX_IMAGES[nom].data, RGBA brut) — le moteur en fait
+     des cartes à trous stochastiques translucides au lieu de panneaux pleins. */
+  var VEG_STATS = {};
+  function vegStat(tex) {
+    if (VEG_STATS[tex]) return VEG_STATS[tex];
+    var out = { col: [88, 132, 62], cover: 0.55 };
+    try {
+      var T = (window.TEX_IMAGES && TEX_IMAGES[tex]);
+      if (T && T.data && T.data.length) {
+        var d = T.data, r = 0, g = 0, b = 0, a = 0, n = d.length / 4;
+        for (var i = 0; i < d.length; i += 4) { var w = d[i + 3] / 255; r += d[i] * w; g += d[i + 1] * w; b += d[i + 2] * w; a += w; }
+        if (a > 1) out.col = [r / a, g / a, b / a];
+        out.cover = Math.min(0.92, Math.max(0.15, a / n));
+      }
+    } catch (e) {}
+    VEG_STATS[tex] = out; return out;
+  }
   function extractScene() {
     var faces = gatherFaces();
     var tris = [], mats = [], matMap = {};
     var bb = [1e30, 1e30, 1e30, -1e30, -1e30, -1e30];
     function matIndex(f) {
       var col = f.col, al = f.al, tex = f.tex || '';
+      /* carte de FEUILLAGE (veg:1 posé par le volet paysager) : un matériau par
+         tuile — découpe stochastique + translucidité côté moteur (mode 4). */
+      if (f.veg && tex) {
+        var kV = 'veg_' + tex;
+        if (matMap[kV] != null) return matMap[kV];
+        var vs = vegStat(tex);
+        var mV = { albedo: [srgb2lin(vs.col[0] / 255), srgb2lin(vs.col[1] / 255), srgb2lin(vs.col[2] / 255)],
+                   metal: 0, rough: 0.85, alpha: 1, ior: 1.5, leaf: vs.cover, emissive: [0, 0, 0] };
+        var iV = mats.length; mats.push(mV); matMap[kV] = iV; return iV;
+      }
       var r = (col && col[0]) | 0, g = (col && col[1]) | 0, b = (col && col[2]) | 0;
       var glass = (al != null && al < 0.98);
       var key = r + '_' + g + '_' + b + '_' + (glass ? 'v' : 'o') + (tex ? ('_t' + tex) : '');
