@@ -267,6 +267,81 @@
     return stlWrap(pos, nrm, ntri);
   }
 
+  /* ============================ PARSEUR 3DS (14/08) ======================= */
+  /* Autodesk 3D Studio : binaire a CHUNKS — id(u16 LE) + longueur totale(u32).
+     Arbre lu : MAIN 0x4D4D > EDITOR 0x3D3D > OBJET 0x4000 (nom C-string) >
+     MAILLAGE 0x4100 { 0x4110 sommets (u16 n + n*3 float32), 0x4120 faces
+     (u16 n + n*(4 u16 : a,b,c,flags)) > 0x4130 affectation matiere (nom +
+     u16 n + n index de faces) }. Matieres : 0xAFFF > 0xA000 nom + 0xA020
+     diffuse (sous-chunk couleur 0x0011/0x0012 en octets ou 0x0010/0x0013 en
+     floats). Les textures (0xA200) referencent des FICHIERS EXTERNES ->
+     couleur seule, comme le repli OBJ sans images. Convention 3DS : Z est
+     l'axe VERTICAL -> _upAxis='Z' (normalizeGeometry convertit) ; l'unite
+     n'est PAS portee par le format -> l'invite unite (comme OBJ/STL) decide. */
+  function parse3DS(u8) {
+    var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), N = u8.byteLength;
+    if (N < 6 || dv.getUint16(0, true) !== 0x4D4D) throw new Error('Pas un fichier 3DS (chunk 4D4D absent).');
+    function cstr(off) { var s = ''; while (off < N) { var c = u8[off++]; if (!c) break; s += String.fromCharCode(c); } return { s: s, end: off }; }
+    function colorChunk(off, end) {
+      while (off + 6 <= end) {
+        var id = dv.getUint16(off, true), ln = dv.getUint32(off + 2, true); if (ln < 6 || off + ln > end) break;
+        if (id === 0x0011 || id === 0x0012) return [u8[off + 6], u8[off + 7], u8[off + 8]];
+        if (id === 0x0010 || id === 0x0013) return [Math.round(dv.getFloat32(off + 6, true) * 255), Math.round(dv.getFloat32(off + 10, true) * 255), Math.round(dv.getFloat32(off + 14, true) * 255)];
+        off += ln;
+      }
+      return null;
+    }
+    var mats = {}, meshes = [];
+    function walk(off, end, ctx) {
+      while (off + 6 <= end) {
+        var id = dv.getUint16(off, true), ln = dv.getUint32(off + 2, true);
+        if (ln < 6 || off + ln > end) break;                          /* chunk corrompu : arret propre */
+        var body = off + 6, bend = off + ln;
+        if (id === 0x4D4D || id === 0x3D3D) walk(body, bend, ctx);
+        else if (id === 0xAFFF) { var mc = { name: '', col: null }; walk(body, bend, { mat: mc }); if (mc.name) mats[mc.name] = mc; }
+        else if (id === 0xA000 && ctx && ctx.mat) ctx.mat.name = cstr(body).s;
+        else if (id === 0xA020 && ctx && ctx.mat) ctx.mat.col = colorChunk(body, bend);
+        else if (id === 0x4000) { var nm = cstr(body); walk(nm.end, bend, { obj: nm.s }); }
+        else if (id === 0x4100 && ctx && ctx.obj !== undefined) { var mesh = { V: null, F: null, byMat: [] }; walk(body, bend, { mesh: mesh }); if (mesh.V && mesh.F) meshes.push(mesh); }
+        else if (id === 0x4110 && ctx && ctx.mesh) { var nv = dv.getUint16(body, true), p = body + 2, V = new Float32Array(nv * 3); for (var i = 0; i < nv * 3; i++) { V[i] = dv.getFloat32(p, true); p += 4; } ctx.mesh.V = V; }
+        else if (id === 0x4120 && ctx && ctx.mesh) {
+          var nf = dv.getUint16(body, true), q = body + 2, F = new Uint32Array(nf * 3);
+          for (var j = 0; j < nf; j++) { F[j * 3] = dv.getUint16(q, true); F[j * 3 + 1] = dv.getUint16(q + 2, true); F[j * 3 + 2] = dv.getUint16(q + 4, true); q += 8; }
+          ctx.mesh.F = F;
+          walk(q, bend, ctx);                                          /* 0x4130... suivent la liste de faces */
+        }
+        else if (id === 0x4130 && ctx && ctx.mesh) { var mn = cstr(body), cnt = dv.getUint16(mn.end, true), r = mn.end + 2, li = []; for (var k = 0; k < cnt; k++) { li.push(dv.getUint16(r, true)); r += 2; } ctx.mesh.byMat.push({ mat: mn.s, faces: li }); }
+        off = bend;
+      }
+    }
+    walk(0, N, null);
+    if (!meshes.length) throw new Error('Aucun maillage dans ce fichier 3DS.');
+    var totV = 0; meshes.forEach(function (m) { totV += m.V.length / 3; });
+    var pos = new Float32Array(totV * 3), vOff = 0;
+    var groupTris = {}, order = [];
+    function grp(nm2) { if (!groupTris[nm2]) { groupTris[nm2] = []; order.push(nm2); } return groupTris[nm2]; }
+    meshes.forEach(function (m) {
+      pos.set(m.V, vOff * 3);
+      var nf = m.F.length / 3, faceMat = new Array(nf);
+      m.byMat.forEach(function (bm) { bm.faces.forEach(function (fi) { if (fi < nf) faceMat[fi] = bm.mat; }); });
+      for (var f = 0; f < nf; f++) {
+        var g = grp(faceMat[f] || '__defaut');
+        g.push(m.F[f * 3] + vOff, m.F[f * 3 + 1] + vOff, m.F[f * 3 + 2] + vOff);
+      }
+      vOff += m.V.length / 3;
+    });
+    var idxArr = [], groups = [];
+    order.forEach(function (nm3) {
+      var a = groupTris[nm3]; if (!a.length) return;
+      var st = idxArr.length; for (var z = 0; z < a.length; z++) idxArr.push(a[z]);
+      var mm = mats[nm3];
+      groups.push({ start: st, count: idxArr.length - st, col: (mm && mm.col) ? mm.col : null, tex: null, name: nm3 === '__defaut' ? 'Materiau' : nm3 });
+    });
+    var geo = { pos: pos, nrm: null, uv: new Float32Array(totV * 2), idx: Uint32Array.from(idxArr), groups: groups };
+    geo._upAxis = 'Z';
+    return geo;
+  }
+
   /* ============================ PARSEUR glTF / glb ======================== */
   function _b64u8(b64) { var bin = glob.atob ? glob.atob(b64) : atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
   function parseGLTF(data, ext) {
@@ -448,6 +523,7 @@
     else if (ext === 'stl') geo = parseSTL(data instanceof Uint8Array ? data : new Uint8Array(data));
     else if (ext === 'dae') geo = parseDAE(typeof data === 'string' ? data : bytesToStr(data));
     else if (ext === 'gltf' || ext === 'glb') geo = parseGLTF(data instanceof Uint8Array ? data : new Uint8Array(data), ext);
+    else if (ext === '3ds') geo = parse3DS(data instanceof Uint8Array ? data : new Uint8Array(data));
     else throw new Error('Format non branche : ' + ext);
     var up = geo._upAxis || (opts && opts.upAxis) || 'Y';
     var scl = ((opts && opts.scale != null) ? opts.scale : 1) * (geo._unit || 1);
@@ -462,7 +538,7 @@
     normalizeGeometry: normalizeGeometry, ensureNormals: ensureNormals, quantize: quantize,
     dequantize: dequantize, signedVolume: signedVolume, countDegenerate: countDegenerate,
     hasNaN: hasNaN, computeBB: computeBB, parseOBJ: parseOBJ, parseMTL: parseMTL, parseSTL: parseSTL,
-    parseByFormat: parseByFormat, parseDAE: parseDAE, parseGLTF: parseGLTF, planarUV: planarUV, rotateGeo: rotateGeo, scaleGeo: scaleGeo
+    parseByFormat: parseByFormat, parseDAE: parseDAE, parseGLTF: parseGLTF, parse3DS: parse3DS, planarUV: planarUV, rotateGeo: rotateGeo, scaleGeo: scaleGeo
   };
 
   if (typeof module !== 'undefined' && module.exports) { module.exports = core; return; }
@@ -834,7 +910,7 @@
     });
   }
 
-  var ACCEPT = '.obj,.stl,.gltf,.glb,.dae,.ifc';
+  var ACCEPT = '.obj,.stl,.gltf,.glb,.dae,.ifc,.3ds,.skp';   /* .skp accepte pour GUIDER (pas de lecteur navigateur) */
   function openDialog() {
     var inp = doc.createElement('input'); inp.type = 'file'; inp.accept = ACCEPT; inp.style.display = 'none';
     inp.onchange = function () { if (inp.files && inp.files[0]) handleFile(inp.files[0]); };
@@ -851,14 +927,23 @@
   function handleFile(file) {
     var name = file.name.replace(/\.[^.]+$/, '');
     var m = file.name.match(/\.([^.]+)$/); var ext = m ? m[1].toLowerCase() : '';
-    if (['obj', 'stl', 'dae', 'ifc', 'gltf', 'glb'].indexOf(ext) < 0) { glob.alert('Format non reconnu : .' + ext); return; }
-    var opts = {};
-    if (ext === 'obj' || ext === 'stl') {
-      var unit = (glob.prompt('Unite du fichier ? (m / cm / mm)', ext === 'stl' ? 'mm' : 'm') || 'm').trim().toLowerCase();
-      var upA = (glob.prompt('Axe vertical du fichier ? (Y = Blender/glTF, Z = ArchiCAD/AutoCAD/Revit)', 'Y') || 'Y').trim().toUpperCase();
-      opts = { upAxis: upA.charAt(0) === 'Z' ? 'Z' : 'Y', scale: unit === 'mm' ? 0.001 : unit === 'cm' ? 0.01 : 1 };
+    if (ext === 'skp') {
+      /* format PROPRIETAIRE SketchUp : aucun lecteur navigateur possible (SDK C++
+         Trimble uniquement). On guide au lieu de rejeter sechement (14/08). */
+      glob.alert('Le .skp est le format proprietaire de SketchUp : il ne peut pas etre lu ici.\n\nDeux chemins :\n• dans SketchUp : Fichier > Exporter > Modele 3D > COLLADA (.dae), puis importez ce .dae ici ;\n• ou le plugin BPO pour SketchUp (page Mon compte), qui fait le pont directement.');
+      return;
     }
-    var binary = (ext === 'stl' || ext === 'ifc' || ext === 'gltf' || ext === 'glb');
+    if (['obj', 'stl', 'dae', 'ifc', 'gltf', 'glb', '3ds'].indexOf(ext) < 0) { glob.alert('Format non reconnu : .' + ext); return; }
+    var opts = {};
+    if (ext === 'obj' || ext === 'stl' || ext === '3ds') {
+      var unit = (glob.prompt('Unite du fichier ? (m / cm / mm)', ext === 'obj' ? 'm' : 'mm') || 'm').trim().toLowerCase();
+      opts = { scale: unit === 'mm' ? 0.001 : unit === 'cm' ? 0.01 : 1 };
+      if (ext !== '3ds') {   /* le 3DS est TOUJOURS Z-vertical (le parseur le dit) */
+        var upA = (glob.prompt('Axe vertical du fichier ? (Y = Blender/glTF, Z = ArchiCAD/AutoCAD/Revit)', 'Y') || 'Y').trim().toUpperCase();
+        opts.upAxis = upA.charAt(0) === 'Z' ? 'Z' : 'Y';
+      }
+    }
+    var binary = (ext === 'stl' || ext === 'ifc' || ext === 'gltf' || ext === 'glb' || ext === '3ds');
     var r = new glob.FileReader();
     r.onload = function () {
       try {
@@ -874,7 +959,7 @@
     if (doc.getElementById('impObjBtn')) return;
     var listEl = doc.getElementById('saveList'); if (!listEl || !listEl.parentNode) return;
     var b = doc.createElement('button'); b.id = 'impObjBtn'; b.textContent = 'Importer un objet';
-    b.title = 'Importer un objet exterieur (OBJ, STL, DAE, IFC, glTF/glb)';
+    b.title = 'Importer un objet exterieur (OBJ, STL, DAE, IFC, glTF/glb, 3DS)';
     b.style.cssText = 'width:100%;font-size:11px;padding:6px;margin:2px 0 6px;';
     b.onclick = openDialog;
     listEl.parentNode.insertBefore(b, listEl);
