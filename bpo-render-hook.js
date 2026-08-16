@@ -80,23 +80,34 @@
     var faces = gatherFaces();
     var tris = [], mats = [], matMap = {};
     var bb = [1e30, 1e30, 1e30, -1e30, -1e30, -1e30];
-    function matIndex(col, al) {
+    function matIndex(f) {
+      var col = f.col, al = f.al, tex = f.tex || '';
       var r = (col && col[0]) | 0, g = (col && col[1]) | 0, b = (col && col[2]) | 0;
       var glass = (al != null && al < 0.98);
-      var key = r + '_' + g + '_' + b + '_' + (glass ? 'v' : 'o');
+      var key = r + '_' + g + '_' + b + '_' + (glass ? 'v' : 'o') + (tex ? ('_t' + tex) : '');
       if (matMap[key] != null) return matMap[key];
+      /* Face TEXTURÉE (16/08) : le rendu photo ne sait pas encore échantillonner
+         les textures — on prend au moins leur TEINTE MOYENNE (TEX_AVGCOL) plutôt
+         que la couleur de base, et une texture d'herbe passe en HERBE PROCÉDURALE
+         du moteur (grassColor est en coordonnées monde : marche sur toute face). */
+      try { var av = (window.TEX_AVGCOL && TEX_AVGCOL[tex]);
+        if (av && av.length === 3) { r = av[0] | 0; g = av[1] | 0; b = av[2] | 0; } } catch (e) {}
       var alb = [srgb2lin(r / 255), srgb2lin(g / 255), srgb2lin(b / 255)];
-      // heuristique métal : gris clair peu saturé -> inox / alu / acier
+      // heuristique métal : gris clair peu saturé -> inox / alu / acier.
+      // JAMAIS sur une face texturée, ni sur un PLANCHER (normale verticale) :
+      // une grande dalle gris clair devenait un miroir qui reflétait la façade.
       var mx = Math.max(r, g, b), mn = Math.min(r, g, b);
       var sat = mx > 0 ? (mx - mn) / mx : 0;
-      var metallic = (!glass && mx > 150 && sat < 0.14) ? 0.75 : 0.0;
+      var horiz = !!(f.n && Math.abs(f.n[1]) > 0.5);
+      var metallic = (!glass && !tex && !horiz && mx > 150 && sat < 0.14) ? 0.75 : 0.0;
       var m = { albedo: alb, metal: metallic, rough: metallic > 0 ? 0.22 : 0.62,
                 alpha: glass ? 0.25 : 1.0, ior: 1.5, emissive: [0, 0, 0] };
+      if (/gazon|grass/i.test(String(tex))) m.grass = 1;   /* gazon au sol : vraie herbe au rendu */
       var idx = mats.length; mats.push(m); matMap[key] = idx; return idx;
     }
     for (var i = 0; i < faces.length; i++) {
       var f = faces[i], vs = f.verts; if (!vs || vs.length < 3) continue;
-      var mi = matIndex(f.col, f.al);
+      var mi = matIndex(f);
       for (var k = 1; k < vs.length - 1; k++) {
         tris.push({ a: vs[0], b: vs[k], c: vs[k + 1], mat: mi });
       }
