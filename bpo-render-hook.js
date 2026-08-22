@@ -183,6 +183,30 @@
     var S = 8000;
     tris.push({ a: [-S, gy, -S], b: [S, gy, -S], c: [S, gy, S], mat: gm });
     tris.push({ a: [-S, gy, -S], b: [S, gy, S], c: [-S, gy, S], mat: gm });
+    /* HERBE 3D (22/08, demande AL) : les touffes du viewer ENTRENT AU RENDU —
+       mêmes brins (tampons de WGL.tuftBuild, réglages Préférences), avec de
+       vraies ombres. Construites autour de la caméra du rendu ; jamais bloquant. */
+    try {
+      var W3 = window.WGL, Tt = W3 && W3.TUFT;
+      if (Tt && !Tt.off && W3.gl && typeof W3.tuftBuild === 'function' &&
+          !(window.PREFS && PREFS.grass === 0)) {
+        var camT = getCamera(1);
+        if (camT.origin[1] <= 30) {
+          W3.tuftBuild(camT.origin[0], camT.origin[2]);
+          var Pb = Tt._P;
+          if (Pb && Pb.length >= 9) {
+            var mB = mats.length;
+            mats.push({ albedo: [srgb2lin(0.36), srgb2lin(0.55), srgb2lin(0.12)],
+                        metal: 0, rough: 0.7, alpha: 1, ior: 1.5, emissive: [0, 0, 0] });
+            for (var ib = 0; ib + 8 < Pb.length; ib += 9) {
+              tris.push({ a: [Pb[ib], Pb[ib + 1], Pb[ib + 2]],
+                          b: [Pb[ib + 3], Pb[ib + 4], Pb[ib + 5]],
+                          c: [Pb[ib + 6], Pb[ib + 7], Pb[ib + 8]], mat: mB });
+            }
+          }
+        }
+      }
+    } catch (e) {}
     return { triangles: tris, materials: mats, bb: bb, vegTiles: vegList };
   }
 
