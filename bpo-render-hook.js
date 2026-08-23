@@ -138,13 +138,18 @@
       /* carte de FEUILLAGE (veg:1 posé par le volet paysager) : un matériau par
          tuile — découpe stochastique + translucidité côté moteur (mode 4). */
       if (f.veg && tex) {
-        var kV = 'veg_' + tex;
+        var kV = (f.opq ? 'stf_' : 'veg_') + tex;   /* cles distinctes : meme tuile, materiau different */
         if (matMap[kV] != null) return matMap[kV];
         if (vegLayers[tex] == null) { vegLayers[tex] = vegList.length; vegList.push(tex); }
         var vs = vegStat(tex);
+        /* f.opq : STAFFAGE PHOTOGRAPHIQUE (personnages, arbres photographies).
+           Meme tuile, meme decoupe a l'alpha du texel, mais OPAQUE — le mode 4
+           laisse traverser 30 % des rayons, ce qui est le contre-jour d'une
+           feuille et un fantome sur une personne. Rugosite plus haute et albedo
+           moins reflechissant : une etoffe n'est pas un limbe cire. */
         var mV = { albedo: [srgb2lin(vs.col[0] / 255), srgb2lin(vs.col[1] / 255), srgb2lin(vs.col[2] / 255)],
-                   metal: 0, rough: 0.85, alpha: 1, ior: 1.5,
-                   leaf: 1, leafLayer: vegLayers[tex] + 1, emissive: [0, 0, 0] };
+                   metal: 0, rough: f.opq ? 0.95 : 0.85, alpha: 1, ior: 1.5,
+                   leaf: f.opq ? 2 : 1, leafLayer: vegLayers[tex] + 1, emissive: [0, 0, 0] };
         var iV = mats.length; mats.push(mV); matMap[kV] = iV; return iV;
       }
       var r = (col && col[0]) | 0, g = (col && col[1]) | 0, b = (col && col[2]) | 0;

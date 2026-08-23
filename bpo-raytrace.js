@@ -130,7 +130,7 @@
       matBuf[o] = m.albedo[0]; matBuf[o + 1] = m.albedo[1]; matBuf[o + 2] = m.albedo[2]; matBuf[o + 3] = m.metal || 0;
       matBuf[o + 4] = (m.rough == null ? 0.5 : m.rough); matBuf[o + 5] = (m.alpha == null ? 1 : m.alpha);
       /* mode surface : 0 aplat, 1 herbe procédurale, 2 béton, 3 gazon mappé, 4 feuillage */
-      matBuf[o + 6] = m.ior || 1.5; matBuf[o + 7] = m.leaf ? 4 : (m.grass || 0);
+      matBuf[o + 6] = m.ior || 1.5; matBuf[o + 7] = (m.leaf === 2) ? 5 : (m.leaf ? 4 : (m.grass || 0));
       matBuf[o + 8] = e[0]; matBuf[o + 9] = e[1]; matBuf[o + 10] = e[2];
       matBuf[o + 11] = m.leafLayer || 0;   /* mode 4 : couche de la tuile de feuilles + 1 (0 = sans tuile) */
     }
@@ -413,17 +413,23 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
     var n = ng; if (dot(n, rd) > 0.0) { n = -n; }
     let m0 = mats[u32(h.mat) * 3u]; let m1 = mats[u32(h.mat) * 3u + 1u]; let m2 = mats[u32(h.mat) * 3u + 2u];
     var albedo = m0.rgb; let metal = m0.w; let rough = m1.x; let alpha = m1.y; let ior = m1.z;
-    if (m1.w > 3.5) {                                        // FEUILLAGE : couleur du texel + translucidité
-      // (la découpe aux trous de la tuile est déjà faite dans traverse)
+    if (m1.w > 3.5) {                    // DECOUPE ALPHA : couleur lue dans la tuile
+      // (la decoupe aux trous de la tuile est deja faite dans traverse, dont le
+      //  test porte sur > 3.5 : les modes 4 et 5 en heritent tous les deux)
       let layerL = i32(m2.w + 0.5) - 1;
       if (layerL >= 0) {
         let txL = textureSampleLevel(vtex, gsamp, uvAt(u32(h.tri), h.bary), layerL, 0.0);
         albedo = pow(txL.rgb, vec3f(2.2));
       }
-      if (rnd() < 0.30) {                                    // lumière AU TRAVERS de la feuille (contre-jour)
+      /* MODE 4 = FEUILLAGE : 30 % des rayons TRAVERSENT, teintes — c'est le
+         contre-jour d'un houppier. MODE 5 = STAFFAGE PHOTOGRAPHIQUE (personnages,
+         arbres photographies) : la silhouette est OPAQUE. Sans cette distinction
+         un personnage devenait un fantome translucide : un etre humain n'est pas
+         une feuille. Tout le reste est partage. */
+      if (m1.w < 4.5 && rnd() < 0.30) {
         thr = thr * albedo * 0.9; ro = h.p + rd * 1e-3; spec = true; continue;
       }
-      // sinon : feuille pleine -> diffuse standard ci-dessous
+      // sinon : surface pleine -> diffuse standard ci-dessous
     }
     else if (m1.w > 2.5) {                                   // gazon MAPPÉ : tuile photo répétée (monde)
       var tg = textureSampleLevel(gtex, gsamp, h.p.xz / 2.2, 0.0).rgb;   // ~2,2 m : même échelle que le viewer (gScale 0.45)
