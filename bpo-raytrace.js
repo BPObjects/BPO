@@ -112,11 +112,21 @@
     // + buffer d'UV PARALLÈLE (3 vec2 par triangle, même ordre BVH) pour les feuillages
     const triBuf = new Float32Array(nT * 12);
     const uvBuf = new Float32Array(nT * 6);
+    /* NORMALES DE SOMMET : 3 vec4 par triangle, meme ordre BVH que triBuf.
+       vec4 et non vec3 : en WGSL un array<vec3f> a un pas de 16 octets, pas 12
+       — lire 9 flottants par triangle en vec3f decalerait tout en silence. */
+    const nrmBuf = new Float32Array(nT * 12);
     for (let i = 0; i < nT; i++) {
       const t = tris[bvh.order[i]], o = i * 12;
       triBuf[o] = t.a[0]; triBuf[o + 1] = t.a[1]; triBuf[o + 2] = t.a[2]; triBuf[o + 3] = t.mat + 0.5;
       triBuf[o + 4] = t.b[0]; triBuf[o + 5] = t.b[1]; triBuf[o + 6] = t.b[2]; triBuf[o + 7] = 0;
       triBuf[o + 8] = t.c[0]; triBuf[o + 9] = t.c[1]; triBuf[o + 10] = t.c[2]; triBuf[o + 11] = 0;
+      if (t.vn) { const w = i * 12;
+        for (let s = 0; s < 3; s++) {
+          const v = t.vn[s] || [0, 0, 0];
+          nrmBuf[w + s * 4] = v[0]; nrmBuf[w + s * 4 + 1] = v[1]; nrmBuf[w + s * 4 + 2] = v[2];
+        }
+      }
       if (t.uv) { const q = i * 6;
         uvBuf[q] = t.uv[0][0]; uvBuf[q + 1] = t.uv[0][1];
         uvBuf[q + 2] = t.uv[1][0]; uvBuf[q + 3] = t.uv[1][1];
@@ -139,7 +149,7 @@
     const nodeBuf = bvh.nodes;                 // déjà 8 floats/nœud
     const rightBuf = new Int32Array(Math.max(1, nN));
     for (let i = 0; i < nN; i++) rightBuf[i] = bvh.rightIdx[i];
-    return { triBuf, matBuf, nodeBuf, rightBuf, uvBuf, nT, nM, nN };
+    return { triBuf, matBuf, nodeBuf, rightBuf, uvBuf, nrmBuf, nT, nM, nN };
   }
 
   /* ---------- Shader WGSL (compute path tracer + présentation) ---------- */
@@ -177,10 +187,22 @@ struct Uniforms {
 /* CIEL PHOTO (23/08) : voute equirectangulaire, echantillonnee par la direction
    du rayon. 1x1 par defaut — le layout auto exige une liaison permanente. */
 @group(0) @binding(11) var skytex : texture_2d<f32>;
+/* Normales de sommet, 3 vec4 par triangle, meme ordre que tris. Voir l'en-tete
+   de Standalone/patch-normales-lissees.py pour le choix de vec4. */
+@group(0) @binding(12) var<storage, read> nrms : array<vec4f>;
 
 fn uvAt(tri : u32, b : vec2f) -> vec2f {
   let u0 = uvs[tri * 3u]; let u1 = uvs[tri * 3u + 1u]; let u2 = uvs[tri * 3u + 2u];
   return u0 * (1.0 - b.x - b.y) + u1 * b.x + u2 * b.y;
+}
+/* Normale LISSEE au point d'impact. Renvoie le vecteur nul quand le triangle
+   n'a pas de normales de sommet (sol, touffes d'herbe, cartes de staffage) :
+   l'appelant retombe alors sur la geometrique. */
+fn nrmAt(tri : u32, b : vec2f) -> vec3f {
+  let n0 = nrms[tri * 3u].xyz; let n1 = nrms[tri * 3u + 1u].xyz; let n2 = nrms[tri * 3u + 2u].xyz;
+  let s = n0 * (1.0 - b.x - b.y) + n1 * b.x + n2 * b.y;
+  if (dot(s, s) < 1e-6) { return vec3f(0.0); }
+  return normalize(s);
 }
 
 const PI = 3.14159265;
@@ -410,7 +432,17 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
       L = L + thr * sky; break;
     }
     let ng = h.n;
-    var n = ng; if (dot(n, rd) > 0.0) { n = -n; }
+    /* NORMALE LISSEE pour l'ombrage, GEOMETRIQUE pour les decalages de rayon.
+       Trois precautions, chacune pour un defaut connu (voir l'en-tete du patch
+       Standalone/patch-normales-lissees.py) : repli si le triangle n'a pas de
+       normales de sommet ; alignement sur la geometrique, car un maillage a
+       faces retournees fournit des normales opposees ; et ng conserve plus bas
+       pour decider ou un rayon repart, sinon on obtient des points noirs pres
+       des aretes. */
+    var ns = nrmAt(u32(h.tri), h.bary);
+    if (dot(ns, ns) < 0.5) { ns = ng; }
+    else if (dot(ns, ng) < 0.0) { ns = -ns; }
+    var n = ns; if (dot(n, rd) > 0.0) { n = -n; }
     let m0 = mats[u32(h.mat) * 3u]; let m1 = mats[u32(h.mat) * 3u + 1u]; let m2 = mats[u32(h.mat) * 3u + 2u];
     var albedo = m0.rgb; let metal = m0.w; let rough = m1.x; let alpha = m1.y; let ior = m1.z;
     if (m1.w > 3.5) {                    // DECOUPE ALPHA : couleur lue dans la tuile
@@ -689,6 +721,7 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       R.buffers.nodes = mkStorage(P.nodeBuf);
       R.buffers.rights = mkStorage(P.rightBuf);
       R.buffers.uvs = mkStorage(P.uvBuf);
+      R.buffers.nrms = mkStorage(P.nrmBuf);
       R._allocAccum();
       R._makeBinds();
       R.reset();
@@ -715,7 +748,8 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
           { binding: 8, resource: R.gtex.createView() },
           { binding: 9, resource: { buffer: R.buffers.uvs } },
           { binding: 10, resource: R.vtex.createView({ dimension: '2d-array' }) },
-          { binding: 11, resource: R.skytex.createView() }
+          { binding: 11, resource: R.skytex.createView() },
+          { binding: 12, resource: { buffer: R.buffers.nrms } }
         ]
       });
       R.pbind = device.createBindGroup({

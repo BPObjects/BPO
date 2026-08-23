@@ -179,9 +179,15 @@
       var f = faces[i], vs = f.verts; if (!vs || vs.length < 3) continue;
       var mi = matIndex(f);
       var hasUV = !!(f.veg && f.uv && f.uv.length === vs.length);
+      var hasVN = !!(f.vn && f.vn.length === vs.length);
       for (var k = 1; k < vs.length - 1; k++) {
         tris.push({ a: vs[0], b: vs[k], c: vs[k + 1], mat: mi,
-                    uv: hasUV ? [f.uv[0], f.uv[k], f.uv[k + 1]] : null });
+                    uv: hasUV ? [f.uv[0], f.uv[k], f.uv[k + 1]] : null,
+                    /* NORMALES DE SOMMET : la triangulation en eventail garde la
+                       correspondance des indices, on prend les memes. Sans elles
+                       le moteur ombrait a plat et tout maillage courbe sortait
+                       facette, alors que le viewer WebGL, lui, les utilisait. */
+                    vn: hasVN ? [f.vn[0], f.vn[k], f.vn[k + 1]] : null });
       }
       for (var v = 0; v < vs.length; v++) {
         var p = vs[v];
