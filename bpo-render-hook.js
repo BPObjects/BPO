@@ -519,16 +519,29 @@
     { id: 'crepuscule', label: 'Crépuscule',        top: [0.05, 0.08, 0.19], hor: [0.19, 0.25, 0.44], gnd: [0.12, 0.14, 0.20], skyInt: 0.50, sun: 0.5, ang: 0.050, el: 2,  warm: 0.55 },
     { id: 'studio',     label: 'Studio neutre',     top: [0.55, 0.56, 0.58], hor: [0.62, 0.63, 0.65], gnd: [0.40, 0.40, 0.42], skyInt: 0.85, sun: 1.6, ang: 0.060, el: 48, warm: 0.50 }
   ];
-  /* Ciels PHOTO : nom de fichier + preset de degrade assorti (sous-horizon et
-     repli). L'elevation du soleil est SUGGEREE par le ciel (un crepuscule avec
-     un soleil au zenith se contredirait) mais reste modifiable au curseur. */
+  /* Ciels PHOTO (23/08) : panoramas equirectangulaires de Poly Haven, en CC0
+     (domaine public — usage commercial et redistribution libres, attribution
+     non requise). Variantes « pure sky » : ciel seul, sans paysage sous
+     l'horizon, indispensable puisque la voute est vue de tous cotes.
+     CHAQUE image a ete ROULEE pour amener son soleil au centre : le shader
+     echantillonne uS = fract((atan2(d.x,d.z) - azimutSoleil)/2pi + 0.5), donc le
+     soleil du moteur tombe toujours a u = 0,5. Sans ce recentrage on verrait
+     DEUX soleils, celui de la photo et celui du calcul.
+     Les reglages ci-dessous sont MESURES sur les images (couleurs par bandes,
+     hauteur du soleil, durete deduite du rapport de pointe sur le HDR non
+     ecrete) — voir prepare-ciels-polyhaven.py. L'elevation reste modifiable au
+     curseur, elle n'est qu'un point de depart coherent. */
   var CIELS_PHOTO = [
-    { id: 'bleu_ete',    label: '📷 Bleu d\u2019\u00e9t\u00e9',   top: [0.16, 0.34, 0.72], hor: [0.74, 0.84, 0.94], gnd: [0.30, 0.32, 0.30], skyInt: 1.0,  sun: 3.0, ang: 0.05, el: 33, warm: 0.50, photo: 1 },
-    { id: 'voile_leger', label: '📷 Voile l\u00e9ger',  top: [0.30, 0.48, 0.78], hor: [0.80, 0.86, 0.93], gnd: [0.33, 0.34, 0.33], skyInt: 1.05, sun: 2.4, ang: 0.07, el: 30, warm: 0.55, photo: 1 },
-    { id: 'grand_beau',  label: '📷 Grand beau',   top: [0.10, 0.28, 0.68], hor: [0.66, 0.80, 0.93], gnd: [0.30, 0.32, 0.30], skyInt: 1.0,  sun: 3.4, ang: 0.045, el: 37, warm: 0.45, photo: 1 },
-    { id: 'dramatique',  label: '📷 Dramatique',   top: [0.22, 0.26, 0.34], hor: [0.62, 0.60, 0.60], gnd: [0.24, 0.24, 0.24], skyInt: 0.9,  sun: 1.6, ang: 0.09, el: 15, warm: 0.55, photo: 1 },
-    { id: 'heure_doree', label: '📷 Heure dor\u00e9e',  top: [0.25, 0.34, 0.55], hor: [0.98, 0.66, 0.38], gnd: [0.30, 0.26, 0.22], skyInt: 0.95, sun: 2.6, ang: 0.08, el: 7, warm: 0.62, photo: 1 },
-    { id: 'crepuscule',  label: '📷 Cr\u00e9puscule',   top: [0.10, 0.12, 0.30], hor: [0.86, 0.48, 0.38], gnd: [0.20, 0.18, 0.22], skyInt: 0.85, sun: 1.2, ang: 0.10, el: 3, warm: 0.65, photo: 1 }
+    { id: 'grand_beau', label: '📷 Grand beau', top: [0.289, 0.419, 0.659], hor: [0.740, 0.825, 0.907], gnd: [0.272, 0.369, 0.558], skyInt: 1.0, sun: 2.48, ang: 0.067, el: 28, warm: 0.56, photo: 1 },
+    { id: 'bleu_ete', label: '📷 Bleu d\u2019\u00e9t\u00e9', top: [0.360, 0.433, 0.494], hor: [0.651, 0.678, 0.652], gnd: [0.381, 0.406, 0.418], skyInt: 1.0, sun: 1.81, ang: 0.099, el: 46, warm: 0.78, photo: 1 },
+    { id: 'cumulus', label: '📷 Cumulus', top: [0.587, 0.626, 0.720], hor: [0.610, 0.631, 0.691], gnd: [0.348, 0.385, 0.487], skyInt: 1.0, sun: 2.11, ang: 0.084, el: 46, warm: 0.53, photo: 1 },
+    { id: 'pommele', label: '📷 Ciel pommel\u00e9', top: [0.336, 0.415, 0.529], hor: [0.656, 0.675, 0.692], gnd: [0.375, 0.407, 0.461], skyInt: 1.0, sun: 2.66, ang: 0.058, el: 39, warm: 0.56, photo: 1 },
+    { id: 'voile_leger', label: '📷 Voile l\u00e9ger', top: [0.643, 0.707, 0.816], hor: [0.615, 0.631, 0.680], gnd: [0.301, 0.356, 0.464], skyInt: 1.0, sun: 2.33, ang: 0.074, el: 75, warm: 0.56, photo: 1 },
+    { id: 'couvert', label: '📷 Couvert', top: [0.744, 0.743, 0.744], hor: [0.505, 0.492, 0.474], gnd: [0.412, 0.412, 0.411], skyInt: 1.0, sun: 0.85, ang: 0.165, el: 36, warm: 0.56, photo: 1 },
+    { id: 'dramatique', label: '📷 Dramatique', top: [0.590, 0.628, 0.683], hor: [0.496, 0.515, 0.534], gnd: [0.377, 0.392, 0.425], skyInt: 1.0, sun: 1.05, ang: 0.136, el: 59, warm: 0.59, photo: 1 },
+    { id: 'heure_doree', label: '📷 Heure dor\u00e9e', top: [0.341, 0.448, 0.595], hor: [0.644, 0.633, 0.620], gnd: [0.340, 0.398, 0.483], skyInt: 1.0, sun: 1.15, ang: 0.131, el: 14, warm: 0.78, photo: 1 },
+    { id: 'crepuscule', label: '📷 Cr\u00e9puscule', top: [0.477, 0.515, 0.676], hor: [0.592, 0.520, 0.582], gnd: [0.390, 0.381, 0.487], skyInt: 1.0, sun: 0.85, ang: 0.150, el: 18, warm: 0.78, photo: 1 },
+    { id: 'aube', label: '📷 Aube', top: [0.294, 0.422, 0.702], hor: [0.701, 0.714, 0.761], gnd: [0.278, 0.366, 0.578], skyInt: 1.0, sun: 1.49, ang: 0.114, el: 8, warm: 0.71, photo: 1 }
   ];
   function mkSkySelect(fn) {
     var w = document.createElement('label');
