@@ -192,7 +192,16 @@
           !(window.PREFS && PREFS.grass === 0)) {
         var camT = getCamera(1);
         if (camT.origin[1] <= 30) {
-          W3.tuftBuild(camT.origin[0], camT.origin[2]);
+          /* PORTÉE ÉTENDUE AU RENDU : 45 m au lieu des 8 m du viewer. Ici chaque
+             brin est un volume avec son ombre, donc la limite du semis SE VOIT —
+             alors que dans le viewer elle est masquée par le relief de la texture
+             (mesuré : profils de grain superposés entre 8 m et 22 m).
+             `finally` est indispensable : sans lui, une construction qui lève
+             laisserait le VIEWER à 45 m, soit 82 ms de reconstruction tous les
+             trois mètres, sans que rien n'en explique la cause. */
+          var rOv0 = Tt.rOv;
+          try { Tt.rOv = 45; W3.tuftBuild(camT.origin[0], camT.origin[2]); }
+          finally { Tt.rOv = rOv0 || 0; Tt.bx = 1e9; }
           var Pb = Tt._P;
           if (Pb && Pb.length >= 9) {
             var mB = mats.length;
