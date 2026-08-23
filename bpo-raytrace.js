@@ -462,7 +462,20 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
     // --- rebond (spéculaire Fresnel / diffus) ---
     let F0v = mix(vec3f(0.04), albedo, metal);
     let cosV = clamp(dot(-rd, n), 0.0, 1.0);
-    let Fr = fresnel(cosV, F0v);
+    var Fr = fresnel(cosV, F0v);
+    // HERBE : on ECRASE la montee rasante du Fresnel. A incidence rasante
+    // fresnel() tend vers 1 quelle que soit la rugosite, donc pSpec saturait a
+    // 0,95 et 95 % des rayons repartaient vers le ciel : le sol prenait un voile
+    // cyan mouille, « on dirait un marecage » (signale par AL). C'est le
+    // comportement juste d'un dielectrique LISSE ; une pelouse vue de rase-mottes
+    // n'est pas un plan, c'est une foret de brins qui diffusent — il n'y a pas de
+    // miroir a raser. La reflectance rasante passe de ~1,0 a ~0,155. Le tirage et
+    // le poids Fr/pSpec restent coherents : l'estimateur reste non biaise.
+    // Beton (2) et feuillage (4) gardent leur Fresnel : une dalle mouillee et une
+    // feuille ciree brillent pour de bon.
+    if ((m1.w > 0.5 && m1.w < 1.5) || (m1.w > 2.5 && m1.w < 3.5)) {
+      Fr = mix(F0v, Fr, 0.12);
+    }
     let pSpec = clamp((Fr.x + Fr.y + Fr.z) / 3.0, 0.05, 0.95);
     if (rnd() < pSpec) {
       let refl = reflect(rd, n);
