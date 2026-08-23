@@ -226,7 +226,11 @@
              laisserait le VIEWER à 45 m, soit 82 ms de reconstruction tous les
              trois mètres, sans que rien n'en explique la cause. */
           var rOv0 = Tt.rOv;
-          try { Tt.rOv = 45; W3.tuftBuild(camT.origin[0], camT.origin[2]); }
+          /* 90 m : le double demande par AL (23/08). Mesure : 616 000 triangles
+             d'herbe avec la densite x2, soit ~2 s de BVH en plus au lancement —
+             cout UNIQUE d'un rendu qui dure des minutes, assume. L'eclaircissement
+             relatif (moitie au-dela de 36 m, quart au-dela de 72 m) fait le reste. */
+          try { Tt.rOv = 90; W3.tuftBuild(camT.origin[0], camT.origin[2]); }
           finally { Tt.rOv = rOv0 || 0; Tt.bx = 1e9; }
           var Pb = Tt._P;
           if (Pb && Pb.length >= 9) {
