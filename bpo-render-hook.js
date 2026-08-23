@@ -50,6 +50,21 @@
       .then(function (bmp) { if (!bmp) return; GAZON_BMP = bmp; try { renderer.setGroundTex(bmp); } catch (e) {} if (done) done(); })
       .catch(function () {});
   }
+  /* CIELS PHOTO (23/08, demande AL) : images equirectangulaires generees,
+     chargees a la demande et gardees en cache par nom. PHOTO_SKY vit au niveau
+     module, comme INTERIOR_ON : mkSkySelect doit pouvoir le lire pour afficher
+     le ciel restaure des preferences. */
+  var CIEL_BMPS = {}, PHOTO_SKY = '';
+  function loadCiel(nom, renderer, done) {
+    if (!nom) { try { renderer.setSkyTex(null); } catch (e) {} if (done) done(); return; }
+    if (CIEL_BMPS[nom]) { try { renderer.setSkyTex(CIEL_BMPS[nom]); } catch (e) {} if (done) done(); return; }
+    var v = (typeof DATA_VER !== 'undefined') ? ('?v=' + DATA_VER) : '';
+    fetch('data/ciels/ciel_' + nom + '.jpg' + v).then(function (r) { return r.ok ? r.blob() : null; })
+      .then(function (b) { return b ? createImageBitmap(b) : null; })
+      .then(function (bmp) { if (!bmp) return; CIEL_BMPS[nom] = bmp;
+        try { renderer.setSkyTex(bmp); } catch (e) {} if (done) done(); })
+      .catch(function () {});
+  }
   /* Éclairage intérieur auto (toggle) + lampes manuelles (issues de la scène). */
   var INTERIOR_ON = false;
   /* Réglages du panneau PERSISTANTS (16/08, demande AL « mettre ces paramètres
@@ -398,7 +413,7 @@
     function rpSnap() {
       rpSave({ sun: env.sunIntensity, warm: env.warm, expo: env.expo, az: az, el: el,
         skyTop: env.skyTop, skyHor: env.skyHor, skyGround: env.skyGround, skyInt: env.skyInt,
-        sunAngle: env.sunAngle, ground: GROUND_MODE, interior: INTERIOR_ON });
+        sunAngle: env.sunAngle, ground: GROUND_MODE, interior: INTERIOR_ON, photoSky: PHOTO_SKY });
     }
     function applySun() {
       env.sunDir = dirFromAzEl(az, el);
@@ -432,7 +447,16 @@
     menu.appendChild(bInt);
     /* Sélecteur d'AMBIANCE DE CIEL : applique un preset (dégradé + soleil) et
        resynchronise les curseurs soleil/hauteur/ambiance. */
+    /* restauration du ciel photo memorise */
+    PHOTO_SKY = (RP && RP.photoSky) || '';
+    if (PHOTO_SKY) loadCiel(PHOTO_SKY, renderer);
     menu.appendChild(mkSkySelect(function (p) {
+      /* p.id present = ciel PHOTO : image + degrade assorti ; sinon retour au
+         procedural. L'elevation suggeree (p.el) synchronise le curseur. */
+      /* p.photo et non p.id : les presets CLASSIQUES ont aussi un id — sans ce
+         marqueur, revenir a « Ciel clair » restait en mode photo. */
+      PHOTO_SKY = p.photo ? p.id : '';
+      loadCiel(PHOTO_SKY, renderer);
       env.skyTop = p.top.slice(); env.skyHor = p.hor.slice(); env.skyGround = p.gnd.slice(); env.skyInt = p.skyInt;
       env.sunIntensity = p.sun; env.sunAngle = p.ang; env.warm = p.warm; el = p.el;
       env.sunColor = sunTint(el); env.sunDir = dirFromAzEl(az, el);
@@ -495,15 +519,35 @@
     { id: 'crepuscule', label: 'Crépuscule',        top: [0.05, 0.08, 0.19], hor: [0.19, 0.25, 0.44], gnd: [0.12, 0.14, 0.20], skyInt: 0.50, sun: 0.5, ang: 0.050, el: 2,  warm: 0.55 },
     { id: 'studio',     label: 'Studio neutre',     top: [0.55, 0.56, 0.58], hor: [0.62, 0.63, 0.65], gnd: [0.40, 0.40, 0.42], skyInt: 0.85, sun: 1.6, ang: 0.060, el: 48, warm: 0.50 }
   ];
+  /* Ciels PHOTO : nom de fichier + preset de degrade assorti (sous-horizon et
+     repli). L'elevation du soleil est SUGGEREE par le ciel (un crepuscule avec
+     un soleil au zenith se contredirait) mais reste modifiable au curseur. */
+  var CIELS_PHOTO = [
+    { id: 'bleu_ete',    label: '📷 Bleu d\u2019\u00e9t\u00e9',   top: [0.16, 0.34, 0.72], hor: [0.74, 0.84, 0.94], gnd: [0.30, 0.32, 0.30], skyInt: 1.0,  sun: 3.0, ang: 0.05, el: 33, warm: 0.50, photo: 1 },
+    { id: 'voile_leger', label: '📷 Voile l\u00e9ger',  top: [0.30, 0.48, 0.78], hor: [0.80, 0.86, 0.93], gnd: [0.33, 0.34, 0.33], skyInt: 1.05, sun: 2.4, ang: 0.07, el: 30, warm: 0.55, photo: 1 },
+    { id: 'grand_beau',  label: '📷 Grand beau',   top: [0.10, 0.28, 0.68], hor: [0.66, 0.80, 0.93], gnd: [0.30, 0.32, 0.30], skyInt: 1.0,  sun: 3.4, ang: 0.045, el: 37, warm: 0.45, photo: 1 },
+    { id: 'dramatique',  label: '📷 Dramatique',   top: [0.22, 0.26, 0.34], hor: [0.62, 0.60, 0.60], gnd: [0.24, 0.24, 0.24], skyInt: 0.9,  sun: 1.6, ang: 0.09, el: 15, warm: 0.55, photo: 1 },
+    { id: 'heure_doree', label: '📷 Heure dor\u00e9e',  top: [0.25, 0.34, 0.55], hor: [0.98, 0.66, 0.38], gnd: [0.30, 0.26, 0.22], skyInt: 0.95, sun: 2.6, ang: 0.08, el: 7, warm: 0.62, photo: 1 },
+    { id: 'crepuscule',  label: '📷 Cr\u00e9puscule',   top: [0.10, 0.12, 0.30], hor: [0.86, 0.48, 0.38], gnd: [0.20, 0.18, 0.22], skyInt: 0.85, sun: 1.2, ang: 0.10, el: 3, warm: 0.65, photo: 1 }
+  ];
   function mkSkySelect(fn) {
     var w = document.createElement('label');
     w.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;';
     var s = document.createElement('select');
     s.style.cssText = 'font:11px system-ui;background:#242a33;color:#e8e9ec;border:1px solid #3a4150;border-radius:6px;padding:3px 6px;cursor:pointer;';
     SKY_PRESETS.forEach(function (p, i) { var o = document.createElement('option'); o.value = i; o.textContent = p.label; s.appendChild(o); });
+    CIELS_PHOTO.forEach(function (p) { var o = document.createElement('option'); o.value = 'ph:' + p.id; o.textContent = p.label; s.appendChild(o); });
+    if (PHOTO_SKY) s.value = 'ph:' + PHOTO_SKY;   /* reflete le ciel restaure des preferences */
     s.onmouseenter = function () { s.style.borderColor = '#ff8a3d'; };
     s.onmouseleave = function () { s.style.borderColor = '#3a4150'; };
-    s.onchange = function () { fn(SKY_PRESETS[+s.value]); };
+    s.onchange = function () {
+      var v = String(s.value);
+      if (v.indexOf('ph:') === 0) {
+        var id = v.slice(3), p = null;
+        for (var i = 0; i < CIELS_PHOTO.length; i++) { if (CIELS_PHOTO[i].id === id) p = CIELS_PHOTO[i]; }
+        if (p) fn(p);
+      } else { fn(SKY_PRESETS[+v]); }
+    };
     w.appendChild(document.createTextNode('Ciel')); w.appendChild(s); return w;
   }
   /* Sélecteur de SOL : herbe / béton / aplat (procéduraux dans le path tracer). */

@@ -174,6 +174,9 @@ struct Uniforms {
    rayons d'ombre (lumière tachetée sous les arbres). */
 @group(0) @binding(9) var<storage, read> uvs : array<vec2f>;
 @group(0) @binding(10) var vtex : texture_2d_array<f32>;
+/* CIEL PHOTO (23/08) : voute equirectangulaire, echantillonnee par la direction
+   du rayon. 1x1 par defaut — le layout auto exige une liaison permanente. */
+@group(0) @binding(11) var skytex : texture_2d<f32>;
 
 fn uvAt(tri : u32, b : vec2f) -> vec2f {
   let u0 = uvs[tri * 3u]; let u1 = uvs[tri * 3u + 1u]; let u2 = uvs[tri * 3u + 2u];
@@ -253,6 +256,18 @@ fn concreteColor(pp : vec3f) -> vec3f {
 /* Ciel : dégradé horizon->zénith + halo chaud autour du soleil (comme le viewer). */
 fn skyColor(d : vec3f) -> vec3f {
   var c : vec3f;
+  /* CIEL PHOTO : skyTop.w = drapeau, skyHor.w = azimut du soleil du moteur.
+     La voute TOURNE pour aligner la lueur peinte (azimut 0 dans l'image) sur le
+     vrai soleil — un seul soleil a l'ecran. textureSampleLevel (niveau
+     explicite) est legal sous controle de flux non uniforme, contrairement a
+     textureSample. Conversion sRGB -> lineaire, puis skyInt comme le degrade. */
+  if (U.skyTop.w > 0.5) {
+    let dn = normalize(d);
+    let uS = fract((atan2(dn.x, dn.z) - U.skyHor.w) / 6.2831853 + 0.5);
+    let vS = clamp(acos(clamp(dn.y, -1.0, 1.0)) / 3.14159265, 0.0, 1.0);
+    let tx = textureSampleLevel(skytex, gsamp, vec2f(uS, vS), 0.0).rgb;
+    return pow(tx, vec3f(2.2)) * U.skyGround.w;
+  }
   if (d.y >= 0.0) {
     c = mix(U.skyHor.rgb, U.skyTop.rgb, pow(clamp(d.y, 0.0, 1.0), 0.42));
     let sd = normalize(U.sun.xyz);
@@ -617,6 +632,22 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       } catch (e) { console.warn('setVegTiles:', e); }
     };
     /* Fournit la tuile photo (ImageBitmap) — reset de l'accumulateur, la scène repart propre. */
+    /* CIEL PHOTO : 1x1 bleu tant que setSkyTex n'a rien fourni. */
+    R.skytex = device.createTexture({ size: [1, 1], format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    device.queue.writeTexture({ texture: R.skytex }, new Uint8Array([110, 150, 210, 255]), { bytesPerRow: 4 }, [1, 1]);
+    R.useSky = 0;
+    R.setSkyTex = function (bmp) {
+      try {
+        if (!bmp) { R.useSky = 0; if (R.buffers.tris) { R.reset(); } return; }
+        var t = device.createTexture({ size: [bmp.width, bmp.height], format: 'rgba8unorm',
+          usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+        device.queue.copyExternalImageToTexture({ source: bmp }, { texture: t }, [bmp.width, bmp.height]);
+        if (R.skytex) { try { R.skytex.destroy(); } catch (e) {} }
+        R.skytex = t; R.useSky = 1;
+        if (R.buffers.tris) { R._makeBinds(); R.reset(); }
+      } catch (e) { console.warn('setSkyTex:', e); }
+    };
     R.setGroundTex = function (bmp) {
       try {
         var t = device.createTexture({ size: [bmp.width, bmp.height], format: 'rgba8unorm',
@@ -661,7 +692,8 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
           { binding: 7, resource: R.gsampler },
           { binding: 8, resource: R.gtex.createView() },
           { binding: 9, resource: { buffer: R.buffers.uvs } },
-          { binding: 10, resource: R.vtex.createView({ dimension: '2d-array' }) }
+          { binding: 10, resource: R.vtex.createView({ dimension: '2d-array' }) },
+          { binding: 11, resource: R.skytex.createView() }
         ]
       });
       R.pbind = device.createBindGroup({
@@ -716,8 +748,8 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       const sd = norm(e.sunDir);
       u.set([sd[0], sd[1], sd[2], e.sunAngle || 0.05], 20);
       u.set([e.sunColor[0], e.sunColor[1], e.sunColor[2], e.sunIntensity == null ? 3.0 : e.sunIntensity], 24);
-      u.set([e.skyTop[0], e.skyTop[1], e.skyTop[2], 0], 28);
-      u.set([e.skyHor[0], e.skyHor[1], e.skyHor[2], 0], 32);
+      u.set([e.skyTop[0], e.skyTop[1], e.skyTop[2], R.useSky ? 1 : 0], 28);
+      u.set([e.skyHor[0], e.skyHor[1], e.skyHor[2], Math.atan2(sd[0], sd[2])], 32);   /* azimut du soleil : la voute photo tourne avec lui */
       u.set([e.skyGround[0], e.skyGround[1], e.skyGround[2], e.skyInt == null ? 1.0 : e.skyInt], 36);
       u.set([R.nLights || 0, 0, 0, 0], 40);
       device.queue.writeBuffer(R.uni, 0, u);
