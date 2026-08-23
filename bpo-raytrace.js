@@ -376,7 +376,23 @@ fn sampleSun() -> vec3f {
 }
 
 fn sunDisk(d : vec3f) -> vec3f {
-  if (dot(normalize(d), normalize(U.sun.xyz)) > cos(U.sun.w)) {
+  /* RAYON VISIBLE != RAYON D'ECHANTILLONNAGE (23/08). U.sun.w pilote le cone
+     d'ombre : l'elargir adoucit les ombres, ce qu'on veut d'un ciel couvert.
+     Mais le MEME angle dessinait le disque, qui atteignait 19 deg de diametre
+     sur un crepuscule — signale par AL. Le vrai soleil en fait 0,53.
+       · ciel PHOTO (skyTop.w) : aucun disque synthetique. L'image contient deja
+         son soleil, photographie, et a la bonne place puisque chaque panorama
+         est roule pour l'aligner sur celui du moteur ;
+       · degrade procedural : disque plafonne a 0,010 rad de rayon. Plus petit,
+         il s'aliase a faible nombre d'echantillons.
+     AUCUN EFFET SUR L'ECLAIRAGE : sunDisk n'est ajoute que pour les rayons
+     speculaires (voir le drapeau spec), l'eclairage direct passe par sampleSun,
+     qui garde U.sun.w entier. Ombres et intensite inchangees.
+     (PIEGE MAISON : PAS DE BACKTICK ici — ce commentaire vit dans un template
+     literal JS, un backtick le fermerait et casserait tout le fichier.) */
+  if (U.skyTop.w > 0.5) { return vec3f(0.0); }
+  let rv = min(U.sun.w, 0.010);
+  if (dot(normalize(d), normalize(U.sun.xyz)) > cos(rv)) {
     return U.sunCol.rgb * U.sunCol.w * 3.0;
   }
   return vec3f(0.0);

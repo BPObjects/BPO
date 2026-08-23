@@ -532,16 +532,16 @@
      ecrete) — voir prepare-ciels-polyhaven.py. L'elevation reste modifiable au
      curseur, elle n'est qu'un point de depart coherent. */
   var CIELS_PHOTO = [
-    { id: 'grand_beau', label: '📷 Grand beau', top: [0.289, 0.419, 0.659], hor: [0.740, 0.825, 0.907], gnd: [0.272, 0.369, 0.558], skyInt: 1.0, sun: 2.48, ang: 0.067, el: 28, warm: 0.56, photo: 1 },
-    { id: 'bleu_ete', label: '📷 Bleu d\u2019\u00e9t\u00e9', top: [0.360, 0.433, 0.494], hor: [0.651, 0.678, 0.652], gnd: [0.381, 0.406, 0.418], skyInt: 1.0, sun: 1.81, ang: 0.099, el: 46, warm: 0.78, photo: 1 },
-    { id: 'cumulus', label: '📷 Cumulus', top: [0.587, 0.626, 0.720], hor: [0.610, 0.631, 0.691], gnd: [0.348, 0.385, 0.487], skyInt: 1.0, sun: 2.11, ang: 0.084, el: 46, warm: 0.53, photo: 1 },
-    { id: 'pommele', label: '📷 Ciel pommel\u00e9', top: [0.336, 0.415, 0.529], hor: [0.656, 0.675, 0.692], gnd: [0.375, 0.407, 0.461], skyInt: 1.0, sun: 2.66, ang: 0.058, el: 39, warm: 0.56, photo: 1 },
-    { id: 'voile_leger', label: '📷 Voile l\u00e9ger', top: [0.643, 0.707, 0.816], hor: [0.615, 0.631, 0.680], gnd: [0.301, 0.356, 0.464], skyInt: 1.0, sun: 2.33, ang: 0.074, el: 75, warm: 0.56, photo: 1 },
-    { id: 'couvert', label: '📷 Couvert', top: [0.744, 0.743, 0.744], hor: [0.505, 0.492, 0.474], gnd: [0.412, 0.412, 0.411], skyInt: 1.0, sun: 0.85, ang: 0.165, el: 36, warm: 0.56, photo: 1 },
-    { id: 'dramatique', label: '📷 Dramatique', top: [0.590, 0.628, 0.683], hor: [0.496, 0.515, 0.534], gnd: [0.377, 0.392, 0.425], skyInt: 1.0, sun: 1.05, ang: 0.136, el: 59, warm: 0.59, photo: 1 },
-    { id: 'heure_doree', label: '📷 Heure dor\u00e9e', top: [0.341, 0.448, 0.595], hor: [0.644, 0.633, 0.620], gnd: [0.340, 0.398, 0.483], skyInt: 1.0, sun: 1.15, ang: 0.131, el: 14, warm: 0.78, photo: 1 },
-    { id: 'crepuscule', label: '📷 Cr\u00e9puscule', top: [0.477, 0.515, 0.676], hor: [0.592, 0.520, 0.582], gnd: [0.390, 0.381, 0.487], skyInt: 1.0, sun: 0.85, ang: 0.150, el: 18, warm: 0.78, photo: 1 },
-    { id: 'aube', label: '📷 Aube', top: [0.294, 0.422, 0.702], hor: [0.701, 0.714, 0.761], gnd: [0.278, 0.366, 0.578], skyInt: 1.0, sun: 1.49, ang: 0.114, el: 8, warm: 0.71, photo: 1 }
+    { id: 'grand_beau', label: '📷 Grand beau', top: [0.289, 0.419, 0.659], hor: [0.740, 0.825, 0.907], gnd: [0.272, 0.369, 0.558], skyInt: 1.0, sun: 2.48, ang: 0.026, el: 28, warm: 0.56, photo: 1 },
+    { id: 'bleu_ete', label: '📷 Bleu d\u2019\u00e9t\u00e9', top: [0.360, 0.433, 0.494], hor: [0.651, 0.678, 0.652], gnd: [0.381, 0.406, 0.418], skyInt: 1.0, sun: 1.81, ang: 0.054, el: 46, warm: 0.78, photo: 1 },
+    { id: 'cumulus', label: '📷 Cumulus', top: [0.587, 0.626, 0.720], hor: [0.610, 0.631, 0.691], gnd: [0.348, 0.385, 0.487], skyInt: 1.0, sun: 2.11, ang: 0.041, el: 46, warm: 0.53, photo: 1 },
+    { id: 'pommele', label: '📷 Ciel pommel\u00e9', top: [0.336, 0.415, 0.529], hor: [0.656, 0.675, 0.692], gnd: [0.375, 0.407, 0.461], skyInt: 1.0, sun: 2.66, ang: 0.020, el: 39, warm: 0.56, photo: 1 },
+    { id: 'voile_leger', label: '📷 Voile l\u00e9ger', top: [0.643, 0.707, 0.816], hor: [0.615, 0.631, 0.680], gnd: [0.301, 0.356, 0.464], skyInt: 1.0, sun: 2.33, ang: 0.032, el: 75, warm: 0.56, photo: 1 },
+    { id: 'couvert', label: '📷 Couvert', top: [0.744, 0.743, 0.744], hor: [0.505, 0.492, 0.474], gnd: [0.412, 0.412, 0.411], skyInt: 1.0, sun: 0.85, ang: 0.105, el: 36, warm: 0.56, photo: 1 },
+    { id: 'dramatique', label: '📷 Dramatique', top: [0.590, 0.628, 0.683], hor: [0.496, 0.515, 0.534], gnd: [0.377, 0.392, 0.425], skyInt: 1.0, sun: 1.05, ang: 0.084, el: 59, warm: 0.59, photo: 1 },
+    { id: 'heure_doree', label: '📷 Heure dor\u00e9e', top: [0.341, 0.448, 0.595], hor: [0.644, 0.633, 0.620], gnd: [0.340, 0.398, 0.483], skyInt: 1.0, sun: 1.15, ang: 0.080, el: 14, warm: 0.78, photo: 1 },
+    { id: 'crepuscule', label: '📷 Cr\u00e9puscule', top: [0.477, 0.515, 0.676], hor: [0.592, 0.520, 0.582], gnd: [0.390, 0.381, 0.487], skyInt: 1.0, sun: 0.85, ang: 0.096, el: 18, warm: 0.78, photo: 1 },
+    { id: 'aube', label: '📷 Aube', top: [0.294, 0.422, 0.702], hor: [0.701, 0.714, 0.761], gnd: [0.278, 0.366, 0.578], skyInt: 1.0, sun: 1.49, ang: 0.066, el: 8, warm: 0.71, photo: 1 }
   ];
   function mkSkySelect(fn) {
     var w = document.createElement('label');
