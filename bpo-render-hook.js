@@ -513,7 +513,7 @@
       o.sun = env.sunIntensity; o.warm = env.warm; o.expo = env.expo; o.az = az; o.el = el;
       o.skyTop = env.skyTop; o.skyHor = env.skyHor; o.skyGround = env.skyGround; o.skyInt = env.skyInt;
       o.sunAngle = env.sunAngle; o.ground = GROUND_MODE; o.interior = INTERIOR_ON; o.photoSky = PHOTO_SKY;
-      o.grassR = RENDER_GRASS_R; o.focal = FOCAL_MM; o.rw = RW_SET; o.rh = RH_SET;
+      o.grassR = RENDER_GRASS_R; o.focal = FOCAL_MM; o.rw = RW_SET; o.rh = RH_SET; o.fmt = FMT;
       rpSave(o);
     }
     function applySun() {
@@ -535,6 +535,24 @@
       return n;
     }
     var inW = mkNum(W), inH = mkNum(H);
+    /* FORMATS TYPES (26/08, demande AL) : le ratio asservit la hauteur a la
+       largeur (champ H grise tant qu'un format est actif) ; « Libre » rend
+       les deux champs independants. Persiste (rpSave.fmt). */
+    var FMT_RATIOS = [
+      ['libre', tr('Libre'), 0], ['169', '16:9', 16 / 9], ['32', '3:2', 1.5], ['43', '4:3', 4 / 3],
+      ['a4l', tr('A4 paysage'), Math.SQRT2], ['11', '1:1', 1],
+      ['a4p', tr('A4 portrait'), 1 / Math.SQRT2], ['34', '3:4', 0.75], ['916', '9:16', 9 / 16]];
+    var FMT = (RP0 && RP0.fmt) || 'libre';
+    function ratioOf(id) { for (var i = 0; i < FMT_RATIOS.length; i++) { if (FMT_RATIOS[i][0] === id) return FMT_RATIOS[i][2]; } return 0; }
+    var selFmt = document.createElement('select');
+    selFmt.style.cssText = 'font:11px system-ui;background:#242a33;color:#e8e9ec;border:1px solid #3a4150;border-radius:6px;padding:3px 4px;cursor:pointer;';
+    FMT_RATIOS.forEach(function (f) { var o = document.createElement('option'); o.value = f[0]; o.textContent = f[1]; selFmt.appendChild(o); });
+    selFmt.value = FMT;
+    function syncH() {
+      var r = ratioOf(FMT);
+      if (r > 0) { inH.value = Math.max(240, Math.min(4096, Math.round(+inW.value / r))); inH.disabled = true; inH.style.opacity = '.45'; }
+      else { inH.disabled = false; inH.style.opacity = ''; }
+    }
     function applyDims(w2, h2) {
       W = Math.max(320, Math.min(4096, Math.round(w2))); H = Math.max(240, Math.min(4096, Math.round(h2)));
       inW.value = W; inH.value = H;
@@ -543,15 +561,23 @@
       renderer.start();
       rpSnap();
     }
+    selFmt.onchange = function () {
+      FMT = String(selFmt.value); syncH();
+      if (ratioOf(FMT) > 0) { RW_SET = +inW.value; RH_SET = +inH.value; applyDims(RW_SET, RH_SET); }
+      else rpSnap();
+    };
+    inW.oninput = syncH;
+    syncH();
     var bDimOk = mkBtn('✓'); bDimOk.title = tr('Appliquer les dimensions');
-    bDimOk.onclick = function () { RW_SET = +inW.value; RH_SET = +inH.value; applyDims(RW_SET, RH_SET); };
-    var bDimAuto = mkBtn(tr('Écran')); bDimAuto.title = tr('Revenir à la taille de la fenêtre');
+    bDimOk.onclick = function () { syncH(); RW_SET = +inW.value; RH_SET = +inH.value; applyDims(RW_SET, RH_SET); };
+    var bDimAuto = mkBtn(tr('Écran')); bDimAuto.title = tr('Revenir à la taille de la fenêtre (format libre)');
     bDimAuto.onclick = function () {
-      RW_SET = 0; RH_SET = 0;
+      RW_SET = 0; RH_SET = 0; FMT = 'libre'; selFmt.value = 'libre'; syncH();
       var r2 = vp.getBoundingClientRect(), s2 = Math.min(1, 1280 / Math.max(1, r2.width));
       applyDims(Math.max(320, Math.round(r2.width * s2)), Math.max(240, Math.round(r2.height * s2)));
     };
     dimRow.appendChild(document.createTextNode(tr('Rendu')));
+    dimRow.appendChild(selFmt);
     dimRow.appendChild(inW); dimRow.appendChild(document.createTextNode('×')); dimRow.appendChild(inH);
     dimRow.appendChild(bDimOk); dimRow.appendChild(bDimAuto);
     menu.insertBefore(dimRow, bPng);
