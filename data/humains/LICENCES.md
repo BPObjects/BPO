@@ -17,8 +17,8 @@ BPO_HMPACK) sont donc redistribuables sans restriction ni attribution.
 provenance uniquement (la CC0 ne cède pas les marques, §4a).
 
 Tous les paquets : base MPFB2 + sourcils eyebrow001 + yeux low-poly +
-shoes01, peaux young_lightskinned_* + young_african_* (m/f selon modèle).
-~17 500 tris chacun.
+shoes01, peaux young_lightskinned_* / old_caucasian_* + *_african_* (m/f
+selon modèle). ~17 500 tris chacun.
 
 | Paquet | Contenu | Tenue / coiffure |
 |---|---|---|
@@ -33,8 +33,15 @@ shoes01, peaux young_lightskinned_* + young_african_* (m/f selon modèle).
 | hm-femme-03 | Femme, assise | female_elegantsuit01 / bob01 |
 | hm-femme-04 | Femme, marche 2 | female_elegantsuit01 / ponytail01 |
 | hm-femme-05 | Femme, conversation | female_elegantsuit01 / afro01 |
+| hm-homme-07 | Homme âgé, marche (âge ~0,85) | male_elegantsuit01 / short02 (tuile grisée) |
+| hm-homme-08 | Homme, téléphone | male_elegantsuit01 / short02 |
+| hm-homme-09 | Homme, corpulent (poids ~0,85) | male_casualsuit06 / short02 |
+| hm-femme-06 | Femme âgée, marche (âge ~0,85) | female_elegantsuit01 / bob02 |
+| hm-femme-07 | Femme, téléphone | female_elegantsuit01 / long01 |
 | hm-enfant-01 | Garçon, debout (âge ~0,2) | male_casualsuit06 / short02 |
 | hm-enfant-02 | Fille, marche (âge ~0,2) | female_sportsuit01 / braid01 |
+| hm-enfant-03 | Garçon, course (âge ~0,2) | male_casualsuit06 / short03 |
+| hm-conduite-01 | Conducteur assis (véhicules, hors catalogue) | male_casualsuit06 / short01 |
 
 Les tuiles `tx/*.webp` sont dérivées des textures diffuses CC0 de ces mêmes
 assets (recalibrées 1024/512/256). Chaîne de génération : CODE/humains/outils
