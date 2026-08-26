@@ -42,6 +42,8 @@ selon modèle). ~17 500 tris chacun.
 | hm-enfant-02 | Fille, marche (âge ~0,2) | female_sportsuit01 / braid01 |
 | hm-enfant-03 | Garçon, course (âge ~0,2) | male_casualsuit06 / short03 |
 | hm-conduite-01 | Conducteur assis (véhicules, hors catalogue) | male_casualsuit06 / short01 |
+| hm-conduite-02 | Conducteur, volant mi-haut (variante de bras) | male_casualsuit06 / short01 (tuiles de -01) |
+| hm-conduite-03 | Conducteur, grand volant (variante de bras) | male_casualsuit06 / short01 (tuiles de -01) |
 
 Les tuiles `tx/*.webp` sont dérivées des textures diffuses CC0 de ces mêmes
 assets (recalibrées 1024/512/256). Chaîne de génération : CODE/humains/outils
