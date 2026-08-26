@@ -38,6 +38,10 @@
   /* Mode du sol du rendu : 0 = aplat (couleur PREFS), 1 = herbe, 2 = béton.
      (3 = gazon photo mappé, choisi automatiquement quand la tuile est chargée.) */
   var GROUND_MODE = 1;
+  /* HERBE AU RENDU (24/08, demande AL « latence ») : 90 m = finale (~600 000
+     brins), 45 m = brouillon (quart des brins, BVH nettement plus court),
+     0 = sans. Persisté dans les préférences de rendu (rpSave.grassR). */
+  var RENDER_GRASS_R = 90;
   /* Tuile de gazon du viewer (data/textures/gazon.jpg) pour le rendu : chargée
      une fois, poussée au moteur (setGroundTex). Tant qu'elle n'est pas là,
      l'herbe reste procédurale — jamais bloquant. */
@@ -136,20 +140,26 @@
     function matIndex(f) {
       var col = f.col, al = f.al, tex = f.tex || '';
       /* carte de FEUILLAGE (veg:1 posé par le volet paysager) : un matériau par
-         tuile — découpe stochastique + translucidité côté moteur (mode 4). */
-      if (f.veg && tex) {
-        var kV = (f.opq ? 'stf_' : 'veg_') + tex;   /* cles distinctes : meme tuile, materiau different */
+         tuile — découpe stochastique + translucidité côté moteur (mode 4).
+         MAILLAGE TEXTURÉ opq:1 (24/08, humains) : même canal, en mode 5 —
+         albédo lu au texel, découpe à l'alpha (mèches), opaque. On route sur
+         les DEUX marqueurs d'intention (veg, opq), JAMAIS sur f.uv : les faces
+         fabricants portent tex+uv depuis toujours et basculaient toutes en
+         staffage (100 % mesuré sur « aerorack », attrapé par code-db). */
+      if (tex && (f.veg || f.opq)) {
+        var opaque = f.opq || !f.veg;               /* humain texturé = staffage opaque */
+        var kV = (opaque ? 'stf_' : 'veg_') + tex;  /* cles distinctes : meme tuile, materiau different */
         if (matMap[kV] != null) return matMap[kV];
         if (vegLayers[tex] == null) { vegLayers[tex] = vegList.length; vegList.push(tex); }
         var vs = vegStat(tex);
-        /* f.opq : STAFFAGE PHOTOGRAPHIQUE (personnages, arbres photographies).
+        /* opaque : STAFFAGE PHOTOGRAPHIQUE et humains maillés.
            Meme tuile, meme decoupe a l'alpha du texel, mais OPAQUE — le mode 4
            laisse traverser 30 % des rayons, ce qui est le contre-jour d'une
            feuille et un fantome sur une personne. Rugosite plus haute et albedo
            moins reflechissant : une etoffe n'est pas un limbe cire. */
         var mV = { albedo: [srgb2lin(vs.col[0] / 255), srgb2lin(vs.col[1] / 255), srgb2lin(vs.col[2] / 255)],
-                   metal: 0, rough: f.opq ? 0.95 : 0.85, alpha: 1, ior: 1.5,
-                   leaf: f.opq ? 2 : 1, leafLayer: vegLayers[tex] + 1, emissive: [0, 0, 0] };
+                   metal: 0, rough: opaque ? 0.95 : 0.85, alpha: 1, ior: 1.5,
+                   leaf: opaque ? 2 : 1, leafLayer: vegLayers[tex] + 1, emissive: [0, 0, 0] };
         var iV = mats.length; mats.push(mV); matMap[kV] = iV; return iV;
       }
       var r = (col && col[0]) | 0, g = (col && col[1]) | 0, b = (col && col[2]) | 0;
@@ -178,7 +188,7 @@
     for (var i = 0; i < faces.length; i++) {
       var f = faces[i], vs = f.verts; if (!vs || vs.length < 3) continue;
       var mi = matIndex(f);
-      var hasUV = !!(f.veg && f.uv && f.uv.length === vs.length);
+      var hasUV = !!((f.veg || f.opq) && f.uv && f.uv.length === vs.length);
       var hasVN = !!(f.vn && f.vn.length === vs.length);
       for (var k = 1; k < vs.length - 1; k++) {
         tris.push({ a: vs[0], b: vs[k], c: vs[k + 1], mat: mi,
@@ -217,7 +227,7 @@
       if (Tt && !Tt.off && W3.gl && typeof W3.tuftBuild === 'function' &&
           !(window.PREFS && PREFS.grass === 0)) {
         var camT = getCamera(1);
-        if (camT.origin[1] <= 30) {
+        if (camT.origin[1] <= 30 && RENDER_GRASS_R > 0) {
           /* PORTÉE ÉTENDUE AU RENDU : 45 m au lieu des 8 m du viewer. Ici chaque
              brin est un volume avec son ombre, donc la limite du semis SE VOIT —
              alors que dans le viewer elle est masquée par le relief de la texture
@@ -230,7 +240,7 @@
              d'herbe avec la densite x2, soit ~2 s de BVH en plus au lancement —
              cout UNIQUE d'un rendu qui dure des minutes, assume. L'eclaircissement
              relatif (moitie au-dela de 36 m, quart au-dela de 72 m) fait le reste. */
-          try { Tt.rOv = 90; W3.tuftBuild(camT.origin[0], camT.origin[2]); }
+          try { Tt.rOv = RENDER_GRASS_R; W3.tuftBuild(camT.origin[0], camT.origin[2]); }
           finally { Tt.rOv = rOv0 || 0; Tt.bx = 1e9; }
           var Pb = Tt._P;
           if (Pb && Pb.length >= 9) {
@@ -244,8 +254,10 @@
             }
           }
         }
+        else console.warn('[rendu] herbe 3D coupee : camera a', Math.round(camT.origin[1]), 'm (> 30 m), ou reglage sans herbe (rayon', RENDER_GRASS_R, 'm)');
       }
-    } catch (e) {}
+      else console.warn('[rendu] herbe 3D inactive (off/gl/prefs)');
+    } catch (e) { console.warn('[rendu] herbe 3D absente :', e && e.message); }
     return { triangles: tris, materials: mats, bb: bb, vegTiles: vegList };
   }
 
@@ -402,21 +414,52 @@
       }
       if (RP.ground != null) GROUND_MODE = RP.ground;
       if (RP.interior != null) INTERIOR_ON = !!RP.interior;
+      if (RP.grassR != null) RENDER_GRASS_R = RP.grassR;
     }
     try {
+      var _T0 = performance.now(), _TL = [];
+      function _tick(nom) { var t = performance.now(); _TL.push(nom + ' ' + Math.round(t - _T0) + 'ms'); _T0 = t; }
       try { await ensureMeshesDecoded(); } catch (e) {}
+      _tick('decodage');
       var sc = extractScene();
+      _tick('extraction+herbe');
       if (!sc.triangles.length) { alert('Aucune géométrie à rendre.'); close(); return; }
       renderer.setScene({ triangles: sc.triangles, materials: sc.materials });
+      _tick('setScene/BVH');
       /* tuiles de feuillage -> tableau de textures du moteur (ordre = couches) */
       if (sc.vegTiles && sc.vegTiles.length && renderer.setVegTiles) {
-        renderer.setVegTiles(sc.vegTiles.map(function (n) {
+        /* Le tableau de textures du moteur impose UNE taille de couche (celle de
+           la premiere tuile) : les tuiles humains (1024/256) et staffage (512)
+           cohabitent -> recalibrage canvas des discordantes, memoise. */
+        var _tl = sc.vegTiles.map(function (n) {
           var T = (window.TEX_IMAGES && TEX_IMAGES[n]); return (T && T.data) ? T : null;
-        }));
+        });
+        /* 512 FIXE : prendre la taille de la premiere tuile faisait gonfler
+           TOUT le tableau a 2048 des qu'un humain (peau 2048) passait devant —
+           centaines de Mo envoyes au GPU, latence de plusieurs secondes au
+           demarrage du rendu (vecu 24/08). */
+        var _S = 512;
+        if (_S) {
+          window.__RT_TRS = window.__RT_TRS || {};
+          _tl = _tl.map(function (T, _j) {
+            if (!T || T.w === _S && T.h === _S) return T;
+            var ck = sc.vegTiles[_j] + '@' + _S;
+            if (__RT_TRS[ck]) return __RT_TRS[ck];
+            var c1 = document.createElement('canvas'); c1.width = T.w; c1.height = T.h;
+            c1.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(T.data), T.w, T.h), 0, 0);
+            var c2 = document.createElement('canvas'); c2.width = _S; c2.height = _S;
+            var g2 = c2.getContext('2d'); g2.drawImage(c1, 0, 0, _S, _S);
+            var R2 = { data: g2.getImageData(0, 0, _S, _S).data, w: _S, h: _S };
+            __RT_TRS[ck] = R2; return R2;
+          });
+        }
+        renderer.setVegTiles(_tl);
+        _tick('tuiles');
       }
       renderer.setCamera(getCamera(W / H));
       renderer.setEnv(env);
       renderer.setOpts({ bounces: 5 });
+      console.log('[rendu] demarrage :', _TL.join(' | '), '| tris=' + sc.triangles.length);
     } catch (e) { console.error('Rendu photo :', e); alert('Rendu photo — erreur : ' + e.message); close(); return; }
     /* Curseurs. Ceux qui changent la LUMIÈRE (soleil, direction) vident
        l'accumulateur via setEnv/reset ; exposition et ambiance sont du
@@ -428,7 +471,7 @@
     function rpSnap() {
       rpSave({ sun: env.sunIntensity, warm: env.warm, expo: env.expo, az: az, el: el,
         skyTop: env.skyTop, skyHor: env.skyHor, skyGround: env.skyGround, skyInt: env.skyInt,
-        sunAngle: env.sunAngle, ground: GROUND_MODE, interior: INTERIOR_ON, photoSky: PHOTO_SKY });
+        sunAngle: env.sunAngle, ground: GROUND_MODE, interior: INTERIOR_ON, photoSky: PHOTO_SKY, grassR: RENDER_GRASS_R });
     }
     function applySun() {
       env.sunDir = dirFromAzEl(az, el);
@@ -448,6 +491,21 @@
       if (groundMat) { groundMat.grass = solEffectif(mode); renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
       rpSnap();
     }));
+    var bHerbe = mkBtn('');
+    function updHerbe() { bHerbe.textContent = (RENDER_GRASS_R === 0) ? 'Sans herbe' : ('Herbe ' + RENDER_GRASS_R + ' m'); }
+    updHerbe();
+    bHerbe.title = 'Herbe 3D au rendu : 90 m (finale) / 45 m (brouillon, demarrage bien plus court) / sans';
+    bHerbe.onclick = function () {
+      RENDER_GRASS_R = (RENDER_GRASS_R === 90) ? 45 : (RENDER_GRASS_R === 45 ? 0 : 90);
+      updHerbe();
+      sc = extractScene();
+      groundMat = null;
+      for (var gi2 = 0; gi2 < sc.materials.length; gi2++) { if (sc.materials[gi2]._ground) groundMat = sc.materials[gi2]; }
+      if (groundMat) groundMat.grass = solEffectif(GROUND_MODE);
+      renderer.setScene({ triangles: sc.triangles, materials: sc.materials });
+      rpSnap();
+    };
+    menu.appendChild(bHerbe);
     loadGazon(renderer, function () {
       if (GROUND_MODE === 1 && groundMat && groundMat.grass !== 3) { groundMat.grass = 3; renderer.setScene({ triangles: sc.triangles, materials: sc.materials }); }
     });
