@@ -262,6 +262,9 @@
   }
 
   /* ---- caméra : WGL.cam (vue WebGL à l'écran), repli sur cam global ---- */
+  /* focale équivalente 24x36 (hauteur de capteur 24 mm) : fovY = 2·atan(12/f).
+     23 mm ≈ le fovY historique de 0,95 rad — le cadrage par défaut ne bouge pas. */
+  var FOCAL_MM = 23;
   function getCamera(aspect) {
     var c = (window.WGL && WGL.cam) ? WGL.cam : window.cam;
     if (!c) throw new Error('caméra introuvable (WGL.cam)');
@@ -269,7 +272,8 @@
     var o = [tx + c.r * Math.sin(c.ph) * Math.sin(c.th),
              c.ty + c.r * Math.cos(c.ph),
              tz + c.r * Math.sin(c.ph) * Math.cos(c.th)];
-    return { origin: o, target: [tx, c.ty, tz], up: [0, 1, 0], fovY: 0.95, aspect: aspect };
+    return { origin: o, target: [tx, c.ty, tz], up: [0, 1, 0],
+             fovY: 2 * Math.atan(12 / Math.max(8, FOCAL_MM)), aspect: aspect };
   }
 
   /* ---- soleil : conversion direction <-> (azimut, hauteur) --------------------
@@ -368,6 +372,10 @@
     var scale = Math.min(1, 1280 / Math.max(1, rect.width));
     var W = Math.max(320, Math.round(rect.width * scale));
     var H = Math.max(240, Math.round(rect.height * scale));
+    /* dimensions memorisees (0/absent = auto ecran) + focale */
+    var RP0 = rpLoad();
+    if (RP0 && RP0.rw > 0 && RP0.rh > 0) { W = Math.min(4096, RP0.rw); H = Math.min(4096, RP0.rh); }
+    if (RP0 && RP0.focal > 0) FOCAL_MM = RP0.focal;
 
     host = document.createElement('div');
     host.style.cssText = 'position:absolute;inset:0;z-index:500;background:#0d0f13;display:flex;align-items:center;justify-content:center;';
@@ -386,14 +394,44 @@
     var bClose = mkBtn('✕ ' + tr('Fermer'));
     panel.appendChild(lbl); panel.appendChild(bOpts); panel.appendChild(bClose);
     host.appendChild(panel);
-    /* Menu déroulant des options (masqué par défaut, ouvert au clic sur « Options »). */
-    var menu = document.createElement('div');
-    menu.style.cssText = 'position:absolute;top:58px;left:50%;transform:translateX(-50%);display:none;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:center;max-width:min(92vw,880px);' +
-      'background:rgba(26,29,35,.97);border:1px solid #343a45;border-radius:10px;padding:11px 15px;color:#e8e9ec;font:12px system-ui;box-shadow:0 10px 34px rgba(0,0,0,.55);';
-    host.appendChild(menu);
+    /* PALETTE d'options (26/08, demande AL) : colonne DOCKEE A DROITE du
+       viewport — donc contre le panneau de parametres de l'app — et
+       DEPLACABLE par son en-tete, comme « Ma bibliotheque ». Position
+       memorisee dans les preferences de rendu (px/py). */
+    var pal = document.createElement('div');
+    pal.style.cssText = 'position:absolute;top:58px;right:8px;display:none;flex-direction:column;gap:8px;width:236px;max-height:calc(100% - 76px);overflow-y:auto;overflow-x:hidden;' +
+      'background:rgba(26,29,35,.97);border:1px solid #343a45;border-radius:10px;padding:0 12px 11px;color:#e8e9ec;font:12px system-ui;box-shadow:0 10px 34px rgba(0,0,0,.55);';
+    var palHead = document.createElement('div');
+    palHead.textContent = '≡ ' + tr('Options de rendu');
+    palHead.style.cssText = 'position:sticky;top:0;margin:0 -12px;padding:9px 12px 7px;cursor:grab;user-select:none;font-weight:700;' +
+      'background:rgba(26,29,35,.97);border-bottom:1px solid #343a45;border-radius:10px 10px 0 0;';
+    pal.appendChild(palHead);
+    if (RP0 && RP0.px != null && RP0.py != null) { pal.style.right = 'auto'; pal.style.left = RP0.px + 'px'; pal.style.top = RP0.py + 'px'; }
+    palHead.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      var r0 = pal.getBoundingClientRect(), h0 = host.getBoundingClientRect();
+      /* px/py demarrent A LA POSITION ACTUELLE : un simple clic sans
+         mouvement ne doit pas teleporter la palette en 0,0 */
+      var px = r0.left - h0.left, py = r0.top - h0.top;
+      var sx = e.clientX - px, sy = e.clientY - py;
+      palHead.style.cursor = 'grabbing';
+      function mv(ev) {
+        px = Math.max(0, Math.min(h0.width - 80, ev.clientX - sx));
+        py = Math.max(0, Math.min(h0.height - 60, ev.clientY - sy));
+        pal.style.right = 'auto'; pal.style.left = px + 'px'; pal.style.top = py + 'px';
+      }
+      function up() {
+        palHead.style.cursor = 'grab';
+        document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
+        var o = rpLoad() || {}; o.px = px; o.py = py; rpSave(o);
+      }
+      document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+    });
+    var menu = pal;   /* les options existantes s'empilent dans la palette */
+    host.appendChild(pal);
     var bPng = mkBtn('⬇ ' + tr('Exporter PNG')); menu.appendChild(bPng);
     var _menuOpen = false;
-    bOpts.onclick = function () { _menuOpen = !_menuOpen; menu.style.display = _menuOpen ? 'flex' : 'none'; bOpts.style.background = _menuOpen ? 'rgba(255,138,61,.95)' : '#242a33'; bOpts.style.color = _menuOpen ? '#151515' : '#e8e9ec'; bOpts.style.borderColor = _menuOpen ? '#ff8a3d' : '#3a4150'; };
+    bOpts.onclick = function () { _menuOpen = !_menuOpen; pal.style.display = _menuOpen ? 'flex' : 'none'; bOpts.style.background = _menuOpen ? 'rgba(255,138,61,.95)' : '#242a33'; bOpts.style.color = _menuOpen ? '#151515' : '#e8e9ec'; bOpts.style.borderColor = _menuOpen ? '#ff8a3d' : '#3a4150'; };
     vp.appendChild(host);
 
     try {
@@ -469,15 +507,54 @@
     if (RP && RP.az != null && !(window.SUN && SUN.on)) { az = RP.az; el = RP.el != null ? RP.el : el;
       env.sunDir = dirFromAzEl(az, el); env.sunColor = sunTint(el); renderer.setEnv(env); }
     function rpSnap() {
-      rpSave({ sun: env.sunIntensity, warm: env.warm, expo: env.expo, az: az, el: el,
-        skyTop: env.skyTop, skyHor: env.skyHor, skyGround: env.skyGround, skyInt: env.skyInt,
-        sunAngle: env.sunAngle, ground: GROUND_MODE, interior: INTERIOR_ON, photoSky: PHOTO_SKY, grassR: RENDER_GRASS_R });
+      /* PARTIR de l'objet memorise : px/py (position de la palette), focal et
+         rw/rh y vivent aussi — un objet neuf les perdrait */
+      var o = rpLoad() || {};
+      o.sun = env.sunIntensity; o.warm = env.warm; o.expo = env.expo; o.az = az; o.el = el;
+      o.skyTop = env.skyTop; o.skyHor = env.skyHor; o.skyGround = env.skyGround; o.skyInt = env.skyInt;
+      o.sunAngle = env.sunAngle; o.ground = GROUND_MODE; o.interior = INTERIOR_ON; o.photoSky = PHOTO_SKY;
+      o.grassR = RENDER_GRASS_R; o.focal = FOCAL_MM; o.rw = RW_SET; o.rh = RH_SET;
+      rpSave(o);
     }
     function applySun() {
       env.sunDir = dirFromAzEl(az, el);
       env.sunColor = sunTint(el);
       renderer.setEnv(env);                 // recharge les uniformes + reset
     }
+    /* ---- Image : focale + dimensions du rendu (26/08, demande AL) ---- */
+    var RW_SET = (RP0 && RP0.rw > 0) ? W : 0, RH_SET = (RP0 && RP0.rh > 0) ? H : 0;
+    var sFoc = mkSlider(tr('Focale'), 16, 135, 1, FOCAL_MM, function (v) {
+      FOCAL_MM = v; renderer.setCamera(getCamera(W / H)); rpSnap();
+    });
+    menu.insertBefore(sFoc, bPng);
+    var dimRow = document.createElement('div');
+    dimRow.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;flex-wrap:wrap;';
+    function mkNum(v) {
+      var n = document.createElement('input'); n.type = 'number'; n.min = 320; n.max = 4096; n.step = 10; n.value = v;
+      n.style.cssText = 'width:56px;font:11px system-ui;background:#242a33;color:#e8e9ec;border:1px solid #3a4150;border-radius:6px;padding:3px 4px;';
+      return n;
+    }
+    var inW = mkNum(W), inH = mkNum(H);
+    function applyDims(w2, h2) {
+      W = Math.max(320, Math.min(4096, Math.round(w2))); H = Math.max(240, Math.min(4096, Math.round(h2)));
+      inW.value = W; inH.value = H;
+      renderer.resize(W, H);                       /* stop + realloc + reset */
+      renderer.setCamera(getCamera(W / H));
+      renderer.start();
+      rpSnap();
+    }
+    var bDimOk = mkBtn('✓'); bDimOk.title = tr('Appliquer les dimensions');
+    bDimOk.onclick = function () { RW_SET = +inW.value; RH_SET = +inH.value; applyDims(RW_SET, RH_SET); };
+    var bDimAuto = mkBtn(tr('Écran')); bDimAuto.title = tr('Revenir à la taille de la fenêtre');
+    bDimAuto.onclick = function () {
+      RW_SET = 0; RH_SET = 0;
+      var r2 = vp.getBoundingClientRect(), s2 = Math.min(1, 1280 / Math.max(1, r2.width));
+      applyDims(Math.max(320, Math.round(r2.width * s2)), Math.max(240, Math.round(r2.height * s2)));
+    };
+    dimRow.appendChild(document.createTextNode(tr('Rendu')));
+    dimRow.appendChild(inW); dimRow.appendChild(document.createTextNode('×')); dimRow.appendChild(inH);
+    dimRow.appendChild(bDimOk); dimRow.appendChild(bDimAuto);
+    menu.insertBefore(dimRow, bPng);
     var sSun = mkSlider('☀', 0, 6, 0.1, env.sunIntensity, function (v) { env.sunIntensity = v; renderer.setEnv(env); rpSnap(); });
     var sEl  = mkSlider('↕', 4, 85, 1, el, function (v) { el = v; applySun(); rpSnap(); });      // hauteur
     var sAmb = mkSlider(tr('Amb'), 0, 1, 0.05, env.warm, function (v) { env.warm = v; rpSnap(); });
