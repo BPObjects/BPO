@@ -622,6 +622,50 @@
     renderer.onProgress(function (n) { lbl.textContent = n + ' ' + tr('échantillons'); });
     bPng.onclick = function () { var a = document.createElement('a'); a.download = 'BPO-rendu.png'; a.href = renderer.toPNG(); a.click(); };
     bClose.onclick = close;
+    /* ---- POINT DE VUE ajustable depuis le rendu (26/08, demande AL) ----
+       Memes gestes que le viewer : glisser = orbite, clic droit / Maj = pan,
+       molette = zoom vers le curseur. On modifie DIRECTEMENT WGL.cam :
+       fermer le rendu retrouve la meme vue dans le viewer. Chaque geste
+       relance l'accumulation (setCamera -> reset), l'image converge a
+       l'arret — le comportement normal d'un path tracer interactif. */
+    (function () {
+      var c = (window.WGL && WGL.cam) ? WGL.cam : window.cam;
+      if (!c) return;
+      var mode = 0, lx = 0, ly = 0;
+      function applyCam() { try { renderer.setCamera(getCamera(W / H)); } catch (e) {} }
+      overlay.style.cursor = 'grab';
+      overlay.title = tr('Glisser : orbite — clic droit / Maj : déplacement — molette : zoom');
+      overlay.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+      overlay.addEventListener('pointerdown', function (e) {
+        mode = (e.button === 2 || e.button === 1 || e.shiftKey || e.altKey) ? 2 : 1;
+        lx = e.clientX; ly = e.clientY;
+        overlay.setPointerCapture && overlay.setPointerCapture(e.pointerId);
+        overlay.style.cursor = 'grabbing';
+        e.preventDefault();
+      });
+      function fin() { mode = 0; overlay.style.cursor = 'grab'; }
+      overlay.addEventListener('pointerup', fin);
+      overlay.addEventListener('pointercancel', fin);
+      overlay.addEventListener('pointermove', function (e) {
+        if (!mode) return;
+        var dx = e.clientX - lx, dy = e.clientY - ly;
+        if (mode === 1) {
+          c.th -= dx * 0.01; c.ph -= dy * 0.01;
+          c.ph = Math.max(0.15, Math.min(2.9, c.ph));
+        } else if (window.WGL && WGL.pan) {
+          WGL.pan(dx, dy, overlay.clientHeight || H);
+        }
+        lx = e.clientX; ly = e.clientY; applyCam();
+      });
+      overlay.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        if (window.WGL && WGL.wheelZoom) {
+          var rc = overlay.getBoundingClientRect();
+          WGL.wheelZoom(e.deltaY, e.clientX - (rc.left + rc.width / 2), e.clientY - (rc.top + rc.height / 2), rc.height);
+        } else { c.r = Math.max(0.05, Math.min(4000, (c.r || 10) * Math.exp((e.deltaY > 0 ? 1 : -1) * 0.12))); }
+        applyCam();
+      }, { passive: false });
+    })();
     renderer.start();
   }
 
@@ -630,6 +674,8 @@
     renderer = null;
     if (host && host.parentNode) host.parentNode.removeChild(host);
     host = null;
+    /* la camera a pu bouger PENDANT le rendu : resynchroniser le viewer */
+    try { if (window.WGL && WGL.render) WGL.render(); } catch (e) {}
   }
 
   /* Point d'entrée global : permet à un bouton de app.html (celui qui a remplacé
