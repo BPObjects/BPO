@@ -399,7 +399,7 @@
        DEPLACABLE par son en-tete, comme « Ma bibliotheque ». Position
        memorisee dans les preferences de rendu (px/py). */
     var pal = document.createElement('div');
-    pal.style.cssText = 'position:absolute;top:58px;right:8px;display:none;flex-direction:column;gap:8px;width:236px;max-height:calc(100% - 76px);overflow-y:auto;overflow-x:hidden;' +
+    pal.style.cssText = 'position:absolute;top:58px;right:8px;display:none;flex-direction:column;gap:8px;width:270px;max-height:calc(100% - 76px);overflow-y:auto;overflow-x:hidden;' +
       'background:rgba(26,29,35,.97);border:1px solid #343a45;border-radius:10px;padding:0 12px 11px;color:#e8e9ec;font:12px system-ui;box-shadow:0 10px 34px rgba(0,0,0,.55);';
     var palHead = document.createElement('div');
     palHead.textContent = '≡ ' + tr('Options de rendu');
@@ -717,9 +717,10 @@
   }
   function mkSlider(name, min, max, step, val, fn) {
     var w = document.createElement('label');
-    w.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;';
+    w.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;width:100%;';
     var s = document.createElement('input'); s.type = 'range'; s.min = min; s.max = max; s.step = step; s.value = val;
-    s.style.width = '66px';
+    /* toute la largeur de la palette : piste longue = reglage fin (26/08 AL) */
+    s.style.cssText = 'flex:1;min-width:90px;';
     var t = document.createElement('span'); t.textContent = (+val).toFixed(2);
     t.style.cssText = 'min-width:30px;text-align:right;color:#8b92a0;';
     s.oninput = function () { t.textContent = (+s.value).toFixed(2); fn(+s.value); };
