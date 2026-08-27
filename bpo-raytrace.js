@@ -577,7 +577,21 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   let px = uv.x * U.camPos.w * U.camRight.w;      // tanHalfFov * aspect
   let py = -uv.y * U.camPos.w;
   let rd = normalize(U.camFwd.xyz + U.camRight.xyz * px + U.camUp.xyz * py);
-  let col = radiance(U.camPos.xyz, rd);
+  // profondeur de champ (objectif mince) : camUp.w = rayon d'ouverture (m),
+  // camFwd.w = distance de mise au point (m). 0 = stenope (net partout).
+  var ro = U.camPos.xyz;
+  var rdir = rd;
+  let ap = U.camUp.w;
+  if (ap > 0.0) {
+    let fd = max(0.2, U.camFwd.w);
+    // point focal sur le PLAN focal (perpendiculaire a fwd), pas la sphere
+    let fp = ro + rd * (fd / max(0.05, dot(rd, U.camFwd.xyz)));
+    let ang = rnd() * 2.0 * PI;
+    let rr = sqrt(rnd()) * ap;
+    ro = ro + U.camRight.xyz * (cos(ang) * rr) + U.camUp.xyz * (sin(ang) * rr);
+    rdir = normalize(fp - ro);
+  }
+  let col = radiance(ro, rdir);
   let prev = accum[idx];
   accum[idx] = vec4f(prev.rgb + col, prev.w + 1.0);
 }
@@ -798,8 +812,11 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
       const u = new Float32Array(44);
       u.set([c.origin[0], c.origin[1], c.origin[2], tan], 0);
       u.set([right[0], right[1], right[2], c.aspect || (R.W / R.H)], 4);
-      u.set([up[0], up[1], up[2], 0], 8);
-      u.set([fwd[0], fwd[1], fwd[2], 0], 12);
+      u.set([up[0], up[1], up[2], c.aperture || 0], 8);      /* rayon d'ouverture (m) — 0 = sans DoF */
+      /* repli : ouverture sans distance fournie -> mise au point sur la CIBLE
+         (sans lui, focus a 20 cm = image entierement floue ; revue 26/08) */
+      var _fd = c.focusDist || Math.hypot(c.target[0] - c.origin[0], c.target[1] - c.origin[1], c.target[2] - c.origin[2]) || 0;
+      u.set([fwd[0], fwd[1], fwd[2], _fd], 12);               /* distance de mise au point (m) */
       u.set([R.W, R.H, R.frame, R.opts.bounces], 16);
       const sd = norm(e.sunDir);
       u.set([sd[0], sd[1], sd[2], e.sunAngle || 0.05], 20);

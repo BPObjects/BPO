@@ -265,6 +265,10 @@
   /* focale équivalente 24x36 (hauteur de capteur 24 mm) : fovY = 2·atan(12/f).
      23 mm ≈ le fovY historique de 0,95 rad — le cadrage par défaut ne bouge pas. */
   var FOCAL_MM = 23;
+  /* profondeur de champ : APERTURE_N = f-number (0 = sans). Rayon de lentille
+     physique = focale/(2N) ; mise au point sur la CIBLE de l'orbite — l'objet
+     regarde est net, l'avant et l'arriere s'ouvrent avec N. */
+  var APERTURE_N = 0;
   function getCamera(aspect) {
     var c = (window.WGL && WGL.cam) ? WGL.cam : window.cam;
     if (!c) throw new Error('caméra introuvable (WGL.cam)');
@@ -273,7 +277,9 @@
              c.ty + c.r * Math.cos(c.ph),
              tz + c.r * Math.sin(c.ph) * Math.cos(c.th)];
     return { origin: o, target: [tx, c.ty, tz], up: [0, 1, 0],
-             fovY: 2 * Math.atan(12 / Math.max(8, FOCAL_MM)), aspect: aspect };
+             fovY: 2 * Math.atan(12 / Math.max(8, FOCAL_MM)), aspect: aspect,
+             aperture: (APERTURE_N > 0) ? (FOCAL_MM / 1000) / (2 * APERTURE_N) : 0,
+             focusDist: Math.max(0.2, c.r || 0) };
   }
 
   /* ---- soleil : conversion direction <-> (azimut, hauteur) --------------------
@@ -376,6 +382,7 @@
     var RP0 = rpLoad();
     if (RP0 && RP0.rw > 0 && RP0.rh > 0) { W = Math.min(4096, RP0.rw); H = Math.min(4096, RP0.rh); }
     if (RP0 && RP0.focal > 0) FOCAL_MM = RP0.focal;
+    if (RP0 && RP0.apN != null) APERTURE_N = RP0.apN;   /* 0 (« Sans ») est une valeur LEGITIME — un garde >0 laissait revivre l'ancien f-number du module (revue 26/08) */
 
     host = document.createElement('div');
     host.style.cssText = 'position:absolute;inset:0;z-index:500;background:#0d0f13;display:flex;align-items:center;justify-content:center;';
@@ -513,7 +520,7 @@
       o.sun = env.sunIntensity; o.warm = env.warm; o.expo = env.expo; o.az = az; o.el = el;
       o.skyTop = env.skyTop; o.skyHor = env.skyHor; o.skyGround = env.skyGround; o.skyInt = env.skyInt;
       o.sunAngle = env.sunAngle; o.ground = GROUND_MODE; o.interior = INTERIOR_ON; o.photoSky = PHOTO_SKY;
-      o.grassR = RENDER_GRASS_R; o.focal = FOCAL_MM; o.rw = RW_SET; o.rh = RH_SET; o.fmt = FMT;
+      o.grassR = RENDER_GRASS_R; o.focal = FOCAL_MM; o.rw = RW_SET; o.rh = RH_SET; o.fmt = FMT; o.apN = APERTURE_N;
       rpSave(o);
     }
     function applySun() {
@@ -527,6 +534,75 @@
       FOCAL_MM = v; renderer.setCamera(getCamera(W / H)); rpSnap();
     });
     menu.insertBefore(sFoc, bPng);
+    /* ouverture (profondeur de champ) : valeurs photo, net partout par defaut */
+    var apRow = document.createElement('label');
+    apRow.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;';
+    var selAp = document.createElement('select');
+    selAp.style.cssText = 'font:11px system-ui;background:#242a33;color:#e8e9ec;border:1px solid #3a4150;border-radius:6px;padding:3px 6px;cursor:pointer;flex:1;';
+    [[0, tr('Sans (net partout)')], [16, 'f/16'], [8, 'f/8'], [4, 'f/4'], [2.8, 'f/2.8'], [2, 'f/2'], [1.4, 'f/1.4']].forEach(function (o2) {
+      var op = document.createElement('option'); op.value = o2[0]; op.textContent = o2[1]; selAp.appendChild(op);
+    });
+    selAp.value = String(APERTURE_N);
+    selAp.onchange = function () { APERTURE_N = +selAp.value; renderer.setCamera(getCamera(W / H)); rpSnap(); };
+    apRow.appendChild(document.createTextNode(tr('Ouverture')));
+    apRow.appendChild(selAp);
+    menu.insertBefore(apRow, bPng);
+    /* ---- VUES NOMMEES : cadrage complet (camera + focale + format +
+       ouverture) memorise par SCENE (id de la scene courante) ---- */
+    var VUES_KEY = 'bpo_rendu_vues';
+    function vScn() { return (typeof SCN_CUR !== 'undefined' && SCN_CUR) ? String(SCN_CUR) : 'global'; }
+    function vuesLoad() { try { return JSON.parse(localStorage.getItem(VUES_KEY)) || {}; } catch (e) { return {}; } }
+    function vuesStore(o) { try { localStorage.setItem(VUES_KEY, JSON.stringify(o)); } catch (e) {} }
+    var vueRow = document.createElement('div');
+    vueRow.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;';
+    var selVue = document.createElement('select');
+    selVue.style.cssText = 'font:11px system-ui;background:#242a33;color:#e8e9ec;border:1px solid #3a4150;border-radius:6px;padding:3px 4px;cursor:pointer;flex:1;min-width:60px;';
+    function vueRefresh() {
+      selVue.innerHTML = '';
+      var op0 = document.createElement('option'); op0.value = ''; op0.textContent = '—'; selVue.appendChild(op0);
+      (vuesLoad()[vScn()] || []).forEach(function (v2, i2) {
+        var op = document.createElement('option'); op.value = i2; op.textContent = v2.nom; selVue.appendChild(op);
+      });
+    }
+    vueRefresh();
+    selVue.onchange = function () {
+      if (selVue.value === '') return;
+      var v2 = (vuesLoad()[vScn()] || [])[+selVue.value]; if (!v2) return;
+      var c2 = (window.WGL && WGL.cam) ? WGL.cam : window.cam;
+      if (c2) { c2.th = v2.th; c2.ph = v2.ph; c2.r = v2.r; c2.tx = v2.tx; c2.ty = v2.ty; c2.tz = v2.tz; }
+      if (v2.focal > 0) { FOCAL_MM = v2.focal; setSliderVal(sFoc, FOCAL_MM); }
+      APERTURE_N = v2.apN || 0; selAp.value = String(APERTURE_N);
+      FMT = v2.fmt || 'libre'; selFmt.value = FMT; syncH();
+      if (v2.rw > 0 && v2.rh > 0) { RW_SET = v2.rw; RH_SET = v2.rh; applyDims(v2.rw, v2.rh); }
+      else {
+        /* vue memorisee en mode « Ecran » : revenir VRAIMENT a l'auto — sans
+           ce reset, des dimensions fixes courantes restaient en place et
+           rpSnap les re-persistait (revue 26/08) */
+        RW_SET = 0; RH_SET = 0;
+        var rv = vp.getBoundingClientRect(), sv = Math.min(1, 1280 / Math.max(1, rv.width));
+        applyDims(Math.max(320, Math.round(rv.width * sv)), Math.max(240, Math.round(rv.height * sv)));
+      }
+      rpSnap();
+    };
+    var bVueAdd = mkBtn('＋'); bVueAdd.title = tr('Mémoriser le cadrage actuel (caméra, focale, format, ouverture)');
+    bVueAdd.onclick = function () {
+      var nom = prompt(tr('Nom de la vue :'), tr('Vue') + ' ' + (((vuesLoad()[vScn()] || []).length) + 1));
+      if (nom === null) return;
+      var c2 = (window.WGL && WGL.cam) ? WGL.cam : window.cam; if (!c2) return;
+      var o2 = vuesLoad(); var l2 = o2[vScn()] = o2[vScn()] || [];
+      l2.push({ nom: (nom.trim() || 'Vue'), th: c2.th, ph: c2.ph, r: c2.r, tx: c2.tx || 0, ty: c2.ty || 0, tz: c2.tz || 0,
+                focal: FOCAL_MM, apN: APERTURE_N, fmt: FMT, rw: RW_SET, rh: RH_SET });
+      vuesStore(o2); vueRefresh(); selVue.value = String(l2.length - 1);
+    };
+    var bVueDel = mkBtn('🗑'); bVueDel.title = tr('Supprimer la vue sélectionnée');
+    bVueDel.onclick = function () {
+      if (selVue.value === '') return;
+      var o2 = vuesLoad(); var l2 = o2[vScn()] || [];
+      l2.splice(+selVue.value, 1); o2[vScn()] = l2; vuesStore(o2); vueRefresh();
+    };
+    vueRow.appendChild(document.createTextNode(tr('Vue')));
+    vueRow.appendChild(selVue); vueRow.appendChild(bVueAdd); vueRow.appendChild(bVueDel);
+    menu.insertBefore(vueRow, bPng);
     var dimRow = document.createElement('div');
     dimRow.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#cfd3da;flex-wrap:wrap;';
     function mkNum(v) {
