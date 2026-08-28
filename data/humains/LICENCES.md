@@ -34,16 +34,20 @@ selon modèle). ~17 500 tris chacun.
 | hm-femme-04 | Femme, marche 2 | female_elegantsuit01 / ponytail01 |
 | hm-femme-05 | Femme, conversation | female_elegantsuit01 / afro01 |
 | hm-homme-07 | Homme âgé, marche (âge ~0,85) | male_elegantsuit01 / short02 (tuile grisée) |
-| hm-homme-08 | Homme, téléphone | male_elegantsuit01 / short02 |
+| hm-homme-08 | Homme, téléphone (+ combiné) | male_elegantsuit01 / short02 |
 | hm-homme-09 | Homme, corpulent (poids ~0,85) | male_casualsuit06 / short02 |
 | hm-femme-06 | Femme âgée, marche (âge ~0,85) | female_elegantsuit01 / bob02 |
-| hm-femme-07 | Femme, téléphone | female_elegantsuit01 / long01 |
+| hm-femme-07 | Femme, téléphone (+ combiné) | female_elegantsuit01 / long01 |
 | hm-enfant-01 | Garçon, debout (âge ~0,2) | male_casualsuit06 / short02 |
 | hm-enfant-02 | Fille, marche (âge ~0,2) | female_sportsuit01 / braid01 |
 | hm-enfant-03 | Garçon, course (âge ~0,2) | male_casualsuit06 / short03 |
 | hm-conduite-01 | Conducteur assis (véhicules, hors catalogue) | male_casualsuit06 / short01 |
 | hm-conduite-02 | Conducteur, volant mi-haut (variante de bras) | male_casualsuit06 / short01 (tuiles de -01) |
 | hm-conduite-03 | Conducteur, grand volant (variante de bras) | male_casualsuit06 / short01 (tuiles de -01) |
+
+Le combiné des poses « téléphone » est une géométrie BPO (12 triangles générés
+par hm-gen.py, calée sur la main et l'oreille du modèle) : aucun asset tiers,
+donc aucune contrainte de licence supplémentaire.
 
 Les tuiles `tx/*.webp` sont dérivées des textures diffuses CC0 de ces mêmes
 assets (recalibrées 1024/512/256). Chaîne de génération : CODE/humains/outils
