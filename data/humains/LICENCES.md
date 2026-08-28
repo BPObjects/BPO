@@ -45,6 +45,11 @@ selon modèle). ~17 500 tris chacun.
 | hm-conduite-02 | Conducteur, volant mi-haut (variante de bras) | male_casualsuit06 / short01 (tuiles de -01) |
 | hm-conduite-03 | Conducteur, grand volant (variante de bras) | male_casualsuit06 / short01 (tuiles de -01) |
 
+Depuis le 28/08 les paquets portent la peau en POSITION DE REPOS, le squelette
+(os, hiérarchie, matrices) et les poids d'influence : la pose est appliquée à
+l'affichage, ce qui rend les membres articulables. Le squelette vient du rig
+« default » de MPFB2, CC0 comme le reste.
+
 Le combiné des poses « téléphone » est une géométrie BPO (12 triangles générés
 par hm-gen.py, calée sur la main et l'oreille du modèle) : aucun asset tiers,
 donc aucune contrainte de licence supplémentaire.
