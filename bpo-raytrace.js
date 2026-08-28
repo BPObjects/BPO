@@ -693,6 +693,14 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
               (T.data.buffer ? new Uint8Array(T.data.buffer, T.data.byteOffset || 0, T.data.byteLength) : T.data),
               { bytesPerRow: S * 4, rowsPerImage: S }, [S, S, 1]);
           }
+          else if (T && T.data) {
+            /* une tuile aux dimensions differentes de la couche est ECARTEE :
+               sa couche resterait noire sans que rien ne le dise. Le hook
+               recalibre tout en amont, donc ce cas ne devrait pas survenir —
+               s'il survient, c'est que le recalibrage a ete contourne
+               (signale par code-8e, 28/08). */
+            console.warn('[rendu] tuile ' + l + ' ecartee : ' + T.w + 'x' + T.h + ' au lieu de ' + S + 'x' + S);
+          }
         }
         if (R.vtex) { try { R.vtex.destroy(); } catch (e) {} }
         R.vtex = t;
