@@ -195,6 +195,38 @@ fn uvAt(tri : u32, b : vec2f) -> vec2f {
   let u0 = uvs[tri * 3u]; let u1 = uvs[tri * 3u + 1u]; let u2 = uvs[tri * 3u + 2u];
   return u0 * (1.0 - b.x - b.y) + u1 * b.x + u2 * b.y;
 }
+/* NIVEAU DE DETAIL calcule A LA MAIN : un compute shader n'a pas de derivees
+   automatiques, donc pas de textureSample implicite. On compare l'empreinte du
+   pixel au point d'impact a la densite de texels du triangle :
+     - densite  = S * sqrt(aireUV / aireMonde)   texels par metre ;
+     - empreinte = distance * (2 tan(fovY/2) / hauteur) / cos(incidence) ;
+     - niveau   = log2(texels couverts par le pixel).
+   Sans ca, une texture repetee est lue au niveau 0 et donne un moire que
+   l'accumulation n'efface PAS : il est stable, pas aleatoire. Mesure au banc
+   CODE/vehicules/outils/banc-lod (deux quads identiques, UV x1 et UV x117,
+   600 echantillons) — sur le quad repete, ecart-type 15,1 -> 8,2 et variation
+   entre pixels voisins 17,6 -> 9,4 ; sur le quad non repete, rien ne bouge
+   (41,9 / 6,6 avant comme apres).
+   Le residu vient d'une limite de principe : a ce grossissement le niveau
+   pertinent est le 7, ou la tuile ne fait plus que 2x2 texels, et 117 repetitions
+   d'un motif 2x2 battent encore. Un biais global le supprimerait, au prix d'un
+   flou sur TOUTES les textures a leur taille normale — on ne le prend pas. */
+fn lodAt(tri : u32, p : vec3f, n : vec3f, rd : vec3f, taille : f32) -> f32 {
+  let a = tris[tri * 3u].xyz; let b = tris[tri * 3u + 1u].xyz; let c = tris[tri * 3u + 2u].xyz;
+  let e1 = b - a; let e2 = c - a;
+  let aireM = 0.5 * length(cross(e1, e2));
+  if (aireM < 1e-12) { return 0.0; }
+  let q0 = uvs[tri * 3u]; let q1 = uvs[tri * 3u + 1u]; let q2 = uvs[tri * 3u + 2u];
+  let d1 = q1 - q0; let d2 = q2 - q0;
+  let aireUV = 0.5 * abs(d1.x * d2.y - d1.y * d2.x);
+  if (aireUV < 1e-14) { return 0.0; }
+  let dens = taille * sqrt(aireUV / aireM);            // texels / metre
+  let dist = length(p - U.camPos.xyz);
+  let pxMonde = dist * (2.0 * U.camPos.w / max(1.0, U.dims.y));
+  let cosi = max(0.15, abs(dot(normalize(n), rd)));    // incidence rasante -> empreinte etiree
+  let texels = max(1.0, pxMonde * dens / cosi);
+  return clamp(log2(texels), 0.0, 12.0);
+}
 /* Normale LISSEE au point d'impact. Renvoie le vecteur nul quand le triangle
    n'a pas de normales de sommet (sol, touffes d'herbe, cartes de staffage) :
    l'appelant retombe alors sur la geometrique. */
@@ -351,6 +383,9 @@ fn traverse(ro : vec3f, rd : vec3f, tmax : f32, occ : bool) -> Hit {
             let layer = i32(mats[u32(mi) * 3u + 2u].w + 0.5) - 1;
             if (layer >= 0) {
               let uvh = uvAt(u32(first + k), r.zw);
+              /* la DECOUPE reste au niveau 0 : moyenner l'alpha d'une meche
+                 de cheveux ou d'une grille de calandre dissoudrait la
+                 silhouette au lieu de l'adoucir. */
               let aH = textureSampleLevel(vtex, gsamp, uvh, layer, 0.0).a;
               trou = (rnd() > aH);
             }
@@ -450,7 +485,8 @@ fn radiance(roIn : vec3f, rdIn : vec3f) -> vec3f {
       //  test porte sur > 3.5 : les modes 4 et 5 en heritent tous les deux)
       let layerL = i32(m2.w + 0.5) - 1;
       if (layerL >= 0) {
-        let txL = textureSampleLevel(vtex, gsamp, uvAt(u32(h.tri), h.bary), layerL, 0.0);
+        let lodL = lodAt(u32(h.tri), h.p, ng, rd, f32(textureDimensions(vtex).x));
+        let txL = textureSampleLevel(vtex, gsamp, uvAt(u32(h.tri), h.bary), layerL, lodL);
         albedo = pow(txL.rgb, vec3f(2.2));
       }
       /* MODE 4 = FEUILLAGE : 30 % des rayons TRAVERSENT, teintes — c'est le
@@ -669,7 +705,7 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
     R.buffers.lights = mkStorage(new Float32Array(4));
     /* Texture de gazon : 1 px vert tant que setGroundTex n'a pas fourni la tuile
        (le layout auto exige une liaison permanente pour les bindings 7/8). */
-    R.gsampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat' });
+    R.gsampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat' });
     R.gtex = device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
     device.queue.writeTexture({ texture: R.gtex }, new Uint8Array([96, 128, 64, 255]), { bytesPerRow: 256 }, [1, 1]);
     /* Tuiles de FEUILLAGE : tableau de textures (couches 512x512 rgba). Défaut :
@@ -684,14 +720,90 @@ fn fs(@builtin(position) fc : vec4f) -> @location(0) vec4f {
         var ref = null; for (var i = 0; i < tiles.length; i++) { if (tiles[i] && tiles[i].data) { ref = tiles[i]; break; } }
         if (!ref) return;
         var S = ref.w, n = Math.max(1, tiles.length);
+        /* NIVEAUX DE DETAIL (28/08) : sans eux, une texture repetee (carrelage,
+           bardage, grillage, decalque) est echantillonnee au niveau 0 quelle
+           que soit sa taille a l'ecran — un pixel couvrant plusieurs motifs
+           donne un moire STABLE que l'accumulation n'efface pas. On genere la
+           pyramide par moyenne 2x2 ponderee par l'alpha (voir _reduire). Cout
+           mesure : +33 % de memoire de tuiles (+60 Mo au pire a 180 couches)
+           et 3,6 a 4,9 ms par couche de 512 selon le profil de la tuile, soit
+           ~0,9 s au pire sur une scene a 180 couches — a comparer aux 5,5 s
+           du BVH sur la meme scene. Chiffres du correctif : voir lodAt. */
+        var NIV = 1; { var _w = S; while (_w > 1) { _w >>= 1; NIV++; } }
         var t = device.createTexture({ size: [S, S, n], format: 'rgba8unorm',
+          mipLevelCount: NIV,
           usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+        /* Moyenne 2x2 PONDEREE PAR L'ALPHA.
+           La ponderation n'est pas un raffinement, c'est la correction d'un
+           defaut connu du depot : sous alpha = 0, les tuiles issues d'un canvas
+           2D portent du NOIR (getImageData demultiplie ; mesure sur les tuiles
+           livrees : RGB (21,21,21) a (44,28,23) sur les cheveux). Une moyenne
+           arithmetique melangerait ce noir a la couleur des texels opaques,
+           alors que la DECOUPE, restee au niveau 0, vient justement de le
+           rejeter : silhouette nette, mais couleur assombrie — d'autant plus
+           que l'objet est loin. app.html dit deja la meme chose ailleurs, sous
+           le commentaire « FRANGE NOIRE DES MIPMAPS », mais son garde-fou ne
+           couvre qu'une famille de tuiles sur quatre ; ponderer ici les traite
+           toutes, sans avoir a deviner une couleur de fond.
+             RGB = somme(RGB_i x a_i) / somme(a_i)   ;   A = moyenne(a_i)
+           CHEMIN RAPIDE quand les quatre alphas sont EGAUX — le cas de
+           l'immense majorite des texels (tout opaque, ou tout transparent) :
+           la ponderation s'y confond avec la moyenne simple, qu'on calcule
+           alors sur un entier 32 bits, (v & 0xfefefefe) >>> 1 divisant chaque
+           canal sans qu'une retenue passe au voisin. Ce chemin absorbe aussi
+           le cas somme(a) = 0, donc aucune division par zero n'est possible.
+           On lit les canaux par une vue d'octets et non par des decalages :
+           l'ordre des octets dans le mot n'a alors pas a etre suppose.
+           JUSTESSE, mesuree par CODE/vehicules/outils/test-reduire.js sur un
+           temoin dont on connait la reponse (disque d'UNE couleur sur fond
+           transparent — toute reduction correcte doit rendre exactement cette
+           couleur) : ecart 0 a tous les niveaux, contre une derive de
+           (220,90,40) vers (160,65,29) au niveau 5 sans ponderation, soit
+           -27 % de luminance, et jusqu'a 335 d'ecart sur un texel de lisiere.
+           COUT : x1,3 a x2,1 selon le profil de tuile. */
+        function _reduire(src, w) {
+          var h = w >> 1, out = new Uint32Array(h * h);
+          var s8 = new Uint8Array(src.buffer, src.byteOffset, src.length * 4);
+          var o8 = new Uint8Array(out.buffer);
+          for (var y = 0; y < h; y++) {
+            var l0 = (y * 2) * w, l1 = l0 + w, o = y * h;
+            for (var x = 0; x < h; x++) {
+              var i = x * 2, q0 = l0 + i, q1 = q0 + 1, q2 = l1 + i, q3 = q2 + 1;
+              var b0 = q0 * 4, b1 = q1 * 4, b2 = q2 * 4, b3 = q3 * 4;
+              var a0 = s8[b0 + 3], a1 = s8[b1 + 3], a2 = s8[b2 + 3], a3 = s8[b3 + 3];
+              if (a0 === a1 && a1 === a2 && a2 === a3) {
+                var u = (((src[q0] & 0xfefefefe) >>> 1) + ((src[q1] & 0xfefefefe) >>> 1)) >>> 0;
+                var v = (((src[q2] & 0xfefefefe) >>> 1) + ((src[q3] & 0xfefefefe) >>> 1)) >>> 0;
+                out[o + x] = (((u & 0xfefefefe) >>> 1) + ((v & 0xfefefefe) >>> 1)) >>> 0;
+                continue;
+              }
+              var sa = a0 + a1 + a2 + a3, d = (o + x) * 4, r = sa >> 1;
+              for (var c = 0; c < 3; c++) {
+                o8[d + c] = (s8[b0 + c] * a0 + s8[b1 + c] * a1 +
+                             s8[b2 + c] * a2 + s8[b3 + c] * a3 + r) / sa;
+              }
+              o8[d + 3] = (sa + 2) >> 2;
+            }
+          }
+          return out;
+        }
         for (var l = 0; l < n; l++) {
           var T = tiles[l];
           if (T && T.data && T.w === S && T.h === S) {
-            device.queue.writeTexture({ texture: t, origin: [0, 0, l] },
-              (T.data.buffer ? new Uint8Array(T.data.buffer, T.data.byteOffset || 0, T.data.byteLength) : T.data),
-              { bytesPerRow: S * 4, rowsPerImage: S }, [S, S, 1]);
+            /* La vue 32 bits exige un decalage multiple de 4 ; les pixels
+               d'une ImageData commencent a 0, mais une tuile recadree pourrait
+               ne pas le faire — on recopie plutot que de lancer une exception
+               a l'ouverture du rendu. */
+            var src = T.data, off = src.byteOffset || 0;
+            if (!src.buffer || (off & 3)) { src = new Uint8Array(src); off = 0; }
+            var lvl = new Uint32Array(src.buffer, off, (src.byteLength || src.length) >> 2);
+            var lw = S;
+            for (var m = 0; m < NIV; m++) {
+              device.queue.writeTexture({ texture: t, mipLevel: m, origin: [0, 0, l] },
+                new Uint8Array(lvl.buffer, lvl.byteOffset, lvl.byteLength),
+                { bytesPerRow: lw * 4, rowsPerImage: lw }, [lw, lw, 1]);
+              if (lw > 1) { lvl = _reduire(lvl, lw); lw >>= 1; }
+            }
           }
           else if (T && T.data) {
             /* une tuile aux dimensions differentes de la couche est ECARTEE :
