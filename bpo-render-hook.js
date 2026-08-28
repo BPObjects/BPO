@@ -201,23 +201,18 @@
       var f = faces[i], vs = f.verts; if (!vs || vs.length < 3) continue;
       var mi = matIndex(f);
       var hasUV = !!((f.veg || f.opq || f.txm) && f.uv && f.uv.length === vs.length);
-      /* DEUX CONVENTIONS DE V COEXISTENT DANS LE VIEWER, compensees par
-         l'upload : les textures chargees en data-URI (fabricants, VEHICULES)
-         passent par makeTex avec UNPACK_FLIP_Y_WEBGL=true — leurs UV comptent
-         donc v depuis le BAS ; celles chargees en pixels bruts (humains,
-         staffage, feuillage) passent par makeTexCanvas SANS flip, et leurs UV
-         comptent v depuis le HAUT (c'est pour ca que hm-encode retourne v a
-         l'encodage). Le moteur de rendu, lui, n'a qu'une convention : v=0 en
-         haut. Les faces txm doivent donc etre retournees ici — sinon le logo
-         du reservoir sort en miroir (signale par AL, 28/08). */
-      var _flipV = !!f.txm;
+      /* PAS DE RETOURNEMENT ICI. J'avais cru que les tuiles vehicules
+         passaient par makeTex (data-URI, UNPACK_FLIP_Y=true) comme les
+         fabricants : c'est faux, verifie dans resolveTex — TEX_POOL ne
+         contient que les fabricants, et les tuiles vehicules atterrissent
+         dans TEX_IMAGES, donc makeTexCanvas SANS flip, exactement comme les
+         humaines. Les deux familles comptent v depuis le HAUT, comme le
+         moteur : rien a corriger de ce cote (releve par code-8e, 28/08).
+         Le miroir vu par AL a donc une autre cause, a caracteriser. */
       var hasVN = !!(f.vn && f.vn.length === vs.length);
       for (var k = 1; k < vs.length - 1; k++) {
         tris.push({ a: vs[0], b: vs[k], c: vs[k + 1], mat: mi,
-                    uv: hasUV ? (_flipV ? [[f.uv[0][0], 1 - f.uv[0][1]],
-                                           [f.uv[k][0], 1 - f.uv[k][1]],
-                                           [f.uv[k + 1][0], 1 - f.uv[k + 1][1]]]
-                                        : [f.uv[0], f.uv[k], f.uv[k + 1]]) : null,
+                    uv: hasUV ? [f.uv[0], f.uv[k], f.uv[k + 1]] : null,
                     /* NORMALES DE SOMMET : la triangulation en eventail garde la
                        correspondance des indices, on prend les memes. Sans elles
                        le moteur ombrait a plat et tout maillage courbe sortait
