@@ -146,9 +146,21 @@
          les DEUX marqueurs d'intention (veg, opq), JAMAIS sur f.uv : les faces
          fabricants portent tex+uv depuis toujours et basculaient toutes en
          staffage (100 % mesuré sur « aerorack », attrapé par code-db). */
-      if (tex && (f.veg || f.opq)) {
-        var opaque = f.opq || !f.veg;               /* humain texturé = staffage opaque */
-        var kV = (opaque ? 'stf_' : 'veg_') + tex;  /* cles distinctes : meme tuile, materiau different */
+      /* MAILLAGE TEXTURE A MATIERE txm:1 (27/08, carrosseries) : meme canal
+         texture que ci-dessus, mais la RUGOSITE et le METAL sont DECLARES par
+         l'appelant (f.rgh, f.met) au lieu d'etre fixes a « etoffe ». Le mode 5
+         du moteur ne force rien : il lit l'albedo dans la tuile puis passe a la
+         BRDF standard, qui utilise rough/metal du materiau — une tole peut donc
+         etre lisse et speculaire sans toucher au shader. C'est l'appelant qui
+         connait ses roles (carrosserie, pneu, chrome) : les derive ici serait
+         une seconde source de verite, donc une divergence a venir. */
+      if (tex && (f.veg || f.opq || f.txm)) {
+        var opaque = f.opq || f.txm || !f.veg;      /* humain texturé = staffage opaque */
+        var _rg = (f.txm && f.rgh != null) ? +f.rgh : (opaque ? 0.95 : 0.85);
+        var _mt = (f.txm && f.met != null) ? +f.met : 0;
+        if (f.txm) { _rg = Math.max(0.02, Math.min(1, _rg)); _mt = Math.max(0, Math.min(1, _mt)); }
+        var kV = (f.txm ? ('mat_' + _rg.toFixed(2) + '_' + _mt.toFixed(2) + '_')
+                        : (opaque ? 'stf_' : 'veg_')) + tex;  /* cles distinctes : meme tuile, materiau different */
         if (matMap[kV] != null) return matMap[kV];
         if (vegLayers[tex] == null) { vegLayers[tex] = vegList.length; vegList.push(tex); }
         var vs = vegStat(tex);
@@ -158,7 +170,7 @@
            feuille et un fantome sur une personne. Rugosite plus haute et albedo
            moins reflechissant : une etoffe n'est pas un limbe cire. */
         var mV = { albedo: [srgb2lin(vs.col[0] / 255), srgb2lin(vs.col[1] / 255), srgb2lin(vs.col[2] / 255)],
-                   metal: 0, rough: opaque ? 0.95 : 0.85, alpha: 1, ior: 1.5,
+                   metal: _mt, rough: _rg, alpha: 1, ior: 1.5,
                    leaf: opaque ? 2 : 1, leafLayer: vegLayers[tex] + 1, emissive: [0, 0, 0] };
         var iV = mats.length; mats.push(mV); matMap[kV] = iV; return iV;
       }
@@ -188,7 +200,7 @@
     for (var i = 0; i < faces.length; i++) {
       var f = faces[i], vs = f.verts; if (!vs || vs.length < 3) continue;
       var mi = matIndex(f);
-      var hasUV = !!((f.veg || f.opq) && f.uv && f.uv.length === vs.length);
+      var hasUV = !!((f.veg || f.opq || f.txm) && f.uv && f.uv.length === vs.length);
       var hasVN = !!(f.vn && f.vn.length === vs.length);
       for (var k = 1; k < vs.length - 1; k++) {
         tris.push({ a: vs[0], b: vs[k], c: vs[k + 1], mat: mi,
@@ -498,6 +510,7 @@
             __RT_TRS[ck] = R2; return R2;
           });
         }
+        if (_tl.length > 180) console.warn('[rendu] ' + _tl.length + ' couches de tuiles : proche de la limite du tableau de textures (256 typique) — au-dela, des tuiles seraient perdues.');
         renderer.setVegTiles(_tl);
         _tick('tuiles');
       }
