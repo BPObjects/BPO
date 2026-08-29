@@ -433,7 +433,16 @@
     palHead.style.cssText = 'position:sticky;top:0;margin:0 -12px;padding:9px 12px 7px;cursor:grab;user-select:none;font-weight:700;' +
       'background:rgba(26,29,35,.97);border-bottom:1px solid #343a45;border-radius:10px 10px 0 0;';
     pal.appendChild(palHead);
-    if (RP0 && RP0.px != null && RP0.py != null) { pal.style.right = 'auto'; pal.style.left = RP0.px + 'px'; pal.style.top = RP0.py + 'px'; }
+    if (RP0 && RP0.px != null && RP0.py != null) {
+      /* RE-ARRIMAGE (30/08, « les options s'affichent plus ») : la position
+         memorisee vient d'une AUTRE largeur de viewport (bibliotheque
+         ouverte/fermee, autre format) — restauree telle quelle, la palette
+         s'ouvrait HORS CHAMP. On la ramene dans le cadre du viewport. */
+      var _vr = vp.getBoundingClientRect();
+      var _px = Math.max(0, Math.min((_vr.width || 800) - 80, RP0.px));
+      var _py = Math.max(0, Math.min((_vr.height || 600) - 60, RP0.py));
+      pal.style.right = 'auto'; pal.style.left = _px + 'px'; pal.style.top = _py + 'px';
+    }
     palHead.addEventListener('pointerdown', function (e) {
       e.preventDefault();
       var r0 = pal.getBoundingClientRect(), h0 = host.getBoundingClientRect();
@@ -458,7 +467,17 @@
     host.appendChild(pal);
     var bPng = mkBtn('⬇ ' + tr('Exporter PNG')); menu.appendChild(bPng);
     var _menuOpen = false;
-    bOpts.onclick = function () { _menuOpen = !_menuOpen; pal.style.display = _menuOpen ? 'flex' : 'none'; bOpts.style.background = _menuOpen ? 'rgba(255,138,61,.95)' : '#242a33'; bOpts.style.color = _menuOpen ? '#151515' : '#e8e9ec'; bOpts.style.borderColor = _menuOpen ? '#ff8a3d' : '#3a4150'; };
+    bOpts.onclick = function () { _menuOpen = !_menuOpen; pal.style.display = _menuOpen ? 'flex' : 'none'; bOpts.style.background = _menuOpen ? 'rgba(255,138,61,.95)' : '#242a33'; bOpts.style.color = _menuOpen ? '#151515' : '#e8e9ec'; bOpts.style.borderColor = _menuOpen ? '#ff8a3d' : '#3a4150';
+      if (_menuOpen) {
+        /* ceinture : si la palette est hors du cadre (position d'une autre
+           session/largeur), on la redocke a droite plutot que de l'afficher
+           dans le vide */
+        var hr = host.getBoundingClientRect(), pr = pal.getBoundingClientRect();
+        if (pr.left > hr.right - 40 || pr.top > hr.bottom - 40 || pr.right < hr.left + 40 || pr.bottom < hr.top + 20) {
+          pal.style.right = '8px'; pal.style.left = 'auto'; pal.style.top = '58px';
+          var _o = rpLoad() || {}; delete _o.px; delete _o.py; rpSave(_o);
+        }
+      } };
     vp.appendChild(host);
 
     try {
