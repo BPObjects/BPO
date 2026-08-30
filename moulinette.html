@@ -1963,6 +1963,38 @@ function decimate(mesh,target){
      milliers de petites pieces) : ecrasement proportionnel au-dela de 60 % */
   if(floorSum>target*0.6){ var fsc=target*0.6/floorSum;
     for(var ck1 in cFloor)cFloor[ck1]=Math.max(4,Math.floor(cFloor[ck1]*fsc)); }
+  /* --- EPINGLAGE DE PROXIMITE (30/08) : un sommet a moins de eps d'un
+     sommet d'une AUTRE piece est gele — la coque ne peut plus onduler a
+     travers un hublot ou un lettrage affleurant (vecu A380/B747 : la
+     decimation traversait les details, et les soulever apres coup les
+     faisait flotter en gros plan). eps suit la taille du modele. */
+  var pinned=new Uint8Array(nV);
+  (function(){
+    var bbLo=[1e30,1e30,1e30], bbHi=[-1e30,-1e30,-1e30], pi;
+    for(pi=0;pi<nV;pi++){ if(vx[pi]<bbLo[0])bbLo[0]=vx[pi]; if(vx[pi]>bbHi[0])bbHi[0]=vx[pi];
+      if(vy[pi]<bbLo[1])bbLo[1]=vy[pi]; if(vy[pi]>bbHi[1])bbHi[1]=vy[pi];
+      if(vz[pi]<bbLo[2])bbLo[2]=vz[pi]; if(vz[pi]>bbHi[2])bbHi[2]=vz[pi]; }
+    var ddx=bbHi[0]-bbLo[0], ddy=bbHi[1]-bbLo[1], ddz=bbHi[2]-bbLo[2];
+    var diag=Math.sqrt(ddx*ddx+ddy*ddy+ddz*ddz)||1;
+    var eps=Math.max(diag*1.5e-4, 0.004), inv=1/eps, e2=eps*eps;
+    var grille={}, key, gi2;
+    for(pi=0;pi<nV;pi++){
+      key=Math.floor(vx[pi]*inv)+':'+Math.floor(vy[pi]*inv)+':'+Math.floor(vz[pi]*inv);
+      (grille[key]||(grille[key]=[])).push(pi);
+    }
+    for(pi=0;pi<nV;pi++){
+      var gx=Math.floor(vx[pi]*inv), gy=Math.floor(vy[pi]*inv), gz=Math.floor(vz[pi]*inv), stop=false;
+      for(var ax=-1;ax<=1&&!stop;ax++)for(var ay=-1;ay<=1&&!stop;ay++)for(var az2=-1;az2<=1&&!stop;az2++){
+        var cel=grille[(gx+ax)+':'+(gy+ay)+':'+(gz+az2)];
+        if(!cel)continue;
+        for(gi2=0;gi2<cel.length;gi2++){ var q2=cel[gi2];
+          if(comp[q2]===comp[pi])continue;
+          var qx=vx[q2]-vx[pi], qy=vy[q2]-vy[pi], qz=vz[q2]-vz[pi];
+          if(qx*qx+qy*qy+qz*qz<e2){ pinned[pi]=1; stop=true; break; }
+        }
+      }
+    }
+  })();
   function addPlane(v,a,b,c,d,w){ var o=v*10;
     Q[o]+=w*a*a; Q[o+1]+=w*a*b; Q[o+2]+=w*a*c; Q[o+3]+=w*a*d;
     Q[o+4]+=w*b*b; Q[o+5]+=w*b*c; Q[o+6]+=w*b*d;
@@ -2036,6 +2068,7 @@ function decimate(mesh,target){
   var tmp=[0,0,0];
   function push(a,b,tries,penalty){
     if(vDead[a]||vDead[b])return;
+    if(pinned[a]&&pinned[b])return;        /* zone de contact : on n'y touche pas */
     var x,y,z, got=false;
     if(solve(a,b,tmp)){
       x=tmp[0]; y=tmp[1]; z=tmp[2];
@@ -2048,6 +2081,9 @@ function decimate(mesh,target){
     if(!got){ var bc=1e30, cand=[[vx[a],vy[a],vz[a]],[vx[b],vy[b],vz[b]],[(vx[a]+vx[b])/2,(vy[a]+vy[b])/2,(vz[a]+vz[b])/2]];
       for(var ci=0;ci<3;ci++){ var e=evalQ(a,b,cand[ci][0],cand[ci][1],cand[ci][2]);
         if(e<bc){ bc=e; x=cand[ci][0]; y=cand[ci][1]; z=cand[ci][2]; } } }
+    /* une epingle impose SA position au collapse */
+    if(pinned[a]){ x=vx[a]; y=vy[a]; z=vz[a]; }
+    else if(pinned[b]){ x=vx[b]; y=vy[b]; z=vz[b]; }
     hpush({cost:evalQ(a,b,x,y,z)/cD2[comp[a]]+penalty,a:a,b:b,va:version[a],vb:version[b],x:x,y:y,z:z,tries:tries});   /* cout RELATIF a la piece */
   }
   function seed(){ var seen=new Set();
@@ -2098,6 +2134,7 @@ function decimate(mesh,target){
         if(tri[o]===a3||tri[o+1]===a3||tri[o+2]===a3)has=true;
         if(has){ triDead[t5]=1; alive--; cAlive[comp[a3]]--; }
         else{ for(var k3=0;k3<3;k3++)if(tri[o+k3]===b3)tri[o+k3]=a3; v2t[a3].push(t5); } }
+      if(pinned[b3])pinned[a3]=1;
       v2t[b3]=[]; vDead[b3]=1; version[a3]++; version[b3]++;
       if(v2t[a3].length>48){ var s2=Array.from(new Set(v2t[a3])).filter(function(t6){return !triDead[t6];}); v2t[a3]=s2; }
       var nb=new Set();
@@ -2121,7 +2158,8 @@ function decimate(mesh,target){
       if(remap[vv]<0){ remap[vv]=ovx.length; ovx.push(vx[vv]); ovy.push(vy[vv]); ovz.push(vz[vv]); osrcI.push(vv); }
       otri.push(remap[vv]); }
     omat.push(triMat[t8]); osrcT.push(t8); }
-  try{ window.__DECIM={cT:cT,cAlive:cAlive,cFloor:cFloor}; }catch(_e){}   /* sonde du banc */
+  try{ var _np=0; for(var _pi=0;_pi<nV;_pi++)if(pinned[_pi])_np++;
+    window.__DECIM={cT:cT,cAlive:cAlive,cFloor:cFloor,pinned:_np}; }catch(_e){}   /* sonde du banc */
   return {vx:ovx,vy:ovy,vz:ovz,tri:otri,triMat:omat,srcIndex:osrcI,srcTri:osrcT};
 }
 
