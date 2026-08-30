@@ -1977,26 +1977,37 @@ function decimate(mesh,target){
   for(var vm1=0;vm1<nT;vm1++){ var vmm=triMat[vm1];
     for(var vm2=0;vm2<3;vm2++){ var vv2=tri[vm1*3+vm2];
       if(vmat[vv2]===-1)vmat[vv2]=vmm; else if(vmat[vv2]!==vmm)pinned[vv2]=1; } }
-  (function(){
+  var pinnedMat=new Uint8Array(pinned);   /* socle inamovible : frontieres de matieres */
+  var diagEp=(function(){
     var bbLo=[1e30,1e30,1e30], bbHi=[-1e30,-1e30,-1e30], pi;
     for(pi=0;pi<nV;pi++){ if(vx[pi]<bbLo[0])bbLo[0]=vx[pi]; if(vx[pi]>bbHi[0])bbHi[0]=vx[pi];
       if(vy[pi]<bbLo[1])bbLo[1]=vy[pi]; if(vy[pi]>bbHi[1])bbHi[1]=vy[pi];
       if(vz[pi]<bbLo[2])bbLo[2]=vz[pi]; if(vz[pi]>bbHi[2])bbHi[2]=vz[pi]; }
     var ddx=bbHi[0]-bbLo[0], ddy=bbHi[1]-bbLo[1], ddz=bbHi[2]-bbLo[2];
-    var diag=Math.sqrt(ddx*ddx+ddy*ddy+ddz*ddz)||1;
-    /* rayon ELARGI (30/08 apres-midi, pont superieur du 747) : a 15 mm, les
-       epingles tenaient les CONTACTS mais entre deux epingles une corde de
-       decimation plongeait sous la surface courbe (fleche 36 mm sur la bosse)
-       et TRANCHAIT les hublots — vu au rendu z-par-pixel. A ~diag*3e-3
-       (27 cm sur un 747), les cordes pres des details restent courtes
-       (fleche < 3 mm) : la coque epouse l'arc la ou quelque chose est pose. */
-    var eps=Math.max(diag*3e-3, 0.02), inv=1/eps, e2=eps*eps;
-    var grille={}, key, gi2;
+    return Math.sqrt(ddx*ddx+ddy*ddy+ddz*ddz)||1;
+  })();
+  /* rayon ELARGI (30/08 apres-midi, pont superieur du 747) : a 15 mm, les
+     epingles tenaient les CONTACTS mais entre deux epingles une corde de
+     decimation plongeait sous la surface courbe (fleche 36 mm sur la bosse)
+     et TRANCHAIT les hublots — vu au rendu z-par-pixel. A ~diag*3e-3
+     (27 cm sur un 747), les cordes pres des details restent courtes
+     (fleche < 3 mm) : la coque epouse l'arc la ou quelque chose est pose. */
+  var epsEpingle=Math.max(diagEp*3e-3, 0.02);
+  function poserEpingles(eps){
+    /* re-posable a un rayon plus petit : la CAO dense (Rafale ACAD, 83 828
+       epingles au rayon plein) etrangle la decimation — on RELACHE par
+       etages quand la cible est inatteignable, voir la boucle principale */
+    epsEpingle=eps;
+    var inv=1/eps, e2=eps*eps, grille={}, key, gi2, pi;
+    pinned.set(pinnedMat);
     for(pi=0;pi<nV;pi++){
+      if(typeof vDead!=='undefined'&&vDead&&vDead[pi])continue;
       key=Math.floor(vx[pi]*inv)+':'+Math.floor(vy[pi]*inv)+':'+Math.floor(vz[pi]*inv);
       (grille[key]||(grille[key]=[])).push(pi);
     }
     for(pi=0;pi<nV;pi++){
+      if(pinned[pi])continue;
+      if(typeof vDead!=='undefined'&&vDead&&vDead[pi])continue;
       var gx=Math.floor(vx[pi]*inv), gy=Math.floor(vy[pi]*inv), gz=Math.floor(vz[pi]*inv), stop=false;
       for(var ax=-1;ax<=1&&!stop;ax++)for(var ay=-1;ay<=1&&!stop;ay++)for(var az2=-1;az2<=1&&!stop;az2++){
         var cel=grille[(gx+ax)+':'+(gy+ay)+':'+(gz+az2)];
@@ -2008,7 +2019,8 @@ function decimate(mesh,target){
         }
       }
     }
-  })();
+  }
+  poserEpingles(epsEpingle);
   function addPlane(v,a,b,c,d,w){ var o=v*10;
     Q[o]+=w*a*a; Q[o+1]+=w*a*b; Q[o+2]+=w*a*c; Q[o+3]+=w*a*d;
     Q[o+4]+=w*b*b; Q[o+5]+=w*b*c; Q[o+6]+=w*b*d;
@@ -2158,7 +2170,15 @@ function decimate(mesh,target){
       nb.forEach(function(v2){ push(a3,v2,0,0); });
       roundC++;
     }
-    if(alive<=target||roundC===0)break;
+    if(alive<=target)break;
+    if(roundC===0){
+      /* plus aucun effondrement legal et la cible n'est pas atteinte : la
+         protection etrangle (CAO dense). On divise le rayon d'epinglage par
+         2 — plancher 4 mm — et on ressaie : protection maximale que le
+         budget de triangles autorise. */
+      if(epsEpingle>0.004){ poserEpingles(Math.max(epsEpingle/2,0.004)); seed(); continue; }
+      break;
+    }
     roundC=0; seed();
   }
   /* compactage + srcIndex/srcTri */
@@ -2173,7 +2193,7 @@ function decimate(mesh,target){
       otri.push(remap[vv]); }
     omat.push(triMat[t8]); osrcT.push(t8); }
   try{ var _np=0; for(var _pi=0;_pi<nV;_pi++)if(pinned[_pi])_np++;
-    window.__DECIM={cT:cT,cAlive:cAlive,cFloor:cFloor,pinned:_np}; }catch(_e){}   /* sonde du banc */
+    window.__DECIM={cT:cT,cAlive:cAlive,cFloor:cFloor,pinned:_np,eps:epsEpingle}; }catch(_e){}   /* sonde du banc */
   return {vx:ovx,vy:ovy,vz:ovz,tri:otri,triMat:omat,srcIndex:osrcI,srcTri:osrcT};
 }
 
