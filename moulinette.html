@@ -1993,13 +1993,16 @@ function decimate(mesh,target){
      (27 cm sur un 747), les cordes pres des details restent courtes
      (fleche < 3 mm) : la coque epouse l'arc la ou quelque chose est pose. */
   var epsEpingle=Math.max(diagEp*3e-3, 0.02);
+  var socleActif=true;   /* frontieres de matieres : cede en DERNIER etage —
+     115 matieres finement panachees (Rafale 3DW) = 108 632 epingles
+     inamovibles, convergence a 189 557 pour une cible de 40 000 */
   function poserEpingles(eps){
     /* re-posable a un rayon plus petit : la CAO dense (Rafale ACAD, 83 828
        epingles au rayon plein) etrangle la decimation — on RELACHE par
        etages quand la cible est inatteignable, voir la boucle principale */
     epsEpingle=eps;
     var inv=1/eps, e2=eps*eps, grille={}, key, gi2, pi;
-    pinned.set(pinnedMat);
+    if(socleActif)pinned.set(pinnedMat); else pinned.fill(0);
     for(pi=0;pi<nV;pi++){
       if(typeof vDead!=='undefined'&&vDead&&vDead[pi])continue;
       key=Math.floor(vx[pi]*inv)+':'+Math.floor(vy[pi]*inv)+':'+Math.floor(vz[pi]*inv);
@@ -2013,7 +2016,7 @@ function decimate(mesh,target){
         var cel=grille[(gx+ax)+':'+(gy+ay)+':'+(gz+az2)];
         if(!cel)continue;
         for(gi2=0;gi2<cel.length;gi2++){ var q2=cel[gi2];
-          if(comp[q2]===comp[pi] && vmat[q2]===vmat[pi])continue;   /* meme piece ET meme matiere : rien a proteger */
+          if(comp[q2]===comp[pi] && (vmat[q2]===vmat[pi] || !socleActif))continue;   /* meme piece ET meme matiere : rien a proteger ; socle leve = la matiere ne compte plus */
           var qx=vx[q2]-vx[pi], qy=vy[q2]-vy[pi], qz=vz[q2]-vz[pi];
           if(qx*qx+qy*qy+qz*qz<e2){ pinned[pi]=1; stop=true; break; }
         }
@@ -2177,6 +2180,7 @@ function decimate(mesh,target){
          2 — plancher 4 mm — et on ressaie : protection maximale que le
          budget de triangles autorise. */
       if(epsEpingle>0.004){ poserEpingles(Math.max(epsEpingle/2,0.004)); seed(); continue; }
+      if(socleActif){ socleActif=false; poserEpingles(0.004); seed(); continue; }
       break;
     }
     roundC=0; seed();
