@@ -1969,6 +1969,14 @@ function decimate(mesh,target){
      decimation traversait les details, et les soulever apres coup les
      faisait flotter en gros plan). eps suit la taille du modele. */
   var pinned=new Uint8Array(nV);
+  /* matiere « dominante » par sommet : un detail affleurant SOUDE a la coque
+     (meme composante) echappe a l'epinglage inter-composants — le pont
+     superieur du 747 Qantas l'a montre. On epingle aussi les VOISINAGES DE
+     FRONTIERE DE MATIERE (30/08 apres-midi, 2e tour). */
+  var vmat=new Int32Array(nV); for(var vm0=0;vm0<nV;vm0++)vmat[vm0]=-1;
+  for(var vm1=0;vm1<nT;vm1++){ var vmm=triMat[vm1];
+    for(var vm2=0;vm2<3;vm2++){ var vv2=tri[vm1*3+vm2];
+      if(vmat[vv2]===-1)vmat[vv2]=vmm; else if(vmat[vv2]!==vmm)pinned[vv2]=1; } }
   (function(){
     var bbLo=[1e30,1e30,1e30], bbHi=[-1e30,-1e30,-1e30], pi;
     for(pi=0;pi<nV;pi++){ if(vx[pi]<bbLo[0])bbLo[0]=vx[pi]; if(vx[pi]>bbHi[0])bbHi[0]=vx[pi];
@@ -1976,7 +1984,13 @@ function decimate(mesh,target){
       if(vz[pi]<bbLo[2])bbLo[2]=vz[pi]; if(vz[pi]>bbHi[2])bbHi[2]=vz[pi]; }
     var ddx=bbHi[0]-bbLo[0], ddy=bbHi[1]-bbLo[1], ddz=bbHi[2]-bbLo[2];
     var diag=Math.sqrt(ddx*ddx+ddy*ddy+ddz*ddz)||1;
-    var eps=Math.max(diag*1.5e-4, 0.004), inv=1/eps, e2=eps*eps;
+    /* rayon ELARGI (30/08 apres-midi, pont superieur du 747) : a 15 mm, les
+       epingles tenaient les CONTACTS mais entre deux epingles une corde de
+       decimation plongeait sous la surface courbe (fleche 36 mm sur la bosse)
+       et TRANCHAIT les hublots — vu au rendu z-par-pixel. A ~diag*3e-3
+       (27 cm sur un 747), les cordes pres des details restent courtes
+       (fleche < 3 mm) : la coque epouse l'arc la ou quelque chose est pose. */
+    var eps=Math.max(diag*3e-3, 0.02), inv=1/eps, e2=eps*eps;
     var grille={}, key, gi2;
     for(pi=0;pi<nV;pi++){
       key=Math.floor(vx[pi]*inv)+':'+Math.floor(vy[pi]*inv)+':'+Math.floor(vz[pi]*inv);
@@ -1988,7 +2002,7 @@ function decimate(mesh,target){
         var cel=grille[(gx+ax)+':'+(gy+ay)+':'+(gz+az2)];
         if(!cel)continue;
         for(gi2=0;gi2<cel.length;gi2++){ var q2=cel[gi2];
-          if(comp[q2]===comp[pi])continue;
+          if(comp[q2]===comp[pi] && vmat[q2]===vmat[pi])continue;   /* meme piece ET meme matiere : rien a proteger */
           var qx=vx[q2]-vx[pi], qy=vy[q2]-vy[pi], qz=vz[q2]-vz[pi];
           if(qx*qx+qy*qy+qz*qz<e2){ pinned[pi]=1; stop=true; break; }
         }
