@@ -1334,7 +1334,61 @@ function convertSkp(entry, autres){
       +'(ou MOULINETTE.bat) pour demarrer le convertisseur. Detail : '+e);
   });
 }
+/* ---- lecture .zip (30/08, demande AL) : repertoire central + deflate-raw
+   natif — le miroir de makeZip. Renvoie [{nom, blob}] hors dossiers. */
+function unzipAll(file){
+  return file.arrayBuffer().then(function(buf){
+    var u8=new Uint8Array(buf), dv=new DataView(buf);
+    var i=u8.length-22, min=Math.max(0,u8.length-22-65535), eocd=-1;
+    for(;i>=min;i--){ if(dv.getUint32(i,true)===0x06054b50){ eocd=i; break; } }
+    if(eocd<0) return Promise.reject(new Error('pas une archive zip'));
+    var n=dv.getUint16(eocd+10,true), off=dv.getUint32(eocd+16,true);
+    var td=new TextDecoder('utf-8'), jobs=[], pp=off;
+    for(var k=0;k<n;k++){
+      if(dv.getUint32(pp,true)!==0x02014b50) break;
+      var meth=dv.getUint16(pp+10,true), csz=dv.getUint32(pp+20,true);
+      var nl=dv.getUint16(pp+28,true), el=dv.getUint16(pp+30,true), cl=dv.getUint16(pp+32,true);
+      var lho=dv.getUint32(pp+42,true);
+      var nom=td.decode(u8.subarray(pp+46,pp+46+nl));
+      pp+=46+nl+el+cl;
+      if(nom.slice(-1)==='/') continue;                      /* dossier */
+      jobs.push((function(meth,csz,lho,nom){
+        var lnl=dv.getUint16(lho+26,true), lel=dv.getUint16(lho+28,true);
+        var dat=u8.subarray(lho+30+lnl+lel, lho+30+lnl+lel+csz);
+        if(meth===0) return Promise.resolve({nom:nom, blob:new Blob([dat])});
+        if(meth!==8) return Promise.resolve(null);           /* methode exotique */
+        var ds=new DecompressionStream('deflate-raw');
+        return new Response(new Blob([dat]).stream().pipeThrough(ds)).blob()
+          .then(function(b){ return {nom:nom, blob:b}; }).catch(function(){ return null; });
+      })(meth,csz,lho,nom));
+    }
+    return Promise.all(jobs).then(function(rs){ return rs.filter(function(r){ return r; }); });
+  });
+}
 function onFiles(files){
+  /* les archives sont depliees puis reinjectees dans le flux normal */
+  var zips=[], reste=[];
+  files.forEach(function(e){ if(/\.zip$/i.test(e.f.name)) zips.push(e); else reste.push(e); });
+  if(zips.length){
+    dropMsg('Ouverture de '+zips.length+' archive(s)…');
+    Promise.all(zips.map(function(z){
+      return unzipAll(z.f).then(function(ents){
+        var base=z.f.name.replace(/\.zip$/i,'');
+        return ents.map(function(en){
+          return {f:new File([en.blob], en.nom.split('/').pop()), p:base+'/'+en.nom};
+        });
+      }).catch(function(){ dropMsg('Archive illisible : '+z.f.name); return []; });
+    })).then(function(lots){
+      var tout=reste.slice();
+      lots.forEach(function(l){ tout=tout.concat(l); });
+      if(!tout.length){ dropMsg('Archives vides ou illisibles.'); return; }
+      onFilesPrets(tout);
+    });
+    return;
+  }
+  onFilesPrets(files);
+}
+function onFilesPrets(files){
   var skp=null, autres=[];
   files.forEach(function(e){ if(/\.skp$/i.test(e.f.name)&&!skp)skp=e; else autres.push(e); });
   if(skp){ convertSkp(skp, autres.filter(function(e){ return !/\.skp$/i.test(e.f.name); })); return; }
@@ -3489,7 +3543,7 @@ document.addEventListener('change',function(e){
 /* la zone de dépôt annonce les nouveaux formats */
 function texte(){
   var b=document.querySelector('#dropcard b');
-  if(b && /\.3ds ici/.test(b.textContent)) b.textContent='Glissez un fichier .obj, .dae, .skp, .3ds, .stl, .ifc ou .gltf/.glb ici';
+  if(b && /\.3ds ici/.test(b.textContent)) b.textContent='Glissez un fichier .obj, .dae, .skp, .3ds, .stl, .ifc, .gltf/.glb ou .zip ici';
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',texte); else texte();
 window.__moulFmts={ convertit:convertit, geoVersOBJ:geoVersOBJ, coreReady:coreReady };   /* poignée de banc */
