@@ -3203,7 +3203,15 @@ function paintProg(){ if(PAINT.prog)return PAINT.prog;
               uMVP:gl.getUniformLocation(p,'uMVP')};
   return PAINT.prog; }
 /* une matiere est-elle visible ? (mode Isoler : seules les matieres selectionnees) */
-function matVisible(mi){ return !HIDSET.has(mi) && (!VIEW.iso || SELSET.has(mi)); }
+function matVisible(mi){
+  /* SURVOL = APERCU (demande d'AL) : une matiere masquee reapparait tant qu'on
+     survole sa tuile. On la retrouve donc sans avoir a la rallumer, et le
+     surlignage (uHi, deja pilote par hoverMat) signale que c'est temporaire.
+     Le tampon de picking n'est PAS reconstruit au survol : un apercu ne doit
+     pas changer ce que le pinceau peut atteindre. */
+  if(HIDSET.has(mi)) return mi===VIEW.hoverMat;
+  return !VIEW.iso || SELSET.has(mi);
+}
 function buildPickBuf(){
   if(!OUT){ PAINT.n=0; return; }
   var nT=OUT.triMat.length, data=new Float32Array(nT*3*6);
