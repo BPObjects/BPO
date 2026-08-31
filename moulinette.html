@@ -102,6 +102,10 @@
   .mtile:hover{border-color:rgba(255,255,255,.3)}
   .mtile.sel{border-color:var(--am); box-shadow:0 0 0 2px rgba(229,112,28,.35)}
   .mtile.selm{border-color:#5e9bd2; box-shadow:0 0 0 2px rgba(94,155,210,.35)}
+  /* matiere MASQUEE : la tuile reste lisible et cliquable, mais barree */
+  .mtile.hid{opacity:.34; filter:grayscale(.75)}
+  .mtile.hid::after{content:''; position:absolute; left:6%; right:6%; top:48%;
+    height:2px; background:#e5701c; transform:rotate(-38deg); border-radius:2px}
   .mtile span{position:absolute; left:0; right:0; bottom:0; font-size:8.5px; line-height:1.2;
          padding:1px 2px; background:rgba(11,18,32,.72); color:var(--tx2);
          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center}
@@ -568,6 +572,7 @@ pret(function(){
   <div class="btns mini">
     <button id="uv-hi" title="Teinter en continu la matière sélectionnée">Surligner</button>
     <button id="m-iso" title="N'afficher QUE la ou les matières sélectionnées (le pinceau ne mord plus sur le reste)">Isoler</button>
+    <button id="m-hide" title="Masquer la ou les matières sélectionnées — vue seulement, la géométrie reste dans l'export. Re-cliquer pour réafficher ; clic droit = tout réafficher.">Cacher</button>
     <button id="m-ren" title="Renommer la matière">✎ Nom</button>
     <button id="m-copy" title="Copier l'apparence de la matière">Copier</button>
     <button id="m-paste" title="Coller l'apparence copiée sur la matière sélectionnée" disabled>Coller</button>
@@ -716,6 +721,7 @@ var WELD=null;     /* {vx,vy,vz, tri, triMat, cornW} maillage soude (entree mote
 var OUT=null;      /* resultat decimation {vx,vy,vz,tri,triMat,srcIndex,srcTri} */
 var FILES={};      /* basename lowercase -> File (drop dossier : textures, mtl) */
 var VIEW={mode:'ap', wf:false, up:'Z', hiOn:false, hoverMat:-1, iso:false};	/* SketchUp exporte en Z-haut par defaut */
+var HIDSET=new Set();   /* matieres MASQUEES : vue seule, la geometrie reste dans l'export */
 var LUM=1.2;			/* exposition de la scene (curseur Lumiere) */
 var BG='dark';			/* fond de la vue : 'dark' | 'light' | 'studio' */
 function bgRGB(){
@@ -849,7 +855,11 @@ function refreshSelVisual(){
   var tiles=$('mat-grid').children;
   for(var k=0;k<tiles.length;k++){
     tiles[k].classList.toggle('sel',k===TSEL);
-    tiles[k].classList.toggle('selm',SELSET.has(k)&&k!==TSEL); } }
+    tiles[k].classList.toggle('selm',SELSET.has(k)&&k!==TSEL);
+    tiles[k].classList.toggle('hid',HIDSET.has(k)); }
+  var nh=HIDSET.size, b=$('m-hide');
+  if(b){ b.classList.toggle('on',nh>0);
+    b.textContent=nh?('Cacher ('+nh+')'):'Cacher'; } }
 function tileClick(ev,i){
   if(ev.ctrlKey||ev.metaKey){
     if(SELSET.has(i)&&SELSET.size>1)SELSET.delete(i);
@@ -2901,6 +2911,7 @@ var cv=$('gl'), gl=cv.getContext('webgl2')||cv.getContext('webgl');
 var isGL2=(typeof WebGL2RenderingContext!=='undefined')&&(gl instanceof WebGL2RenderingContext);
 var prog=null, batches={av:[],ap:[]}, wire={av:null,ap:null};
 var cam={yaw:.7,pitch:.42,dist:3,cx:0,cy:0,cz:0,panx:0,pany:0};
+var MDIAG=0;   /* diagonale du modele : les plans de coupe s'y adossent */
 function sh(type,src){ var s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
   if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(s); return s; }
 function initGL(){
@@ -3046,6 +3057,7 @@ function fitCam(){
   cam.cx=(X[0]+X[1])/2; cam.cy=(Y[0]+Y[1])/2; cam.cz=(Z[0]+Z[1])/2;
   var diag=Math.sqrt((X[1]-X[0])*(X[1]-X[0])+(Y[1]-Y[0])*(Y[1]-Y[0])+(Z[1]-Z[0])*(Z[1]-Z[0]));
   if(!(diag>1e-9))diag=WELD.diag||1;
+  MDIAG=diag;                                  /* rayon du modele, pour les plans de coupe */
   cam.dist=diag*0.62/Math.tan(FOV/2);
   cam.panx=0; cam.pany=0;
 }
@@ -3080,7 +3092,18 @@ function draw(){
   ex+=xx*cam.panx+yx*cam.pany; ey+=xy*cam.panx+yy*cam.pany; ez+=xz*cam.panx+yz*cam.pany;
   var V=new Float64Array([xx,yx,zx,0, xy,yy,zy,0, xz,yz,zz,0,
          -(xx*ex+xy*ey+xz*ez), -(yx*ex+yy*ey+yz*ez), -(zx*ex+zy*ey+zz*ez), 1]); /* column-major */
-  var P=mat4persp(FOV,w/h,cam.dist*0.01,cam.dist*10);                            /* column-major */
+  /* PLANS DE COUPE (30/08) : ils valaient cam.dist*0.01 et cam.dist*10 — donc en
+     zoomant, le plan LOINTAIN se refermait plus vite que la geometrie ne
+     s'approchait et tout disparaissait (signale par AL). Le zoom molette
+     recentre vers le curseur sans viser la surface reelle : la cible peut
+     rester loin de ce qu'on regarde, et dist*10 passait alors devant l'objet.
+     On adosse desormais le lointain a la TAILLE DU MODELE, jamais a la seule
+     distance camera ; le rapport lointain/proche est borne a 5000 pour garder
+     la precision du tampon de profondeur. */
+  var _r=(MDIAG||cam.dist)*0.6;
+  var _far=(cam.dist+_r*2)*2;
+  var _near=Math.max(_far/5000, cam.dist*0.02, 1e-5);
+  var P=mat4persp(FOV,w/h,_near,_far);                                          /* column-major */
   var MVP=new Float32Array(16);
   for(var c=0;c<4;c++)for(var r=0;r<4;r++){ var s=0;
     for(var k=0;k<4;k++)s+=P[k*4+r]*V[c*4+k]; MVP[c*4+r]=s; }                    /* MVP = P * V */
@@ -3154,7 +3177,7 @@ function paintProg(){ if(PAINT.prog)return PAINT.prog;
               uMVP:gl.getUniformLocation(p,'uMVP')};
   return PAINT.prog; }
 /* une matiere est-elle visible ? (mode Isoler : seules les matieres selectionnees) */
-function matVisible(mi){ return !VIEW.iso || SELSET.has(mi); }
+function matVisible(mi){ return !HIDSET.has(mi) && (!VIEW.iso || SELSET.has(mi)); }
 function buildPickBuf(){
   if(!OUT){ PAINT.n=0; return; }
   var nT=OUT.triMat.length, data=new Float32Array(nT*3*6);
@@ -3334,6 +3357,23 @@ function setPaint(on){
     $('b-ap').classList.add('on'); $('b-av').classList.remove('on'); draw(); } }
 $('m-paint').addEventListener('click',function(){ if(!OUT)return; if(SHELL.on)setShell(false); setPaint(!PAINT.on); });
 $('m-shell').addEventListener('click',function(){ if(!OUT)return; setShell(!SHELL.on); });
+/* Cacher : bascule la selection courante. Si TOUTE la selection est deja
+   masquee on la reaffiche — un seul bouton fait l'aller et le retour.
+   Clic droit : tout reafficher, pour ne jamais rester coince avec une piece
+   oubliee hors de vue. */
+$('m-hide').addEventListener('click',function(){
+  if(!SRC)return;
+  var sel=Array.from(SELSET);
+  if(!sel.length)return;
+  var tout=sel.every(function(i){ return HIDSET.has(i); });
+  sel.forEach(function(i){ if(tout)HIDSET.delete(i); else HIDSET.add(i); });
+  refreshSelVisual();
+  if(OUT)buildPickBuf();                       /* le pinceau ignore le masque */
+  draw(); });
+$('m-hide').addEventListener('contextmenu',function(e){ e.preventDefault();
+  if(!HIDSET.size)return;
+  HIDSET.clear(); refreshSelVisual();
+  if(OUT)buildPickBuf(); draw(); });
 $('m-iso').addEventListener('click',function(){
   VIEW.iso=!VIEW.iso;
   $('m-iso').classList.toggle('on',VIEW.iso);
@@ -3403,7 +3443,8 @@ window.addEventListener('keydown',function(e){
     var t=Math.tan(FOV/2), asp=rect.width/Math.max(1,rect.height);
     cam.panx+=ndx*t*asp*cam.dist*(1-k);
     cam.pany+=ndy*t*cam.dist*(1-k);
-    cam.dist*=k; draw(); },{passive:false});
+    cam.dist=Math.max(cam.dist*k, (MDIAG||1)*2e-4);   /* borne basse : sans elle dist tend vers 0 */
+    draw(); },{passive:false});
   cv.addEventListener('dblclick',function(e){ e.preventDefault(); fitCam(); draw(); });
   cv.addEventListener('contextmenu',function(e){ e.preventDefault(); });
   window.addEventListener('resize',draw);
