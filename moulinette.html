@@ -102,11 +102,22 @@
   .mtile:hover{border-color:rgba(255,255,255,.3)}
   .mtile.sel{border-color:var(--am); box-shadow:0 0 0 2px rgba(229,112,28,.35)}
   .mtile.selm{border-color:#5e9bd2; box-shadow:0 0 0 2px rgba(94,155,210,.35)}
-  /* matiere MASQUEE : la tuile reste lisible et cliquable, mais barree */
-  .mtile.hid{opacity:.34; filter:grayscale(.75)}
-  .mtile.hid::after{content:''; position:absolute; left:6%; right:6%; top:48%;
+  /* matiere MASQUEE : la tuile reste lisible et cliquable, mais barree.
+     Le voile est un ::before et NON une opacite sur la tuile — sinon la coche
+     serait grisee avec elle et deviendrait illisible juste quand on en a besoin. */
+  .mtile.hid{filter:grayscale(.7)}
+  .mtile.hid::before{content:''; position:absolute; inset:0; z-index:1;
+    background:rgba(11,18,32,.62)}
+  .mtile.hid::after{content:''; position:absolute; left:6%; right:6%; top:48%; z-index:2;
     height:2px; background:#e5701c; transform:rotate(-38deg); border-radius:2px}
-  .mtile span{position:absolute; left:0; right:0; bottom:0; font-size:8.5px; line-height:1.2;
+  /* coche d'affichage, en coin : bascule SANS changer la selection */
+  .mtile .mvis{position:absolute; left:2px; top:2px; width:13px; height:13px; z-index:4;
+    border-radius:4px; border:1.5px solid rgba(255,255,255,.5);
+    background:rgba(11,18,32,.74); color:#fff; font:700 9px/10px system-ui,sans-serif;
+    font-style:normal; text-align:center; cursor:pointer; user-select:none}
+  .mtile .mvis:hover{border-color:var(--am); background:rgba(11,18,32,.92)}
+  .mtile .mvis.off{color:transparent; border-color:rgba(255,255,255,.34)}
+  .mtile span{position:absolute; left:0; right:0; bottom:0; z-index:3; font-size:8.5px; line-height:1.2;
          padding:1px 2px; background:rgba(11,18,32,.72); color:var(--tx2);
          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center}
   #mat-name{font-size:11.5px; color:var(--tx2); margin-top:5px; word-break:break-all}
@@ -573,6 +584,7 @@ pret(function(){
     <button id="uv-hi" title="Teinter en continu la matière sélectionnée">Surligner</button>
     <button id="m-iso" title="N'afficher QUE la ou les matières sélectionnées (le pinceau ne mord plus sur le reste)">Isoler</button>
     <button id="m-hide" title="Masquer la ou les matières sélectionnées — vue seulement, la géométrie reste dans l'export. Re-cliquer pour réafficher ; clic droit = tout réafficher.">Cacher</button>
+    <button id="m-allvis" title="Tout masquer, ou tout réafficher s'il y a déjà des matières masquées">Tout cacher</button>
     <button id="m-ren" title="Renommer la matière">✎ Nom</button>
     <button id="m-copy" title="Copier l'apparence de la matière">Copier</button>
     <button id="m-paste" title="Coller l'apparence copiée sur la matière sélectionnée" disabled>Coller</button>
@@ -845,6 +857,14 @@ function fillMatSel(sel){ var g=$('mat-grid'); g.innerHTML='';
     d.title=(i+1)+'. '+m.name+(m.mapKd?' ('+m.mapKd+')':' — sans texture');
     tileVisual(m,d);
     var sp=document.createElement('span'); sp.textContent=i+1; d.appendChild(sp);
+    /* coche d'affichage : bascule CETTE matiere sans toucher a la selection —
+       c'est ce qui la distingue du bouton « Cacher », qui agit sur la selection */
+    var ck=document.createElement('i'); ck.className='mvis'; ck.textContent='✓';
+    ck.title='Afficher / masquer cette matière (vue seulement)';
+    ck.addEventListener('click',function(ev){ ev.stopPropagation();
+      if(HIDSET.has(i))HIDSET.delete(i); else HIDSET.add(i);
+      refreshSelVisual(); if(OUT)buildPickBuf(); draw(); });
+    d.appendChild(ck);
     d.addEventListener('click',function(ev){ tileClick(ev,i); });
     d.addEventListener('mouseenter',function(){ VIEW.hoverMat=i; draw(); });	/* survol = surlignage sur l'objet */
     d.addEventListener('mouseleave',function(){ VIEW.hoverMat=-1; draw(); });
@@ -856,10 +876,16 @@ function refreshSelVisual(){
   for(var k=0;k<tiles.length;k++){
     tiles[k].classList.toggle('sel',k===TSEL);
     tiles[k].classList.toggle('selm',SELSET.has(k)&&k!==TSEL);
-    tiles[k].classList.toggle('hid',HIDSET.has(k)); }
+    tiles[k].classList.toggle('hid',HIDSET.has(k));
+    var ck=tiles[k].querySelector('.mvis');
+    if(ck)ck.classList.toggle('off',HIDSET.has(k)); }
   var nh=HIDSET.size, b=$('m-hide');
   if(b){ b.classList.toggle('on',nh>0);
-    b.textContent=nh?('Cacher ('+nh+')'):'Cacher'; } }
+    b.textContent=nh?('Cacher ('+nh+')'):'Cacher'; }
+  var ta=$('m-allvis');
+  if(ta){ var n=SRC?SRC.mats.length:0;
+    ta.textContent=(nh>0)?'Tout afficher':'Tout cacher';
+    ta.classList.toggle('on',nh>0&&nh<n); } }
 function tileClick(ev,i){
   if(ev.ctrlKey||ev.metaKey){
     if(SELSET.has(i)&&SELSET.size>1)SELSET.delete(i);
@@ -3370,6 +3396,13 @@ $('m-hide').addEventListener('click',function(){
   refreshSelVisual();
   if(OUT)buildPickBuf();                       /* le pinceau ignore le masque */
   draw(); });
+/* Tout cacher / tout afficher. Des qu'UNE matiere est masquee le bouton
+   propose de tout reafficher : c'est la sortie de secours la plus probable. */
+$('m-allvis').addEventListener('click',function(){
+  if(!SRC)return;
+  if(HIDSET.size)HIDSET.clear();
+  else for(var i=0;i<SRC.mats.length;i++)HIDSET.add(i);
+  refreshSelVisual(); if(OUT)buildPickBuf(); draw(); });
 $('m-hide').addEventListener('contextmenu',function(e){ e.preventDefault();
   if(!HIDSET.size)return;
   HIDSET.clear(); refreshSelVisual();
