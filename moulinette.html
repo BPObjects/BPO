@@ -543,6 +543,7 @@ pret(function(){
   <div class="btns"><button id="b-run" class="main">Mouliner</button></div>
   <h3>Affichage</h3>
   <div class="btns"><button id="b-av">Avant</button><button id="b-ap" class="on">Après</button><button id="b-wf">Filaire</button><button id="b-up" class="on" title="Axe vertical du modèle">Z↑</button></div>
+  <div class="btns mini"><button id="b-fit" title="Recadrer la vue sur l'objet (raccourci : double-clic dans la vue, ou touche R)">Recentrer la vue</button></div>
   <div class="btns mini"><button id="b-orient" title="Harmoniser l'orientation des faces (par coque, vote majoritaire) — assainit l'export">Orienter les faces</button>
     <button id="b-holes" title="Reboucher les petits trous (boucles de bord de 3 à 5 arêtes = triangles manquants)">Reboucher trous</button></div>
   <div class="uvrow"><label>Lumière</label><input type="range" id="lum" min="0.4" max="3" step="0.05" value="1.2"><input class="uvnum" id="lumv" value="1.2"></div>
@@ -3480,6 +3481,11 @@ $('pt-r').addEventListener('input',function(){ PAINT.r=+this.value; $('pt-rv').v
 $('pt-rv').addEventListener('change',function(){ var x=Math.max(1,Math.min(160,+this.value|0));
   PAINT.r=x; this.value=x; $('pt-r').value=Math.min(80,x); });
 window.addEventListener('keydown',function(e){
+  /* R = recentrer, sauf en saisie de texte */
+  if((e.key==='r'||e.key==='R') && !e.ctrlKey && !e.metaKey && !e.altKey){
+    var t=e.target, tag=t&&t.tagName;
+    if(tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT' && !(t&&t.isContentEditable)){
+      if(WELD){ e.preventDefault(); fitCam(); draw(); return; } } }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&PAINT.stack.length&&OUT){
     e.preventDefault();
     var s=PAINT.stack.pop();
@@ -3560,6 +3566,10 @@ window.addEventListener('keydown',function(e){
     cam.dist=Math.max(cam.dist*k, (MDIAG||1)*2e-4);   /* borne basse : sans elle dist tend vers 0 */
     draw(); },{passive:false});
   cv.addEventListener('dblclick',function(e){ e.preventDefault(); fitCam(); draw(); });
+  /* Recentrer : le recadrage n'etait accessible qu'au double-clic — invisible,
+     donc introuvable quand on a perdu son objet (signale par AL). Bouton
+     explicite + touche R, qui font exactement la meme chose. */
+  $('b-fit').addEventListener('click',function(){ if(!WELD)return; fitCam(); draw(); });
   cv.addEventListener('contextmenu',function(e){ e.preventDefault(); });
   window.addEventListener('resize',draw);
 })();
