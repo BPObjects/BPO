@@ -1089,6 +1089,7 @@ function rebuildFromSrc(sel){
         SRC.mats[SRC.triMat[ct]].hasUV=true; }
     batches.avFor=null;
     $('s-in').textContent=fmtn(SRC.triMat.length);
+    cibleBorne(SRC.triMat.length);
     $('s-mat').textContent=SRC.mats.length;
     fillMatSel(sel||0);
     run(+$('tgtv').value|0);
@@ -2329,6 +2330,7 @@ function afterParse(name,t0){
       $('fname').textContent=name;
       $('s-in').textContent=fmtn(SRC.triMat.length);
       $('s-mat').textContent=SRC.mats.length;
+      cibleBorne(SRC.triMat.length);
       updDim(); setupUnitRow();
       $('panel').style.display='block';
       $('left').style.display='block';
@@ -3579,9 +3581,33 @@ window.addEventListener('keydown',function(e){
 })();
 
 /* ============================ commandes ============================ */
+/* PLAFOND DE LA CIBLE (01/09, signale par AL sur une 911 de 217 137 triangles
+   « proprement importee dans ArchiCAD » mais trop decimee ici) : le curseur
+   etait fige a 60 000 dans le HTML. Sur un modele plus lourd, la butee du
+   curseur IMPOSAIT donc une reduction — 72 % dans son cas — sans qu'aucun
+   message ne le dise. Le champ texte acceptait bien 200 000, mais rien ne
+   l'indiquait et cela restait sous son modele.
+   Le plafond suit desormais LE MODELE CHARGE : on peut toujours atteindre
+   « aucune reduction ». Le pas s'adapte pour que le curseur reste utilisable. */
+var CIBLE_MAX=60000;
+function cibleBorne(nTri){
+  if(!(nTri>0)) return;
+  CIBLE_MAX=Math.max(60000, Math.ceil(nTri/1000)*1000);
+  var t=$('tgt'), pas=(CIBLE_MAX>150000)?5000:1000;
+  t.max=CIBLE_MAX; t.step=pas;
+  var lb=document.getElementById('tgtmax');
+  if(!lb){ lb=document.createElement('div'); lb.id='tgtmax';
+    lb.style.cssText='font-size:10.5px;color:#8a93a0;margin-top:3px;text-align:right;';
+    var row=document.getElementById('tgtrow'); if(row&&row.parentNode) row.parentNode.insertBefore(lb,row.nextSibling); }
+  lb.textContent='max '+fmtn(CIBLE_MAX)+' — au maximum, aucune réduction';
+  /* une cible heritee d'un modele plus leger ne doit pas brider celui-ci */
+  var v=+$('tgtv').value|0;
+  if(v>CIBLE_MAX){ $('tgtv').value=CIBLE_MAX; }
+  $('tgt').value=Math.max(1000,Math.min(CIBLE_MAX, +$('tgtv').value|0));
+}
 $('tgt').addEventListener('input',function(){ $('tgtv').value=$('tgt').value; });
-$('tgtv').addEventListener('change',function(){ var v=Math.max(500,Math.min(200000,+$('tgtv').value|0));
-  $('tgtv').value=v; $('tgt').value=Math.max(1000,Math.min(60000,v)); });
+$('tgtv').addEventListener('change',function(){ var v=Math.max(500,Math.min(CIBLE_MAX,+$('tgtv').value|0));
+  $('tgtv').value=v; $('tgt').value=Math.max(1000,Math.min(CIBLE_MAX,v)); });
 $('b-run').addEventListener('click',function(){ if(WELD)run(+$('tgtv').value|0); });
 $('b-av').addEventListener('click',function(){ VIEW.mode='av'; $('b-av').classList.add('on'); $('b-ap').classList.remove('on'); draw(); });
 $('b-ap').addEventListener('click',function(){ VIEW.mode='ap'; $('b-ap').classList.add('on'); $('b-av').classList.remove('on'); draw(); });
