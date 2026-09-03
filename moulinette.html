@@ -544,7 +544,8 @@ pret(function(){
   <h3>Cible (triangles)</h3>
   <div id="tgtrow"><input type="range" id="tgt" min="1000" max="60000" step="1000" value="20000">
   <input id="tgtv" value="20000"></div>
-  <div class="btns"><button id="b-run" class="main">Mouliner</button></div>
+  <div class="btns"><button id="b-run" class="main">Mouliner</button>
+    <button id="b-undo-run" disabled title="Revenir au résultat d'AVANT le dernier moulinage (Ctrl+Z quand c'est l'action la plus récente). Trois retours possibles.">↶ Annuler</button></div>
   <h3>Affichage</h3>
   <div class="btns"><button id="b-av">Avant</button><button id="b-ap" class="on">Après</button><button id="b-wf">Filaire</button><button id="b-up" class="on" title="Axe vertical du modèle">Z↑</button></div>
   <div class="btns mini"><button id="b-fit" title="Recadrer la vue sur l'objet (raccourci : double-clic dans la vue, ou touche R)">Recentrer la vue</button></div>
@@ -2409,10 +2410,38 @@ function loadTextures(cb){
      .then(fin);
   });
 }
-function run(target,restreint,libelle){
+/* ANNULER UN MOULINAGE (AL : « on peut plus annuler si on est pas satisfait
+   du décimage »). decimate() renvoie toujours un objet NEUF : garder l'ancien
+   OUT ne coute rien, on conserve les trois derniers. Chaque action (peinture
+   ou moulinage) recoit un numero de sequence ACT_SEQ : Ctrl+Z defait la plus
+   RECENTE des deux piles, comme on s'y attend. */
+var DECIM_HIST=[], ACT_SEQ=0;
+function undoRun(){
+  if(!DECIM_HIST.length) return false;
+  var h=DECIM_HIST.pop(); OUT=h.out;
+  /* la peinture faite DEPUIS vit dans SRC.triMat (la verite) : on la reporte
+     sur la geometrie restauree, sinon les couleurs reculeraient avec elle */
+  if(OUT.srcTri && SRC){ for(var i=0;i<OUT.triMat.length;i++) OUT.triMat[i]=SRC.triMat[OUT.srcTri[i]]; }
+  $('s-out').textContent=fmtn(OUT.triMat.length); $('s-time').textContent='—';
+  buildGL(); buildPickBuf(); draw();
+  try{ var blob=exportOBJ(true); $('s-size').textContent=fmtMo(blob.size); }catch(e){}
+  $('b-undo-run').disabled=!DECIM_HIST.length; majSelRow();
+  return true; }
+function run(target,restreint,libelle,base){
   busy(libelle||('Moulinage à '+fmtn(target)+' triangles…'),function(){
     var t0=performance.now();
-    OUT=decimate(WELD,target,restreint);
+    if(OUT){ DECIM_HIST.push({out:OUT, seq:++ACT_SEQ}); if(DECIM_HIST.length>3)DECIM_HIST.shift(); }
+    /* base = OUT : on raffine le RESULTAT COURANT (reduction d'une selection).
+       decimate() renvoie des srcTri/srcIndex relatifs a SON entree : on les
+       compose avec ceux de la base pour qu'ils pointent toujours vers SRC —
+       la peinture, les UV et les normales d'export en dependent. */
+    var _prev=OUT, _base=base||WELD;
+    OUT=decimate(_base,target,restreint);
+    if(base && base.srcTri){
+      for(var _k=0;_k<OUT.srcTri.length;_k++) OUT.srcTri[_k]=base.srcTri[OUT.srcTri[_k]];
+      if(OUT.srcIndex && base.srcIndex){ for(var _j=0;_j<OUT.srcIndex.length;_j++) OUT.srcIndex[_j]=base.srcIndex[OUT.srcIndex[_j]]; }
+    }
+    $('b-undo-run').disabled=!DECIM_HIST.length;
     var dt=((performance.now()-t0)/1000).toFixed(2);
     $('s-out').textContent=fmtn(OUT.triMat.length);
     $('s-time').textContent=dt+' s';
@@ -3363,7 +3392,7 @@ function brushApply(mx,my){
   if(PAINT.dirty&&now-PAINT.lastFlush>140){ PAINT.lastFlush=now; paintFlush(); } }
 function paintFlush(){ if(!PAINT.dirty)return;
   PAINT.dirty=false;
-  buildSet(OUT,'ap'); if(VIEW.iso)buildPickBuf(); draw(); }
+  buildSet(OUT,'ap'); if(VIEW.iso)buildPickBuf(); draw(); majSelRow(); }
 /* ---- selection d'une FORME ENTIERE ------------------------------------------
    Voisinage par SOMMET PARTAGE sur le maillage decime (deja soude) : une piece
    d'un seul tenant se propage d'un coup, et les pieces seulement JUXTAPOSEES
@@ -3414,7 +3443,7 @@ function shellApply(mx,my){
     cur.srcOld.push(SRC.triMat[OUT.srcTri[t]]);
     OUT.triMat[t]=TSEL; SRC.triMat[OUT.srcTri[t]]=TSEL; }
   if(!cur.ids.length){ dropMsg2('Cette forme porte déjà la matière sélectionnée.'); return; }
-  PAINT.stack.push(cur); if(PAINT.stack.length>10)PAINT.stack.shift();
+  cur.seq=++ACT_SEQ; PAINT.stack.push(cur); if(PAINT.stack.length>10)PAINT.stack.shift();
   PAINT.dirty=true; paintFlush(); fillMatSel();
   dropMsg2(fmtn(cur.ids.length)+' facettes de la forme → « '+(SRC.mats[TSEL].name||('matière '+TSEL))+' »');
 }
@@ -3479,8 +3508,8 @@ function zoneApply(ax,ay,bx,by){
     cur.ids.push(id); cur.old.push(OUT.triMat[id]);
     cur.srcOld.push(SRC.triMat[OUT.srcTri[id]]);
     OUT.triMat[id]=TSEL; SRC.triMat[OUT.srcTri[id]]=TSEL; n++; }
-  if(n){ PAINT.stack.push(cur); if(PAINT.stack.length>10)PAINT.stack.shift();
-    buildSet(OUT,'ap'); buildPickBuf(); draw(); }
+  if(n){ cur.seq=++ACT_SEQ; PAINT.stack.push(cur); if(PAINT.stack.length>10)PAINT.stack.shift();
+    buildSet(OUT,'ap'); buildPickBuf(); draw(); majSelRow(); }
   return n; }
 $('m-zone').addEventListener('click',function(){ if(!OUT)return; setZone(!ZONE.on); });
 $('m-paint').addEventListener('click',function(){ if(!OUT)return; if(SHELL.on)setShell(false); if(ZONE.on)setZone(false); setPaint(!PAINT.on); });
@@ -3528,6 +3557,9 @@ window.addEventListener('keydown',function(e){
     var t=e.target, tag=t&&t.tagName;
     if(tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT' && !(t&&t.isContentEditable)){
       if(WELD){ e.preventDefault(); fitCam(); draw(); return; } } }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&DECIM_HIST.length&&OUT
+     &&(!PAINT.stack.length || (DECIM_HIST[DECIM_HIST.length-1].seq||0)>(PAINT.stack[PAINT.stack.length-1].seq||0))){
+    e.preventDefault(); undoRun(); return; }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&PAINT.stack.length&&OUT){
     e.preventDefault();
     var s=PAINT.stack.pop();
@@ -3574,7 +3606,7 @@ window.addEventListener('keydown',function(e){
                                  :'Zone vide — rien de visible à l’intérieur';
       down=false; return; }
     if(painting){ painting=false; paintFlush();
-      if(PAINT.cur&&PAINT.cur.ids.length){ PAINT.stack.push(PAINT.cur);
+      if(PAINT.cur&&PAINT.cur.ids.length){ PAINT.cur.seq=++ACT_SEQ; PAINT.stack.push(PAINT.cur);
         if(PAINT.stack.length>10)PAINT.stack.shift(); }
       PAINT.cur=null; }
     down=false; });
@@ -3645,14 +3677,19 @@ $('tgt').addEventListener('input',function(){ $('tgtv').value=$('tgt').value; })
 $('tgtv').addEventListener('change',function(){ var v=Math.max(500,Math.min(CIBLE_MAX,+$('tgtv').value|0));
   $('tgtv').value=v; $('tgt').value=Math.max(1000,Math.min(CIBLE_MAX,v)); });
 $('b-run').addEventListener('click',function(){ if(WELD)run(+$('tgtv').value|0); });
+$('b-undo-run').addEventListener('click',function(){ undoRun(); });
 /* DECIMATION A LA SELECTION (01/09, AL : ses 4 roues pesaient 60 600 triangles
    contre 54 005 pour la carrosserie — une cible GLOBALE reduit tout au prorata
    et rabote la tole autant que les enjoliveurs).
    La selection est celle de la palette de matieres (Ctrl/Maj+clic). Pour viser
    une PIECE et non une matiere entiere : outil Zone -> « + Nouv. » pour la
    verser dans une matiere neuve -> reduire celle-ci. */
-function selTris(){ if(!WELD) return 0; var n=0;
-  for(var i=0;i<WELD.triMat.length;i++) if(SELSET.has(WELD.triMat[i])) n++;
+/* le compte se fait sur SRC.triMat : c'est la VERITE apres peinture (Zone,
+   pinceau, Forme). WELD.triMat n'en est qu'une copie prise a la soudure —
+   une matiere creee par « + Nouv. » puis remplie a la Zone y a 0 triangle,
+   et la rangee restait cachee (signale par AL sur les pneus de la MG). */
+function selTris(){ var tm=OUT?OUT.triMat:(SRC?SRC.triMat:null); if(!tm) return 0; var n=0;
+  for(var i=0;i<tm.length;i++) if(SELSET.has(tm[i])) n++;
   return n; }
 function majSelRow(){
   var row=$('selred'); if(!row) return;
@@ -3667,11 +3704,11 @@ $('b-selred').addEventListener('click',function(){
   if(!WELD) return;
   var n=selTris(); if(!n) return;
   var cible=Math.max(50, Math.min(n, +$('selv').value|0));
-  var total=WELD.triMat.length;
-  /* on ne touche qu'a la selection : le budget global vaut donc tout le reste
-     PLUS ce qu'on veut lui laisser */
+  var base=OUT||WELD, total=base.triMat.length;
+  /* on ne touche qu'a la selection, SUR LE RESULTAT COURANT : le budget global
+     vaut donc tout le reste PLUS ce qu'on veut lui laisser */
   run(total-n+cible, new Set(Array.from(SELSET)),
-      'Réduction de la sélection : '+fmtn(n)+' → '+fmtn(cible)+' triangles…');
+      'Réduction de la sélection : '+fmtn(n)+' → '+fmtn(cible)+' triangles…', base);
 });
 $('b-av').addEventListener('click',function(){ VIEW.mode='av'; $('b-av').classList.add('on'); $('b-ap').classList.remove('on'); draw(); });
 $('b-ap').addEventListener('click',function(){ VIEW.mode='ap'; $('b-ap').classList.add('on'); $('b-av').classList.remove('on'); draw(); });
