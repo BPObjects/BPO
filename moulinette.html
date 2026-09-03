@@ -608,6 +608,11 @@ pret(function(){
     <button id="m-shell" title="Cliquer une FORME entière (pièce d'un seul tenant) pour lui donner la matière sélectionnée">Forme</button>
     <button id="m-zone" title="Sélection par ZONE : tracer un rectangle sur la vue pour donner la matière sélectionnée à toutes les facettes visibles à l'intérieur (Ctrl+Z pour annuler)">Zone</button>
   </div>
+  <div id="selred" style="display:none;grid-template-columns:1fr auto auto;gap:6px;align-items:center;margin-top:8px;">
+    <span id="selinfo" style="font-size:11px;color:#8a93a0;"></span>
+    <input id="selv" type="number" min="50" step="100" value="2000" style="width:74px;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:#0b1220;color:var(--tx);">
+    <button id="b-selred" title="Réduire UNIQUEMENT les matières sélectionnées à ce nombre de triangles — le reste du modèle n'est pas touché">Réduire</button>
+  </div>
   <div class="btns mini">
     <button id="m-clean" title="Fusionner les matières identiques (couleur, texture, opacité, réglages) et purger celles sans géométrie">Nettoyer identiques</button>
   </div>
@@ -911,7 +916,7 @@ function tileClick(ev,i){
     for(var k=a;k<=b;k++)SELSET.add(k);
     TSEL=i;
   } else { selMat(i); return; }
-  refreshSelVisual();
+  refreshSelVisual(); majSelRow();
   var m=SRC.mats[TSEL];
   $('mat-name').textContent=SELSET.size>1
     ?(SELSET.size+' matières sélectionnées — Suppr./Coller s’appliquent à toutes')
@@ -920,7 +925,7 @@ function tileClick(ev,i){
   syncSrcUI(m); syncUVUI(); draw(); }
 function selMat(i){ TSEL=i;
   SELSET=new Set([i]);
-  refreshSelVisual();
+  refreshSelVisual(); majSelRow();
   var m=SRC?SRC.mats[i]:null;
   $('mat-name').textContent=m?((i+1)+'. '+m.name+(m.mapKd?'':' — sans texture')):'—';
   if(m){ $('uvs-al').value=effAl(m); $('uv-al').value=effAl(m); }
@@ -1980,7 +1985,14 @@ function weldModel(src){
 }
 
 /* ============================ decimation QEM (port du moteur C++) ============================ */
-function decimate(mesh,target){
+/* `restreint` : ensemble (Set) d'indices de MATIERES sur lesquelles la
+   decimation a le droit d'agir. Tout le reste est FIGE — on gele chaque sommet
+   qui appartient a au moins un triangle hors selection, si bien qu'aucun de
+   ces triangles ne peut etre deforme ni fusionne. Le budget global passe par
+   le meme `target` : l'appelant calcule
+       target = (total - triangles_selectionnes) + cible_pour_la_selection
+   et le moteur s'arrete tout seul quand la selection a fondu a la cible. */
+function decimate(mesh,target,restreint){
   var nV=mesh.vx.length, nT=mesh.tri.length/3;
   var vx=mesh.vx.slice(), vy=mesh.vy.slice(), vz=mesh.vz.slice();
   var tri=Int32Array.from(mesh.tri), triMat=mesh.triMat;
@@ -2029,6 +2041,18 @@ function decimate(mesh,target){
   for(var vm1=0;vm1<nT;vm1++){ var vmm=triMat[vm1];
     for(var vm2=0;vm2<3;vm2++){ var vv2=tri[vm1*3+vm2];
       if(vmat[vv2]===-1)vmat[vv2]=vmm; else if(vmat[vv2]!==vmm)pinned[vv2]=1; } }
+  /* RESTRICTION A LA SELECTION : gelee dans le socle, donc elle survit aux
+     relaxations successives du rayon d'epinglage — sinon la premiere relaxation
+     rendrait la moitie du modele a nouveau decimable. */
+  var gele=null;                          /* masque de RESTRICTION : sommets hors selection */
+  if(restreint && restreint.size){
+    gele=new Uint8Array(nV);
+    for(var rt=0;rt<nT;rt++){
+      if(restreint.has(triMat[rt])) continue;
+      gele[tri[rt*3]]=1; gele[tri[rt*3+1]]=1; gele[tri[rt*3+2]]=1;
+    }
+    for(var gi=0;gi<nV;gi++) if(gele[gi]) pinned[gi]=1;
+  }
   var pinnedMat=new Uint8Array(pinned);   /* socle inamovible : frontieres de matieres */
   var diagEp=(function(){
     var bbLo=[1e30,1e30,1e30], bbHi=[-1e30,-1e30,-1e30], pi;
@@ -2055,6 +2079,10 @@ function decimate(mesh,target){
     epsEpingle=eps;
     var inv=1/eps, e2=eps*eps, grille={}, key, gi2, pi;
     if(socleActif)pinned.set(pinnedMat); else pinned.fill(0);
+    /* la restriction a la selection ne cede JAMAIS, meme socle leve : sans ce
+       rappel, la relaxation finale rendait tout le modele decimable et le QEM
+       allait chercher ses fusions les moins cheres… dans la carrosserie. */
+    if(gele) for(var gk=0;gk<nV;gk++) if(gele[gk]) pinned[gk]=1;
     for(pi=0;pi<nV;pi++){
       if(typeof vDead!=='undefined'&&vDead&&vDead[pi])continue;
       key=Math.floor(vx[pi]*inv)+':'+Math.floor(vy[pi]*inv)+':'+Math.floor(vz[pi]*inv);
@@ -2216,6 +2244,11 @@ function decimate(mesh,target){
         if(has){ triDead[t5]=1; alive--; cAlive[comp[a3]]--; }
         else{ for(var k3=0;k3<3;k3++)if(tri[o+k3]===b3)tri[o+k3]=a3; v2t[a3].push(t5); } }
       if(pinned[b3])pinned[a3]=1;
+      /* le GEL se propage comme l'epingle : les triangles hors selection qui
+         contenaient b sont maintenant recables sur a — sans cette ligne, a
+         redevenait libre a la relaxation suivante et la carrosserie perdait
+         des triangles (17 mesures sur la 911). */
+      if(gele&&gele[b3])gele[a3]=1;
       v2t[b3]=[]; vDead[b3]=1; version[a3]++; version[b3]++;
       if(v2t[a3].length>48){ var s2=Array.from(new Set(v2t[a3])).filter(function(t6){return !triDead[t6];}); v2t[a3]=s2; }
       var nb=new Set();
@@ -2376,13 +2409,16 @@ function loadTextures(cb){
      .then(fin);
   });
 }
-function run(target){
-  busy('Moulinage à '+fmtn(target)+' triangles…',function(){
+function run(target,restreint,libelle){
+  busy(libelle||('Moulinage à '+fmtn(target)+' triangles…'),function(){
     var t0=performance.now();
-    OUT=decimate(WELD,target);
+    OUT=decimate(WELD,target,restreint);
     var dt=((performance.now()-t0)/1000).toFixed(2);
     $('s-out').textContent=fmtn(OUT.triMat.length);
     $('s-time').textContent=dt+' s';
+    if(restreint && $('selinfo')){ var _ns=0;
+      for(var _i=0;_i<OUT.triMat.length;_i++) if(restreint.has(OUT.triMat[_i])) _ns++;
+      $('selinfo').textContent=restreint.size+' matière'+(restreint.size>1?'s':'')+' — '+fmtn(_ns)+' tri. (atteint)'; }
     buildGL();
     buildPickBuf();
     $('b-dl').disabled=false;
@@ -3609,6 +3645,34 @@ $('tgt').addEventListener('input',function(){ $('tgtv').value=$('tgt').value; })
 $('tgtv').addEventListener('change',function(){ var v=Math.max(500,Math.min(CIBLE_MAX,+$('tgtv').value|0));
   $('tgtv').value=v; $('tgt').value=Math.max(1000,Math.min(CIBLE_MAX,v)); });
 $('b-run').addEventListener('click',function(){ if(WELD)run(+$('tgtv').value|0); });
+/* DECIMATION A LA SELECTION (01/09, AL : ses 4 roues pesaient 60 600 triangles
+   contre 54 005 pour la carrosserie — une cible GLOBALE reduit tout au prorata
+   et rabote la tole autant que les enjoliveurs).
+   La selection est celle de la palette de matieres (Ctrl/Maj+clic). Pour viser
+   une PIECE et non une matiere entiere : outil Zone -> « + Nouv. » pour la
+   verser dans une matiere neuve -> reduire celle-ci. */
+function selTris(){ if(!WELD) return 0; var n=0;
+  for(var i=0;i<WELD.triMat.length;i++) if(SELSET.has(WELD.triMat[i])) n++;
+  return n; }
+function majSelRow(){
+  var row=$('selred'); if(!row) return;
+  var n=selTris(), on=(SRC&&SELSET.size&&n>0);
+  row.style.display=on?'grid':'none';
+  if(!on) return;
+  $('selinfo').textContent=SELSET.size+' matière'+(SELSET.size>1?'s':'')+' — '+fmtn(n)+' tri.';
+  var cur=+$('selv').value|0;
+  if(!cur || cur>n) $('selv').value=Math.max(200, Math.round(n/4));
+}
+$('b-selred').addEventListener('click',function(){
+  if(!WELD) return;
+  var n=selTris(); if(!n) return;
+  var cible=Math.max(50, Math.min(n, +$('selv').value|0));
+  var total=WELD.triMat.length;
+  /* on ne touche qu'a la selection : le budget global vaut donc tout le reste
+     PLUS ce qu'on veut lui laisser */
+  run(total-n+cible, new Set(Array.from(SELSET)),
+      'Réduction de la sélection : '+fmtn(n)+' → '+fmtn(cible)+' triangles…');
+});
 $('b-av').addEventListener('click',function(){ VIEW.mode='av'; $('b-av').classList.add('on'); $('b-ap').classList.remove('on'); draw(); });
 $('b-ap').addEventListener('click',function(){ VIEW.mode='ap'; $('b-ap').classList.add('on'); $('b-av').classList.remove('on'); draw(); });
 $('b-wf').addEventListener('click',function(){ VIEW.wf=!VIEW.wf; $('b-wf').classList.toggle('on',VIEW.wf); draw(); });
