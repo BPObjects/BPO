@@ -541,6 +541,15 @@ pret(function(){
   <div class="row"><span class="k">Matières</span><span class="v" id="s-mat">—</span></div>
   <div class="row"><span class="k">Temps</span><span class="v" id="s-time">—</span></div>
   <div class="row"><span class="k">Sortie</span><span class="v" id="s-size">—</span></div>
+  <div id="salub" style="display:none">
+    <div class="row" title="Triangles dont les trois positions soudées sont identiques à celles d’un autre — l’export pCon en produit 49,5 %"><span class="k">Doublons</span><span class="v" id="s-dbl">—</span></div>
+    <div class="row" title="Triangles de moins d’un millimètre carré : du budget dépensé pour rien"><span class="k">Micro (&lt;1 mm²)</span><span class="v" id="s-micro">—</span></div>
+    <div class="row" title="Composantes connexes, et parmi elles celles de 10 triangles ou moins"><span class="k">Composantes</span><span class="v" id="s-comp">—</span></div>
+    <div class="row" title="Composantes minuscules et isolées loin du modèle : elles faussent la boîte englobante, donc les dimensions"><span class="k">Échardes</span><span class="v" id="s-ech">—</span></div>
+    <div class="row" title="Matières nommées par la machine (mat12, Material #803, Color_004…) : rien à en tirer pour les rôles"><span class="k">Noms génériques</span><span class="v" id="s-gen">—</span></div>
+    <div id="unitwarn" style="display:none;color:#f0a05a;font-size:11px;margin:2px 0 4px;line-height:1.35"></div>
+    <div class="btns mini"><button id="b-clean" title="Retire les faces doublées exactes et les échardes orphelines. Aucune perte de forme : rien n’est déplacé ni décimé.">Nettoyer (sans perte)</button></div>
+  </div>
   <h3>Cible (triangles)</h3>
   <div id="tgtrow"><input type="range" id="tgt" min="1000" max="60000" step="1000" value="20000">
   <input id="tgtv" value="20000"></div>
@@ -2317,6 +2326,110 @@ function applyUnit(u){
     for(var i=0;i<SRC.positions.length;i++)SRC.positions[i]*=k;
   SRC.unitApplied=u;
 }
+/* ===================== SALUBRITE (03/09) ===================== */
+/* Mesure ce que le compteur « Triangles » cache. Tout part de WELD (positions
+   soudees) : deux faces sont « doublees » si elles portent le meme triplet de
+   sommets soudes, quel que soit le sens de parcours. Les composantes sont
+   calculees ICI plutot que reprises de decimate() parce qu'on veut les voir
+   AVANT de mouliner — c'est tout l'objet. */
+var SALUB=null;
+function salubrite(){
+  var W=WELD; if(!W){ SALUB=null; return; }
+  var tri=W.tri, nT=tri.length/3, vx=W.vx, vy=W.vy, vz=W.vz, nV=vx.length;
+  /* doublons exacts */
+  var seen=new Set(), dbl=0;
+  for(var t=0;t<nT;t++){ var a=tri[t*3],b=tri[t*3+1],c=tri[t*3+2];
+    var lo=Math.min(a,b,c), hi=Math.max(a,b,c), mi=a+b+c-lo-hi;
+    var k=lo+','+mi+','+hi; if(seen.has(k))dbl++; else seen.add(k); }
+  /* aires et micro */
+  var area=new Float64Array(nT), micro=0, tot=0;
+  for(var t2=0;t2<nT;t2++){ var i0=tri[t2*3],i1=tri[t2*3+1],i2=tri[t2*3+2];
+    var ux=vx[i1]-vx[i0],uy=vy[i1]-vy[i0],uz=vz[i1]-vz[i0], wx=vx[i2]-vx[i0],wy=vy[i2]-vy[i0],wz=vz[i2]-vz[i0];
+    var cx=uy*wz-uz*wy, cy=uz*wx-ux*wz, cz=ux*wy-uy*wx;
+    var ar=0.5*Math.sqrt(cx*cx+cy*cy+cz*cz); area[t2]=ar; tot+=ar; if(ar<1e-6)micro++; }
+  /* composantes */
+  var par=new Int32Array(nV); for(var i=0;i<nV;i++)par[i]=i;
+  function f(x){ while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; }
+  for(var t3=0;t3<nT;t3++){ var r=f(tri[t3*3]); par[f(tri[t3*3+1])]=r; par[f(tri[t3*3+2])]=r; }
+  var cT={}, cA={}, cLo={}, cHi={};
+  for(var t4=0;t4<nT;t4++){ var cc=f(tri[t4*3]); cT[cc]=(cT[cc]||0)+1; cA[cc]=(cA[cc]||0)+area[t4];
+    for(var q=0;q<3;q++){ var v=tri[t4*3+q];
+      if(!cLo[cc]){ cLo[cc]=[vx[v],vy[v],vz[v]]; cHi[cc]=[vx[v],vy[v],vz[v]]; }
+      else{ var L=cLo[cc],H=cHi[cc];
+        if(vx[v]<L[0])L[0]=vx[v]; if(vx[v]>H[0])H[0]=vx[v];
+        if(vy[v]<L[1])L[1]=vy[v]; if(vy[v]>H[1])H[1]=vy[v];
+        if(vz[v]<L[2])L[2]=vz[v]; if(vz[v]>H[2])H[2]=vz[v]; } } }
+  var comps=0, petites=0, gros=null, grosA=-1;
+  for(var k2 in cT){ comps++; if(cT[k2]<=10)petites++; if(cA[k2]>grosA){ grosA=cA[k2]; gros=k2; } }
+  /* echardes : minuscules ET disjointes de la boite du gros, a 10 cm pres */
+  var ech=[], echTri=0;
+  if(gros!==null){ var GL=cLo[gros], GH=cHi[gros];
+    for(var k3 in cT){ if(k3===gros||cA[k3]>1e-6)continue;
+      var L3=cLo[k3],H3=cHi[k3], out=false;
+      for(var d=0;d<3;d++){ if(H3[d]<GL[d]-0.10||L3[d]>GH[d]+0.10){ out=true; break; } }
+      if(out){ ech.push(k3); echTri+=cT[k3]; } } }
+  /* noms generiques */
+  var gen=0; (SRC&&SRC.mats||[]).forEach(function(m){
+    if(/^(mat\d+|material(_\d+)?|Material #\d+|Color_[A-Z]?\d+|_\d{4}_\w+|\d{1,3}_\d{1,3}_\d{1,3}|Matière \d+|Domyslna(_\d+)?)$/i.test(m.name||''))gen++; });
+  SALUB={doublons:dbl, micro:micro, comps:comps, petites:petites, echardes:ech, echTri:echTri,
+         generiques:gen, nT:nT, aire:tot, compsRoots:cT, cLo:cLo, cHi:cHi, root:f};
+  try{ window.__SALUB={doublons:dbl,micro:micro,comps:comps,petites:petites,echardes:ech.length,
+        echTri:echTri,generiques:gen,nT:nT,dims:modelDims()}; }catch(_e){}
+  var pc=function(n){ return n?(n+' ('+(100*n/nT).toFixed(1)+' %)'):'0'; };
+  $('s-dbl').textContent=pc(dbl);
+  $('s-micro').textContent=pc(micro);
+  $('s-comp').textContent=comps+(petites?' — '+petites+' ≤ 10 tri':'');
+  $('s-ech').textContent=ech.length?(ech.length+' ('+echTri+' tri)'):'0';
+  $('s-gen').textContent=gen+' / '+(SRC&&SRC.mats?SRC.mats.length:0);
+  $('salub').style.display='block';
+  var bc=$('b-clean'); bc.disabled=!(dbl||ech.length);
+  bc.textContent=(dbl||ech.length)?('Nettoyer (sans perte) — '+(dbl+echTri)+' tri'):'Nettoyer (sans perte) — rien à faire';
+  uniteAvis();
+}
+/* Avertissement d'unite : sur un .3ds/.obj (aucune unite declaree), si la plus
+   grande cote sort de [0,25 ; 80] m, dire quelle unite la ramenerait dedans.
+   Trois fichiers du meme Rafale sont arrives en mm, en POUCES et en metres. */
+function uniteAvis(){
+  var w=$('unitwarn'); if(!w)return; w.style.display='none';
+  if(!SRC||!(SRC.kind==='3ds'||SRC.kind==='obj'))return;
+  var d=modelDims(); if(!d)return; var big=Math.max(d[0],d[1],d[2]);
+  if(big>=0.25&&big<=80)return;
+  var cur=SRC.unitApplied||1, cand=[[1,'mètres'],[0.01,'centimètres'],[0.001,'millimètres'],[0.0254,'pouces'],[0.3048,'pieds']];
+  var raw=big/cur, best=null;
+  cand.forEach(function(c){ var v=raw*c[0]; if(v>=0.25&&v<=80&&(best===null||Math.abs(Math.log(v/3))<Math.abs(Math.log(best[2]/3))))best=[c[0],c[1],v]; });
+  w.textContent='⚠ Plus grande cote : '+(big>=10?big.toFixed(1)+' m':Math.round(big*100)+' cm')+
+    (best?' — probablement des '+best[1]+' (donnerait '+(best[2]>=10?best[2].toFixed(1)+' m':Math.round(best[2]*100)+' cm')+').':' — vérifiez l’unité source.');
+  w.style.display='block';
+}
+/* Nettoyage SANS PERTE, au niveau de SRC (avant soudure) pour que les UV, les
+   coins et srcTri restent alignes. Les positions non referencees sont
+   retirees aussi : sinon la boite englobante reste empoisonnee. */
+function nettoyerSansPerte(){
+  if(!SRC||!SALUB||!WELD)return;
+  var W=WELD, tri=W.tri, nT=tri.length/3;
+  var seen=new Set(), keep=new Uint8Array(nT), ech=new Set(SALUB.echardes), f=SALUB.root, rm=0;
+  for(var t=0;t<nT;t++){ var a=tri[t*3],b=tri[t*3+1],c=tri[t*3+2];
+    var lo=Math.min(a,b,c), hi=Math.max(a,b,c), mi=a+b+c-lo-hi, k=lo+','+mi+','+hi;
+    if(seen.has(k)){ rm++; continue; } seen.add(k);
+    if(ech.has(String(f(a)))){ rm++; continue; }
+    keep[t]=1; }
+  if(!rm)return;
+  var cv=SRC.corners.v, ct=SRC.corners.t, tm=SRC.triMat, nv=[], nt=[], ntm=[];
+  for(var t2=0;t2<nT;t2++){ if(!keep[t2])continue;
+    nv.push(cv[t2*3],cv[t2*3+1],cv[t2*3+2]); nt.push(ct[t2*3],ct[t2*3+1],ct[t2*3+2]); ntm.push(tm[t2]); }
+  /* positions : ne garder que les referencees */
+  var used=new Int32Array(SRC.positions.length/3).fill(-1), np=[];
+  for(var i=0;i<nv.length;i++){ var v=nv[i]; if(used[v]<0){ used[v]=np.length/3; np.push(SRC.positions[v*3],SRC.positions[v*3+1],SRC.positions[v*3+2]); } nv[i]=used[v]; }
+  SRC.positions=np; SRC.corners={v:nv,t:nt}; SRC.triMat=ntm;
+  busy('Soudure…',function(){
+    WELD=weldModel(SRC);
+    $('s-in').textContent=fmtn(SRC.triMat.length);
+    cibleBorne(SRC.triMat.length); updDim(); salubrite();
+    run(+$('tgtv').value|0);
+    console.log('nettoyage sans perte : '+rm+' triangles retires');
+  });
+}
+document.addEventListener('DOMContentLoaded',function(){ var b=$('b-clean'); if(b)b.addEventListener('click',nettoyerSansPerte); });
 function modelDims(){
   var p=SRC&&SRC.positions; if(!p||!p.length)return null;
   var mn=[1e30,1e30,1e30], mx=[-1e30,-1e30,-1e30];
@@ -2334,6 +2447,7 @@ function updDim(){
     :(Math.round(L*100)+' × '+Math.round(P*100)+' × '+Math.round(H*100)+' cm');
 }
 function setupUnitRow(){
+  try{ var us=$('unitsel'); if(us&&!us._salub){ us._salub=1; us.addEventListener('change',function(){ setTimeout(uniteAvis,50); }); } }catch(_e){}
   var libre=(SRC.kind==='3ds'||SRC.kind==='obj');	/* formats sans unite declaree */
   $('unitrow').style.display=libre?'':'none';
   if(libre)$('unitsel').value=String(SRC.unitApplied||1);
@@ -2361,6 +2475,7 @@ function afterParse(name,t0){
       }
       applyUnit(SRC.unitM||1);			/* mise a l'echelle avant soudure */
       WELD=weldModel(SRC);
+      salubrite();
       $('fname').textContent=name;
       $('s-in').textContent=fmtn(SRC.triMat.length);
       $('s-mat').textContent=SRC.mats.length;
@@ -3778,6 +3893,7 @@ function resetModel(){
   updateUpBtn();
   STUDIO.forOut=null;                       /* l'ombre du studio suit le nouveau modele */
   $('s-dim').textContent='—'; $('unitrow').style.display='none';
+  if($('salub'))$('salub').style.display='none'; SALUB=null;
   $('b-dl').disabled=true; $('b-zip').disabled=true;
   $('b-gsm').disabled=true; $('b-skp').disabled=true;
   $('fname').textContent='—';
