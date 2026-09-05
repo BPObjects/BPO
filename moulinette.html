@@ -592,6 +592,14 @@ pret(function(){
   <div class="btns"><button id="b-zip" class="main" disabled>Paquet BPO (.zip)</button></div>
   <div class="btns"><button id="b-gsm" disabled title="Objet GDL ArchiCAD : HSF + bat de conversion (LP_XMLConverter d'AC 26-29)">ArchiCAD (.gsm)</button>
     <button id="b-skp" disabled title="COLLADA pour SketchUp (textures incluses)">SketchUp (.dae)</button></div>
+  <div style="color:var(--tx2);font-size:11.5px;margin-top:10px">Textures du .glb</div>
+  <select id="glb-q" style="margin-top:4px" title="Définition maximale des textures embarquées dans le .glb. C'est là que se joue le poids : sur une maquette ArchiCAD, 92 % du fichier sont des images — et elles pèsent cinq fois plus une fois décodées dans la mémoire d'un iPad.">
+    <option value="2048">Fidèle — 2048 px</option>
+    <option value="1024" selected>Équilibré — 1024 px</option>
+    <option value="512">Léger (iPad) — 512 px</option>
+    <option value="0">Sans réduction</option>
+  </select>
+  <div id="glb-est" style="font-size:10.5px;color:#8a93a0;margin:5px 0 0;line-height:1.45"></div>
   <div class="btns"><button id="b-glb" disabled title="glTF binaire autonome, textures comprises - le format des PRODUITS de Calque">Objet 3D (.glb)</button></div>
   <div class="btns mini"><button id="b-dl" disabled>« L.obj » + « L.mtl » seuls</button></div>
 </div>
@@ -1411,7 +1419,11 @@ function convertSkp(entry, autres){
 }
 /* ---- lecture .zip (30/08, demande AL) : repertoire central + deflate-raw
    natif — le miroir de makeZip. Renvoie [{nom, blob}] hors dossiers. */
-function unzipAll(file){
+/* KMZ (05/09) : un KMZ est un ZIP. `garde` filtre les entrees AVANT de les
+   decompresser — un KMZ d'Archicad porte doc.kml et textures.txt (table de
+   remap de chemins) qui n'interessent pas la Moulinette. Absente, on prend
+   tout : le chemin .zip du 30/08 est inchange. */
+function unzipAll(file, garde){
   return file.arrayBuffer().then(function(buf){
     var u8=new Uint8Array(buf), dv=new DataView(buf);
     var i=u8.length-22, min=Math.max(0,u8.length-22-65535), eocd=-1;
@@ -1427,6 +1439,7 @@ function unzipAll(file){
       var nom=td.decode(u8.subarray(pp+46,pp+46+nl));
       pp+=46+nl+el+cl;
       if(nom.slice(-1)==='/') continue;                      /* dossier */
+      if(garde&&!garde(nom)) continue;                       /* hors sujet (doc.kml…) */
       jobs.push((function(meth,csz,lho,nom){
         var lnl=dv.getUint16(lho+26,true), lel=dv.getUint16(lho+28,true);
         var dat=u8.subarray(lho+30+lnl+lel, lho+30+lnl+lel+csz);
@@ -1440,15 +1453,20 @@ function unzipAll(file){
     return Promise.all(jobs).then(function(rs){ return rs.filter(function(r){ return r; }); });
   });
 }
+/* Ce qu'un KMZ contient qui nous serve : de la geometrie ou une image.
+   Le reste (doc.kml, textures.txt) est ecarte a l'ouverture — il n'a rien
+   a faire ni dans FILES ni dans le decompte du message d'echec. */
+var KMZ_UTILE=/\.(obj|dae|3ds|skp|mtl|stl|ifc|gltf|glb|png|jpe?g|gif|bmp|webp|tga|tiff?)$/i;
 function onFiles(files){
   /* les archives sont depliees puis reinjectees dans le flux normal */
   var zips=[], reste=[];
-  files.forEach(function(e){ if(/\.zip$/i.test(e.f.name)) zips.push(e); else reste.push(e); });
+  files.forEach(function(e){ if(/\.(zip|kmz)$/i.test(e.f.name)) zips.push(e); else reste.push(e); });
   if(zips.length){
     dropMsg('Ouverture de '+zips.length+' archive(s)…');
     Promise.all(zips.map(function(z){
-      return unzipAll(z.f).then(function(ents){
-        var base=z.f.name.replace(/\.zip$/i,'');
+      var kmz=/\.kmz$/i.test(z.f.name);
+      return unzipAll(z.f, kmz?function(n){ return KMZ_UTILE.test(n); }:null).then(function(ents){
+        var base=z.f.name.replace(/\.(zip|kmz)$/i,'');
         return ents.map(function(en){
           return {f:new File([en.blob], en.nom.split('/').pop()), p:base+'/'+en.nom};
         });
@@ -1868,6 +1886,8 @@ function parseDAE(text){
     return matIdx[name];
   }
   var seenTris=new Map();
+  /* MEMOIRE (05/09) : source TEXCOORD -> son offset dans `uv`. Voir 2)  */
+  var uvOfSrc=new Map();
   inst.forEach(function(it){ var g=geoms[it.gid]; if(!g||!g.vertsPos)return;
     var psrc=g.sources[g.vertsPos.src]; if(!psrc)return;
     var M=it.M;
@@ -1886,8 +1906,19 @@ function parseDAE(text){
         if(inp.sem==='VERTEX')vOff=inp.off;
         if(inp.sem==='TEXCOORD'&&tOff<0){ tOff=inp.off; tSrc=g.sources[inp.src]||null; } });
       if(vOff<0)return;
-      var uvBase=uv.length/2;
-      if(tSrc){ for(var u=0;u+1<tSrc.data.length;u+=tSrc.stride) uv.push(tSrc.data[u],tSrc.data[u+1]); }
+      /* La source TEXCOORD etait recopiee UNE FOIS PAR <triangles>. Sur
+         l'export Archicad de THAUVENAY-OHA-ECURIE : 61 208 488 couples
+         poses pour 4 710 668 utiles (x12,99), ~934 Mo de tableau JS au
+         lieu de ~72, sur un tas plafonne a 4 192 Mo. Les UV ne dependent
+         ni de la primitive ni de la transformation de l'instance (seules
+         les POSITIONS passent par M) : une source posee une fois sert a
+         tout le fichier. Memo par IDENTITE de l'objet source. */
+      var uvBase;
+      if(tSrc){
+        uvBase=uvOfSrc.get(tSrc);
+        if(uvBase===undefined){ uvBase=uv.length/2; uvOfSrc.set(tSrc,uvBase);
+          for(var u=0;u+1<tSrc.data.length;u+=tSrc.stride) uv.push(tSrc.data[u],tSrc.data[u+1]); }
+      } else uvBase=uv.length/2;
       var mi=matFor(pr.mat,it.bind);
       var P=pr.p;
       /* centroide de cette geometrie instanciee (arbitrage des jumeaux double-face) */
@@ -2610,6 +2641,12 @@ function run(target,restreint,libelle,base){
       $('s-size').title='Modele trop lourd pour peser l\u2019export a chaque moulinage '
         +'(au-dela de '+fmtn(SEUIL_TAILLE)+' triangles) : la taille se lit au moment de l\u2019export.';
     }
+    /* le modele allege a change : le poids annonce du .glb aussi. Contrairement
+       a la ligne « Sortie » ci-dessus, cette estimation ne SERIALISE rien, elle
+       somme des octets d'images et une geometrie prevue : elle vaut donc aussi
+       au-dela de SEUIL_TAILLE. Le coefficient octets/pixel est mis en cache par
+       gabarit, seul le PREMIER moulinage paie l'echantillonnage. */
+    try{ if(typeof glbEstime==='function') glbEstime(); }catch(_e){}
   });
 }
 
@@ -3217,6 +3254,377 @@ function _glbTexName(m){
   if(o.type==='orig'&&m.mapKd)return m.mapKd;
   return null;
 }
+/* ============ .glb : reduction et dedoublonnage des textures (05/09) ============
+   LE POIDS DU .GLB EST UN PROBLEME DE TEXTURES, PAS DE GEOMETRIE. Mesure sur
+   THAUVENAY-OHA-ECURIE.kmz (Archicad) decime a 285 191 triangles : 171,57 Mo
+   de fichier, dont 157,84 Mo d'images (92 %) contre 13,56 Mo de geometrie.
+   Meme reduite a zero triangle, la sortie pesait encore 158 Mo : decimer plus
+   fort ne sert a rien ici. Deux leviers, et deux seulement :
+
+     - LA DEFINITION. 36 des 160 images du KMZ depassent 1024 px et pesent a
+       elles seules 202 Mo sur 238. La plus grosse fait 3917 x 3305 : 51,8 Mo
+       de VRAM une fois decodee, pour un bardage vu a trente metres. Le total
+       decode atteint 783 Mo — c'est CA qui tue l'iPad d'Olivier, bien avant
+       le poids du fichier.
+     - LE CONTENU. L'export dedoublonnait par NOM. Or 10 des 160 images du KMZ
+       sont identiques octet pour octet (45,97 Mo redondants) et le .glb
+       complet portait 21,7 Mo de doublons. La cle est le CONTENU, pas le nom
+       — meme regle que les tuiles des paquets fabricants (publish-fabricant.py :
+       « cle = contenu, pas nom »).
+
+   POURQUOI PNG ET JPEG SEULEMENT. glTF core n'admet que ces deux formats, et
+   Calque ne lit ni EXT_texture_webp ni KHR_texture_basisu : calque-objet.js
+   relit le chunk JSON et refuse ce qu'il ne sait pas rendre. Le webp aurait
+   pourtant donne 8,06 Mo la ou le jpeg donne 11,48 — c'est un gain a aller
+   chercher le jour ou Calque saura le lire, pas aujourd'hui.
+
+   POURQUOI SEQUENTIEL. 109 decodages en parallele, c'est 783 Mo de RGBA d'un
+   coup sur un tas plafonne a 4 192 Mo — et le meme banc a deja vu un
+   processus renderer a 4 189 Mo. On decode une image a la fois, et on ferme
+   chaque bitmap.
+
+   CE QU'ON NE TOUCHE PAS. Une image qui tient deja dans le gabarit garde ses
+   OCTETS D'ORIGINE des lors qu'un aller-retour ne lui apporterait rien : un
+   JPEG n'y gagnerait que de la degradation, et un PNG a alpha y risque la
+   depremultiplication du canvas (les pixels a alpha 0 y perdent leur couleur,
+   ce qui frange les feuillages au mipmap). Seul un PNG OPAQUE au gabarit est
+   reencode : il n'a rien a perdre et beaucoup a gagner. */
+
+var GLB_TEX_MAX = 1024;      /* plus grand cote, en pixels ; 0 = ne rien reduire */
+var GLB_JPEG_Q  = 0.85;      /* qualite JPEG des textures opaques */
+
+/* --- empreinte de CONTENU ---------------------------------------------------
+   SHA-1 natif quand le contexte est sur (https, localhost, et file:// sous
+   Chrome) ; sinon FNV-1a 32 bits. La longueur est concatenee a la cle : deux
+   contenus de tailles differentes ne peuvent pas se confondre meme en cas de
+   collision du hachage court. */
+function _glbFnv(u8){
+  var a = 0x811c9dc5;
+  for(var i=0;i<u8.length;i++){
+    a = (a ^ u8[i]) >>> 0;
+    a = (a + ((a<<1)+(a<<4)+(a<<7)+(a<<8)+(a<<24))) >>> 0;
+  }
+  return 'f'+a.toString(16);
+}
+function _glbEmpreinte(u8){
+  var fin = function(sig){ return sig+'-'+u8.byteLength; };
+  try{
+    if(self.crypto && self.crypto.subtle && self.crypto.subtle.digest){
+      var ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset+u8.byteLength);
+      return crypto.subtle.digest('SHA-1', ab).then(function(d){
+        var b=new Uint8Array(d), s='';
+        for(var i=0;i<10;i++) s += (b[i]<16?'0':'')+b[i].toString(16);
+        return fin(s);
+      }).catch(function(){ return fin(_glbFnv(u8)); });
+    }
+  }catch(e){}
+  return Promise.resolve(fin(_glbFnv(u8)));
+}
+
+/* --- l'image porte-t-elle de l'alpha ? --------------------------------------
+   Lue sur le canvas DEJA dimensionne : au gabarit, c'est au plus 4 Mo. Seuil a
+   250 et non 255 : un aplat opaque peut perdre une unite dans l'aller-retour
+   du canvas, et on ne veut pas basculer 100 textures en PNG pour cela. En cas
+   d'echec de lecture (canvas salt par une origine tierce), on repond « alpha »
+   — on prefere un fichier plus lourd a une decoupe perdue. */
+function _glbAlpha(ctx,W,H){
+  try{
+    var d = ctx.getImageData(0,0,W,H).data;
+    for(var i=3;i<d.length;i+=4) if(d[i] < 250) return true;
+    return false;
+  }catch(e){ return true; }
+}
+
+/* --- reduction par halving : repli quand le reechantillonneur du navigateur
+   n'est pas la. drawImage n'est que bilineaire ; au-dela d'un facteur 2 il
+   aliase (les joints d'un carrelage se mettent a moirer). Diviser par deux a
+   chaque passe, c'est un filtre boite — deux fois moins bete. */
+function _glbHalve(bm,W,H){
+  var w=bm.width, h=bm.height, src=bm;
+  var garde=0;
+  while((w>2*W || h>2*H) && garde++<16){
+    w=Math.max(W, w>>1); h=Math.max(H, h>>1);
+    var c=document.createElement('canvas'); c.width=w; c.height=h;
+    var x=c.getContext('2d');
+    x.imageSmoothingEnabled=true; x.imageSmoothingQuality='high';
+    x.drawImage(src,0,0,w,h);
+    src=c;
+  }
+  return Promise.resolve(src);
+}
+function _glbRedim(bm,W,H){
+  try{
+    return createImageBitmap(bm,{resizeWidth:W, resizeHeight:H, resizeQuality:'high'})
+      .catch(function(){ return _glbHalve(bm,W,H); });
+  }catch(e){ return _glbHalve(bm,W,H); }
+}
+
+/* --- encodage : PNG si alpha, sinon le plus LEGER de JPEG et PNG ------------
+   Une texture graphique (aplats, damier, lettrage, plan colle en facade) sort
+   plus legere ET plus nette en PNG qu'en JPEG — le temoin de ce chantier, un
+   damier 2048, pese 23,7 ko en PNG. On ne tente le PNG que si la source en
+   etait un : les JPEG d'origine sont des photos, ou le PNG explose. */
+function _glbEncode(c, mimeSrc, alpha, W, H){
+  function enc(type,q){
+    return new Promise(function(ok){ c.toBlob(function(b){ ok(b); }, type, q); })
+      .then(function(b){ return b ? b.arrayBuffer() : null; })
+      .then(function(ab){ return ab ? new Uint8Array(ab) : null; });
+  }
+  if(alpha){
+    return enc('image/png').then(function(u){
+      c.width=c.height=1;                       /* rend le tampon tout de suite */
+      return {mime:'image/png', u8:u, w:W, h:H};
+    });
+  }
+  var jobs=[enc('image/jpeg', GLB_JPEG_Q)];
+  if(mimeSrc==='image/png') jobs.push(enc('image/png'));
+  return Promise.all(jobs).then(function(r){
+    c.width=c.height=1;
+    var j=r[0], pg=r[1];
+    if(pg && (!j || pg.length < j.length)) return {mime:'image/png', u8:pg, w:W, h:H};
+    return {mime:'image/jpeg', u8:j, w:W, h:H};
+  });
+}
+
+/* --- le NOM porte dans le glTF doit dire le vrai format : un PNG opaque
+   ressort le plus souvent en JPEG, et « bardage.png » declare image/jpeg fait
+   douter qui relit le chunk JSON. */
+function _glbNomMime(n, mime){
+  return n.replace(/\.[A-Za-z0-9]+$/,'') + (mime==='image/jpeg' ? '.jpg' : '.png');
+}
+
+/* --- une image : decodage, mise au gabarit, encodage ----------------------- */
+function _glbReduit(nom, blob){
+  var mimeSrc=_glbMime(nom,blob), mx=GLB_TEX_MAX|0;
+  if(!mimeSrc) return _glbBytes(nom,blob);        /* webp/bmp/tga : ancien chemin */
+  /* « Sans reduction » : on rend les octets d'origine sans meme decoder, donc
+     exactement le comportement d'avant ce patch. Reencoder a pleine definition
+     ferait tourner un canvas de 3917x3305 sur 106 images pour un gain qui
+     n'est pas celui qu'on a demande. Le dedoublonnage par contenu, lui, reste
+     actif : il ne coute rien et ne perd rien. */
+  if(mx<=0) return blob.arrayBuffer().then(function(ab){
+    return {mime:mimeSrc, u8:new Uint8Array(ab), brut:1}; });
+  function brut(w,h){
+    return blob.arrayBuffer().then(function(ab){
+      return {mime:mimeSrc, u8:new Uint8Array(ab), w:w, h:h, brut:1}; });
+  }
+  return createImageBitmap(blob).then(function(bm){
+    var w=bm.width, h=bm.height;
+    var k=(mx>0 && Math.max(w,h)>mx) ? mx/Math.max(w,h) : 1;
+    var W=Math.max(1,Math.round(w*k)), H=Math.max(1,Math.round(h*k));
+    /* un JPEG deja au gabarit repart TEL QUEL, sans meme passer par un canvas :
+       il ne peut pas porter d'alpha, et le recompresser ne lui ferait que du
+       mal. C'est 54 des 160 images du KMZ d'essai. */
+    if(k===1 && mimeSrc==='image/jpeg'){ if(bm.close)bm.close(); return brut(w,h); }
+    return (k<1 ? _glbRedim(bm,W,H) : Promise.resolve(bm)).then(function(src2){
+      var c=document.createElement('canvas'); c.width=W; c.height=H;
+      var x=c.getContext('2d',{willReadFrequently:true});
+      x.imageSmoothingEnabled=true; x.imageSmoothingQuality='high';
+      x.drawImage(src2,0,0,W,H);
+      if(src2!==bm && src2.close) src2.close();
+      if(bm.close) bm.close();
+      var alpha=_glbAlpha(x,W,H);
+      /* un PNG A ALPHA deja au gabarit repart tel quel lui aussi : l'aller-
+         retour par le canvas depremultiplie, et les pixels a alpha 0 y perdent
+         leur couleur — ce sont les franges noires des feuillages au mipmap. */
+      if(k===1 && alpha){ c.width=c.height=1; return brut(w,h); }
+      return _glbEncode(c, mimeSrc, alpha, W, H);
+    });
+  }).catch(function(e){ console.warn('texture '+nom+' : '+e); return _glbBytes(nom,blob); });
+}
+
+/* --- toutes les images, en file : empreinte, dedoublonnage, reduction ------
+   Renvoie {imgs, parNom, stat}. `parNom` fait le pont nom -> index d'image :
+   plusieurs noms peuvent designer la MEME image. */
+function _glbImages(noms, texs){
+  var imgs=[], parNom={}, parSig={}, i=0;
+  var stat={source:0, sortie:0, doublons:0, reduites:0, brutes:0};
+  var bt=(typeof $==='function') ? $('b-glb') : null;
+  function blobDe(n){
+    for(var k=0;k<texs.length;k++) if(texs[k].name===n) return texs[k].blob;
+    return null;
+  }
+  function suite(){
+    if(i>=noms.length) return Promise.resolve({imgs:imgs, parNom:parNom, stat:stat});
+    var n=noms[i++], b=blobDe(n);
+    if(bt) bt.textContent='… '+i+'/'+noms.length;   /* chiffres seuls : rien a traduire */
+    if(!b){ return Promise.resolve().then(suite); }
+    stat.source += b.size;
+    return b.arrayBuffer()
+      .then(function(ab){ return _glbEmpreinte(new Uint8Array(ab)); })
+      .then(function(sig){
+        var j=parSig[sig];
+        if(j!==undefined){ parNom[n]=j; stat.doublons++; return; }  /* meme contenu */
+        return _glbReduit(n,b).then(function(r){
+          parSig[sig]=imgs.length; parNom[n]=imgs.length;
+          stat.sortie += r.u8.byteLength;
+          if(r.brut) stat.brutes++; else stat.reduites++;
+          imgs.push({name:_glbNomMime(n,r.mime), mime:r.mime, u8:r.u8, w:r.w, h:r.h});
+        });
+      })
+      .then(suite);
+  }
+  return suite();
+}
+
+/* ============ .glb : le poids ANNONCE avant de mouliner (05/09) ============
+   Demande d'AL : « un curseur ou un choix qualite/poids qui dit le poids
+   attendu AVANT de mouliner ». Le piege est connu et deja paye : annoncer
+   « ~35 Mo » et rendre 71,5 Mo, parce que la moyenne avait ete calculee sur la
+   population qu'on RETIRE. On ne moyenne donc ici que ce qu'on ne peut pas
+   peser, et on pese tout le reste :
+
+     - GEOMETRIE : octets par triangle, RECALIBRES sur le dernier export reel
+       de la session (window.__glbInfo). A defaut, 47,5 o/tri — mesure sur le
+       .glb de 285 191 triangles de THAUVENAY-OHA-ECURIE (13,56 Mo de
+       geometrie). C'est la seule vraie approximation, et elle porte sur les
+       8 % du fichier.
+     - TEXTURES : on connait deja la definition de chaque image (m.tex est un
+       ImageBitmap DEJA decode par loadTextures) ; on sait donc lesquelles
+       repartiront telles quelles, et celles-la comptent pour leur poids
+       EXACT. Les autres sont estimees sur un ECHANTILLON REELLEMENT ENCODE au
+       gabarit choisi — pas sur un coefficient de catalogue.
+
+   CE QUE L'ANNONCE VAUT, MESURE. Sur THAUVENAY-OHA-ECURIE decime a 285 191
+   triangles, annonce contre poids reel du .glb produit :
+       512 px  : 16,2 Mo annonces, 16,12 Mo pesees  (+0,5 %)
+      1024 px  : 19,0 Mo annonces, 20,99 Mo pesees  (-9,5 %)
+      2048 px  : 29,9 Mo annonces, 28,47 Mo pesees  (+5,0 %)
+   La part geometrie tombe juste a 0,2 % ; tout l'ecart vient de l'echantillon
+   de textures. Ce n'est donc PAS un majorant — c'est un ordre de grandeur a
+   une dizaine de pour cent pres, de quoi choisir un gabarit, pas de quoi
+   promettre un chiffre. Le poids VRAI s'affiche apres l'export
+   (window.__glbInfo) et c'est lui qui fait foi. */
+
+var GLB_OTRI = 47.5;              /* octets/triangle, mesure sur THAUVENAY */
+var GLB_ECH = 6;                  /* images reellement encodees pour l'echantillon */
+var GLB_BUDGET = 80 * 1048576;    /* la cible d'AL : « <= 80 Mo si possible » */
+var GLB_EST_SEQ = 0;
+/* coefficient octets/pixel MESURE, retenu par (gabarit, modele) : sans lui,
+   chaque moulinage repayait six encodages. Vide a chaque nouveau modele. */
+var GLB_COEF = {};
+
+function _glbOTri(){
+  try{
+    var i=window.__glbInfo;
+    if(i && i.triangles>1000 && i.geometrieOctets>0) return i.geometrieOctets/i.triangles;
+  }catch(e){}
+  return GLB_OTRI;
+}
+
+/* Les textures qui partiront dans le .glb — une par nom de texture EFFECTIVE
+   des matieres qui portent encore des triangles dans OUT (les autres ne sont
+   pas embarquees). w/h ne valent que pour les textures d'ORIGINE : pour une
+   surcharge BPO ou importee, m.tex est encore l'image d'avant, on laisse 0 et
+   l'image ira dans la part echantillonnee. */
+function _glbTexListe(){
+  var L=[], vus={};
+  if(typeof OUT==='undefined' || !OUT || typeof SRC==='undefined' || !SRC || !SRC.mats) return L;
+  var utilisees={};
+  for(var t=0;t<OUT.triMat.length;t++) utilisees[OUT.triMat[t]]=1;
+  for(var mi in utilisees){
+    var m=SRC.mats[mi]; if(!m) continue;
+    var n=_glbTexName(m); if(!n || vus[n]) continue;
+    var o=effOv(m), b=null, orig=(o.type==='orig');
+    if(o.type==='bpo') b=(BPO_TEX_LIB[o.name]?dataURLtoBlob(BPO_TEX_LIB[o.name]):null);
+    else if(o.type==='imp') b=o.blob||(o.dataURL?dataURLtoBlob(o.dataURL):null);
+    else b=m.texBlob;
+    if(!b) continue;
+    vus[n]=1;
+    L.push({nom:n, blob:b, w:(orig&&m.tex)?m.tex.width:0, h:(orig&&m.tex)?m.tex.height:0});
+  }
+  return L;
+}
+
+/* Ecrit la ligne d'estimation. Les MOTS sont des noeuds texte separes des
+   nombres : moulinette-i18n.js traduit par chaine exacte, une phrase ou l'on
+   a interpole « 37,0 Mo » ne matcherait jamais. */
+function _glbEstLigne(total, geo, tex, nTex, nEch){
+  var e=$('glb-est'); if(!e) return;
+  e.innerHTML='';
+  function mot(t){ e.appendChild(document.createTextNode(t)); }
+  function val(t){ var s=document.createElement('b'); s.style.color='var(--tx)';
+    s.textContent=t; e.appendChild(s); }
+  val('≈ '+fmtMo(total)); mot(' — ');
+  mot('géométrie'); mot(' '); val(fmtMo(geo)); mot(' + ');
+  mot('textures'); mot(' '); val(fmtMo(tex));
+  e.appendChild(document.createElement('br'));
+  var p=document.createElement('span'); p.style.opacity='.85';
+  p.textContent="Poids estimé ; le poids réel s'affiche après l'export.";
+  e.appendChild(p);
+  e.title=nTex+' image(s), dont '+nEch+' réellement encodée(s) pour la mesure';
+  if(total>GLB_BUDGET){
+    e.appendChild(document.createElement('br'));
+    var w=document.createElement('span'); w.style.color='#f0a05a';
+    var reste=Math.max(0, Math.floor((GLB_BUDGET-tex)/Math.max(1,_glbOTri())));
+    if(reste<5000){
+      w.textContent='Les textures seules dépassent 80 Mo : choisir un gabarit plus petit.';
+      e.appendChild(w);
+    }else{
+      /* trois noeuds : deux fragments traduisibles tels quels, le nombre au
+         milieu. Une phrase ou l'on aurait interpole le nombre ne matcherait
+         aucune cle de moulinette-i18n.js. */
+      w.textContent='Au-delà de 80 Mo — cible conseillée :';
+      e.appendChild(w);
+      var n=document.createElement('b'); n.style.color='#f0a05a';
+      n.textContent=' '+fmtn(reste)+' '; e.appendChild(n);
+      var u=document.createElement('span'); u.style.color='#f0a05a';
+      u.textContent='triangles'; e.appendChild(u);
+    }
+  }
+}
+
+/* L'estimation elle-meme. Sequentielle et annulable (GLB_EST_SEQ) : changer
+   deux fois de gabarit ne doit pas faire courir deux echantillonnages. */
+function glbEstime(){
+  var e=$('glb-est'); if(!e) return Promise.resolve(null);
+  var seq=++GLB_EST_SEQ;
+  if(typeof OUT==='undefined' || !OUT){ e.textContent=''; return Promise.resolve(null); }
+  e.textContent='Estimation…';
+  var L=_glbTexListe(), mx=GLB_TEX_MAX|0, exact=0, inc=[];
+  L.forEach(function(it){
+    var mime=_glbMime(it.nom, it.blob);
+    var k=(mx>0 && it.w && Math.max(it.w,it.h)>mx) ? mx/Math.max(it.w,it.h) : 1;
+    /* un JPEG deja au gabarit repart TEL QUEL : poids exact, rien a estimer */
+    if(k===1 && mime==='image/jpeg' && it.w){ exact+=it.blob.size; return; }
+    it.px=(it.w&&it.h) ? Math.round(it.w*k)*Math.round(it.h*k) : 0;
+    inc.push(it);
+  });
+  /* echantillon ETALE sur la distribution, pas les N plus grosses : un
+     coefficient tire des seules grosses images ne decrit pas les petites. */
+  inc.sort(function(a,b){ return b.px-a.px; });
+  var cle=mx+'|'+((typeof SRC!=='undefined'&&SRC)?SRC.name:'');
+  var cache=GLB_COEF[cle];
+  var pas=Math.max(1, Math.ceil(inc.length/GLB_ECH)), ech=[];
+  if(!cache) for(var i=0;i<inc.length && ech.length<GLB_ECH;i+=pas) ech.push(inc[i]);
+  var octEch=0, pxEch=0, j=0;
+  function suite(){
+    if(seq!==GLB_EST_SEQ) return Promise.resolve(null);        /* estimation perimee */
+    if(j>=ech.length) return Promise.resolve(true);
+    var it=ech[j++];
+    return _glbReduit(it.nom, it.blob).then(function(r){
+      it.mesure=r.u8.byteLength; octEch+=r.u8.byteLength;
+      if(!it.px && r.w && r.h) it.px=r.w*r.h;
+      pxEch+=it.px||0;
+      return suite();
+    }).catch(function(){ return suite(); });
+  }
+  return suite().then(function(ok){
+    if(!ok || seq!==GLB_EST_SEQ) return null;
+    var coef=(pxEch>0) ? octEch/pxEch : (cache?cache.coef:0);
+    if(pxEch>0) GLB_COEF[cle]={coef:coef, n:ech.length};
+    var nEch=(pxEch>0)?ech.length:(cache?cache.n:0);
+    var tex=exact;
+    inc.forEach(function(it){
+      if(it.mesure!==undefined){ tex+=it.mesure; return; }
+      tex += it.px ? it.px*coef : it.blob.size;   /* sans definition : plancher */
+    });
+    var geo=OUT.triMat.length*_glbOTri(), total=geo+tex;
+    _glbEstLigne(total, geo, tex, L.length, nEch);
+    return {total:total, geo:geo, tex:tex};
+  });
+}
+
 function buildGLB(){
   var ex=buildExport(), res=ex.res, nT=res.triMat.length;
   var nom=ex.base.replace(/\s+L$/,'');
@@ -3273,12 +3681,11 @@ function buildGLB(){
                 T:tn?new Float32Array(T):null, I:I});
   });
 
-  /* --- 3) images (asynchrone : blobs, et ré-encodage éventuel) --- */
-  return Promise.all(besoin.map(function(n3){
-    var b=null;
-    for(var k=0;k<ex.texs.length;k++)if(ex.texs[k].name===n3){ b=ex.texs[k].blob; break; }
-    return _glbBytes(n3,b).then(function(r){ return {name:n3, mime:r.mime, u8:r.u8}; });
-  })).then(function(imgs){
+  /* --- 3) images : empreinte de CONTENU, mise au gabarit, encodage ---
+     92 % du poids du .glb sortait d'ici, a pleine resolution et
+     dedoublonne par NOM. Voir l'en-tete de glb-textures.js. */
+  return _glbImages(besoin, ex.texs).then(function(lot){
+    var imgs=lot.imgs;
     /* --- 4) un seul buffer : accessors, puis images --- */
     var pieces=[], total=0, bv=[], acc=[];
     function pousse(u8, cible){
@@ -3305,8 +3712,10 @@ function buildGLB(){
     imgs.forEach(function(im){
       jImg.push({name:im.name, mimeType:im.mime, bufferView:pousse(im.u8,null)});
       jTex.push({sampler:0, source:jImg.length-1});
-      texAcc[im.name]=jTex.length-1;
     });
+    /* PLUSIEURS NOMS peuvent designer la meme image — c'est tout l'objet
+       du dedoublonnage par contenu. Le pont est fait par _glbImages. */
+    for(var _n in lot.parNom) texAcc[_n]=lot.parNom[_n];
     prims.forEach(function(p){
       var m=p.mat, kd=effKd(m), al=effAl(m), met=Math.max(0,Math.min(1,+m.met||0));
       var pbr={ metallicFactor:met, roughnessFactor:Math.max(0.08, 0.9-0.8*met) };
@@ -3333,7 +3742,11 @@ function buildGLB(){
     var gltf={
       asset:{version:'2.0', generator:'BPO Moulinette (QEM)',
              extras:{produit:nom, source:SRC.name, triangles:nT,
-                     matieres:prims.length, date:new Date().toISOString()}},
+                     matieres:prims.length, date:new Date().toISOString(),
+                     textures:{gabarit_px:GLB_TEX_MAX, images:imgs.length,
+                               doublons_fusionnes:lot.stat.doublons,
+                               octets_source:lot.stat.source,
+                               octets_sortie:lot.stat.sortie}}},
       scene:0, scenes:[{nodes:[0]}],
       nodes:[{name:nom, mesh:0}],
       meshes:[{name:nom, primitives:jPrim}],
@@ -3357,6 +3770,11 @@ function buildGLB(){
     dv.setUint32(pb,lenB,true); dv.setUint32(pb+4,0x004E4942,true);
     out.set(bin,pb+8);                                                     /* padding = zéros */
     var blob=new Blob([out],{type:'model/gltf-binary'});
+    /* le poids REEL, pese sur le fichier construit — pas une estimation. */
+    try{ window.__glbInfo={octets:blob.size, triangles:nT, gabarit:GLB_TEX_MAX,
+      images:imgs.length, imagesOctets:lot.stat.sortie, sourceOctets:lot.stat.source,
+      doublons:lot.stat.doublons, brutes:lot.stat.brutes, reduites:lot.stat.reduites,
+      geometrieOctets:total-lot.stat.sortie}; }catch(_e){}
     dl(blob, nom+'.glb');
     return blob;
   });
@@ -4102,6 +4520,11 @@ $('b-dl').addEventListener('click',function(){ if(OUT)exportOBJ(false); });
 $('b-zip').addEventListener('click',function(){ if(OUT)exportZip(); });
 $('b-gsm').addEventListener('click',function(){ if(OUT)buildArchicadZip(); });
 $('b-skp').addEventListener('click',function(){ if(OUT)buildSketchupZip(); });
+/* gabarit des textures du .glb : ecrit GLB_TEX_MAX et relance le poids
+   annonce. Aucun effet sur les autres exports (paquet BPO, .gsm, .dae),
+   qui embarquent toujours les textures d'origine. */
+$('glb-q').addEventListener('change',function(){ GLB_TEX_MAX=+this.value|0;
+  try{ glbEstime(); }catch(e){ console.warn(e); } });
 $('b-glb').addEventListener('click',function(){ if(!OUT)return;
   var b=$('b-glb'), tx=b.textContent; b.disabled=true; b.textContent='Preparation…';
   Promise.resolve().then(buildGLB).catch(function(e){ console.error(e);
@@ -4159,6 +4582,9 @@ function resetModel(){
   if($('salub'))$('salub').style.display='none'; SALUB=null;
   $('b-dl').disabled=true; $('b-zip').disabled=true;
   $('b-gsm').disabled=true; $('b-skp').disabled=true; $('b-glb').disabled=true;
+  /* le coefficient octets/pixel a ete mesure SUR L'AUTRE modele : le garder
+     ferait annoncer un poids qui ne parle plus de rien. */
+  if($('glb-est'))$('glb-est').textContent=''; if(typeof GLB_COEF!=='undefined')GLB_COEF={};
   $('fname').textContent='—';
   ['s-in','s-out','s-mat','s-time','s-size'].forEach(function(id){ $(id).textContent='—'; });
   $('mat-grid').innerHTML=''; $('mat-name').textContent='—';
@@ -4296,7 +4722,7 @@ document.addEventListener('change',function(e){
 /* la zone de dépôt annonce les nouveaux formats */
 function texte(){
   var b=document.querySelector('#dropcard b');
-  if(b && /\.3ds ici/.test(b.textContent)) b.textContent='Glissez un fichier .obj, .dae, .skp, .3ds, .stl, .ifc, .gltf/.glb ou .zip ici';
+  if(b && /\.3ds ici/.test(b.textContent)) b.textContent='Glissez un fichier .obj, .dae, .skp, .3ds, .stl, .ifc, .gltf/.glb, .zip ou .kmz ici';
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',texte); else texte();
 window.__moulFmts={ convertit:convertit, geoVersOBJ:geoVersOBJ, coreReady:coreReady };   /* poignée de banc */
