@@ -2005,6 +2005,15 @@ function weldModel(src){
    et le moteur s'arrete tout seul quand la selection a fondu a la cible. */
 function decimate(mesh,target,restreint){
   var nV=mesh.vx.length, nT=mesh.tri.length/3;
+  /* PAS DE RACCOURCI quand la cible est deja atteinte (essaye le 05/09,
+     RETIRE le meme soir apres revue) : la fin de cette fonction ne fait pas
+     que renumeroter, elle COMPACTE — elle saute les triangles degeneres et
+     n'emet que les sommets REFERENCES. Rendre une copie de l'entree gardait
+     les orphelins, donc changeait la boite englobante, donc decalait le
+     centrage et la pose au sol de l'export .glb. La mise en place coute,
+     mais elle reste moins chere qu'une vraie reduction : mesure a 401 408
+     triangles, 1,2 s a cible maximale contre 2,9 s pour descendre a 20 000
+     — l'ancien defaut. */
   var vx=mesh.vx.slice(), vy=mesh.vy.slice(), vz=mesh.vz.slice();
   var tri=Int32Array.from(mesh.tri), triMat=mesh.triMat;
   var triDead=new Uint8Array(nT), alive=nT;
@@ -2543,6 +2552,13 @@ function undoRun(){
   try{ var blob=exportOBJ(true); $('s-size').textContent=fmtMo(blob.size); }catch(e){}
   $('b-undo-run').disabled=!DECIM_HIST.length; majSelRow();
   return true; }
+/* Au-dela de ce nombre de triangles, on ne fabrique plus l'OBJ complet juste
+   pour afficher une taille (voir la fin de run()). Mesure sur cette page :
+   114 ms a 100 352 triangles, 389 ms a 401 408 — c'est lineaire. Mais sur
+   les 3,3 M d'une maquette Archicad cela fait ~3 s de gel et une chaine de
+   plus de 100 Mo fabriquee pour afficher un nombre que personne n'a demande
+   a ce moment-la. */
+var SEUIL_TAILLE=400000;
 function run(target,restreint,libelle,base){
   busy(libelle||('Moulinage à '+fmtn(target)+' triangles…'),function(){
     var t0=performance.now();
@@ -2571,8 +2587,22 @@ function run(target,restreint,libelle,base){
     $('b-gsm').disabled=false;
     $('b-skp').disabled=false;
     $('b-glb').disabled=false;
-    var blob=exportOBJ(true);
-    $('s-size').textContent=fmtMo(blob.size);
+    /* La taille affichee coutait un OBJ COMPLET fabrique puis joint en une
+       seule chaine, a CHAQUE moulinage. Tant que la cible valait 20 000 ca ne
+       se voyait pas ; depuis qu'on ouvre les modeles entiers, c'est le modele
+       entier qu'on serialise pour afficher un nombre — plusieurs secondes de
+       gel, et une chaine qui peut depasser la limite du moteur. Au-dela du
+       seuil on ne la fabrique plus : « — » et la taille se lit a l'export.
+       Pas d'estimation : une taille estimee serait pire qu'absente. */
+    if(OUT.triMat.length<=SEUIL_TAILLE){
+      var blob=exportOBJ(true);
+      $('s-size').textContent=fmtMo(blob.size);
+      $('s-size').title='';
+    } else {
+      $('s-size').textContent='—';
+      $('s-size').title='Modele trop lourd pour peser l\u2019export a chaque moulinage '
+        +'(au-dela de '+fmtn(SEUIL_TAILLE)+' triangles) : la taille se lit au moment de l\u2019export.';
+    }
   });
 }
 
@@ -3982,6 +4012,14 @@ window.addEventListener('keydown',function(e){
    Le plafond suit desormais LE MODELE CHARGE : on peut toujours atteindre
    « aucune reduction ». Le pas s'adapte pour que le curseur reste utilisable. */
 var CIBLE_MAX=60000;
+/* CIBLE_CHOISIE : vrai des que l'utilisateur touche le curseur ou le champ.
+   Tant qu'il n'y a pas touche, chaque modele charge s'ouvre A SA TAILLE
+   REELLE (aucune reduction) plutot qu'aux 20 000 du HTML — un gros SKP
+   arrivait en ruine et donnait l'outil pour casse (AL, 05/09). Une fois
+   choisie, la cible SURVIT aux chargements suivants : la file d'objets
+   enchaine les fichiers, remettre le maximum a chaque fois ferait perdre
+   son reglage a chaque fichier. */
+var CIBLE_CHOISIE=false;
 function cibleBorne(nTri){
   if(!(nTri>0)) return;
   CIBLE_MAX=Math.max(60000, Math.ceil(nTri/1000)*1000);
@@ -3992,13 +4030,16 @@ function cibleBorne(nTri){
     lb.style.cssText='font-size:10.5px;color:#8a93a0;margin-top:3px;text-align:right;';
     var row=document.getElementById('tgtrow'); if(row&&row.parentNode) row.parentNode.insertBefore(lb,row.nextSibling); }
   lb.textContent='max '+fmtn(CIBLE_MAX)+' — au maximum, aucune réduction';
+  /* PAR DEFAUT : le modele entier. On montre ce qui a ete importe, on ne
+     le decime pas dans le dos de celui qui l'ouvre. */
+  if(!CIBLE_CHOISIE){ $('tgtv').value=CIBLE_MAX; }
   /* une cible heritee d'un modele plus leger ne doit pas brider celui-ci */
   var v=+$('tgtv').value|0;
   if(v>CIBLE_MAX){ $('tgtv').value=CIBLE_MAX; }
   $('tgt').value=Math.max(1000,Math.min(CIBLE_MAX, +$('tgtv').value|0));
 }
-$('tgt').addEventListener('input',function(){ $('tgtv').value=$('tgt').value; });
-$('tgtv').addEventListener('change',function(){ var v=Math.max(500,Math.min(CIBLE_MAX,+$('tgtv').value|0));
+$('tgt').addEventListener('input',function(){ CIBLE_CHOISIE=true; $('tgtv').value=$('tgt').value; });
+$('tgtv').addEventListener('change',function(){ CIBLE_CHOISIE=true; var v=Math.max(500,Math.min(CIBLE_MAX,+$('tgtv').value|0));
   $('tgtv').value=v; $('tgt').value=Math.max(1000,Math.min(CIBLE_MAX,v)); });
 $('b-run').addEventListener('click',function(){ if(WELD)run(+$('tgtv').value|0); });
 $('b-undo-run').addEventListener('click',function(){ undoRun(); });
@@ -4134,7 +4175,9 @@ function resetAll(){
   LUM=1.2; $('lum').value=1.2; $('lumv').value=1.2;
   $('objblock').style.display='none';
   $('left').classList.remove('batch');
-  $('tgt').value=20000; $('tgtv').value=20000;
+  /* page vierge = defauts d'usine : le prochain modele doit s'ouvrir ENTIER,
+     sinon un choix fait avant le « Nouveau » le decime encore. */
+  CIBLE_CHOISIE=false; $('tgt').value=20000; $('tgtv').value=20000;
   $('fpick').value=''; $('dpick').value='';
   dropMsg('');
   $('panel').style.display='none';
