@@ -196,7 +196,7 @@ function ecranAbo(){
 window.__bpoAtelier={ get exportOk(){return EXPORT_OK;}, set exportOk(v){EXPORT_OK=!!v;}, ecran:ecranAbo };
 document.addEventListener("click",function(e){
   if(EXPORT_OK)return;
-  const t=e.target&&e.target.closest?e.target.closest("#b-zip,#b-gsm,#b-skp,#b-dl,#b-lib"):null;
+  const t=e.target&&e.target.closest?e.target.closest("#b-zip,#b-gsm,#b-skp,#b-glb,#b-dl,#b-lib"):null;
   if(!t)return;
   e.preventDefault(); e.stopPropagation();
   ecranAbo();
@@ -592,6 +592,7 @@ pret(function(){
   <div class="btns"><button id="b-zip" class="main" disabled>Paquet BPO (.zip)</button></div>
   <div class="btns"><button id="b-gsm" disabled title="Objet GDL ArchiCAD : HSF + bat de conversion (LP_XMLConverter d'AC 26-29)">ArchiCAD (.gsm)</button>
     <button id="b-skp" disabled title="COLLADA pour SketchUp (textures incluses)">SketchUp (.dae)</button></div>
+  <div class="btns"><button id="b-glb" disabled title="glTF binaire autonome, textures comprises - le format des PRODUITS de Calque">Objet 3D (.glb)</button></div>
   <div class="btns mini"><button id="b-dl" disabled>« L.obj » + « L.mtl » seuls</button></div>
 </div>
 <div id="objblock" style="display:none">
@@ -2569,6 +2570,7 @@ function run(target,restreint,libelle,base){
     $('b-zip').disabled=false;
     $('b-gsm').disabled=false;
     $('b-skp').disabled=false;
+    $('b-glb').disabled=false;
     var blob=exportOBJ(true);
     $('s-size').textContent=fmtMo(blob.size);
   });
@@ -2753,7 +2755,11 @@ function buildExport(){
               uv_cuites_dans_obj:true}; })
   };
   return {base:base, obj:lines.join('\n'), mtl:ml.join('\n'), mtlName:mtlName,
-          texs:texs, manifest:JSON.stringify(manifest,null,2)};
+          texs:texs, manifest:JSON.stringify(manifest,null,2),
+          /* tableaux bruts : l'export .glb a besoin des indices PAR COIN
+             (le texte OBJ ne les rend qu'au prix d'un re-parsing, et les
+             noms de matieres ne sont pas garantis uniques) */
+          res:res, cOut:cOut, nOut:nOut, vtList:vtList, vnList:vnList};
 }
 function exportOBJ(sizeOnly){
   var ex=buildExport();
@@ -3129,6 +3135,196 @@ function buildSketchupZip(){
     .then(function(zip){ dl(zip,name+' BPO SketchUp.zip'); return zip; });
 }
 
+/* ============================ export glTF binaire (.glb) ============================
+   Cible : la partie PRODUITS de Calque, qui n'accepte qu'un .glb AUTONOME —
+   calque-objet.js relit le chunk JSON avant de charger et REFUSE tout URI
+   extérieur ; il ne lit pas non plus Draco/meshopt. On n'écrit donc qu'un
+   seul buffer, images comprises, sans extension.
+
+   Tout est déjà cuit par buildExport() : sommets, UV par coin (projections
+   plane/boîte comprises), normales dédupliquées, matières et blobs de
+   texture. Trois conversions séparent l'OBJ du glTF, et ce sont les seules
+   choses délicates ici :
+     - repère : glTF est Y-HAUT ; on passe d'abord au Z-haut de _prepGeo
+       (centré en XY, posé sur Z=0, comme l'export SketchUp) puis
+       (x,y,z) -> (x,z,-y) ;
+     - V des UV : origine EN BAS pour l'OBJ, EN HAUT pour glTF -> v'=1-v ;
+     - couleur : Kd est en sRGB, baseColorFactor est LINÉAIRE.
+   Une couleur laissée en sRGB ne se voit pas sur un gris et saute aux yeux
+   sur un rouge : c'est le piège « couleur ≠ texture » d'un autre canal. */
+function _glbLin(c){ return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }
+/* glTF n'admet que image/png et image/jpeg : tout le reste (webp, bmp, tga
+   des vieux SketchUp) est ré-encodé en PNG plutôt que refusé. */
+function _glbMime(name, blob){
+  var t=((blob&&blob.type)||'').toLowerCase();
+  if(t==='image/png'||t==='image/jpeg')return t;
+  if(/\.png$/i.test(name))return 'image/png';
+  if(/\.jpe?g$/i.test(name))return 'image/jpeg';
+  return null;
+}
+function _glbBytes(name, blob){
+  var mime=_glbMime(name,blob);
+  if(mime)return blob.arrayBuffer().then(function(ab){ return {mime:mime,u8:new Uint8Array(ab)}; });
+  return createImageBitmap(blob).then(function(bm){
+    var c=document.createElement('canvas'); c.width=bm.width; c.height=bm.height;
+    c.getContext('2d').drawImage(bm,0,0);
+    return new Promise(function(ok,ko){ c.toBlob(function(b){ b?ok(b):ko(new Error('PNG')); },'image/png'); });
+  }).then(function(png){ return png.arrayBuffer(); })
+    .then(function(ab){ return {mime:'image/png',u8:new Uint8Array(ab)}; });
+}
+/* nom de fichier de la texture effective d'une matière (même règle que buildExport) */
+function _glbTexName(m){
+  var o=effOv(m);
+  if(o.type==='bpo')return 'bpo_'+o.name+'.jpg';
+  if(o.type==='imp')return o.name;
+  if(o.type==='orig'&&m.mapKd)return m.mapKd;
+  return null;
+}
+function buildGLB(){
+  var ex=buildExport(), res=ex.res, nT=res.triMat.length;
+  var nom=ex.base.replace(/\s+L$/,'');
+
+  /* --- 1) sommets et normales dans le repère glTF --- */
+  var nv=res.vx.length, yUp=(VIEW.up==='Y');
+  var ZX=new Float64Array(nv), ZY=new Float64Array(nv), ZZ=new Float64Array(nv);
+  var mn=[1e30,1e30,1e30], mx=[-1e30,-1e30,-1e30];
+  for(var i=0;i<nv;i++){
+    var x=res.vx[i], y=res.vy[i], z=res.vz[i];
+    if(yUp){ var sw=y; y=-z; z=sw; }          /* vue Y-haut -> Z-haut, comme _prepGeo */
+    ZX[i]=x; ZY[i]=y; ZZ[i]=z;
+    if(x<mn[0])mn[0]=x; if(y<mn[1])mn[1]=y; if(z<mn[2])mn[2]=z;
+    if(x>mx[0])mx[0]=x; if(y>mx[1])mx[1]=y; if(z>mx[2])mx[2]=z;
+  }
+  var cx=(mn[0]+mx[0])/2, cy=(mn[1]+mx[1])/2, z0=mn[2];
+  var NRM=ex.vnList.map(function(p){
+    var a=p[0], b=p[1], c=p[2];
+    if(yUp){ var sw=b; b=-c; c=sw; }
+    return [a, c, -b];
+  });
+
+  /* --- 2) une primitive par matière, sommets dédupliqués par coin --- */
+  var groupes={}, ordre=[];
+  for(var t=0;t<nT;t++){ var mi=res.triMat[t];
+    if(!groupes[mi]){ groupes[mi]=[]; ordre.push(mi); }
+    groupes[mi].push(t); }
+  ordre.sort(function(a,b){ return a-b; });
+
+  var prims=[], besoin=[];
+  ordre.forEach(function(mi){
+    var m=SRC.mats[mi]||SRC.mats[0], tris=groupes[mi];
+    var tn=_glbTexName(m), tb=null;
+    if(tn){ for(var k=0;k<ex.texs.length;k++)if(ex.texs[k].name===tn){ tb=ex.texs[k].blob; break; } }
+    if(!tb)tn=null;                                    /* texture manquante : couleur pleine */
+    if(tn&&besoin.indexOf(tn)<0)besoin.push(tn);
+
+    var vus={}, P=[], N=[], T=[], I=[];
+    tris.forEach(function(t3){
+      for(var k2=0;k2<3;k2++){
+        var ci=t3*3+k2, vi=res.tri[ci], ni=ex.nOut[ci], ti=ex.cOut[ci];
+        var cle=vi+'|'+ni+'|'+ti, id=vus[cle];
+        if(id===undefined){
+          id=P.length/3; vus[cle]=id;
+          P.push(ZX[vi]-cx, ZZ[vi]-z0, -(ZY[vi]-cy));
+          var n2=NRM[ni]||[0,1,0]; N.push(n2[0],n2[1],n2[2]);
+          if(tn){ var uv=(ti>=0)?ex.vtList[ti]:[0,0];
+            T.push(uv[0], 1-uv[1]); }              /* V : bas (OBJ) -> haut (glTF) */
+        }
+        I.push(id);
+      }
+    });
+    prims.push({mat:m, matIdx:mi, tex:tn, P:new Float32Array(P), N:new Float32Array(N),
+                T:tn?new Float32Array(T):null, I:I});
+  });
+
+  /* --- 3) images (asynchrone : blobs, et ré-encodage éventuel) --- */
+  return Promise.all(besoin.map(function(n3){
+    var b=null;
+    for(var k=0;k<ex.texs.length;k++)if(ex.texs[k].name===n3){ b=ex.texs[k].blob; break; }
+    return _glbBytes(n3,b).then(function(r){ return {name:n3, mime:r.mime, u8:r.u8}; });
+  })).then(function(imgs){
+    /* --- 4) un seul buffer : accessors, puis images --- */
+    var pieces=[], total=0, bv=[], acc=[];
+    function pousse(u8, cible){
+      while(total%4){ pieces.push(new Uint8Array([0])); total++; }
+      var o=total; pieces.push(u8); total+=u8.byteLength;
+      var v={buffer:0, byteOffset:o, byteLength:u8.byteLength};
+      if(cible)v.target=cible;
+      bv.push(v); return bv.length-1;
+    }
+    function accVec(arr, nComp, cible, avecBornes){
+      var type=['SCALAR','','VEC2','VEC3'][nComp];
+      var a={bufferView:pousse(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), cible),
+             componentType:5126, count:arr.length/nComp, type:type};
+      if(avecBornes){
+        var lo=[], hi=[];
+        for(var c=0;c<nComp;c++){ lo.push(Infinity); hi.push(-Infinity); }
+        for(var j=0;j<arr.length;j++){ var c2=j%nComp;
+          if(arr[j]<lo[c2])lo[c2]=arr[j]; if(arr[j]>hi[c2])hi[c2]=arr[j]; }
+        a.min=lo; a.max=hi;
+      }
+      acc.push(a); return acc.length-1;
+    }
+    var jMat=[], jTex=[], jImg=[], jPrim=[], texAcc={};
+    imgs.forEach(function(im){
+      jImg.push({name:im.name, mimeType:im.mime, bufferView:pousse(im.u8,null)});
+      jTex.push({sampler:0, source:jImg.length-1});
+      texAcc[im.name]=jTex.length-1;
+    });
+    prims.forEach(function(p){
+      var m=p.mat, kd=effKd(m), al=effAl(m), met=Math.max(0,Math.min(1,+m.met||0));
+      var pbr={ metallicFactor:met, roughnessFactor:Math.max(0.08, 0.9-0.8*met) };
+      if(p.tex!==null&&texAcc[p.tex]!==undefined){
+        pbr.baseColorTexture={index:texAcc[p.tex]};
+        pbr.baseColorFactor=[1,1,1,al];                 /* la texture porte la couleur */
+      } else {
+        pbr.baseColorFactor=[_glbLin(kd[0]), _glbLin(kd[1]), _glbLin(kd[2]), al];
+      }
+      var mat={name:m.name, doubleSided:true, pbrMetallicRoughness:pbr};
+      if(m.texCut&&p.tex){ mat.alphaMode='MASK'; mat.alphaCutoff=0.5; }
+      else if(al<0.999) mat.alphaMode='BLEND';
+      jMat.push(mat);
+
+      var attrs={POSITION:accVec(p.P,3,34962,true), NORMAL:accVec(p.N,3,34962,false)};
+      if(p.T)attrs.TEXCOORD_0=accVec(p.T,2,34962,false);
+      var court=(p.P.length/3)<65536;
+      var idx=court?new Uint16Array(p.I):new Uint32Array(p.I);
+      acc.push({bufferView:pousse(new Uint8Array(idx.buffer,idx.byteOffset,idx.byteLength),34963),
+                componentType:court?5123:5125, count:p.I.length, type:'SCALAR'});
+      jPrim.push({attributes:attrs, indices:acc.length-1, material:jMat.length-1, mode:4});
+    });
+
+    var gltf={
+      asset:{version:'2.0', generator:'BPO Moulinette (QEM)',
+             extras:{produit:nom, source:SRC.name, triangles:nT,
+                     matieres:prims.length, date:new Date().toISOString()}},
+      scene:0, scenes:[{nodes:[0]}],
+      nodes:[{name:nom, mesh:0}],
+      meshes:[{name:nom, primitives:jPrim}],
+      materials:jMat, accessors:acc, bufferViews:bv,
+      buffers:[{byteLength:total}]
+    };
+    if(jTex.length){ gltf.textures=jTex; gltf.images=jImg;
+      gltf.samplers=[{magFilter:9729, minFilter:9987, wrapS:10497, wrapT:10497}]; }
+
+    /* --- 5) conteneur GLB : en-tête + chunk JSON + chunk BIN --- */
+    var bin=new Uint8Array(total), off=0;
+    pieces.forEach(function(u){ bin.set(u,off); off+=u.byteLength; });
+    var js=new TextEncoder().encode(JSON.stringify(gltf));
+    var padJ=(4-(js.byteLength%4))%4, padB=(4-(bin.byteLength%4))%4;
+    var lenJ=js.byteLength+padJ, lenB=bin.byteLength+padB;
+    var out=new Uint8Array(12+8+lenJ+8+lenB), dv=new DataView(out.buffer);
+    dv.setUint32(0,0x46546C67,true); dv.setUint32(4,2,true); dv.setUint32(8,out.byteLength,true);
+    dv.setUint32(12,lenJ,true); dv.setUint32(16,0x4E4F534A,true);
+    out.set(js,20); for(var q=0;q<padJ;q++)out[20+js.byteLength+q]=0x20;   /* espaces */
+    var pb=20+lenJ;
+    dv.setUint32(pb,lenB,true); dv.setUint32(pb+4,0x004E4942,true);
+    out.set(bin,pb+8);                                                     /* padding = zéros */
+    var blob=new Blob([out],{type:'model/gltf-binary'});
+    dl(blob, nom+'.glb');
+    return blob;
+  });
+}
+
 /* ============================ rendu WebGL ============================ */
 var cv=$('gl'), gl=cv.getContext('webgl2')||cv.getContext('webgl');
 var isGL2=(typeof WebGL2RenderingContext!=='undefined')&&(gl instanceof WebGL2RenderingContext);
@@ -3201,6 +3397,19 @@ function metAuto(nom){ return /chrom|inox|poli\b|chrome|nickel/i.test(nom||'')?0
 function effKd(m){ var o=effOv(m); return (o.type==='ral')?o.rgb:m.kd; }
 function effAl(m){ return (m.alpha===undefined||m.alpha===null)?1:m.alpha; }
 function uploadTex(src){ var t=gl.createTexture();
+  /* UNPACK_FLIP_Y_WEBGL est IGNORE pour un ImageBitmap : l'orientation d'un
+     bitmap est figee a sa creation. Les textures d'ORIGINE sont les seules a
+     passer par createImageBitmap — elles s'affichaient donc a l'ENVERS, quand
+     les textures BPO et importees (new Image) etaient a l'endroit. On repasse
+     le bitmap par un canvas, source pour laquelle le retournement s'applique.
+     Les exports n'ont jamais eu ce defaut (convention OBJ : v=1 = haut de
+     l'image) ; les vignettes de matiere dessinent m.tex en 2D et ne sont pas
+     concernees. Un blit par envoi de texture, pas par image. */
+  if(typeof ImageBitmap!=='undefined' && src instanceof ImageBitmap){
+    var cnv=document.createElement('canvas');
+    cnv.width=src.width; cnv.height=src.height;
+    cnv.getContext('2d').drawImage(src,0,0);
+    src=cnv; }
   gl.bindTexture(gl.TEXTURE_2D,t);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);
@@ -3845,6 +4054,12 @@ $('b-dl').addEventListener('click',function(){ if(OUT)exportOBJ(false); });
 $('b-zip').addEventListener('click',function(){ if(OUT)exportZip(); });
 $('b-gsm').addEventListener('click',function(){ if(OUT)buildArchicadZip(); });
 $('b-skp').addEventListener('click',function(){ if(OUT)buildSketchupZip(); });
+$('b-glb').addEventListener('click',function(){ if(!OUT)return;
+  var b=$('b-glb'), tx=b.textContent; b.disabled=true; b.textContent='Preparation…';
+  Promise.resolve().then(buildGLB).catch(function(e){ console.error(e);
+    alert("L'export .glb a echoue : "+(e&&e.message?e.message:e)); })
+   .then(function(){ b.textContent=tx; b.disabled=false; });
+});
 $('uv-mode').addEventListener('change',function(){ if(!SRC)return;
   getUV(SRC.mats[TSEL]).mode=+this.value; draw(); });
 var UVLOCK=false;
@@ -3895,7 +4110,7 @@ function resetModel(){
   $('s-dim').textContent='—'; $('unitrow').style.display='none';
   if($('salub'))$('salub').style.display='none'; SALUB=null;
   $('b-dl').disabled=true; $('b-zip').disabled=true;
-  $('b-gsm').disabled=true; $('b-skp').disabled=true;
+  $('b-gsm').disabled=true; $('b-skp').disabled=true; $('b-glb').disabled=true;
   $('fname').textContent='—';
   ['s-in','s-out','s-mat','s-time','s-size'].forEach(function(id){ $(id).textContent='—'; });
   $('mat-grid').innerHTML=''; $('mat-name').textContent='—';
