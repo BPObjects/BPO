@@ -135,7 +135,34 @@
   function extractScene() {
     var faces = gatherFaces();
     var tris = [], mats = [], matMap = {};
-    var vegLayers = {}, vegList = [];   /* tuile -> couche du tableau de textures */
+    var vegLayers = {}, vegList = [], tuileS = 0;   /* tuile -> couche du tableau de textures */
+    /* VEINAGE DES MURS AU RENDU (06/09, demande AL). Une face qui porte `tex`
+       sans marqueur d'intention — mur, sol, toiture — n'était pas échantillonnée :
+       le rendu la peignait d'un aplat. Elle entre maintenant dans le MÊME canal
+       de tuiles que le feuillage et le staffage, avec des UV calculés par la
+       règle du visualiseur (texPlanarUV), donc le même placage à l'écran et au
+       rendu.
+       TROIS EXCLUSIONS, chacune pour une raison :
+       · le VERRE reste du verre — une vitre texturée deviendrait opaque ;
+       · le GAZON garde son mode procédural, réglé et satisfaisant ;
+       · une tuile dont la taille diffère de la PREMIÈRE retenue est écartée :
+         le tableau du moteur prend sa taille de la première couche et les
+         suivantes doivent s'y conformer. On applique sa règle en amont plutôt
+         que de supposer 512. */
+    function tuileMur(f) {
+      if (!f.tex || f.veg || f.opq || f.txm) return false;
+      if (f.al != null && f.al < 0.98) return false;
+      if (/gazon|grass/i.test(String(f.tex))) return false;
+      if (typeof window.texPlanarUV !== 'function' || !f.n) return false;
+      var im = null; try { im = window.TEX_IMAGES && TEX_IMAGES[f.tex]; } catch (e) { return false; }
+      if (!im || !im.data || !im.w || im.w !== im.h) return false;
+      return tuileS ? (im.w === tuileS) : true;
+    }
+    function uvPlan(f) {
+      var out = [], i;
+      for (i = 0; i < f.verts.length; i++) out.push(window.texPlanarUV(f.verts[i], f.n, f.tex));
+      return out;
+    }
     var bb = [1e30, 1e30, 1e30, -1e30, -1e30, -1e30];
     function matIndex(f) {
       var col = f.col, al = f.al, tex = f.tex || '';
@@ -154,15 +181,22 @@
          etre lisse et speculaire sans toucher au shader. C'est l'appelant qui
          connait ses roles (carrosserie, pneu, chrome) : les derive ici serait
          une seconde source de verite, donc une divergence a venir. */
-      if (tex && (f.veg || f.opq || f.txm)) {
-        var opaque = f.opq || f.txm || !f.veg;      /* humain texturé = staffage opaque */
-        var _rg = (f.txm && f.rgh != null) ? +f.rgh : (opaque ? 0.95 : 0.85);
+      var _mur = tuileMur(f);
+      if (tex && (f.veg || f.opq || f.txm || _mur)) {
+        var opaque = f.opq || f.txm || _mur || !f.veg;      /* humain texturé = staffage opaque */
+        /* Un mur n'est pas une étoffe : on lui garde la rugosité qu'il avait
+           déjà dans le rendu quand il était peint d'un aplat (0.62), pour que
+           passer au veinage change son DESSIN et non son éclat. */
+        var _rg = (f.txm && f.rgh != null) ? +f.rgh : (_mur ? 0.62 : (opaque ? 0.95 : 0.85));
         var _mt = (f.txm && f.met != null) ? +f.met : 0;
         if (f.txm) { _rg = Math.max(0.02, Math.min(1, _rg)); _mt = Math.max(0, Math.min(1, _mt)); }
         var kV = (f.txm ? ('mat_' + _rg.toFixed(2) + '_' + _mt.toFixed(2) + '_')
-                        : (opaque ? 'stf_' : 'veg_')) + tex;  /* cles distinctes : meme tuile, materiau different */
+                        : (_mur ? 'mur_' : (opaque ? 'stf_' : 'veg_'))) + tex;  /* cles distinctes : meme tuile, materiau different */
         if (matMap[kV] != null) return matMap[kV];
-        if (vegLayers[tex] == null) { vegLayers[tex] = vegList.length; vegList.push(tex); }
+        if (vegLayers[tex] == null) {
+          if (!tuileS) { try { tuileS = TEX_IMAGES[tex].w || 0; } catch (e) {} }
+          vegLayers[tex] = vegList.length; vegList.push(tex);
+        }
         var vs = vegStat(tex);
         /* opaque : STAFFAGE PHOTOGRAPHIQUE et humains maillés.
            Meme tuile, meme decoupe a l'alpha du texel, mais OPAQUE — le mode 4
@@ -200,7 +234,9 @@
     for (var i = 0; i < faces.length; i++) {
       var f = faces[i], vs = f.verts; if (!vs || vs.length < 3) continue;
       var mi = matIndex(f);
-      var hasUV = !!((f.veg || f.opq || f.txm) && f.uv && f.uv.length === vs.length);
+      var _uv = f.uv;
+      if (!(_uv && _uv.length === vs.length) && tuileMur(f)) { try { _uv = uvPlan(f); } catch (e) { _uv = null; } }
+      var hasUV = !!((f.veg || f.opq || f.txm || tuileMur(f)) && _uv && _uv.length === vs.length);
       /* PAS DE RETOURNEMENT ICI. J'avais cru que les tuiles vehicules
          passaient par makeTex (data-URI, UNPACK_FLIP_Y=true) comme les
          fabricants : c'est faux, verifie dans resolveTex — TEX_POOL ne
@@ -212,7 +248,7 @@
       var hasVN = !!(f.vn && f.vn.length === vs.length);
       for (var k = 1; k < vs.length - 1; k++) {
         tris.push({ a: vs[0], b: vs[k], c: vs[k + 1], mat: mi,
-                    uv: hasUV ? [f.uv[0], f.uv[k], f.uv[k + 1]] : null,
+                    uv: hasUV ? [_uv[0], _uv[k], _uv[k + 1]] : null,
                     /* NORMALES DE SOMMET : la triangulation en eventail garde la
                        correspondance des indices, on prend les memes. Sans elles
                        le moteur ombrait a plat et tout maillage courbe sortait
@@ -278,6 +314,9 @@
       }
       else console.warn('[rendu] herbe 3D inactive (off/gl/prefs)');
     } catch (e) { console.warn('[rendu] herbe 3D absente :', e && e.message); }
+    try{ window.__RTSCENE = { nTris: tris.length, nMats: mats.length, vegTiles: vegList.slice(),
+      avecUV: tris.filter(function(t){ return !!t.uv; }).length,
+      tuiles: mats.map(function(m,i){ return m.leaf ? {i:i, leaf:m.leaf, layer:m.leafLayer, rough:m.rough, metal:m.metal} : null; }).filter(Boolean) }; }catch(_e){}
     return { triangles: tris, materials: mats, bb: bb, vegTiles: vegList };
   }
 
@@ -822,7 +861,7 @@
 
   /* Point d'entrée global : permet à un bouton de app.html (celui qui a remplacé
      le rendu IA dans les paramètres) de lancer le rendu photo. */
-  try { window.BPO_photoRender = launch; } catch (e) {}
+  try { window.BPO_photoRender = launch; window.BPO_rtScene = extractScene; } catch (e) {}
 
   function mkBtn(txt) {
     var b = document.createElement('button'); b.textContent = txt;
