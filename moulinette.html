@@ -811,7 +811,14 @@ function studioBuild(){
        d'un volume ferme tournent en sens opposes — en regle nonzero elles
        s'ANNULENT et la silhouette sort vide. On force le meme sens partout. */
     if((xb-xa)*(yc-ya)-(yb-ya)*(xc-xa)<0){ var tx=xb; xb=xc; xc=tx; var ty=yb; yb=yc; yc=ty; }
-    g.moveTo(xa,ya); g.lineTo(xb,yb); g.lineTo(xc,yc); g.closePath();
+    /* PAS de closePath() : accumule sur un seul chemin Canvas2D il est
+       QUADRATIQUE dans Chrome (banc du 05/09, triangles identiques des deux
+       cotes : 4 000 tri = 39 ms avec / 1 ms sans, 16 000 tri = 648 ms / 2 ms,
+       image IDENTIQUE au pixel). Sur un modele entier — ce qui est desormais
+       le defaut — cela gelait la page pour de bon. Meme motif que le gel de
+       Calque du 03/09. Chaque moveTo ouvre un sous-chemin et fill() le ferme
+       implicitement ; l'enroulement est deja normalise juste au-dessus. */
+    g.moveTo(xa,ya); g.lineTo(xb,yb); g.lineTo(xc,yc);
   }
   g.fill();
   /* flou en deux passes : halo large + noyau plus present */
