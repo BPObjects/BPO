@@ -132,6 +132,109 @@
     } catch (e) {}
     VEG_STATS[tex] = out; return out;
   }
+  /* ---- LE SOL PERCE AU RENDU (06/09, AL : « est-ce qu'on peut avoir le trou
+     piscine aussi dans rendu ») ------------------------------------------------
+     Le viewer perce son plancher avec un MASQUE (WGL.holeTex, une texture lue par
+     le fragment shader). Le path tracer ne voit que des TRIANGLES : le trou doit
+     devenir de la GEOMETRIE.
+     Les contours sont pris LA OU LE VIEWER LES PREND — scnGroundHoles() en scene,
+     GROUND_HOLE en mode objet, les deux memes lignes que WGL.groundU — et jamais
+     redevines : une pose fausse ferait un trou a cote.
+     BANDES VERTICALES. mergeHoles ponte chaque trou vers le contour EXTERIEUR :
+     sur deux bassins decales en diagonale, le pont du premier traverse le second
+     et la triangulation part en morceaux (mesure : 10 m en x et 3 m en z). On
+     separe donc les trous en groupes disjoints EN X, et le sol devient une suite
+     de bandes qui pavent exactement le plan : pleines entre les groupes, et pour
+     chaque groupe dessous plein / boite locale trouee / dessus plein. Les grands
+     triangles restent grands, le travail fin reste local — un ponte direct sur le
+     sol entier donnerait des echardes de 8 km, mauvaises pour le BVH.
+     TEMOIN, PAR GROUPE : l'aire triangulee doit valoir l'aire de la boite moins
+     celle de ses trous a 1 pour mille pres. Sinon ce groupe-la est rendu PLEIN et
+     les autres restent perces — jamais un sol troue n'importe ou, et un second
+     bassin mal place ne fait plus disparaitre le trou du premier.
+     Rend true si le sol a ete emis ici, false s'il reste a emettre entier. */
+  function aireAnneau(P) {
+    var a = 0, n = P.length;
+    for (var i = 0; i < n; i++) { var q = P[(i + 1) % n]; a += P[i][0] * q[1] - q[0] * P[i][1]; }
+    return Math.abs(a) / 2;
+  }
+  function solPerce(tris, gm, gy, S) {
+    var L = null;
+    try {
+      if (typeof MODE !== 'undefined' && MODE === 'scene' && typeof scnGroundHoles === 'function') L = scnGroundHoles();
+      else if (typeof GROUND_HOLE !== 'undefined' && GROUND_HOLE) L = GROUND_HOLE;
+    } catch (e) { return false; }
+    if (!L || !L.length) return false;
+    if (typeof L[0][0] === 'number') L = [L];                  /* un contour seul, comme en mode objet */
+    L = L.filter(function (q) { return q && q.length >= 3; });
+    if (!L.length) return false;
+    if (typeof mergeHoles !== 'function' || typeof _triPolyHoles !== 'function') return false;
+
+    var M = 2.0, LIM = S - 1, sain = true;                     /* M : marge de la boite locale */
+    var H = L.map(function (q) {
+      var b = [1e9, 1e9, -1e9, -1e9];
+      q.forEach(function (p) {
+        b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]);
+        b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]);
+      });
+      if (!isFinite(b[0] + b[1] + b[2] + b[3]) || b[0] < -LIM || b[2] > LIM || b[1] < -LIM || b[3] > LIM) sain = false;
+      return { q: q, b: b };
+    });
+    if (!sain) return false;                                   /* un contour hors du sol : on ne touche a rien */
+    H.sort(function (u, v) { return u.b[0] - v.b[0]; });
+    var G = [], cur = null, MG = 0.10, i2;                      /* MG : ecart minimal pour separer deux bandes */
+    H.forEach(function (h) {
+      if (cur && h.b[0] < cur.x1 + MG) {                        /* trous qui se recouvrent en x : meme bande */
+        cur.L.push(h.q); cur.x1 = Math.max(cur.x1, h.b[2]);
+        cur.z0 = Math.min(cur.z0, h.b[1]); cur.z1 = Math.max(cur.z1, h.b[3]);
+      } else { cur = { L: [h.q], x0: h.b[0], x1: h.b[2], z0: h.b[1], z1: h.b[3] }; G.push(cur); }
+    });
+    /* MARGES LATERALES : la moitie de l'ecart avec le groupe voisin, au plus M. Deux
+       bandes peuvent donc se toucher, jamais se chevaucher — et deux bassins separes
+       de 1,60 m se retrouvent bien dans DEUX bandes, chacune avec un seul trou, la
+       ou une marge fixe de 2 m les aurait remis ensemble et fait echouer le pont. */
+    for (i2 = 0; i2 < G.length; i2++) {
+      G[i2].mL = (i2 === 0) ? M : Math.min(M, (G[i2].x0 - G[i2 - 1].x1) / 2);
+      G[i2].mR = (i2 === G.length - 1) ? M : Math.min(M, (G[i2 + 1].x0 - G[i2].x1) / 2);
+    }
+    function rect(x0, z0, x1, z1) {
+      if (!(x1 > x0 + 1e-9) || !(z1 > z0 + 1e-9)) return;
+      tris.push({ a: [x0, gy, z0], b: [x1, gy, z0], c: [x1, gy, z1], mat: gm });
+      tris.push({ a: [x0, gy, z0], b: [x1, gy, z1], c: [x0, gy, z1], mat: gm });
+    }
+    var xc = -S, perces = 0, k;
+    for (var g = 0; g < G.length; g++) {
+      var Gg = G[g], bx0 = Gg.x0 - Gg.mL, bx1 = Gg.x1 + Gg.mR, bz0 = Gg.z0 - M, bz1 = Gg.z1 + M;
+      rect(xc, -S, bx0, S);                                    /* bande pleine avant le groupe */
+      rect(bx0, -S, bx1, bz0);                                 /* dans la bande, sous la boite */
+      rect(bx0, bz1, bx1, S);                                  /* dans la bande, sur la boite */
+      var box = [[bx0, bz0], [bx1, bz0], [bx1, bz1], [bx0, bz1]], merged = null, tri = null;
+      try { merged = mergeHoles(box, Gg.L); tri = _triPolyHoles(merged); } catch (e) { tri = null; }
+      var att = aireAnneau(box), got = 0;
+      Gg.L.forEach(function (q) { att -= aireAnneau(q); });
+      if (tri && tri.length >= 3) {
+        for (k = 0; k + 2 < tri.length; k += 3) {
+          var A = merged[tri[k]], B = merged[tri[k + 1]], C = merged[tri[k + 2]];
+          got += Math.abs((B[0] - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (B[1] - A[1])) / 2;
+        }
+      }
+      if (att > 0 && got > 0 && Math.abs(got - att) <= att * 1e-3) {
+        for (k = 0; k + 2 < tri.length; k += 3) {
+          var a2 = merged[tri[k]], b2 = merged[tri[k + 1]], c2 = merged[tri[k + 2]];
+          tris.push({ a: [a2[0], gy, a2[1]], b: [b2[0], gy, b2[1]], c: [c2[0], gy, c2[1]], mat: gm });
+        }
+        perces += Gg.L.length;
+      } else {
+        rect(bx0, bz0, bx1, bz1);                              /* CE groupe reste plein, les autres non */
+        console.warn('[rendu] sol non perce sur ' + Gg.L.length + ' contour(s) : aire triangulee ' +
+                     got.toFixed(3) + ' m2 pour ' + att.toFixed(3) + ' attendus');
+      }
+      xc = bx1;
+    }
+    rect(xc, -S, S, S);                                        /* bande pleine apres le dernier groupe */
+    console.log('[rendu] sol perce :', perces, '/', L.length, 'contour(s) en', G.length, 'groupe(s)');
+    return true;
+  }
   function extractScene() {
     var faces = gatherFaces();
     var tris = [], mats = [], matMap = {};
@@ -273,8 +376,13 @@
        voit une bande de ciel « bas » entre la fin du sol et l'horizon. 8 km
        suffisent pour toute caméra d'architecture, sans gêner le BVH (f32). */
     var S = 8000;
-    tris.push({ a: [-S, gy, -S], b: [S, gy, -S], c: [S, gy, S], mat: gm });
-    tris.push({ a: [-S, gy, -S], b: [S, gy, S], c: [-S, gy, S], mat: gm });
+    /* PERCEMENT (06/09) : la piscine decoupait le sol du viewer par un masque de
+       texture, que le path tracer ne peut pas lire. solPerce() emet le meme sol en
+       geometrie, troue ; s'il refuse, on retombe sur le sol plein d'avant. */
+    if (!solPerce(tris, gm, gy, S)) {
+      tris.push({ a: [-S, gy, -S], b: [S, gy, -S], c: [S, gy, S], mat: gm });
+      tris.push({ a: [-S, gy, -S], b: [S, gy, S], c: [-S, gy, S], mat: gm });
+    }
     /* HERBE 3D (22/08, demande AL) : les touffes du viewer ENTRENT AU RENDU —
        mêmes brins (tampons de WGL.tuftBuild, réglages Préférences), avec de
        vraies ombres. Construites autour de la caméra du rendu ; jamais bloquant. */
