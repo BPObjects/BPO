@@ -599,6 +599,11 @@ pret(function(){
     <option value="512">Léger (iPad) — 512 px</option>
     <option value="0">Sans réduction</option>
   </select>
+  <div style="color:var(--tx2);font-size:11.5px;margin-top:10px">Origine du repère</div>
+  <select id="glb-org" style="margin-top:4px" title="« Recentré » pose l'objet au centre et au sol : c'est ce qu'il faut pour un produit. « Conservée » garde les coordonnées du fichier source, pour que deux morceaux d'un même projet se calent l'un sur l'autre sans décalage à saisir.">
+    <option value="centre" selected>Recentré sur l'objet (produit)</option>
+    <option value="source">Conservée (assemblage de morceaux)</option>
+  </select>
   <div id="glb-est" style="font-size:10.5px;color:#8a93a0;margin:5px 0 0;line-height:1.45"></div>
   <div class="btns"><button id="b-glb" disabled title="glTF binaire autonome, textures comprises - le format des PRODUITS de Calque">Objet 3D (.glb)</button></div>
   <div class="btns mini"><button id="b-dl" disabled>« L.obj » + « L.mtl » seuls</button></div>
@@ -3641,6 +3646,13 @@ function buildGLB(){
     if(x>mx[0])mx[0]=x; if(y>mx[1])mx[1]=y; if(z>mx[2])mx[2]=z;
   }
   var cx=(mn[0]+mx[0])/2, cy=(mn[1]+mx[1])/2, z0=mn[2];
+  /* ORIGINE CONSERVEE : on n'enleve rien. Les coordonnees du fichier source
+     passent telles quelles, et deux morceaux du meme projet se calent seuls.
+     Le decalage qu'on AURAIT applique reste mesure : il part dans les extras,
+     ou l'outil de fusion le relit. */
+  var recadre=(GLB_ORIGINE!=='source');
+  var dcx=cx, dcy=cy, dz0=z0;
+  if(!recadre){ cx=0; cy=0; z0=0; }
   var NRM=ex.vnList.map(function(p){
     var a=p[0], b=p[1], c=p[2];
     if(yUp){ var sw=b; b=-c; c=sw; }
@@ -3743,6 +3755,11 @@ function buildGLB(){
       asset:{version:'2.0', generator:'BPO Moulinette (QEM)',
              extras:{produit:nom, source:SRC.name, triangles:nT,
                      matieres:prims.length, date:new Date().toISOString(),
+                     /* de quoi verifier un assemblage : deux morceaux ne se
+                        calent que s'ils ont ete exportes dans le MEME mode. */
+                     origine:{mode:(recadre?'centre':'source'),
+                              decalage:[+dcx.toFixed(4), +dz0.toFixed(4), +dcy.toFixed(4)],
+                              eloignement_m:+Math.max(Math.abs(dcx),Math.abs(dcy),Math.abs(dz0)).toFixed(2)},
                      textures:{gabarit_px:GLB_TEX_MAX, images:imgs.length,
                                doublons_fusionnes:lot.stat.doublons,
                                octets_source:lot.stat.source,
@@ -4523,6 +4540,11 @@ $('b-skp').addEventListener('click',function(){ if(OUT)buildSketchupZip(); });
 /* gabarit des textures du .glb : ecrit GLB_TEX_MAX et relance le poids
    annonce. Aucun effet sur les autres exports (paquet BPO, .gsm, .dae),
    qui embarquent toujours les textures d'origine. */
+/* 'centre' : chaque objet est ramene au centre et pose au sol (produit).
+   'source' : on garde les coordonnees du fichier — deux morceaux d'un meme
+   projet se calent alors l'un sur l'autre tout seuls. */
+var GLB_ORIGINE='centre';
+$('glb-org').addEventListener('change',function(){ GLB_ORIGINE=this.value; });
 $('glb-q').addEventListener('change',function(){ GLB_TEX_MAX=+this.value|0;
   try{ glbEstime(); }catch(e){ console.warn(e); } });
 $('b-glb').addEventListener('click',function(){ if(!OUT)return;
