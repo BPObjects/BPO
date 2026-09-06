@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#14151a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TI Invaders">
+<meta name="description" content="TI Invaders (TI-99/4A, 1981) — recréation jouable dans le navigateur.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%23000%27/%3E%3Crect x=%272%27 y=%2711%27 width=%2712%27 height=%273%27 fill=%27%23D4C154%27/%3E%3Crect x=%274%27 y=%276%27 width=%277%27 height=%272%27 fill=%27%2321C842%27/%3E%3C/svg%3E">
+<title>TI Invaders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+</head>
+<body>
+<style>
+/* ------------------------------------------------------------------
+   Même téléviseur que Parsec, même pièce sombre. L'accent est ici le
+   bleu sombre du TMS9918A : la boîte où dorment les missiles de réserve.
+------------------------------------------------------------------- */
+:root{
+  --nuit:#14151a;
+  --alu:#b9bcc0;
+  --alu-sombre:#767a80;
+  --accent:#7d76fc;        /* TMS9918A 5 — bleu clair, la boîte des réserves à l'écran */
+  --cyan:#42ebf5;          /* TMS9918A 7 — le missile */
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--nuit);color:var(--alu)}
+body{
+  font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  gap:22px;padding:30px 20px 46px;
+  background:radial-gradient(120% 80% at 50% 0%, #1e2029 0%, var(--nuit) 62%);
+}
+header{text-align:center;display:flex;flex-direction:column;gap:7px;align-items:center}
+h1{
+  font-family:"Silkscreen","Courier New",monospace;font-weight:700;font-size:clamp(28px,6vw,46px);
+  margin:0;letter-spacing:.13em;color:var(--accent);text-shadow:0 0 22px rgba(125,118,252,.30);text-wrap:balance;
+}
+.sous{font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--alu-sombre);font-weight:500;text-wrap:balance}
+
+.poste{
+  padding:16px;border-radius:12px;background:linear-gradient(#2a2d34,#1a1c21);
+  box-shadow:0 0 0 1px #43464d, 0 18px 46px rgba(0,0,0,.66);
+  width:min(100%,1056px);display:grid;gap:12px;grid-template-columns:1fr;grid-template-areas:"ecran" "cmd";
+}
+.ecran{grid-area:ecran;position:relative;display:block;border-radius:4px;overflow:hidden;background:#000;
+  box-shadow:inset 0 0 0 2px #000, 0 0 34px rgba(125,118,252,.10);cursor:crosshair}
+canvas{display:block;image-rendering:crisp-edges;image-rendering:pixelated;width:100%;height:auto;aspect-ratio:256/192;background:#000}
+.ecran::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(rgba(0,0,0,.20) 0 1px, transparent 1px 3px);opacity:var(--balayage,1);transition:opacity .2s}
+.commandes{grid-area:cmd;display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-top:14px}
+button{
+  font-family:"Silkscreen","Courier New",monospace;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  background:#22252b;color:var(--alu);border:1px solid #454951;border-radius:5px;padding:8px 13px;cursor:pointer;transition:.13s;
+}
+button:hover{background:#2c3038;color:#fff;border-color:var(--alu-sombre)}
+button[aria-pressed="true"]{background:#2a2850;color:#c9c5ff;border-color:#5a55b0}
+button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+/* ---- la manette tactile, la même que Parsec — mais ici rien que gauche/droite ---- */
+.stick,.feu-zone{display:none}
+.stick{grid-area:stick;position:relative;min-height:150px;border-radius:12px;overflow:hidden;background:#1b1d23;
+  box-shadow:inset 0 0 0 1px #2c2f36;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.stick .aide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:"Silkscreen","Courier New",monospace;font-size:10px;letter-spacing:.12em;color:#4a4e56;pointer-events:none}
+.stick .base{position:absolute;width:104px;height:104px;margin:-52px 0 0 -52px;border-radius:50%;border:2px solid #454951;display:none;pointer-events:none}
+.stick .base.on{display:block}
+.stick .knob{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:#8a8e95;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.feu-zone{grid-area:feu;gap:10px;min-height:150px}
+.feu{flex:1;font-size:18px;letter-spacing:.14em;border-radius:14px;background:#2a2850;color:#c9c5ff;border:2px solid #5a55b0;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.feu.on{background:#3f3c78;border-color:var(--accent)}
+
+.legende{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:2px 26px;max-width:700px;width:100%;font-size:13.5px;line-height:1.75}
+.legende div{display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid #23262c;padding:5px 0}
+.legende span{color:var(--alu-sombre)}
+.legende em{font-style:normal;color:var(--alu-sombre);font-size:12px}
+kbd{font-family:"Silkscreen","Courier New",monospace;font-size:10.5px;background:#23262c;border:1px solid #40444b;border-bottom-width:2px;
+  border-radius:4px;padding:2px 6px;color:var(--alu);white-space:nowrap}
+.note{max-width:66ch;font-size:13.5px;line-height:1.65;color:var(--alu-sombre);text-align:left;border-top:1px solid #23262c;padding-top:16px}
+.note b{color:var(--alu);font-weight:600}
+.note p{margin:0 0 9px}
+.note p:last-child{margin:0}
+
+.tactile body{overscroll-behavior:none;gap:16px;padding:18px 12px 36px}
+.tactile .legende{display:none}
+.tactile .poste{grid-template-columns:1fr 1fr;grid-template-areas:"ecran ecran" "stick feu" "cmd cmd";padding:12px}
+.tactile .stick,.tactile .feu-zone{display:flex}
+.tactile .commandes{margin-top:4px}
+.tactile button{padding:10px 14px}
+@media (orientation:landscape){
+  .tactile header,.tactile .note{display:none}
+  .tactile body{padding:8px;min-height:auto}
+  .tactile .poste{width:auto;grid-template-columns:minmax(110px,1fr) auto minmax(110px,1fr);grid-template-areas:"stick ecran feu" "cmd cmd cmd";gap:10px}
+  .tactile canvas{width:auto;height:min(70vh,58vw)}
+  .tactile .stick,.tactile .feu-zone{min-height:0}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header>
+  <h1>TI INVADERS</h1>
+  <p class="sous">Texas Instruments TI-99/4A &middot; 1981 &middot; recréation</p>
+</header>
+
+<div class="poste">
+  <div class="stick" id="stick" aria-label="Manette : glisser à gauche ou à droite">
+    <span class="aide">MANETTE</span>
+    <div class="base"><div class="knob"></div></div>
+  </div>
+  <div class="ecran" id="ecran">
+    <canvas id="ecr" width="256" height="192" aria-label="Écran de jeu TI Invaders"></canvas>
+  </div>
+  <div class="feu-zone">
+    <button class="feu" id="bFeu">FIRE</button>
+  </div>
+  <div class="commandes">
+    <button id="bSon" aria-pressed="true">Son</button>
+    <button id="bBalayage" aria-pressed="true">Balayage</button>
+    <button id="bTactile" aria-pressed="false">Manette</button>
+    <button id="bPause">Pause</button>
+  </div>
+</div>
+
+<div class="legende">
+  <div><span>Gauche / droite</span> <b><kbd>&larr;</kbd> <kbd>&rarr;</kbd> <em>ou</em> <kbd>S</kbd> <kbd>D</kbd> <em>ou</em> <kbd>J</kbd> <kbd>K</kbd></b></div>
+  <div><span>Tirer</span> <b><kbd>Y</kbd> <kbd>.</kbd> <kbd>Q</kbd> <em>ou</em> <kbd>ESPACE</kbd></b></div>
+  <div><span>Merely aggressive / Downright nasty</span> <b><kbd>1</kbd> <kbd>2</kbd></b></div>
+  <div><span>Nouvelle partie <em>(REDO)</em></span> <b><kbd>ENTRÉE</kbd></b></div>
+  <div><span>Retour au choix <em>(BACK)</em></span> <b><kbd>ÉCHAP</kbd></b></div>
+  <div><span>Pause</span> <b><kbd>P</kbd></b></div>
+</div>
+
+<div class="note">
+  <p><b>Ce n'est pas une émulation.</b> Reconstruction d'après le manuel de la cartouche PHM 3053
+  et les descriptions publiques du jeu&nbsp;: aucun octet d'origine, les créatures sont retracées
+  de mémoire. Quinze couleurs du TMS9918A, 256×192 points, son en ondes carrées et bruit.</p>
+  <p><b>Les règles du manuel.</b> Onze créatures de front sur cinq rangs, les moins chères en tête,
+  les plus chères à l'arrière&nbsp;; la horde accélère à chaque perte. Deux humeurs&nbsp;:
+  <em>merely aggressive</em> — elles tirent vite mais sans vous voir — et <em>downright nasty</em>
+  — elles vous visent, et valent le double. Trois missiles, un de plus au-delà de 3&nbsp;000 points,
+  un missile démoli réparé tous les 10&nbsp;000. Le vaisseau de contrôle jaune passe toutes les vingt
+  secondes environ&nbsp;: de 25 à 300 points selon l'endroit touché. Quand le rang est vide, le vaisseau
+  rouge traverse l'écran&nbsp;: chaque coup le rétrécit, le fait faire demi-tour et retarde l'attaque
+  suivante. Puis viennent les espèces que les auteurs avaient baptisées dans leur code&nbsp;: SNAKE,
+  TURNOVER, HALF FLASHER WITH EYES, PULSAR, BAT, 11000 FLASHER, 00111 FLASHER — et les EYES.</p>
+</div>
+
+<script>
+'use strict';
+/* ==================================================================
+   TI INVADERS — recréation
+   Rendu : tampon de pixels 256×192, palette TMS9918A stricte.
+   Repères (relevés sur les captures publiques) :
+     8      SCORE / HI SCORE
+     20     la route du vaisseau de contrôle
+     50     premier rang de la horde, rangs tous les 16 points
+     140    les quatre boucliers
+     166    le missile, posé sur la boîte des réserves (171..191)
+   ================================================================== */
+const PAL = ['transparent','#000000','#21C842','#5EDC78','#5455ED','#7D76FC','#D4524D',
+             '#42EBF5','#FC5554','#FF7978','#D4C154','#E6CE80','#21B03B','#C95BBA',
+             '#CCCCCC','#FFFFFF'];
+const RGB = PAL.map((c) => c === 'transparent' ? [0,0,0,0]
+  : [parseInt(c.slice(1,3),16), parseInt(c.slice(3,5),16), parseInt(c.slice(5,7),16), 255]);
+const L = 256, H = 192;
+const Y_HORDE = 50, Y_BOUCLIERS = 140, Y_MISSILE = 166, Y_BOITE = 171;
+const X_MIN = 32, X_MAX = 224;                  /* la zone de manœuvre, horde et missile */
+
+const cv = document.getElementById('ecr');
+const cx = cv.getContext('2d', { alpha:false });
+const img = cx.createImageData(L, H);
+const buf = img.data;
+function pset(x, y, c){
+  x |= 0; y |= 0;
+  if (c === 0 || x < 0 || y < 0 || x >= L || y >= H) return;
+  const i = (y * L + x) * 4, r = RGB[c];
+  buf[i] = r[0]; buf[i+1] = r[1]; buf[i+2] = r[2]; buf[i+3] = 255;
+}
+function rect(x, y, w, h, c){ for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) pset(x+i, y+j, c); }
+function cadre(x, y, w, h, e, c){ rect(x, y, w, e, c); rect(x, y+h-e, w, e, c); rect(x, y, e, h, c); rect(x+w-e, y, e, h, c); }
+function effacer(){ for (let i = 0; i < buf.length; i += 4){ buf[i]=0; buf[i+1]=0; buf[i+2]=0; buf[i+3]=255; } }
+
+const FONTE = {
+ 'A':'183C66667E666600','B':'7C66667C66667C00','C':'3C66606060663C00','D':'786C6666666C7800',
+ 'E':'7E60607C60607E00','F':'7E60607C60606000','G':'3C66606E66663E00','H':'6666667E66666600',
+ 'I':'3C18181818183C00','J':'1E0C0C0C0C6C3800','K':'666C7870786C6600','L':'6060606060607E00',
+ 'M':'63777F6B63636300','N':'66767E7E6E666600','O':'3C66666666663C00','P':'7C66667C60606000',
+ 'Q':'3C666666663C0E00','R':'7C66667C786C6600','S':'3C66603C06663C00','T':'7E18181818181800',
+ 'U':'6666666666663C00','V':'66666666663C1800','W':'6363636B7F776300',
+ 'X':'66663C183C666600','Y':'6666663C18181800','Z':'7E060C1830607E00',
+ '0':'3C666E7E76663C00','1':'1838181818187E00','2':'3C66060C30607E00','3':'3C66061C06663C00',
+ '4':'060E1E667F060600','5':'7E607C0606663C00','6':'3C66607C66663C00','7':'7E660C1818181800',
+ '8':'3C66663C66663C00','9':'3C66663E06663C00',
+ ' ':'0000000000000000','.':'0000000000181800','-':'0000007E00000000','!':'1818181818001800',
+ ':':'0018180018180000','/':'060C183060000000','=':'00007E007E000000',
+};
+const glyphe = (ch) => FONTE[ch] || FONTE[' '];
+function ecrire(txt, x, y, c){
+  txt = String(txt).toUpperCase();
+  for (let n = 0; n < txt.length; n++){
+    const g = glyphe(txt[n]);
+    for (let l = 0; l < 8; l++){
+      const o = parseInt(g.substr(l*2, 2), 16);
+      for (let b = 0; b < 8; b++) if (o & (0x80 >> b)) pset(x + n*8 + b, y + l, c);
+    }
+  }
+}
+const centrer = (txt, y, c) => ecrire(txt, ((L - txt.length*8) >> 1), y, c);
+
+/* ---- lutins monochromes : '#' est un point, la couleur se choisit en posant ---- */
+function lutin(l){
+  const px = [];
+  l.forEach((r, j) => r.split('').forEach((ch, i) => { if (ch === '#') px.push(i, j); }));
+  return { w:l[0].length, h:l.length, px, rows:l };
+}
+function poser(sp, x, y, c){ const p = sp.px; for (let i = 0; i < p.length; i += 2) pset(x + p[i], y + p[i+1], c); }
+
+/* Les onze espèces, dans l'ordre où elles entrent en scène — les noms sont
+   ceux du code source d'origine, rapportés par les frères Doucette. Deux
+   images d'animation chacune ; « clignote » est la visibilité à chaque pas
+   de marche : le 11000 FLASHER se montre deux pas sur cinq, le 00111 trois. */
+const ESPECES = [
+  { nom:'INVADER ONE', c:8, sp:[lutin(['..####..','########','##.##.##','########','.##..##.','#.#..#.#','#......#']),
+                                 lutin(['..####..','########','##.##.##','########','.##..##.','.#....#.','..#..#..'])] },
+  { nom:'INVADER TWO', c:4, sp:[lutin(['#..##..#','.#.##.#.','.######.','##.##.##','########','#.####.#','#.#..#.#']),
+                                 lutin(['#..##..#','#.#..#.#','#.####.#','########','.##..##.','..#..#..','.#....#.'])] },
+  { nom:'INVADER THREE', c:2, sp:[lutin(['...##...','..####..','.######.','##.##.##','########','..#..#..','.#....#.']),
+                                   lutin(['...##...','..####..','.######.','##.##.##','########','.#.##.#.','#......#'])] },
+  { nom:'SNAKE', c:10, sp:[lutin(['.#####..','.#...#..','....#...','...#....','...##...','..#.....','..###...']),
+                            lutin(['.#####..','.#...#..','....#...','....#...','...##...','.....#..','...###..'])] },
+  { nom:'TURNOVER', c:13, sp:[lutin(['........','.##..##.','#..##..#','........','.##..##.','#..##..#','........']),
+                               lutin(['........','#..##..#','.##..##.','........','#..##..#','.##..##.','........'])] },
+  { nom:'HALF FLASHER WITH EYES', c:9, clignote:'10', sp:[lutin(['.######.','#.#..#.#','########','.##..##.','..####..','.#....#.','#......#']),
+                                                          lutin(['.######.','#.#..#.#','########','.##..##.','..####..','..#..#..','.#....#.'])] },
+  { nom:'PULSAR', c:15, sp:[lutin(['..####..','.######.','########','########','.######.','..####..','........']),
+                             lutin(['........','........','...##...','...##...','........','........','........'])] },
+  { nom:'BAT', c:5, sp:[lutin(['#......#','##....##','#.####.#','########','..#..#..','........','........']),
+                         lutin(['........','........','..####..','#.####.#','##....##','#......#','........'])] },
+  { nom:'11000 FLASHER', c:4, clignote:'11000', sp:[lutin(['..#..#..','.######.','##.##.##','########','.######.','.#....#.','#......#']),
+                                                    lutin(['..#..#..','.######.','##.##.##','########','.######.','..#..#..','.#....#.'])] },
+  { nom:'00111 FLASHER', c:9, clignote:'00111', sp:[lutin(['..#..#..','.######.','##.##.##','########','.######.','.#....#.','#......#']),
+                                                    lutin(['..#..#..','.######.','##.##.##','########','.######.','..#..#..','.#....#.'])] },
+  { nom:'EYES', c:15, sp:[lutin(['........','........','..#..#..','........','........','........','........']),
+                           lutin(['........','........','........','..#..#..','........','........','........'])] },
+];
+const MISSILE = lutin(['....#....','...###...','..#####..','.#######.','#########','#########']);
+const CONTROLE = [lutin(['.....######.....','...##########...','.##############.','################','..###..###..###.','....#......#....']),
+                  lutin(['.....######.....','...##########...','.##############.','################','.###..####..###.','...#........#...'])];
+/* la soucoupe rouge du manche bonus, qui rétrécit à chaque coup */
+const ROUGE = [lutin(['.....######.....','...##########...','.##############.','################','..###..###..###.']),
+               lutin(['....######....','..##########..','##############','.###..##..###.']),
+               lutin(['...####...','.########.','##########','.##.##.##.']),
+               lutin(['..##..','######','.#..#.']),
+               lutin(['.##.','####'])];
+const BOUCLIER = lutin(['......##########......','....##############....','..##################..','.####################.',
+                        '######################','######################','######################','######################',
+                        '######################','######################','#####..........#######','####............######',
+                        '###..............#####','###..............#####']);
+const BOMBE = [lutin(['#..','.#.','..#','.#.','#..','.#.']), lutin(['..#','.#.','#..','.#.','..#','.#.'])];
+
+/* ==================================================================
+   Son : ondes carrées et bruit, comme le SN76489. Le coup au but est
+   un grésillement — les joueurs de l'époque s'en souviennent.
+   ================================================================== */
+let ac = null;
+const S = { son:true };
+function audio(){ try{ ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); }catch(e){} return ac; }
+function bip(freq, duree, vol = .07, glisse = null){
+  if (!S.son || !audio()) return;
+  try{
+    const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+    o.type = 'square'; o.frequency.setValueAtTime(freq, t);
+    if (glisse) o.frequency.exponentialRampToValueAtTime(glisse, t + duree);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + duree);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + duree);
+  }catch(e){}
+}
+function bruit(duree, vol = .12){
+  if (!S.son || !audio()) return;
+  try{
+    const n = Math.floor(ac.sampleRate * duree), tampon = ac.createBuffer(1, n, ac.sampleRate), d = tampon.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random()*2 - 1) * (1 - i/n);
+    const src = ac.createBufferSource(), g = ac.createGain();
+    src.buffer = tampon; g.gain.value = vol; src.connect(g); g.connect(ac.destination); src.start();
+  }catch(e){}
+}
+
+/* ==================================================================
+   État
+   ================================================================== */
+const G = {
+  mode:'options', t:0, pause:false, nasty:false,
+  score:0, top:0, vies:3, abimes:0, primeMissile:false, prochaineReparation:10000,
+  niveau:1, horde:null, boucliers:[], tir:null, bombes:[], controle:null, controleT:900,
+  bonus:null, mort:0, joueur:{ x:120 }, eclats:[], msg:null,
+};
+const touches = Object.create(null);
+try{ G.top = parseInt(localStorage.getItem('tiinvaders-top') || '0', 10) || 0; }catch(e){}
+
+/* La composition d'un niveau : [arrière, milieu, milieu, avant, avant].
+   Au niveau 1 : INVADER THREE, TWO, TWO, ONE, ONE. Chaque niveau fait
+   entrer une espèce nouvelle à l'arrière et pousse les autres vers l'avant
+   (relevé au niveau 2 : SNAKE, THREE, THREE, TWO, TWO). Passé les EYES,
+   la horde garde sa composition et ne fait que s'accélérer. */
+function composition(n){
+  const k = Math.min(n, 9) - 1;
+  return [k+2, k+1, k+1, k, k];
+}
+const valeur = (type) => (type + 1) * 10 * (G.nasty ? 2 : 1);   /* 10, 20, 30… — doublé en downright nasty */
+
+function nouvelleHorde(){
+  const comp = composition(G.niveau), inv = [];
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 11; c++) inv.push({ c, r, type:comp[r], vivant:true });
+  G.horde = { x:44, y:Y_HORDE + Math.min(24, (G.niveau - 1) * 4), dir:1, inv, vivants:55, pas:0, compte:0, anim:0 };
+  G.bombes = []; G.tir = null;
+}
+function nouveauxBoucliers(){
+  G.boucliers = [43, 90, 146, 195].map((x) => ({ x, masque:BOUCLIER.rows.map((r) => r.split('').map((ch) => ch === '#' ? 1 : 0)) }));
+}
+function commencer(nasty){
+  Object.assign(G, { mode:'jeu', nasty, score:0, vies:3, abimes:0, primeMissile:false, prochaineReparation:10000,
+    niveau:1, controle:null, controleT:900, bonus:null, mort:0, eclats:[], msg:null });
+  G.joueur = { x:120 };
+  nouveauxBoucliers(); nouvelleHorde();
+}
+function gagner(pts){
+  G.score += pts;
+  if (!G.primeMissile && G.score > 3000){ G.primeMissile = true; G.vies++; bip(880, .1); setTimeout(() => bip(1320, .2), 110); }
+  while (G.score >= G.prochaineReparation){
+    G.prochaineReparation += 10000;
+    if (G.abimes > 0){ G.abimes--; G.vies++; bip(660, .1); setTimeout(() => bip(990, .2), 110); }
+  }
+  if (G.score > G.top){ G.top = G.score; try{ localStorage.setItem('tiinvaders-top', String(G.top)); }catch(e){} }
+}
+const ARC = [2,3,4,5,7,8,9,10,11,13,14,15];
+function exploser(x, y, c, n = 14){
+  for (let i = 0; i < n; i++) G.eclats.push({ x, y, vx:(Math.random()-.5)*2.6, vy:(Math.random()-.5)*2.6, vie:10 + Math.random()*14,
+    c: c === 'multi' ? ARC[Math.random() * ARC.length | 0] : c });
+}
+
+/* ---- la cadence de la horde : plus elle est clairsemée, plus elle presse ---- */
+function cadence(){
+  const v = G.horde.vivants;
+  return Math.max(3, Math.round(3 + v * 0.95 - (G.niveau - 1) * 2));
+}
+function bornes(){
+  let g = 99, d = -1, b = -1;
+  for (const e of G.horde.inv) if (e.vivant){ g = Math.min(g, e.c); d = Math.max(d, e.c); b = Math.max(b, e.r); }
+  return { g, d, b };
+}
+function posX(e){ return G.horde.x + e.c * 16 + 4; }
+function posY(e){ return G.horde.y + e.r * 16; }
+function visible(e){
+  const esp = ESPECES[e.type];
+  return !esp.clignote || esp.clignote[G.horde.pas % esp.clignote.length] === '1';
+}
+
+function marcher(){
+  const h = G.horde;
+  if (++h.compte < cadence()) return;
+  h.compte = 0; h.pas++; h.anim ^= 1;
+  const b = bornes();
+  const gauche = h.x + b.g * 16 + 4, droite = h.x + b.d * 16 + 12;
+  if ((h.dir > 0 && droite + 4 > X_MAX) || (h.dir < 0 && gauche - 4 < X_MIN)){ h.dir = -h.dir; h.y += 8; }
+  else h.x += 4 * h.dir;
+  bip(h.pas & 1 ? 110 : 98, .05, .05);
+  /* les bombes : un tireur par pas, parmi les créatures de tête de chaque colonne */
+  const rythme = G.nasty ? 2 : 3;
+  if (h.pas % rythme === 0 && G.bombes.length < (G.nasty ? 4 : 3)){
+    const tetes = [];
+    for (let c = 0; c < 11; c++){ let bas = null; for (const e of h.inv) if (e.vivant && e.c === c && (!bas || e.r > bas.r)) bas = e; if (bas) tetes.push(bas); }
+    if (tetes.length){
+      let tireur;
+      if (G.nasty && Math.random() < .7){                     /* downright nasty : elles savent où vous êtes */
+        tireur = tetes.reduce((m, e) => Math.abs(posX(e) - G.joueur.x - 2) < Math.abs(posX(m) - G.joueur.x - 2) ? e : m, tetes[0]);
+      } else tireur = tetes[Math.random() * tetes.length | 0];
+      G.bombes.push({ x:posX(tireur) + 3, y:posY(tireur) + 8, v:1.4 + G.niveau * .12, genre:h.pas & 1 });
+    }
+  }
+}
+
+function toucheBouclier(x, y, rayon){         /* érode le bouclier autour de l'impact ; vrai s'il y avait matière */
+  for (const b of G.boucliers){
+    const i = Math.floor(x - b.x), j = Math.floor(y - Y_BOUCLIERS);   /* les bombes tombent en flottant : on arrondit avant d'indexer */
+    if (i < 0 || i >= 22 || j < 0 || j >= 14 || !b.masque[j][i]) continue;
+    for (let dj = -rayon; dj <= rayon; dj++) for (let di = -rayon - 1; di <= rayon + 1; di++){
+      const jj = j + dj, ii = i + di;
+      if (jj >= 0 && jj < 14 && ii >= 0 && ii < 22 && Math.random() < .8) b.masque[jj][ii] = 0;
+    }
+    return true;
+  }
+  return false;
+}
+
+function tirer(){
+  if (G.mode !== 'jeu' && G.mode !== 'bonus') return;
+  if (G.tir || G.mort) return;
+  G.tir = { x:G.joueur.x + 4, y:Y_MISSILE - 2 };
+  bip(1200, .06, .04, 500);
+}
+
+function perdreMissile(){
+  if (G.mort) return;
+  G.mort = 90; exploser(G.joueur.x + 4, Y_MISSILE + 3, 7, 22); bruit(.5, .18);
+  G.bombes = []; G.tir = null;
+}
+function apresMort(){
+  G.vies--; G.abimes++;
+  if (G.vies <= 0){ finDePartie(); return; }
+  G.joueur.x = 120;
+}
+function finDePartie(){
+  G.mode = 'fini'; G.bombes = []; G.tir = null; G.controle = null; G.bonus = null;
+}
+
+/* ---- le vaisseau de contrôle jaune : de 25 à 300 points selon l'impact ---- */
+function controle(){
+  if (G.controle){
+    const s = G.controle; s.x += s.v; s.anim++;
+    if (s.anim % 6 === 0) bip(s.anim % 12 ? 700 : 900, .05, .03);
+    if (s.x < -16 || s.x > L) G.controle = null;
+    return;
+  }
+  if (--G.controleT <= 0 && G.horde.vivants > 1){
+    const gauche = Math.random() < .5;
+    G.controle = { x: gauche ? -16 : L, v: gauche ? .8 : -.8, anim:0 };
+    G.controleT = 1200 + Math.random() * 300;             /* toutes les vingt secondes environ */
+  }
+}
+
+/* ---- le manche bonus : la soucoupe rouge qui rétrécit ---- */
+function debutBonus(){
+  G.mode = 'bonus'; G.bombes = []; G.tir = null; G.controle = null;
+  G.bonus = { x:-16, y:66, v:.6, taille:0, valeur:30, coups:0, attente:60 };
+}
+function bonus(){
+  const b = G.bonus;
+  if (b.attente > 0){ b.attente--; return; }
+  b.x += b.v;
+  if (b.x < -20 || b.x > L + 4) niveauSuivant();       /* elle s'échappe : la horde revient */
+}
+function coupAuBonus(){
+  const b = G.bonus;
+  gagner(b.valeur); bruit(.12, .1); exploser(b.x + 6, b.y + 2, 9, 8);
+  b.coups++; b.valeur += 30; b.taille++;
+  if (b.taille >= ROUGE.length){ G.bonus = null; niveauSuivant(); return; }
+  b.v = -Math.sign(b.v) * Math.min(4, Math.abs(b.v) * 2);
+}
+function niveauSuivant(){
+  G.niveau++; G.mode = 'jeu'; G.bonus = null; G.controleT = 900;
+  nouveauxBoucliers(); nouvelleHorde();
+}
+
+/* ==================================================================
+   Mise à jour
+   ================================================================== */
+function avancer(){
+  G.t++;
+  for (const p of G.eclats){ p.x += p.vx; p.y += p.vy; p.vie--; }
+  G.eclats = G.eclats.filter((p) => p.vie > 0);
+  if (G.mode === 'options' || G.mode === 'fini') return;
+
+  if (G.mort > 0){ if (--G.mort === 0) apresMort(); return; }
+
+  /* le missile ne bouge que de gauche à droite */
+  const j = G.joueur;
+  if (touches.ArrowLeft || touches.s || touches.j) j.x -= 1.5;
+  if (touches.ArrowRight || touches.d || touches.k) j.x += 1.5;
+  j.x = Math.max(X_MIN + 2, Math.min(X_MAX - 11, j.x));
+  if (touches[' '] || touches['.'] || touches.y || touches.q || touches.souris) tirer();
+
+  /* notre tir */
+  if (G.tir){
+    const t = G.tir; t.y -= 4;
+    if (t.y < 8) G.tir = null;
+    else if (G.mode === 'jeu' && toucheBouclier(t.x, t.y, 1)){ G.tir = null; }   /* pas de boucliers pendant le manche bonus */
+    else if (G.mode === 'jeu'){
+      let touche = null;
+      for (const e of G.horde.inv) if (e.vivant && t.x >= posX(e) && t.x < posX(e) + 8 && t.y >= posY(e) && t.y < posY(e) + 8){ touche = e; break; }
+      if (touche){
+        touche.vivant = false; G.horde.vivants--; G.tir = null;
+        gagner(valeur(touche.type)); bruit(.08, .09); exploser(posX(touche) + 4, posY(touche) + 4, 'multi', 16);
+      }
+      const s = G.controle;
+      if (G.tir && s && t.y <= 26 && t.y >= 18 && t.x >= s.x && t.x < s.x + 16){
+        const centre = 1 - Math.abs(t.x - (s.x + 8)) / 8;             /* dead centre : 300 ; l'aile : 25 */
+        const pts = Math.max(25, Math.round((25 + 275 * centre) / 25) * 25);
+        gagner(pts); G.tir = null; G.controle = null; bruit(.2, .12); exploser(s.x + 8, 22, 11, 12);
+        G.msg = { txt:String(pts), x:s.x, t:60 };
+      }
+    } else if (G.mode === 'bonus' && G.bonus){
+      const b = G.bonus, sp = ROUGE[b.taille];
+      if (G.tir && t.y <= b.y + sp.h && t.y >= b.y - 2 && t.x >= b.x && t.x < b.x + sp.w){ G.tir = null; coupAuBonus(); }
+    }
+  }
+  if (G.msg && --G.msg.t <= 0) G.msg = null;
+
+  if (G.mode === 'bonus'){ bonus(); return; }
+
+  marcher(); controle();
+
+  /* les bombes */
+  for (const b of G.bombes){
+    b.y += b.v;
+    if (b.y > Y_BOITE) b.mort = true;
+    else if (toucheBouclier(b.x + 1, b.y + 5, 1)) b.mort = true;
+    else if (b.y + 6 >= Y_MISSILE && b.x + 1 >= j.x && b.x + 1 <= j.x + 9){ b.mort = true; perdreMissile(); }
+  }
+  G.bombes = G.bombes.filter((b) => !b.mort);
+
+  /* la horde au niveau du missile : partie finie, quelles que soient les réserves */
+  const b = bornes();
+  if (G.horde.y + b.b * 16 + 8 >= Y_MISSILE){ finDePartie(); return; }
+  if (G.horde.vivants === 0) debutBonus();
+}
+
+/* ==================================================================
+   Dessin
+   ================================================================== */
+function dessiner(){
+  effacer();
+  const j = G.joueur;
+  ecrire('SCORE ' + String(G.score % 100000).padStart(5, '0'), 24, 8, 15);
+  ecrire('HI SCORE ' + String(G.top % 100000).padStart(5, '0'), 136, 8, 15);
+
+  if (G.mode === 'options'){
+    centrer('TI INVADERS', 36, 15);
+    for (let k = 0; k < 3; k++){ const e = ESPECES[k]; poser(e.sp[(G.t >> 4) & 1], 84, 60 + k * 16, e.c); ecrire('= ' + (k + 1) * 10 + ' POINTS', 100, 60 + k * 16, 14); }
+    poser(CONTROLE[(G.t >> 3) & 1], 80, 108, 11); ecrire('= 25 TO 300', 100, 108, 14);
+    centrer('1  MERELY AGGRESSIVE', 136, 7);
+    centrer('2  DOWNRIGHT NASTY', 148, 8);
+    if ((G.t >> 4) & 1) centrer('PRESS 1 OR 2', 172, 15);
+    cx.putImageData(img, 0, 0); return;
+  }
+
+  /* la horde */
+  if (G.mode === 'jeu' || G.mode === 'fini'){
+    for (const e of G.horde.inv){
+      if (!e.vivant || !visible(e)) continue;
+      const esp = ESPECES[e.type], saut = G.mode === 'fini' && ((G.t >> 3) & 1) ? -2 : 0;
+      poser(esp.sp[G.horde.anim], posX(e), posY(e) + saut, esp.c);
+    }
+  }
+  if (G.controle) poser(CONTROLE[(G.controle.anim >> 2) & 1], G.controle.x, 18, 11);
+  if (G.msg) ecrire(G.msg.txt, 72, 20, 15);            /* les points de la soucoupe s'affichent sous le score */
+  if (G.mode === 'bonus' && G.bonus){
+    centrer('SAUCER VALUE:  ' + G.bonus.valeur, 44, 15);
+    if (G.bonus.attente === 0 || (G.t >> 2) & 1) poser(ROUGE[G.bonus.taille], G.bonus.x, G.bonus.y, 9);
+  }
+
+  /* boucliers, tirs, bombes */
+  if (G.mode !== 'bonus') for (const b of G.boucliers)
+    for (let r = 0; r < 14; r++) for (let i = 0; i < 22; i++) if (b.masque[r][i]) pset(b.x + i, Y_BOUCLIERS + r, 15);
+  if (G.tir) rect(G.tir.x, G.tir.y, 1, 4, 15);
+  for (const b of G.bombes){
+    if (b.genre) poser(BOMBE[(G.t >> 2) & 1], b.x, b.y, 13);                    /* le zigzag rose */
+    else for (let k = (G.t >> 2) & 1; k < 7; k += 2) pset(b.x + 1, b.y + k, 14);   /* le pointillé qui descend */
+  }
+
+  /* le missile, la boîte des réserves, les démolis à droite */
+  if (G.mort === 0 && G.mode !== 'fini') poser(MISSILE, j.x, Y_MISSILE, 7);
+  cadre(34, Y_BOITE, 190, 21, 3, 4);
+  if (G.mode === 'fini'){
+    centrer('GAME OVER', Y_BOITE + 7, 15);
+  } else {
+    for (let i = 0; i < Math.min(4, G.vies - 1); i++) poser(MISSILE, 46 + i * 22, Y_BOITE + 9, 4);
+    for (let i = 0; i < Math.min(4, G.abimes); i++) poser(MISSILE, 203 - i * 22, Y_BOITE + 9, 13);
+  }
+  for (const p of G.eclats) pset(p.x, p.y, p.c);
+  if (G.pause) centrer('PAUSE', 100, 15);
+  cx.putImageData(img, 0, 0);
+}
+
+/* ==================================================================
+   Boucle et commandes
+   ================================================================== */
+let dernier = 0;
+function boucle(t){
+  requestAnimationFrame(boucle);
+  if (t - dernier < 15) return;
+  dernier = t;
+  if (!G.pause) avancer(); else G.t++;
+  dessiner();
+}
+requestAnimationFrame(boucle);
+
+function feu(){ audio(); if (G.pause){ G.pause = false; return; } if (G.mode === 'fini') commencer(G.nasty); }
+addEventListener('keydown', (e) => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (['ArrowLeft','ArrowRight',' ','Enter'].includes(e.key)) e.preventDefault();
+  if (touches[k]) return;
+  touches[k] = true;
+  if (G.pause){ G.pause = false; return; }
+  if (k === 'p' && G.mode !== 'options'){ G.pause = true; return; }
+  if (G.mode === 'options'){ if (k === '1'){ audio(); commencer(false); } if (k === '2'){ audio(); commencer(true); } return; }
+  if (k === 'Enter'){ audio(); commencer(G.nasty); return; }               /* REDO : même humeur */
+  if (k === 'Escape'){ G.mode = 'options'; return; }                        /* BACK : le choix */
+  if (k === ' ' || k === '.' || k === 'y' || k === 'q') feu();
+});
+addEventListener('keyup', (e) => { touches[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false; });
+addEventListener('blur', () => { for (const k in touches) touches[k] = false; });
+
+const ecran = document.getElementById('ecran');
+ecran.addEventListener('pointerdown', (e) => {
+  e.preventDefault(); audio();
+  if (G.mode === 'options'){                          /* au doigt : la moitié haute = aggressive, la basse = nasty */
+    const r = ecran.getBoundingClientRect(); commencer((e.clientY - r.top) / r.height > .72); return;
+  }
+  touches.souris = true; feu();
+});
+addEventListener('pointerup', () => { touches.souris = false; });
+
+const bascule = (btn, cle, apres) => btn.addEventListener('click', () => {
+  const on = btn.getAttribute('aria-pressed') !== 'true';
+  btn.setAttribute('aria-pressed', String(on));
+  if (cle) S[cle] = on;
+  if (apres) apres(on);
+});
+bascule(document.getElementById('bSon'), 'son');
+bascule(document.getElementById('bBalayage'), null, (on) => document.documentElement.style.setProperty('--balayage', on ? '1' : '0'));
+document.getElementById('bPause').addEventListener('click', () => { if (G.mode !== 'options') G.pause = !G.pause; });
+
+/* ---- la manette tactile : gauche/droite tout ou rien, et FIRE ---- */
+const stick = document.getElementById('stick');
+{
+  const base = stick.querySelector('.base'), knob = stick.querySelector('.knob');
+  let doigt = null, ox = 0, oy = 0;
+  const lacher = () => { doigt = null; base.classList.remove('on'); knob.style.transform = ''; touches.ArrowLeft = touches.ArrowRight = false; };
+  stick.addEventListener('pointerdown', (e) => {
+    if (doigt !== null) return;
+    doigt = e.pointerId; ox = e.clientX; oy = e.clientY;
+    try{ stick.setPointerCapture(doigt); }catch(err){}
+    const r = stick.getBoundingClientRect();
+    base.style.left = (ox - r.left) + 'px'; base.style.top = (oy - r.top) + 'px'; base.classList.add('on');
+    audio(); e.preventDefault();
+  });
+  stick.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== doigt) return;
+    const dx = e.clientX - ox, dy = e.clientY - oy, d = Math.hypot(dx, dy), k = d > 38 ? 38 / d : 1;
+    knob.style.transform = 'translate(' + (dx * k).toFixed(1) + 'px,' + (dy * k).toFixed(1) + 'px)';
+    touches.ArrowLeft = dx < -12; touches.ArrowRight = dx > 12;
+  });
+  stick.addEventListener('pointerup', (e) => { if (e.pointerId === doigt) lacher(); });
+  stick.addEventListener('pointercancel', (e) => { if (e.pointerId === doigt) lacher(); });
+  stick.addEventListener('lostpointercapture', lacher);
+}
+const bFeu = document.getElementById('bFeu');
+const relacherFeu = () => { touches.souris = false; bFeu.classList.remove('on'); };
+bFeu.addEventListener('pointerdown', (e) => {
+  e.preventDefault(); try{ bFeu.setPointerCapture(e.pointerId); }catch(err){}
+  if (G.mode === 'options'){ audio(); commencer(false); return; }
+  touches.souris = true; bFeu.classList.add('on'); feu();
+});
+bFeu.addEventListener('pointerup', relacherFeu);
+bFeu.addEventListener('pointercancel', relacherFeu);
+bFeu.addEventListener('lostpointercapture', relacherFeu);
+addEventListener('blur', relacherFeu);
+
+const bTactile = document.getElementById('bTactile');
+function tactile(on){ document.documentElement.classList.toggle('tactile', on); bTactile.setAttribute('aria-pressed', String(on)); }
+{
+  const mq = matchMedia('(pointer:coarse)');
+  tactile(mq.matches);
+  if (mq.addEventListener) mq.addEventListener('change', (e) => tactile(e.matches));
+  bTactile.addEventListener('click', () => tactile(!document.documentElement.classList.contains('tactile')));
+}
+
+/* Première image tout de suite. */
+nouveauxBoucliers(); nouvelleHorde();
+dessiner();
+window.TII = { G, avancer, dessiner, commencer, touches, ESPECES, bornes, cadence };
+</script>
+
+</body>
+</html>

@@ -424,36 +424,58 @@ function poserTexteSol(txt, wx, y){            /* les initiales des auteurs, et 
       for (let b = 0; b < 8; b++) if (o & (0x80 >> b)) TERRAIN[(wx + n*8 + b) % TER_L] |= 1 << row; }
   }
 }
+/* Les constructions du sol, retracées d'après une capture du vrai jeu :
+   le château d'eau, la statue à socle évasé, les chasseurs posés, le
+   champignon, la fusée, l'aileron, le temple à la croix, et l'antenne. */
 const OBJETS = {
   chateau: ['...########...','..##########..','.############.','##############','##############','.############.','..##########..',
             '.....#.##.#...','.....#.##.#...','.....#.##.#...','.....#.##.#...','.....#.##.#...','.....#.##.#...','.....#.##.#...',
             '.....#.##.#...','.....#.##.#...','.....#.##.#...','....##.##.##..'],
-  antenne: ['..########..','.#........#.','#.#......#.#','#..#....#..#','#...#..#...#','#....##....#','#....##....#','#...#..#...#',
-            '#..#....#..#','#.#......#.#','.#........#.','..########..','.....##.....','.....##.....','....####....'],
-  dome:    ['......######......','....##########....','...############...','..##############..','.################.','##################',
-            '#..#..######..#..#','#..#..######..#..#','#..#..######..#..#'],
+  statue:  ['......####################......','....########################....','..############################..',
+            '################################','..############################..','......####################......',
+            '..........############..........','..........####..#####...........','..........####..#####...........',
+            '..........############..........','.........##############.........','........################........',
+            '.......####...####...####.......','......#####...####...#####......','.....######...####...######.....',
+            '....#######...####...#######....','...########...####...########...','..#########...####...#########..',
+            '.##########...####...##########.','################################'],
+  pose:    ['.......###..','...#######..','############','...####.##..','.......#....'],
+  champignon: ['.....######.....','..############..','.##############.','################','.......##.......','.......##.......',
+               '.......##.......','.......##.......','.....######.....'],
   fusee:   ['...##...','..####..','..####..','.######.','.######.','.######.','.######.','.######.','.######.','.######.','.######.',
             '########','########','#.####.#','#..##..#'],
-  fleche:  ['.......#....','.......##...','.#######.#..','############','.#######.#..','.......##...','.......#....'],
+  aileron: ['.......#......','.......##.....','.......###....','..#########...','##############','..#########...','.......###....',
+            '.......##.....','.......#......'],
+  temple:  ['.......##.......','......####......','.......##.......','.....######.....','...##########...','..############..',
+            '.##############.','##....####....##','#.....####.....#','#.....####.....#'],
+  antenne: ['..########..','.#........#.','#.#......#.#','#..#....#..#','#...#..#...#','#....##....#','#....##....#','#...#..#...#',
+            '#..#....#..#','#.#......#.#','.#........#.','..########..','.....##.....','.....##.....','....####....'],
 };
 (function engendrerTerrain(){
+  /* les constructions, dans l'ordre de la capture ; chacune se pose sur un
+     replat, les collines hérissées vivent entre elles */
+  const POSES = [
+    ['statue',150],['pose',210],['pose',228],['champignon',262],['fusee',300],['aileron',318],['temple',350],['chateau',396],
+    ['antenne',640],['JED',900],['pose',1060],['fusee',1120],['PARSEC',1300],['chateau',1500],['temple',1560],
+    ['statue',1760],['champignon',1830],['antenne',1900],
+  ];
+  const largeur = (n) => n === 'JED' ? 24 : n === 'PARSEC' ? 48 : OBJETS[n][0].length;
+  const replat = (x) => POSES.some(([n, x0]) => x >= x0 - 6 && x < x0 + largeur(n) + 6);
   /* collines : une houle lente, des crêtes, et beaucoup de lignes d'un point de large */
-  let h = 6, cible = 6;
+  let h = 4, cible = 4;
   for (let x = 0; x < TER_L; x++){
-    if (x % 24 === 0) cible = 2 + Math.random() * 10 + (Math.random() < .18 ? 12 : 0);
-    h += (cible - h) * .12;
+    if (x % 24 === 0) cible = 2 + Math.random() * 8 + (Math.random() < .16 ? 10 : 0);
+    const plat = replat(x);
+    h += ((plat ? 1 : cible) - h) * (plat ? .5 : .12);
     const haut = Math.max(1, Math.round(h));
     for (let r = NREL - haut; r < NREL; r++) TERRAIN[x] |= 1 << r;
-    if (Math.random() < .28){ const pic = haut + 1 + Math.random() * 9;              /* les fameuses lignes verticales */
+    if (!plat && Math.random() < .28){ const pic = haut + 1 + Math.random() * 9;    /* les fameuses lignes verticales */
       for (let r = Math.max(0, NREL - Math.round(pic)); r < NREL; r++) TERRAIN[x] |= 1 << r; }
   }
-  /* et les constructions, posées sur la bande de sol */
-  poserSol(OBJETS.chateau, 180, BANDE - 18); poserSol(OBJETS.antenne, 420, BANDE - 15);
-  poserSol(OBJETS.dome, 640, BANDE - 9);     poserSol(OBJETS.fusee, 860, BANDE - 15);
-  poserSol(OBJETS.fleche, 1000, BANDE - 7);  poserSol(OBJETS.fleche, 1020, BANDE - 12);
-  poserTexteSol('JED', 1180, BANDE - 16);    poserTexteSol('URB', 1180, BANDE - 8);
-  poserSol(OBJETS.antenne, 1400, BANDE - 15); poserTexteSol('PARSEC', 1560, BANDE - 8);
-  poserSol(OBJETS.chateau, 1800, BANDE - 18); poserSol(OBJETS.dome, 1960, BANDE - 9);
+  for (const [n, x0] of POSES){
+    if (n === 'JED'){ poserTexteSol('JED', x0, BANDE - 16); poserTexteSol('URB', x0, BANDE - 8); }
+    else if (n === 'PARSEC') poserTexteSol('PARSEC', x0, BANDE - 8);
+    else poserSol(OBJETS[n], x0, BANDE - OBJETS[n].length);
+  }
 })();
 
 /* Le flot de colonnes affichées. */
