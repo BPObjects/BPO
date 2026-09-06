@@ -2,8 +2,12 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#14151a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Parsec">
 <meta name="description" content="Parsec (TI-99/4A, 1982) — recréation jouable dans le navigateur.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%23000%27/%3E%3Crect x=%272%27 y=%2711%27 width=%2712%27 height=%273%27 fill=%27%23D4C154%27/%3E%3Crect x=%274%27 y=%276%27 width=%277%27 height=%272%27 fill=%27%2321C842%27/%3E%3C/svg%3E">
 <title>Parsec</title>
@@ -44,20 +48,55 @@ h1{
   text-shadow:0 0 22px rgba(212,193,84,.30);
   text-wrap:balance;
 }
-.sous{font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--alu-sombre);font-weight:500}
+.sous{font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--alu-sombre);font-weight:500;text-wrap:balance}
 
 .poste{
   padding:16px;border-radius:12px;
   background:linear-gradient(#2a2d34,#1a1c21);
   box-shadow:0 0 0 1px #43464d, 0 18px 46px rgba(0,0,0,.66);
-  max-width:100%;
+  width:min(100%,1056px);
+  display:grid;gap:12px;grid-template-columns:1fr;grid-template-areas:"ecran" "cmd";
 }
+.ecran{grid-area:ecran}
+.commandes{grid-area:cmd}
+/* ---- la manette tactile : cachée à la souris, montrée au doigt ----
+   Les Wired Remote Controllers étaient numériques : huit directions et
+   un bouton. Le stick flottant reproduit ça — pas de proportionnel. */
+.stick,.feu-zone{display:none}
+.stick{
+  grid-area:stick;position:relative;min-height:150px;border-radius:12px;overflow:hidden;
+  background:#1b1d23;box-shadow:inset 0 0 0 1px #2c2f36;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+}
+.stick .aide{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:"Silkscreen","Courier New",monospace;font-size:10px;letter-spacing:.12em;
+  color:#4a4e56;pointer-events:none;
+}
+.stick .base{
+  position:absolute;width:104px;height:104px;margin:-52px 0 0 -52px;border-radius:50%;
+  border:2px solid #454951;display:none;pointer-events:none;
+}
+.stick .base.on{display:block}
+.stick .knob{
+  position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;
+  background:#8a8e95;box-shadow:0 2px 6px rgba(0,0,0,.5);
+}
+.feu-zone{grid-area:feu;gap:10px;min-height:150px}
+.feu{
+  flex:1;font-size:18px;letter-spacing:.14em;border-radius:14px;
+  background:#3a3320;color:var(--ambre);border:2px solid #6d6038;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+}
+.feu.on{background:#65552a;border-color:var(--ambre)}
+.lifts{display:flex;flex-direction:column;gap:8px;width:58px}
+.lifts button{flex:1;padding:0;font-size:13px;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .ecran{
   position:relative;display:block;border-radius:4px;overflow:hidden;
   background:#000;box-shadow:inset 0 0 0 2px #000, 0 0 34px rgba(66,235,245,.09);
   cursor:crosshair;
 }
-canvas{display:block;image-rendering:pixelated;width:min(1024px,92vw);height:auto;aspect-ratio:256/192;background:#000}
+canvas{display:block;image-rendering:crisp-edges;image-rendering:pixelated;width:100%;height:auto;aspect-ratio:256/192;background:#000}
 .ecran::after{
   content:"";position:absolute;inset:0;pointer-events:none;
   background:repeating-linear-gradient(rgba(0,0,0,.20) 0 1px, transparent 1px 3px);
@@ -92,6 +131,23 @@ kbd{
 .note b{color:var(--alu);font-weight:600}
 .note p{margin:0 0 9px}
 .note p:last-child{margin:0}
+/* La disposition tactile est portée par html.tactile : posée par le script
+   d'après (pointer:coarse), et basculable au bouton Manette. Ces règles
+   ferment la feuille — à spécificité égale, le dernier gagne. */
+.tactile body{overscroll-behavior:none;gap:16px;padding:18px 12px 36px}
+.tactile .legende{display:none}
+.tactile .poste{grid-template-columns:1fr 1fr;grid-template-areas:"ecran ecran" "stick feu" "cmd cmd";padding:12px}
+.tactile .stick,.tactile .feu-zone{display:flex}
+.tactile .commandes{margin-top:4px}
+.tactile button{padding:10px 14px}
+.tactile .lifts button{padding:0}
+@media (orientation:landscape){          /* le téléphone couché : stick | écran | FIRE, comme une borne */
+  .tactile header,.tactile .note{display:none}
+  .tactile body{padding:8px;min-height:auto}
+  .tactile .poste{width:auto;grid-template-columns:minmax(110px,1fr) auto minmax(110px,1fr);grid-template-areas:"stick ecran feu" "cmd cmd cmd";gap:10px}
+  .tactile canvas{width:auto;height:min(70vh,58vw)}
+  .tactile .stick,.tactile .feu-zone{min-height:0}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -101,13 +157,26 @@ kbd{
 </header>
 
 <div class="poste">
+  <div class="stick" id="stick" aria-label="Manette : glisser pour diriger le vaisseau">
+    <span class="aide">MANETTE</span>
+    <div class="base"><div class="knob"></div></div>
+  </div>
   <div class="ecran" id="ecran">
     <canvas id="ecr" width="256" height="192" aria-label="Écran de jeu Parsec"></canvas>
+  </div>
+  <div class="feu-zone">
+    <button class="feu" id="bFeu">FIRE</button>
+    <div class="lifts">
+      <button data-lift="1" aria-pressed="false">L1</button>
+      <button data-lift="2" aria-pressed="false">L2</button>
+      <button data-lift="3" aria-pressed="true">L3</button>
+    </div>
   </div>
   <div class="commandes">
     <button id="bVoix" aria-pressed="true">Voix</button>
     <button id="bSon" aria-pressed="true">Son</button>
     <button id="bBalayage" aria-pressed="true">Balayage</button>
+    <button id="bTactile" aria-pressed="false">Manette</button>
     <button id="bPause">Time warp</button>
   </div>
 </div>
@@ -811,8 +880,13 @@ function boucle(t){
 }
 requestAnimationFrame(boucle);
 
+let voixPrete = false;
 function feu(){
   audio();
+  if (!voixPrete && window.speechSynthesis){          /* iOS n'autorise la voix qu'après un geste : on l'amorce */
+    try{ speechSynthesis.speak(new SpeechSynthesisUtterance('')); }catch(e){} voixPrete = true;
+  }
+  if (G.pause){ G.pause = false; return; }
   if (G.mode === 'titre') scene();
   else if (G.mode === 'scene') commencer();
   else if (G.mode === 'fini') scene();
@@ -824,12 +898,69 @@ addEventListener('keydown', (e) => {
   touches[k] = true;
   if (G.pause){ G.pause = false; return; }               /* n'importe quelle touche reprend le jeu */
   if (k === 'p' && G.mode === 'jeu'){ G.pause = true; return; }
-  if (k === '1' || k === '2' || k === '3'){ G.lift = +k; bip(500 + G.lift * 150, .05, .03); }
+  if (k === '1' || k === '2' || k === '3') choisirLift(+k);
   if (k === '.' || k === ' ' || k === '0' || k === 'y' || k === 'Enter') feu();
   if (G.mode === 'titre') scene();
 });
 addEventListener('keyup', (e) => { touches[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false; });
 addEventListener('blur', () => { for (const k in touches) touches[k] = false; });
+
+function choisirLift(n){
+  G.lift = n; bip(500 + n * 150, .05, .03);
+  document.querySelectorAll('[data-lift]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.lift === n)));
+}
+document.querySelectorAll('[data-lift]').forEach((b) =>
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); choisirLift(+b.dataset.lift); }));
+
+/* ---- la manette tactile ----------------------------------------------
+   Un stick flottant : la base se pose là où le doigt se pose, et les
+   directions sont tout ou rien, comme une manette à contacts. ---- */
+const stick = document.getElementById('stick');
+{
+  const base = stick.querySelector('.base'), knob = stick.querySelector('.knob');
+  let doigt = null, ox = 0, oy = 0;
+  const lacher = () => {
+    doigt = null; base.classList.remove('on'); knob.style.transform = '';
+    touches.ArrowUp = touches.ArrowDown = touches.ArrowLeft = touches.ArrowRight = false;
+  };
+  stick.addEventListener('pointerdown', (e) => {
+    if (doigt !== null) return;
+    doigt = e.pointerId; ox = e.clientX; oy = e.clientY;
+    try{ stick.setPointerCapture(doigt); }catch(err){}
+    const r = stick.getBoundingClientRect();
+    base.style.left = (ox - r.left) + 'px'; base.style.top = (oy - r.top) + 'px'; base.classList.add('on');
+    audio(); e.preventDefault();
+  });
+  stick.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== doigt) return;
+    const dx = e.clientX - ox, dy = e.clientY - oy, d = Math.hypot(dx, dy), k = d > 38 ? 38 / d : 1;
+    knob.style.transform = 'translate(' + (dx * k).toFixed(1) + 'px,' + (dy * k).toFixed(1) + 'px)';
+    touches.ArrowUp = dy < -12; touches.ArrowDown = dy > 12;
+    touches.ArrowLeft = dx < -16; touches.ArrowRight = dx > 16;
+  });
+  stick.addEventListener('pointerup', (e) => { if (e.pointerId === doigt) lacher(); });
+  stick.addEventListener('pointercancel', (e) => { if (e.pointerId === doigt) lacher(); });
+  stick.addEventListener('lostpointercapture', lacher);
+}
+/* Au doigt (pointer:coarse) la manette apparaît d'elle-même ; le bouton Manette force dans les deux sens. */
+const bTactile = document.getElementById('bTactile');
+function tactile(on){ document.documentElement.classList.toggle('tactile', on); bTactile.setAttribute('aria-pressed', String(on)); }
+{
+  const mq = matchMedia('(pointer:coarse)');
+  tactile(mq.matches);
+  if (mq.addEventListener) mq.addEventListener('change', (e) => tactile(e.matches));
+  bTactile.addEventListener('click', () => tactile(!document.documentElement.classList.contains('tactile')));
+}
+const bFeu = document.getElementById('bFeu');
+const relacherFeu = () => { touches.souris = false; bFeu.classList.remove('on'); };
+bFeu.addEventListener('pointerdown', (e) => {
+  e.preventDefault(); try{ bFeu.setPointerCapture(e.pointerId); }catch(err){}
+  touches.souris = true; bFeu.classList.add('on'); feu();
+});
+bFeu.addEventListener('pointerup', relacherFeu);
+bFeu.addEventListener('pointercancel', relacherFeu);
+bFeu.addEventListener('lostpointercapture', relacherFeu);
+addEventListener('blur', relacherFeu);
 
 /* La souris tient lieu de bouton FIRE des manettes filaires. */
 const ecran = document.getElementById('ecran');
