@@ -194,11 +194,14 @@ kbd{
   <p><b>Ce n'est pas une émulation.</b> Un émulateur TI-99/4A ne démarre pas sans les ROM de
   la console, et un jeu sans le contenu de sa cartouche — ces images appartiennent à leurs
   ayants droit. Ceci est une reconstruction d'après le manuel et les descriptions publiques du
-  jeu&nbsp;: aucun octet d'origine n'a été copié, les lutins sont retracés de mémoire.</p>
-  <p><b>Ce qui vient de la vraie machine</b>&nbsp;: les quinze couleurs du TMS9918A et rien
-  d'autre, 256×192 points, une police tracée point par point, trois voix carrées et un canal de
-  bruit comme le SN76489, et une voix de synthèse pour l'ordinateur de bord — le Speech
-  Synthesizer, qu'Aubree Anderson a prêté sa voix à Parsec.</p>
+  jeu&nbsp;: aucun octet d'origine n'a été copié.</p>
+  <p><b>Ce qui est relevé sur le vrai jeu</b>, point par point, sur des captures d'écran
+  publiques&nbsp;: le vaisseau et son échappement, les Swoopers, l'Urbite, le satellite tueur, le
+  missile, la flèche du score, les trois polices (ligne d'état, bande de sol, GAME OVER), quatre
+  écrans de relief entiers, et les couleurs — vert sombre du vaisseau, rouge sombre du carburant.
+  Le son est celui d'un SN76489 reconstitué&nbsp;: ondes carrées, seize crans de 2&nbsp;dB écrits
+  soixante fois par seconde, bruit par registre à décalage. La voix de bord reste une synthèse
+  moderne&nbsp;: celle du Speech Synthesizer est faite de données sous droits.</p>
   <p><b>Les règles suivent le manuel.</b> Chaque niveau&nbsp;: Swoopers, Urbites, LTF, Dramites,
   Saucers, Bynites, puis la ceinture d'astéroïdes et son compte à rebours&nbsp;; seize couleurs
   de sol, deux coups pour abattre au niveau 2, trois ensuite (les Bynites touchés deviennent
@@ -214,13 +217,14 @@ kbd{
 /* ==================================================================
    PARSEC — recréation
    Rendu : tampon de pixels 256×192, palette TMS9918A stricte.
-   Repères verticaux (comme sur la machine) :
-     0..127   le ciel et le combat
-     128      SOL_MAX : la plus haute crête du relief ; plus bas, on est
+   Repères verticaux, relevés sur le vrai jeu :
+     0..99    le ciel
+     100..157 le relief (58 lignes ; les montagnes du niveau 4 montent à 105)
+     128      SOL_MAX : la ligne des crêtes courantes ; plus bas, on est
               « dans le sol » — le laser se tait, le carburant se fige
-     128..157 le relief, silhouettes de la couleur du niveau
-     158..165 la bande de sol, où l'ordinateur de bord écrit en noir
-     168..191 la ligne d'état : FUEL, score, réserve, LIFT, TOP
+     158..164 la bande de sol, où l'ordinateur de bord écrit en noir (5×5)
+     169      FUEL, la barre, la flèche, le score
+     182..191 la réserve ; 184 LIFT n, TOP
    ================================================================== */
 
 /* Les 15 couleurs du TMS9918A (l'indice 0 est le transparent). */
@@ -230,16 +234,12 @@ const PAL = ['transparent','#000000','#21C842','#5EDC78','#5455ED','#7D76FC','#D
 const RGB = PAL.map((c) => c === 'transparent' ? [0,0,0,0]
   : [parseInt(c.slice(1,3),16), parseInt(c.slice(3,5),16), parseInt(c.slice(5,7),16), 255]);
 
-/* Couleur du sol par niveau, d'après le tableau des scores du manuel :
-   jaune sombre, vert sombre, rouge sombre, bleu sombre, magenta, rouge clair,
-   vert clair, cyan, bleu sombre, rouge moyen, bleu clair, vert moyen, gris,
-   blanc, jaune sombre, jaune sombre — et le niveau 16 se répète sans fin. */
+/* Couleur du sol par niveau, d'après le tableau des scores du manuel. */
 const COUL_SOL = [10,12,6,4,13,9,3,7,4,8,5,2,14,15,10,10];
-/* Le mode bitmap permet une couleur par ligne : le laser, les étoiles et
-   le GAME OVER en profitent. Une teinte par ligne, cyclique. */
+/* Le mode bitmap permet une couleur par ligne : le laser, les étoiles et le GAME OVER en profitent. */
 const COUL_LIGNE = [4,7,2,13,9,5,11,8,3,14,15,10,7,4,9,2];
 
-const L = 256, H = 192, SOL_MAX = 128, BANDE = 158, NREL = BANDE - SOL_MAX;
+const L = 256, H = 192, Y0 = 100, SOL_MAX = 128, BANDE = 158, H_BANDE = 7;
 const cv = document.getElementById('ecr');
 const cx = cv.getContext('2d', { alpha:false });
 const img = cx.createImageData(L, H);
@@ -252,10 +252,32 @@ function pset(x, y, c){
   buf[i] = r[0]; buf[i+1] = r[1]; buf[i+2] = r[2]; buf[i+3] = 255;
 }
 function rect(x, y, w, h, c){ for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) pset(x+i, y+j, c); }
+function cadre(x, y, w, h, c){ for (let i = 0; i < w; i++){ pset(x+i, y, c); pset(x+i, y+h-1, c); } for (let j = 0; j < h; j++){ pset(x, y+j, c); pset(x+w-1, y+j, c); } }
 function ligneH(x0, x1, y, c){ for (let x = x0; x <= x1; x++) pset(x, y, c); }
 function effacer(){ for (let i = 0; i < buf.length; i += 4){ buf[i]=0; buf[i+1]=0; buf[i+2]=0; buf[i+3]=255; } }
 
-/* ---- police 8×8, tracée à la main ------------------------------- */
+/* === RELEVE === */
+/* Relevé sur des captures publiques pixel-exactes du vrai jeu (voir releve.py) :
+   polices, lutins et quatre écrans de sol. Aucun octet de ROM. */
+const RELEVE = {
+  polices: { etat: {"F": "7C40407840404000", "U": "4444444444443800", "E": "7C40407840407C00", "L": "4040404040407C00", "I": "0038101010101038", "T": "007C101010101010", "O": "007C44444444447C", "P": "0078444478404040", "0": "3844444444443800", "5": "7C40780404443800", "7": "7C04081020202000", "1": "1030101010103800", "2": "3844040810207C00", "4": "081828487C080800", "9": "3844443C04083000", "3": "3844041804443800", "G": "003C40405C444438", "A": "003844447C444444", "M": "00446C5454444444", "V": "0044444428281010", "R": "0078444478504844", "6": "3840407844443800", "8": "3844443844443800"},
+             lift: {"3": "7884043804048478", "1": "103050101010107C", "2": "788404081020407C"},
+             bande: {"P": "F088F08080000000", "R": "F088F09088000000", "E": "F880F080F8000000", "S": "78807008F0000000", "F": "F880F08080000000", "I": "7020202070000000", "T": "F820202020000000", "O": "F8888888F8000000", "B": "F0487048F0000000", "G": "7880B88870000000", "N": "88C8A89888000000", "M": "88D8A88888000000", "W": "8888A8A850000000", "A": "7088F88888000000", "C": "7880808078000000", "V": "8888505020000000", "D": "F0484848F0000000", "K": "4850605048000000", "H": "8888F88888000000", "J": "3810109060000000", "L": "80808080F8000000", "Q": "7088A89068000000", "U": "8888888870000000", "X": "8850205088000000", "Y": "8850202020000000", "Z": "F8102040F8000000", "!": "2020200020000000", "0": "7088888870000000", "1": "2060202070000000", "2": "7008704080000000", "3": "F010300870000000", "4": "9090907010000000", "5": "F880700878000000", "6": "7080708870000000", "7": "F810204040000000", "8": "7088708870000000", "9": "7088780870000000", "-": "0000F80000000000", ".": "0000000020000000"} },
+  lutins: {"vaisseau": ["..#####.........", "...#...#........", "....#...#.......", "############....", "#.........###...", ".#...####..###..", ".##..#.......###", "...##....#####..", "..#.....#.......", "########........"], "echappement": ["......#.#.", "#..#.#...#", ".##.#..#..", "......#.#."], "reserve": ["..#####.........", "...#...#........", "....#...#.......", "############....", "#.........###...", ".#...####..###..", ".##..#.......###", "...##....#####..", "..#.....#.......", "########........"], "fleche": [".......................##...", "........................##..", "##......................###.", "############################", "##......................###.", "........................##..", ".......................##..."], "swooper": ["........######", ".......#....#.", "......#.......", ".....#..######", "..######....#.", "#######....#..", ".....#....#...", "....######...."], "urbite": ["..........####..", "......####...#..", ".....#.......#..", "...#############", "..#...........#.", ".###############", "####.#.#.#.#.#..", ".###############", "..#...........#.", "...#############", ".....#.......#..", "......####...#..", "..........####.."], "satellite": ["......##########", ".....#.........#", ".#########.#..#.", "..#.......#..##.", "...#.....#.##.#.", "..########.##.#.", "##########.##.#.", "...#......#..##.", "..#......#######", ".#######........"], "missile": ["..#.......", ".###....#.", "#####..###", ".###....#.", "..#......."]},
+  reperes: {"_vaisseau_boite": [70, 83, 85, 92], "_echappement_boite": [59, 88, 68, 91], "_reserve_boites": [[24, 182, 39, 191], [25, 169, 29, 175], [33, 169, 37, 175], [40, 182, 55, 191], [41, 169, 45, 175], [49, 169, 53, 175], [56, 182, 71, 191], [72, 182, 87, 191]], "_fleche_boite": [160, 169, 187, 175], "_barre_plein": [64, 169, 143, 174], "_barre_cadre": [63, 168, 144, 175]},
+  sols: {
+    urbite: "3fdf0000000000000 3fd68000000000000 3fd24000000000000 3fd12000000000000 3fd12000000000000 3fc92000000000000 3fc52000000000000 3fc36000000000000 3fc12000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc10000000000000 3fc38000000000000 3fcbc000000000000 3fc36000000000000 3fd3e000000000000 3feb6000000000000 3fc3e000000000000 3ff36000000000000 3fcbe000000000000 3fd36000000000000 3fcbc000000000000 3fc38000000000000 3fc10000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc78000000000000 3fc47800000000000 3fc40400000000000 3fdfff00000000000 3fc80080000000000 3fdfffc0000000000 3fc555e0000000000 3fdfffc0000000000 3fc80080000000000 3fdfff00000000000 3fc42400000000000 3fc47800000000000 3fc78000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc20000000000000 3fc20000000000000 3fc20000000000000 3fc30000000000000 3fc30000000000000 3fc30000000000000 3fc28000000000000 3fc6c000000000000 3fc7c000000000000 3fcfe000000000000 3fdff000000000000 3fdc7000000000000 3fd83000000000000 3fd01000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fe07000000000000 3fe0f800000000000 3fe1fc00000000000 3ff3ce00000000000 3ffb8600000000000 3fdf8300000000000 3fcff900000000000 3fc7fd80000000000 3fc3fe80000000000 3fc38380000000000 3fc381c0000000000 3fc380e0000000000 3fc380e0000000000 3fc381c0000000000 3fc38380000000000 3fc3fe80000000000 3fc7fd80000000000 3fcff900000000000 3fdf8300000000000 3ffb8600000000000 3ff3ce00000000000 3fe1fc00000000000 3fe0f800000000000 3fe07000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000780000000 3fc00000fc0000000 3fc00001fe0000000 3fc00003ff0000000 3fc00003fb0000000 3fc00003fb0000000 3fc00003fb0000000 3ffffffffb0000000 3fc00003fb0000000 3ffffffffb0000000 3fc00003fb0000000 3fc00003fb0000000 3ffffffffb0000000 3fc00003fb0000000 3ffffffffb0000000 3fc00003fb0000000 3fc00003fb0000000 3fc00003fb0000000 3fc00003ff0000000 3fc00001fe0000000 3fc00000fc0000000 3fc00000780000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc3fff0000000000 3fc46030000000000 3fc81850000000000 3fc80490000000000 3fcc0310000000000 3fcc0310000000000 3fce0490000000000 3fce0850000000000 3fe71030000000000 3ff7a010000000000 3fefc010000000000 3fefe010000000000 3ff07c20000000000 3fe01fc0000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fe00100c00000000 3fe00300e00000000 3fe00700f00000000 3ff00f00d80000000 3fd81b00cc0000000 3fdc3300c60000000 3fce6300c30000000 3fcfc300c30000000 3fc9c3ffc30000000 3fc9c3ffc30000000 3fe9c380c30000000 3fffc3b0c30000000 3fff7ecf7f0000000 3fe97eff7f0000000 3fc97eff7f0000000 3fc97eff7f0000000 3fcfff00ff0000000 3fce7f00ff0000000 3fdc3f00fe0000000 3fd81f00fc0000000 3ff00f00f80000000 3fe00700f00000000 3fe00300e00000000 3fe00100c00000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc40000000000000 3fc40000000000000 3fc60000000000000 3fc60000000000000 3fd60000000000000 3fdf0000000000000 3fd68000000000000 3fd24000000000000 3fd12000000000000 3fd12000000000000 3fc92000000000000 3fc52000000000000 3fc36000000000000 3fc12000000000000 3fc00000000000000 3fc00000000000000 3fc40000000000000 3fc40000000000000 3fc60000000000000 3fc60000000000000 3fd60000000000000 3fdf0000000000000 3fd68000000000000",
+    swoopers: "3fc00001fe0000000 3fc00003ff0000000 3fc00003fb0000000 3fc00003fb0000000 3fc00003fb0000000 3ffffffffb0000000 3fc00003fb0000000 3ffffffffb0000000 3fc00003fb0000000 3fc00003fb0000000 3ffffffffb0000000 3fc00003fb0000000 3ffffffffb0000000 3fc00003fb0000000 3fc00003fb0000000 3fc00003fb0000000 3fc00003ff0000000 3fc00001fe0000000 3fc00000fc0000000 3fc00000780000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc3fff0000000000 3fc46030000000000 3fc81850000000000 3fc80490000000000 3fcc0310000000000 3fcc0310000000000 3fce0490000000000 3fce0850000000000 3fe71030000000000 3ff7a010000000000 3fefc010000000000 3fefe010000000000 3ff07c20000000000 3fe01fc0000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3ff00000000000000 3ff80000000000000 3fffc000000000000 3ffe0000000000000 3ff80000000000000 3fffe000000000000 3ffff800000000000 3fffc000000000000 3fffff00000000000 3fff0000000000000 3fffe000000000000 3fffff00000000000 3fffffff800000000 3fffffffff0000000 3fffffffff0000000 3fffffe0018000000 3fffe000018000000 3fffc000058000000 3ffffe0007c000000 3fffffffc5a000000 3fffffff849000000 3ffffff0044800000 3ffff000044800000 3fff0000024800000 3ffff000014800000 3fffffc000d800000 3fffff00004800000 3fff8000000000000 3ffe0000000000000 3fffe000000000000 3ffffffc000000000 3ffffff0000000000 3ffff000000000000 3ffc0000000000000 3fff8000000000000 3ffffc00000000000 3ffe0000000000000 3fff0000000000000 3fffc000000000000 3ffe0000000000000 3ff00000000000000 3ffc0000000000000 3fff0000000000000 3ff80000000000000 3fff8000000000000 3fe00000000000000 3ffff800000000000 3fe00000000000000 3fff8000000000000 3ff00000000000000 3ffffc00000000000 3ff00000000000000 3ffffffc000000000 3ff00000000000000 3ff00000000000000 3ffffffffc0000000 3fe00000000000000 3ff00000000000000 3fffff80000000000 3ff80000000000000 3fffffffc00000000 3ff00000000000000 3ff00000000000000 3ffffffe000000000 3ff80000000000000 3ff00000000000000 3fffffe0000000000 3ff80000000000000 3ffffffffc0000000 3ff80000000000000 3ffffc00000000000 3ff00000000000000 3ff00000000000000 3ffffffe000000000 3ff00000000000000 3fffffffc00000000 3ff80000000000000 3fffff00000000000 3ff80000000000000 3ff80000000000000 3ffff000000000000 3fe00000000000000 3fff0000000000000 3ff00000000000000 3fffffe0000000000 3ff00000000000000 3ffffffc000000000 3ff80000000000000 3ff80000000000000 3fffff80000000000 3ff80000000000000 3ffff800000000000 3ff00000000000000 3fffff80000000000 3fe00000000000000 3ffff800000000000 3ff80000000000000 3ffe0000000000000 3ffffff0000000000 3fffffc0000000000 3ffffe00000000000 3fff0000000000000 3ffc0000000000000 3ff00000000000000 3fff8000000000000 3ffff800000000000 3fffff00000000000 3fffc000000000000 3ffc0000000000000 3ff80000000000000 3ffc0000000000000 3ff00000000000000 3fe00100c00000000 3fe00300e00000000 3fe00700f00000000 3ff00f00d80000000 3fd81b00cc0000000 3fdc3300c60000000 3fce6300c30000000 3fcfc300c30000000 3fc9c3ffc30000000 3fc9c3ffc30000000 3fe9c380c30000000 3fffc3b0c30000000 3fff7ecf7f0000000 3fe97eff7f0000000 3fc97eff7f0000000 3fc97eff7f0000000 3fcfff00ff0000000 3fce7f00ff0000000 3fdc3f00fe0000000 3fd81f00fc0000000 3ff00f00f80000000 3fe00700f00000000 3fe00300e00000000 3fe00100c00000000 3fe00000000000000 3ff80000000000000 3ffe0000000000000 3ffe0000000000000 3ff00000000000000 3fffc000000000000 3ffc0000000000000 3fff8000000000000 3fff8001000000000 3ff80009100000000 3ff8000db00000000 3ffe000bd00000000 3ffc0009900000000 3fff8009980000000 3ffff009940000000 3fff8009940000000 3fff8001940000000 3ff80005d40000000 3ffc0006240000000 3ffe0005d40000000 3ffff005c40000000 3fffe006240000000 3fff0007f40000000 3ff000040c0000000 3ffc0100000000000 3ffc0910000000000 3ff00db0000000000 3ffe0bd0000000000 3ffc0990000000000 3ff00998000000000 3ff00994000000000 3ffc0994000000000 3fff0194000000000 3ffe05d4000000000 3fff0624000000000 3ffe05d4000000000 3ffc05c4000000000 3ffe0624000000000 3ffc07f4000000000 3fff040c000000000 3ffe0000000000000 3ff80000000000000 3ffe0000000000000 3ffc0000000000000 3fff0000000000000 3fffe000000000000 3ffff800000000000 3fff8000000000000 3fffff00000000000 3ff80000000000000 3fffe000000000000 3fffff00000000000 3ffffffc000000000 3fffffff000000000 3fffffff000000000 3fffffe0000000000 3fffe000000000000 3ffc0000000000000 3ffffe00000000000 3ffffff0000000000",
+    satellites: "3ff00000000000000 3ffa0000000000000 3fff0000000000000 3fffe000000000000 3fee7000000000000 3fffff00000000000 3ff9f780000000000 3ffffef0000000000 3ffffde0000000000 3ff7ffe0000000000 3fffdffc000000000 3fffbffc000000000 3fff7f20000000000 3ffff200000000000 3ff80000000000000 3ffe0000000000000 3ffc0000000000000 3fe00000000000000 3ff00000000000000 3fe7c800000000000 3ff41000000000000 3fe7df00000000000 3fe00000000000000 3fefbe00000000000 3fe4aa00000000000 3feba200000000000 3fe00000000000000 3fff7c00000000000 3ff54400000000000 3fff3800000000000 3fe00000000000000 3fffa000000000000 3fffe000000000000 3ffffc00000000000 3ffdfcc0000000000 3ffcff80000000000 3fffffc0000000000 3fffffc0000000000 3fffecfc000000000 3fff9fff000000000 3fffbfff800000000 3fff7fff800000000 3ff7fdf2000000000 3feffbf0000000000 3fffffc0000000000 3fffffe0000000000 3ffff180000000000 3fffc000000000000 3ffa8000000000000 3ff60000000000000 3fee0000000000000 3ffc0000000000000 3ff80040000000000 3ff80060000000000 3ff80070000000000 3ff8ff58000000000 3ff80078000000000 3ffbff58000000000 3ff80078000000000 3ffbff58000000000 3ff80078000000000 3ff8ff58000000000 3ff80070000000000 3ff80060000000000 3ff00040000000000 3fe00000000000000 3ff00000000000000 3ff00000000000000 3ff00000000000000 3ff00000000000000 3ffc0000000000000 3fff0000000000000 3fff8000000000000 3fffc000000000000 3fffe000000000000 3ffff83e000000000 3fffff3e000000000 3ffbfff0000000000 3ff1fff8000000000 3ffbffffc00000000 3fffffff800000000 3ffffdff800000000 3ffffcfff80000000 3ffffffffe0000000 3fffeff9fe0000000 3fff9ff1ff0000000 3ff79ffbff0000000 3fff7fffff0000000 3fffffffff0000000 3ffffffffe0000000 3ffffeffe00000000 3ffffeff000000000 3fffffff000000000 3ff7ffffc00000000 3ff3ffffc00000000 3ff7ffe0000000000 3fffffe0000000000 3ffff0c0000000000 3ffff040000000000 3fff9000000000000 3ffe0000000000000 3ffe0000000000000 3ff80000000000000 3ff78000000000000 3ffff000000000000 3ffefc00000000000 3fffef00000000000 3fffff00000000000 3ffefc00000000000 3ffffc00000002000 3ffe0000000000000 3ffd8000000000000 3ffbf030000000000 3ff7ff30000000000 3ffffff0000000000 3fffdffe000000000 3fff9fff000000000 3ffffdff000000000 3ffffffe000000000 3ffeffe0000000000 3fffff20000000000 3ffff800000000000 3ffc1800000000000 3ffb0e00000000000 3ff7c000000000000 3ffec000000000000 3ffff000000000000 3fff0000000000000 3ff80000000000000 3ff80000000000000 3ffe0000000000000 3fe78000000000000 3fff0000000000000 3ffc0000000000000 3fe00000000000000 3ff80000000000000 3fec0000000000000 3ff00000000000000 3fe00000000000000 3ffe0000000000000 3ff00000000000000 3ff80000000000000 3fd00000000000000 3ff00000000000000 3fe00000000000000 3ff80000000000000 3fe00000000000000 3ff00000000000000 3fe00000000000000 3fd80000000000000 3fe00000000000000 3ff00000000000000 3ffc0000000000000 3fc80000000000000 3fc00000000000000 3fe00000000000000 3ff00000000000000 3fc00000000000000 3fe00000000000000 3fd80000000000000 3fe00000000000000 3fe00000000000000 3fe00000000000000 3ff00000000000000 3fe00000000000000 3ff80000000000000 3ff00000000000000 3ffc0000000000000 3ff00000000000000 3ff80000000000000 3ff80000000000000 3ffd0000000000000 3fff0000000000000 3fe80000000000000 3ff40000000000000 3ff00000000000000 3ffe0000000000000 3ff38000000000000 3fffe000000000000 3fff6000000000000 3ffff800000000000 3ffdc000000000000 3fff8000000000000 3ffe0000000000000 3ff80000000000000 3ff80000000000000 3ffc0000000000000 3ffb0000000000000 3ff7c000000000000 3ffef000000000000 3fffff00000000020 3ffffe00000000000 3fffcc00000000000 3ffffc00000000000 3ffce000000000000 3fffc000000000000 3ff50000000000000 3fec0000000000000 3fdc0000000000000 3ff00000000000000 3fe00000000000000 3ff00000000000000 3fc00000000000000 3ffff000000000000 3fc11000000000000 3fc11000000000000 3ffd1000000000000 3fd31000000000000 3ffd1000000000000 3fc0e000000000000 3ffe0000000000000 3fd20000000000000 3fee0000000000000 3fc00000000000000 3fe40000000000000 3fea0000000000000 3fd20000000000000 3fc00000000000000 3ffe0000000000000 3fea0000000000000 3fe20000000000000 3fc00000000000000 3ffe0000000000000 3fe20000000000000 3fe20000000000000 3fc00000000000000 3fc00000000000000 3fe00000000000000 3ff00000000000000 3ff80000000000000 3fe80000000000000 3ff00000000000000 3ffc0000000000000 3fee0000000000000 3ff00000000000000 3fe80000000000000 3ff00000000000000 3fe00000000000000 3ffc0000000000000 3ffc0000000000000 3fe00000000000000 3ff00000000000000 3ffa0000000000000 3fff0000000000000 3fffec00000000000 3ffbf800000000000 3ff7b800000000000 3fef7e00000000000 3ffffe00000000000 3ffffc00000000000 3ffef800000000000 3ffdf000000000000 3fffa000000000000 3fe40000000000000 3fd00000000000000 3ff00000000000000",
+    depart: "3fff8000000000000 3fffc000000000000 3fffe000000000000 3ffff83e000000000 3fffff3e000000000 3ffbfff0000000000 3ff1fff8000000000 3ffbffffc00000000 3fffffff800000000 3ffffdff800000000 3ffffcfff80000000 3ffffffffe0000000 3fffeff9fe0000000 3fff9ff1ff0000000 3ff79ffbff0000000 3fff7fffff0000000 3fffffffff0000000 3ffffffffe0000000 3ffffeffe00000000 3ffffeff000000000 3fffffff000000000 3ff7ffffc00000000 3ff3ffffc00000000 3ff7ffe0000000000 3fffffe0000000000 3ffff0c0000000000 3ffff040000000000 3fff9000000000000 3ffe0000000000000 3ffe0000000000000 3ff80000000000000 3ff78000000000000 3ffff000000000000 3ffefc00000000000 3fffef00000000000 3fffff00000000000 3ffefc00000000000 3ffffc00000000000 3ffe0000000000000 3ffd8000000000000 3ffbf030000000000 3ff7ff30000000000 3ffffff0000000000 3fffdffe000000000 3fff9fff000000000 3ffffdff000000000 3ffffffe000000000 3ffeffe0000000000 3fffff20000000000 3ffff800000000000 3ffc1800000000000 3ffb0e00000000000 3ff7c000000000000 3ffec000000000000 3ffff000000000000 3fff0000000000000 3ff80000000000000 3ff80000000000000 3ff00000000000000 3ff00000000000000 3ff00000000000000 3ff00000000000000 3ffc0000000000000 3fff0000000000000 3fff8000000000000 3fffc000000000000 3fffe000000000000 3ffff83e000000000 3fffff3e000000000 3ffbfff0000000000 3ff1fff8000000000 3ffbffffc00000000 3fffffff800000000 3ffffdff800000000 3ffffcfff80000000 3ffffffffe0000000 3fffeff9fe0000000 3fff9ff1ff0000000 3ff79ffbff0000000 3fff7fffff0000000 3fffffffff0000000 3ffffffffe0000000 3ffffeffe00000000 3ffffeff000000000 3fffffff000000000 3ff7ffffc00000000 3ff3ffffc00000000 3ff7ffe0000000000 3fffffe0000000000 3ffff0c0000000000 3ffff040000000000 3fff9000000000000 3ffe0000000000000 3ffe0000000000000 3ff80000000000000 3ff78000000000000 3ff80000000000000 3ff78000000000000 3ffff000000000000 3ffefc00000000000 3fffef00000000000 3fffff00000000000 3ffefc00000000000 3ffffc00000000000 3ffe0000000000000 3ffd8000000000000 3ffbf030000000000 3ff7ff30000000000 3ffffff0000000000 3fffdffe000000000 3fff9fff000000000 3ffffdff000000000 3ffffffe000000000 3ffeffe0000000000 3fffff20000000000 3ffff800000000000 3ffc1800000000000 3ffb0e00000000000 3ff7c000000000000 3ffec000000000000 3ffff000000000000 3fff0000000000000 3ff80000000000000 3ff80000000000000 3ff00000000000000 3ff00000000000000 3ff00000000000000 3ff00000000000000 3ffc0000000000000 3fff0000000000000 3fff8000000000000 3fffc000000000000 3fffe000000000000 3ffff83e000000000 3fffff3e000000000 3ffbfff0000000000 3ff1fff8000000000 3ffbffffc00000000 3fffffff800000000 3ffffdff800000000 3ffffcfff80000000 3ffffffffe0000000 3fffeff9fe0000000 3fff9ff1ff0000000 3ff79ffbff0000000 3fff7fffff0000000 3fffffffff0000000 3ffffffffe0000000 3ffffeffe00000000 3ffffeff000000000 3fffffff000000000 3ff7ffffc00000000 3ff3ffffc00000000 3ff7ffe0000000000 3fffffe0000000000 3ffff0c0000000000 3ffff040000000000 3fff9000000000000 3ffe0000000000000 3ffe0000000000000 3ff80000000000000 3ff78000000000000 3ffff000000000000 3ffefc00000000000 3fffef00000000000 3fffff00000000000 3ffefc00000000000 3ffffc00000000000 3ffe0000000000000 3ffd8000000000000 3ffbf030000000000 3ff7ff30000000000 3ffffff0000000000 3fffdffe000000000 3fff9fff000000000 3ffffdff000000000 3ffffffe000000000 3ffeffe0000000000 3fffff20000000000 3ffff800000000000 3ffc1800000000000 3ffb0e00000000000 3ff7c000000000000 3ffec000000000000 3ffff000000000000 3fff0000000000000 3ff80000000000000 3ff80000000000000 3ff00000000000000 3ff00000000000000 3ff00000000000000 3ff00000000000000 3ffc0000000000000 3fff0000000000000 3fff8000000000000 3fffc000000000000 3fffe000000000000 3ffff83e000000000 3fffff3e000000000 3ffbfff0000000000 3ff1fff8000000000 3ffbffffc00000000 3fffffff800000000 3ffffdff800000000 3ffffcfff80000000 3ffffffffe0000000 3fffeff9fe0000000 3fff9ff1ff0000000 3ff79ffbff0000000 3fff7fffff0000000 3fffffffff0000000 3ffffffffe0000000 3ffffeffe00000000 3ffffeff000000000 3fffffff000000000 3ff7ffffc00000000 3ff3ffffc00000000 3ff7ffe0000000000 3fffffe0000000000 3ffff0c0000000000 3ffff040000000000 3fff9000000000000 3ffe0000000000000 3ffe0000000000000 3ff80000000000000 3ff78000000000000 3ffff000000000000 3ffefc00000000000 3fffef00000000000 3fffff00000000000 3ffefc00000000000 3ffffc00000000000 3ffe0000000000000 3ffd8000000000000 3ffbf030000000000 3ff7ff30000000000 3ffffff0000000000 3fffdffe000000000 3fff9fff000000000 3ffffdff000000000 3ffffffe000000000 3ffeffe0000000000 3fffff20000000000 3ffff800000000000 3ffc1800000000000 3ffb0e00000000000 3ff7c000000000000 3ffec000000000000 3ffff000000000000 3fff0000000000000 3ff80000000000000 3ff80000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000 3fc00000000000000",
+  },
+};
+/* === FIN RELEVE === */
+
+/* ---- polices ----------------------------------------------------
+   FONTE : une police 8×8 à moi, pour l'écran-titre. Les trois autres
+   sont relevées : ETAT (fine, 5×7, ligne d'état et GAME OVER), LIFT (le
+   chiffre du lift, 6×8), BANDE (5×5, noir sur le sol). */
 const FONTE = {
  'A':'183C66667E666600','B':'7C66667C66667C00','C':'3C66606060663C00','D':'786C6666666C7800',
  'E':'7E60607C60607E00','F':'7E60607C60606000','G':'3C66606E66663E00','H':'6666667E66666600',
@@ -271,24 +293,32 @@ const FONTE = {
  '!':'1818181818001800',':':'0018180018180000','/':'060C183060000000',
  "'":'1818180000000000','(':'0C18303030180C00',')':'30180C0C0C183000',
 };
-const glyphe = (ch) => FONTE[ch] || FONTE[' '];
-function ecrire(txt, x, y, c, k = 1){
+function ecrireAvec(police, txt, x, y, c, secours = FONTE){
   txt = String(txt).toUpperCase();
   for (let n = 0; n < txt.length; n++){
-    const g = glyphe(txt[n]);
+    const g = police[txt[n]] || secours[txt[n]] || FONTE[' '];
     for (let l = 0; l < 8; l++){
       const octet = parseInt(g.substr(l*2, 2), 16);
-      for (let b = 0; b < 8; b++) if (octet & (0x80 >> b))
-        rect(x + (n*8 + b)*k, y + l*k, k, k, typeof c === 'function' ? c(y + l*k) : c);
+      for (let b = 0; b < 8; b++) if (octet & (0x80 >> b)) pset(x + n*8 + b, y + l, typeof c === 'function' ? c(y + l) : c);
     }
   }
 }
-const centrer = (txt, y, c, k = 1) => ecrire(txt, ((L - txt.length*8*k) >> 1), y, c, k);
+const ecrire = (txt, x, y, c) => ecrireAvec(FONTE, txt, x, y, c);
+const centrer = (txt, y, c) => ecrire(txt, ((L - txt.length*8) >> 1), y, c);
+const ecrireEtat = (txt, x, y, c) => ecrireAvec(RELEVE.polices.etat, txt, x, y, c);
+const ecrireBande = (txt, x, y) => ecrireAvec(RELEVE.polices.bande, txt, x, y, 1);
+function ecrire2x(txt, x, y, c){
+  txt = String(txt).toUpperCase();
+  for (let n = 0; n < txt.length; n++){
+    const g = FONTE[txt[n]] || FONTE[' '];
+    for (let l = 0; l < 8; l++){ const o = parseInt(g.substr(l*2, 2), 16);
+      for (let b = 0; b < 8; b++) if (o & (0x80 >> b)) rect(x + (n*8 + b)*3, y + l*3, 3, 3, c); }
+  }
+}
 
 /* ---- lutins ------------------------------------------------------
    Un lutin est monochrome, comme sur le TMS9918A : '#' est un point,
-   '.' est transparent ; la couleur se choisit au moment de poser.
-------------------------------------------------------------------- */
+   '.' est transparent ; la couleur se choisit au moment de poser. */
 function lutin(l){
   const px = [];
   l.forEach((r, j) => r.split('').forEach((ch, i) => { if (ch === '#') px.push(i, j); }));
@@ -298,42 +328,30 @@ function poser(sp, x, y, c){
   const p = sp.px;
   for (let i = 0; i < p.length; i += 2) pset(x + p[i], y + p[i+1], c);
 }
-const VAISSEAU = lutin([
-  '..#.............',
-  '..##............',
-  '..####....#.....',
-  '.############...',
-  '################',
-  '..##########....',
-  '....##..##......',
-]);
-const RESERVE = lutin([          /* le même, réduit, pour la ligne d'état */
-  '.#..........',
-  '.##.........',
-  '.########...',
-  '############',
-  '..##..##....',
-]);
-const ECHAPPEMENT = [lutin(['#.#.#..','.#.#.#.','#.#.#..']), lutin(['.#.#.#.','#.#.#..','.#.#.#.'])];
+const VAISSEAU = lutin(RELEVE.lutins.vaisseau);                 /* 16×10, vert sombre, relevé */
+const ECHAPPEMENT = [lutin(RELEVE.lutins.echappement),          /* 10×4, gris, à (−11, +5) du vaisseau */
+                     lutin(RELEVE.lutins.echappement.map((r) => r.slice(1) + r[0]))];
+const FLECHE = lutin(RELEVE.lutins.fleche);                     /* 28×7, la flèche du score */
 const SP = {
-  swooper:   lutin(['.......###..','...#######..','############','...####.##..','.......#....']),
-  ltf:       lutin(['#.........','#####.....','##########','#####.....','#.........']),
-  saucer:    lutin(['....####....','..########..','############','..########..','....#..#....']),
-  urbite:    lutin(['.......##.......','......####......','..############..','.##############.',
-                    '################','.##############.','....##....##....','...##......##...']),
-  dramite:   lutin(['......###.......','.....#####......','..############..','.##############.',
-                    '################','.###.######.###.','..#..........#..','.#............#.']),
-  bynite:    lutin(['..###......###..','.#####....#####.','################','#####.####.#####',
-                    '################','.#####....#####.','..###......###..','....#......#....']),
-  satellite: lutin(['#........#####..','##.......#...#..','###......#.#.#..','########.#...#..',
-                    '###......#.#.#..','##.......#...#..','#........#####..','................']),
-  ast1:      lutin(['.##.','####','####','.##.']),
-  ast2:      lutin(['..###..','.#####.','#######','#######','.#####.','..##...']),
-  ast3:      lutin(['...####...','..######..','.########.','##########','##########','.########.','..######..','....###...']),
+  swooper:   lutin(RELEVE.lutins.swooper),                       /* 14×8, relevé */
+  urbite:    lutin(RELEVE.lutins.urbite),                        /* 16×13, relevé */
+  satellite: lutin(RELEVE.lutins.satellite),                     /* 16×10, relevé */
+  /* les suivants sont retracés d'après la table des lutins (planche publique), pas relevés */
+  ltf:       lutin(['.......#........','......##........','....####........','..######........','################',
+                    '..######........','....####........','......##........','.......#........']),
+  saucer:    lutin(['......####......','....########....','..############..','################','..#..#..#..#..#.','.#..#..#..#..#..']),
+  croiseur:  lutin(['.......#........','.....###..#.....','...#####..##....','.#######..###...','################',
+                    '.#######..###...','...#####..##....','.....###..#.....','.......#........']),
+  ast1:      lutin(['..####..','.######.','########','##.#####','########','.######.','..####..']),
+  ast2:      lutin(['....####....','..########..','.##########.','############','####..######','############','.##########.','..########..','....####....']),
+  ast3:      lutin(['.####.','######','######','.####.']),
 };
-/* Les sept appareils, dans l'ordre du manuel ; points par niveau 1 / 2 / 3 et plus. */
+SP.dramite = SP.croiseur; SP.bynite = SP.croiseur;
+const MISSILE = lutin(RELEVE.lutins.missile);                   /* 10×5, la croix devant, le trait derrière */
+/* Les sept appareils, dans l'ordre du manuel ; points par niveau 1 / 2 / 3 et plus.
+   Les couleurs des Swoopers sont celles vues sur la capture, plus quelques-unes. */
 const TYPES = {
-  swooper:   { nom:'SWOOPERS',  chasseur:true,  pts:[100,200,300], couleurs:[8,2,13,4,5,7,9,11] },
+  swooper:   { nom:'SWOOPERS',  chasseur:true,  pts:[100,200,300], couleurs:[6,5,13,10,8,2,9,11] },
   urbite:    { nom:'URBITES',   chasseur:false, pts:[100,200,300], couleurs:[7] },
   ltf:       { nom:'LTF',       chasseur:true,  pts:[200,300,400], couleurs:[9,3,13,5,11,7] },
   dramite:   { nom:'DRAMITES',  chasseur:false, pts:[200,300,400], couleurs:[9] },
@@ -342,49 +360,84 @@ const TYPES = {
   satellite: { nom:'KILLER SATELLITES', chasseur:false, pts:[400,400,400], couleurs:[15] },
 };
 const ORDRE = ['swooper','urbite','ltf','dramite','saucer','bynite'];
-/* Prime de ceinture d'astéroïdes : 1000, 2000, 3000, 4000, 4500, puis +500 jusqu'à 10 000. */
 const primeCeinture = (n) => n <= 4 ? n * 1000 : Math.min(10000, 4500 + (n - 5) * 500);
 
 /* ==================================================================
-   Son : ondes carrées et bruit, dans l'esprit du SN76489.
+   PSG — un SN76489 (TMS9919) en WebAudio, tel que le TI-99/4A l'avait :
+   trois voix carrées, une voix de bruit, seize crans d'atténuation de
+   2 dB, et rien d'autre. Les effets sont des partitions à 60 Hz — une
+   étape par image, comme le jeu les écrivait dans le registre — d'où
+   les décroissances en marches d'escalier qui font le grain du son.
+   Le bruit vient d'un registre à décalage de 15 bits : « blanc » avec
+   deux prises, « périodique » avec une seule (une note bourdonnante).
    ================================================================== */
-let ac = null;
-const S = { son:true, voix:true };
-function audio(){ try{ ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); }catch(e){} return ac; }
-function bip(freq, duree, vol = .07, glisse = null){
-  if (!S.son || !audio()) return;
-  try{
-    const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
-    o.type = 'square'; o.frequency.setValueAtTime(freq, t);
-    if (glisse) o.frequency.exponentialRampToValueAtTime(glisse, t + duree);
-    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + duree);
-    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + duree);
-  }catch(e){}
-}
-function bruit(duree, vol = .12){
-  if (!S.son || !audio()) return;
-  try{
-    const n = Math.floor(ac.sampleRate * duree), tampon = ac.createBuffer(1, n, ac.sampleRate), d = tampon.getChannelData(0);
-    for (let i = 0; i < n; i++) d[i] = (Math.random()*2 - 1) * (1 - i/n);
-    const src = ac.createBufferSource(), g = ac.createGain();
-    src.buffer = tampon; g.gain.value = vol; src.connect(g); g.connect(ac.destination); src.start();
-  }catch(e){}
-}
-/* La sirène d'alerte : deux tons alternés, comme l'avertisseur de bord. */
-function sirene(){
-  if (!S.son || !audio()) return;
-  try{
-    const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
-    o.type = 'square';
-    for (let i = 0; i < 8; i++) o.frequency.setValueAtTime(i % 2 ? 660 : 880, t + i * .11);
-    g.gain.setValueAtTime(.05, t); g.gain.setValueAtTime(.05, t + .85); g.gain.exponentialRampToValueAtTime(.0001, t + .95);
-    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + .95);
-  }catch(e){}
-}
+const PSG = (() => {
+  const CLK = 3579545, ATT = [];
+  for (let a = 0; a < 16; a++) ATT.push(a === 15 ? 0 : Math.pow(10, -2 * a / 20));
+  let ac = null, actif = true, maitre = null;
+  function ctx(){
+    try{
+      if (!ac){ ac = new (window.AudioContext || window.webkitAudioContext)(); maitre = ac.createGain(); maitre.gain.value = .22; maitre.connect(ac.destination); }
+      if (ac.state === 'suspended') ac.resume();
+    }catch(e){ ac = null; }
+    return ac;
+  }
+  const freq = (n) => CLK / (32 * Math.max(1, n));
+  function ton(etapes, opt = {}){
+    if (!actif || !ctx()) return;
+    try{
+      const o = ac.createOscillator(), g = ac.createGain(), t0 = ac.currentTime + (opt.retard || 0), dt = 1 / 60;
+      o.type = 'square';
+      etapes.forEach((e, i) => {
+        const t = t0 + i * dt;
+        if (e.n !== undefined) o.frequency.setValueAtTime(freq(e.n), t);
+        if (e.a !== undefined) g.gain.setValueAtTime(ATT[e.a], t);
+      });
+      g.gain.setValueAtTime(0, t0 + etapes.length * dt);
+      o.connect(g); g.connect(maitre); o.start(t0); o.stop(t0 + etapes.length * dt + .01);
+    }catch(e){}
+  }
+  function bruit(etapes, opt = {}){
+    if (!actif || !ctx()) return;
+    try{
+      const sr = ac.sampleRate, dt = 1 / 60, n = etapes.length, tampon = ac.createBuffer(1, Math.ceil(n * dt * sr), sr), d = tampon.getChannelData(0);
+      let reg = 0x4000, acc = 0, sortie = 1, a = 15, div = 16, blanc = !opt.periodique, i = 0, prochaine = 0;
+      for (let s = 0; s < d.length; s++){
+        if (s >= prochaine && i < n){ const e = etapes[i++]; if (e.a !== undefined) a = e.a; if (e.n !== undefined) div = e.n; if (e.periodique !== undefined) blanc = !e.periodique; prochaine = i * dt * sr; }
+        acc += freq(div) / sr;
+        while (acc >= 1){
+          acc -= 1;
+          const bit = reg & 1, retour = blanc ? (bit ^ ((reg >> 1) & 1)) : bit;
+          reg = (reg >> 1) | (retour << 14); sortie = bit ? 1 : -1;
+        }
+        d[s] = sortie * ATT[a];
+      }
+      const src = ac.createBufferSource(); src.buffer = tampon; src.connect(maitre); src.start(ac.currentTime + (opt.retard || 0));
+    }catch(e){}
+  }
+  const decroissance = (pas, depuis = 0) => Array.from({ length: pas }, (_, i) => Math.round(depuis + (15 - depuis) * i / Math.max(1, pas - 1)));
+  return { ton, bruit, decroissance, ctx, set actif(v){ actif = v; }, get actif(){ return actif; } };
+})();
+/* Les effets, écrits en étapes de 1/60 s. */
+const SON = {
+  laser(){ PSG.ton([{ n:28, a:3 }, { n:42 }, { n:64 }, { n:96 }, { n:150, a:7 }, { n:230, a:11 }]); },
+  vaisseau(){ PSG.bruit(PSG.decroissance(42).map((a) => ({ a, n:16 }))); },
+  ennemi(){ PSG.bruit(PSG.decroissance(14, 2).map((a) => ({ a, n:32 }))); },
+  asteroide(){ PSG.bruit(PSG.decroissance(10, 4).map((a) => ({ a, n:64 }))); },
+  sirene(){ const e = []; for (let k = 0; k < 10; k++) for (let i = 0; i < 6; i++) e.push({ n: k & 1 ? 190 : 150, a:5 }); e.push({ a:15 }); PSG.ton(e); },
+  ding(){ PSG.ton([{ n:62, a:2 }, { a:5 }, { a:8 }, { a:11 }, { a:14 }]); },
+  missile(){ PSG.bruit([{ n:60, a:6, periodique:true }, { a:8 }, { a:10 }, { a:12 }, { a:14 }]); },
+  supp(){ PSG.ton([{ n:190, a:3 }, {}, {}, { n:150 }, {}, {}, { n:112 }, {}, {}, {}, { a:6 }, { a:9 }, { a:12 }, { a:15 }]); },
+  tic(){ PSG.ton([{ n:95, a:3 }, { a:9 }, { a:15 }]); },
+  lift(k){ PSG.ton([{ n:130 - k * 25, a:4 }, { a:9 }, { a:15 }]); },
+  niveau(){ PSG.ton(Array.from({ length: 24 }, (_, i) => ({ n: 240 - i * 8, a: i < 18 ? 4 : 4 + (i - 18) * 2 }))); },
+  chaud(){ PSG.ton([{ n:40, a:8 }, { a:15 }]); },
+};
 
 /* La voix de bord : la signature de Parsec. Les phrases sont celles
    relevées par les joueurs ; on ne parle jamais par-dessus une alerte. */
 let VOIX = null;
+const S = { son:true, voix:true };
 function choisirVoix(){
   try{
     const vs = speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang));
@@ -406,107 +459,55 @@ function parler(txt, opt = {}){
 const COMPLIMENTS = ['Nice shooting.', 'Great shot, pilot!', 'Laser on target.'];
 
 /* ==================================================================
-   Le relief : un flot de colonnes. Chaque colonne est un mot de 30 bits,
-   le bit r allumé = un point de sol à la ligne SOL_MAX + r. Le décor
-   normal est une bande de 2048 colonnes engendrée une fois ; les tunnels
-   de ravitaillement sont des segments insérés dans le flot.
+   Le relief : un flot de colonnes. Chaque colonne tient dans deux mots
+   de 32 bits : lo = lignes 100..131, hi = lignes 132..157. Le décor est
+   fait des quatre écrans relevés, mis bout à bout ; les tunnels sont
+   des segments engendrés, insérés dans le flot.
    ================================================================== */
-const TER_L = 2048, TERRAIN = new Uint32Array(TER_L);
-function poserSol(rows, wx, ySommet){          /* silhouette OR-ée dans le relief */
-  rows.forEach((r, j) => { const row = ySommet - SOL_MAX + j; if (row < 0 || row >= NREL) return;
-    for (let i = 0; i < r.length; i++) if (r[i] === '#') TERRAIN[(wx + i) % TER_L] |= 1 << row; });
-}
-function poserTexteSol(txt, wx, y){            /* les initiales des auteurs, et le nom du jeu, gravés dans le sol */
-  txt = txt.toUpperCase();
-  for (let n = 0; n < txt.length; n++){
-    const g = glyphe(txt[n]);
-    for (let l = 0; l < 8; l++){ const o = parseInt(g.substr(l*2,2),16), row = y - SOL_MAX + l;
-      for (let b = 0; b < 8; b++) if (o & (0x80 >> b)) TERRAIN[(wx + n*8 + b) % TER_L] |= 1 << row; }
-  }
-}
-/* Les constructions du sol, retracées d'après une capture du vrai jeu :
-   le château d'eau, la statue à socle évasé, les chasseurs posés, le
-   champignon, la fusée, l'aileron, le temple à la croix, et l'antenne. */
-const OBJETS = {
-  chateau: ['...########...','..##########..','.############.','##############','##############','.############.','..##########..',
-            '.....#.##.#...','.....#.##.#...','.....#.##.#...','.....#.##.#...','.....#.##.#...','.....#.##.#...','.....#.##.#...',
-            '.....#.##.#...','.....#.##.#...','.....#.##.#...','....##.##.##..'],
-  statue:  ['......####################......','....########################....','..############################..',
-            '################################','..############################..','......####################......',
-            '..........############..........','..........####..#####...........','..........####..#####...........',
-            '..........############..........','.........##############.........','........################........',
-            '.......####...####...####.......','......#####...####...#####......','.....######...####...######.....',
-            '....#######...####...#######....','...########...####...########...','..#########...####...#########..',
-            '.##########...####...##########.','################################'],
-  pose:    ['.......###..','...#######..','############','...####.##..','.......#....'],
-  champignon: ['.....######.....','..############..','.##############.','################','.......##.......','.......##.......',
-               '.......##.......','.......##.......','.....######.....'],
-  fusee:   ['...##...','..####..','..####..','.######.','.######.','.######.','.######.','.######.','.######.','.######.','.######.',
-            '########','########','#.####.#','#..##..#'],
-  aileron: ['.......#......','.......##.....','.......###....','..#########...','##############','..#########...','.......###....',
-            '.......##.....','.......#......'],
-  temple:  ['.......##.......','......####......','.......##.......','.....######.....','...##########...','..############..',
-            '.##############.','##....####....##','#.....####.....#','#.....####.....#'],
-  antenne: ['..########..','.#........#.','#.#......#.#','#..#....#..#','#...#..#...#','#....##....#','#....##....#','#...#..#...#',
-            '#..#....#..#','#.#......#.#','.#........#.','..########..','.....##.....','.....##.....','....####....'],
-};
-(function engendrerTerrain(){
-  /* les constructions, dans l'ordre de la capture ; chacune se pose sur un
-     replat, les collines hérissées vivent entre elles */
-  const POSES = [
-    ['statue',150],['pose',210],['pose',228],['champignon',262],['fusee',300],['aileron',318],['temple',350],['chateau',396],
-    ['antenne',640],['JED',900],['pose',1060],['fusee',1120],['PARSEC',1300],['chateau',1500],['temple',1560],
-    ['statue',1760],['champignon',1830],['antenne',1900],
-  ];
-  const largeur = (n) => n === 'JED' ? 24 : n === 'PARSEC' ? 48 : OBJETS[n][0].length;
-  const replat = (x) => POSES.some(([n, x0]) => x >= x0 - 6 && x < x0 + largeur(n) + 6);
-  /* collines : une houle lente, des crêtes, et beaucoup de lignes d'un point de large */
-  let h = 4, cible = 4;
-  for (let x = 0; x < TER_L; x++){
-    if (x % 24 === 0) cible = 2 + Math.random() * 8 + (Math.random() < .16 ? 10 : 0);
-    const plat = replat(x);
-    h += ((plat ? 1 : cible) - h) * (plat ? .5 : .12);
-    const haut = Math.max(1, Math.round(h));
-    for (let r = NREL - haut; r < NREL; r++) TERRAIN[x] |= 1 << r;
-    if (!plat && Math.random() < .28){ const pic = haut + 1 + Math.random() * 9;    /* les fameuses lignes verticales */
-      for (let r = Math.max(0, NREL - Math.round(pic)); r < NREL; r++) TERRAIN[x] |= 1 << r; }
-  }
-  for (const [n, x0] of POSES){
-    if (n === 'JED'){ poserTexteSol('JED', x0, BANDE - 16); poserTexteSol('URB', x0, BANDE - 8); }
-    else if (n === 'PARSEC') poserTexteSol('PARSEC', x0, BANDE - 8);
-    else poserSol(OBJETS[n], x0, BANDE - OBJETS[n].length);
+const TER_L = 2048, TER_LO = new Uint32Array(TER_L), TER_HI = new Uint32Array(TER_L);
+(function chargerSols(){
+  const ordre = ['depart', 'swoopers', 'urbite', 'satellites'];
+  let k = 0;
+  for (let tour = 0; tour < 2; tour++) for (const nom of ordre){
+    for (const h of RELEVE.sols[nom].split(' ')){
+      const v = BigInt('0x' + h);
+      TER_LO[k] = Number(v & 0xFFFFFFFFn); TER_HI[k] = Number((v >> 32n) & 0x3FFFFFFn); k++;
+    }
   }
 })();
-
-/* Le flot de colonnes affichées. */
-const COLS = new Uint32Array(4096);
+const COLS_LO = new Uint32Array(4096), COLS_HI = new Uint32Array(4096);
 let defil = 0, genX = 0, seg = null, curseurTerrain = 0;
 const fileSeg = [];
-const colonne = (wx) => COLS[wx & 4095];
-function segTerrain(n = 128){ return { len:n, col:() => TERRAIN[(curseurTerrain++) % TER_L] }; }
-/* Un tunnel de ravitaillement : le sol se soulève en un plafond plat,
-   dessous une galerie hérissée — plus longue et plus étroite au 3e.
-   Le 2e est précédé d'un gros rocher : impossible de rester en dessous
-   de la ligne des crêtes entre deux passages. Le 3e est deux fois plus long. */
+/* le point (x, y) du monde est-il du sol ? */
+function solA(wx, y){
+  if (y >= BANDE) return y < BANDE + H_BANDE;
+  if (y < Y0) return false;
+  const r = y - Y0, i = wx & 4095;
+  return r < 32 ? (COLS_LO[i] >>> r) & 1 : (COLS_HI[i] >>> (r - 32)) & 1;
+}
+function segTerrain(n = 128){ return { len:n, col:() => { const i = (curseurTerrain++) % TER_L; return [TER_LO[i], TER_HI[i]]; } }; }
+/* Un tunnel : ses colonnes sont pensées en 30 lignes sous SOL_MAX (128..157),
+   puis converties : lignes 128..131 → lo bits 28..31, 132..157 → hi bits 0..25. */
+const deRelief = (c) => [((c & 0xF) << 28) >>> 0, c >>> 4];
 function segTunnel(type){
   const long = [0, 560, 800, 1600][type], dmax = [0,3,5,7][type], fmax = [0,4,6,8][type];
-  const cols = new Uint32Array(long), ENTREE = 48, SORTIE = 24, LABEL = 64;
+  const cols = [], ENTREE = 48, SORTIE = 24, LABEL = 64, NREL = 30;
   let d = 1, f = 2;
   for (let i = 0; i < long; i++){
     let c = 0;
     const plafond = i >= ENTREE && i < long - SORTIE && !(type >= 2 && (i % 260) > 236);
-    if (type === 2 && i < 26){                                  /* le rocher qui force à ressortir */
+    if (type === 2 && i < 26){
       const haut = Math.round(NREL - Math.abs(i - 13) * 1.6); for (let r = Math.max(0, NREL - haut); r < NREL; r++) c |= 1 << r;
-      cols[i] = c; continue;
+      cols.push(deRelief(c)); continue;
     }
     if (Math.random() < .5) d = Math.max(1, Math.min(dmax, d + (Math.random() < .5 ? -1 : 1)));
     if (Math.random() < .5) f = Math.max(1, Math.min(fmax, f + (Math.random() < .5 ? -1 : 1)));
     const sousLabel = i >= LABEL - 2 && i < LABEL + 34;
     const fl = sousLabel ? 1 : f;
     if (plafond){ for (let r = 0; r < 3 + (sousLabel ? 0 : d); r++) c |= 1 << r; }
-    if (sousLabel) for (let r = 8; r < 17; r++) c |= 1 << r;     /* la boîte FUEL sous le plafond */
+    if (sousLabel) for (let r = 8; r < 17; r++) c |= 1 << r;
     for (let r = NREL - fl; r < NREL; r++) c |= 1 << r;
-    cols[i] = c;
+    cols.push(deRelief(c));
   }
   const t = { len:long, type, col:(i) => cols[i], toitDe:ENTREE, toitA:long - SORTIE, labelI:LABEL, entre:false, plein:false, fini:false };
   t.debut = () => { t.x0 = genX; G.tunnels.push(t); };
@@ -515,7 +516,7 @@ function segTunnel(type){
 function engendrer(jusqua){
   while (genX < jusqua){
     if (!seg || seg.i >= seg.len){ seg = fileSeg.shift() || segTerrain(); seg.i = 0; if (seg.debut) seg.debut(); }
-    COLS[genX & 4095] = seg.col(seg.i);
+    const c = seg.col(seg.i); COLS_LO[genX & 4095] = c[0]; COLS_HI[genX & 4095] = c[1];
     seg.i++; genX++;
   }
 }
@@ -535,13 +536,14 @@ const G = {
 };
 const touches = Object.create(null);
 try{ G.top = parseInt(localStorage.getItem('parsec-top') || '0', 10) || 0; }catch(e){}
-for (let i = 0; i < 72; i++) G.etoiles.push({ x:Math.random()*L|0, y:4 + Math.random()*146|0,
+for (let i = 0; i < 72; i++) G.etoiles.push({ x:Math.random()*L|0, y:4 + Math.random()*120|0,
   c:[2,3,4,5,7,8,9,10,11,13,14,15][Math.random()*12|0], ph:Math.random()*64|0 });
 
 const couleurSol = () => COUL_SOL[Math.min(G.niveau, 16) - 1];
 const pointsDe = (type) => TYPES[type].pts[Math.min(G.niveau, 3) - 1];
 const message = (txt, t = 150, fixe = false) => { G.msg = { txt, t, fixe }; };
-const enBas = () => G.nav.y >= SOL_MAX;             /* « dans le sol » : sous la ligne des crêtes */
+const enBas = () => G.nav.y >= SOL_MAX;
+const NEZ_Y = 6;                                       /* la ligne du nez : c'est de là que part le laser */
 
 /* Le vaisseau touche-t-il le relief ? Point par point, comme la machine. */
 function toucheSol(){
@@ -549,7 +551,7 @@ function toucheSol(){
   for (let i = 0; i < p.length; i += 2){
     const x = (n.x + p[i]) | 0, y = (n.y + p[i+1]) | 0;
     if (y >= BANDE) return true;
-    if (y >= SOL_MAX && (colonne(defil + x) >> (y - SOL_MAX)) & 1) return true;
+    if (y >= Y0 && solA(defil + x, y)) return true;
   }
   return false;
 }
@@ -559,19 +561,20 @@ function exploser(x, y, c, n = 18){
 function gagner(pts){
   G.score += pts;
   if (G.score >= G.prochainBonus){
-    G.vies++; G.prochainBonus += 10000;               /* 5 000, puis 15 000, 25 000… */
-    parler('Extra ship.'); bip(880, .12); setTimeout(() => bip(1320, .25), 120);
+    G.vies++; G.prochainBonus += 10000;
+    parler('Extra ship.'); SON.supp();
   }
   if (G.score > G.top){ G.top = G.score; try{ localStorage.setItem('parsec-top', String(G.top)); }catch(e){} }
 }
 
 /* ---- démarrage ---------------------------------------------------- */
-function scene(){                                     /* l'écran de patrouille : PRESS FIRE TO BEGIN */
+function scene(){
   Object.assign(G, { mode:'scene', score:0, vies:5, niveau:1, prochainBonus:5000, carburant:1, chaleur:0, lift:3,
     ennemis:[], missiles:[], asteroides:[], eclats:[], mort:0, laser:0, msg:null, tunnelIdx:1, ravitoDemande:false });
   G.nav = { x:44, y:80, vx:0 };
   message('PRESS FIRE TO BEGIN', 1, true);
   parler('Press fire to begin.', { prio:true });
+  majLifts();
 }
 function commencer(){
   G.mode = 'jeu'; G.msg = null; G.vague = -1; G.satellitesAvant = false;
@@ -579,17 +582,17 @@ function commencer(){
 }
 function nouveauVaisseau(){
   G.nav = { x:44, y:80, vx:0 }; G.carburant = 1; G.chaleur = 0; G.laser = 0;
-  G.ennemis = []; G.missiles = []; G.asteroides = []; G.ravitoDemande = false;      /* le vaisseau de réserve a le plein */
-  if (G.phase === 'vague' || G.phase === 'alerte'){                                  /* la vague en cours reprend du début */
+  G.ennemis = []; G.missiles = []; G.asteroides = []; G.ravitoDemande = false;
+  if (G.phase === 'vague' || G.phase === 'alerte'){
     if (G.vg && G.vg.type === 'satellite') G.satellitesAvant = true; else G.vague = Math.max(-1, G.vague - 1);
   }
   if (G.phase !== 'asteroides'){ G.phase = 'attente'; G.phaseT = 60; }
 }
 function perdreVaisseau(){
   if (G.mort > 0) return;
-  exploser(G.nav.x + 8, G.nav.y + 3, 8, 26); bruit(.5, .18);
+  exploser(G.nav.x + 8, G.nav.y + 5, 8, 26); SON.vaisseau();
   G.mort = 100;
-  if (G.mode === 'scene'){ commencer(); }             /* s'écraser avant le départ lance quand même la patrouille */
+  if (G.mode === 'scene'){ commencer(); }
   G.laser = 0; G.chaleur = 0;
 }
 function apresMort(){
@@ -601,12 +604,12 @@ function apresMort(){
 /* ---- vagues ------------------------------------------------------- */
 function alerte(txt, voix, suite){
   G.phase = 'alerte'; G.phaseT = 150; G.suite = suite;
-  message(txt, 150); sirene(); parler(voix, { prio:true });
+  message(txt, 150); SON.sirene(); parler(voix, { prio:true });
 }
 function vagueSuivante(){
   G.vague++;
   if (G.vague >= ORDRE.length){
-    G.ceinture = { reste: 900 + G.niveau * 300, compte: 6 };
+    G.ceinture = { reste: 900 + G.niveau * 300 };
     alerte('CAUTION! ASTEROID BELT!!', 'Caution! Asteroid belt!', 'asteroides');
     return;
   }
@@ -618,24 +621,24 @@ function vagueSuivante(){
 function lancer(type){
   const T = TYPES[type], sp = SP[type], n = G.nav, e = {
     type, sp, w:sp.w, h:sp.h, pv: type === 'satellite' ? 1 : Math.min(G.niveau, 3), t:0, tir:0,
-    col: T.couleurs[Math.random() * T.couleurs.length | 0], x: L + 16, y: 12 + Math.random()*100, vx:0, vy:0, cible:0,
+    col: T.couleurs[Math.random() * T.couleurs.length | 0], x: L + 16, y: 12 + Math.random()*90, vx:0, vy:0, cible:0,
   };
-  if (type === 'swooper' || type === 'ltf'){ e.y = 4; e.cible = 16 + Math.random()*100; }
-  if (type === 'saucer'){                              /* il arrive par derrière ; sa figure dépend de la réserve */
+  if (type === 'swooper' || type === 'ltf'){ e.y = 4; e.cible = 16 + Math.random()*90; }
+  if (type === 'saucer'){
     e.x = -16; e.vx = 1.7;
-    e.y = G.vies - 1 >= 4 ? 12 + Math.random()*104 : 12 + (G.vg.lances * 26) % 104;
+    e.y = G.vies - 1 >= 4 ? 12 + Math.random()*96 : 12 + (G.vg.lances * 26) % 96;
   }
   if (type === 'urbite' || type === 'dramite' || type === 'bynite')
-    e.x = L - 20 - Math.min(80, (G.niveau - 1) * 10);  /* les croiseurs apparaissent de plus en plus près */
+    e.x = L - 20 - Math.min(80, (G.niveau - 1) * 10);
   G.ennemis.push(e);
 }
-function missile(x, y, vy = 0){ G.missiles.push({ x, y, vx:-2.2, vy }); bip(260, .05, .03, 120); }
+function missile(x, y, vy = 0){ G.missiles.push({ x, y, vx:-2.2, vy }); SON.missile(); }
 
 function phases(){
   const ph = G.phase;
   if (ph === 'attente'){
     if (--G.phaseT > 0) return;
-    if (G.satellitesAvant){                          /* niveau 4 et plus : sans aucune alerte */
+    if (G.satellitesAvant){
       G.satellitesAvant = false; G.phase = 'vague';
       G.vg = { type:'satellite', n: 1 + (Math.random()*4|0), lances:0, abattus:0, tSpawn:0 };
       return;
@@ -649,8 +652,7 @@ function phases(){
   else if (ph === 'vague'){
     const v = G.vg, T = TYPES[v.type];
     if (!enBas() && v.lances < v.n){
-      const vivants = G.ennemis.length;
-      if (T.chasseur ? (++v.tSpawn >= 55) : vivants === 0){ v.tSpawn = 0; v.lances++; lancer(v.type); }
+      if (T.chasseur ? (++v.tSpawn >= 55) : G.ennemis.length === 0){ v.tSpawn = 0; v.lances++; lancer(v.type); }
     }
     if (v.abattus >= v.n && G.ennemis.length === 0){ G.phase = 'attente'; G.phaseT = 100; }
   }
@@ -663,16 +665,15 @@ function ceinture(){
   c.reste--;
   if (c.reste > 0 && G.t % Math.max(6, 18 - G.niveau) === 0){
     const sp = [SP.ast1, SP.ast2, SP.ast3][Math.random()*3|0];
-    G.asteroides.push({ sp, x:L + 8, y:10 + Math.random()*110, vx:-(1.1 + Math.random()*1.3 + G.niveau*.05), vy:(Math.random()-.5)*.3 });
+    G.asteroides.push({ sp, x:L + 8, y:10 + Math.random()*100, vx:-(1.1 + Math.random()*1.3 + G.niveau*.05), vy:(Math.random()-.5)*.3 });
   }
-  /* le compte à rebours de l'ordinateur de bord : la seule mesure de la longueur de la ceinture */
   if (c.reste === 390){ parler('Countdown.', { prio:true }); }
-  for (let k = 5; k >= 1; k--) if (c.reste === k * 60){ parler(String(k), { file:true }); bip(1000, .05, .05); }
+  for (let k = 5; k >= 1; k--) if (c.reste === k * 60){ parler(String(k), { file:true }); SON.tic(); }
   if (c.reste <= 0){
     gagner(primeCeinture(G.niveau)); G.asteroides = [];
     G.niveau++; G.vague = -1; G.ceinture = null;
     if (G.niveau >= 4) G.satellitesAvant = true;
-    parler('Advance to next level.', { file:true });
+    parler('Advance to next level.', { file:true }); SON.niveau();
     G.phase = 'attente'; G.phaseT = 150;
   }
 }
@@ -693,13 +694,13 @@ function tunnels(){
       G.carburant = Math.min(1, G.carburant + 1/150);
       if (G.carburant >= 1){ t.plein = true; parler('Congratulations.'); }
     }
-    if (t.entre && !enBas()){                        /* on ressort par le haut : le jeu reprend */
+    if (t.entre && !enBas()){
       t.fini = true; G.ravitoDemande = false;
       gagner(t.type * 1000); parler('Nice flying.', { prio:true });
       G.tunnelIdx = t.type % 3 + 1;
     }
-    else if (!t.entre && defil > t.x0 + t.len){       /* manqué : les deux premiers reviennent, pas le troisième */
-      t.fini = true;                                   /* (après un troisième manqué, on vole jusqu'à la panne sèche) */
+    else if (!t.entre && defil > t.x0 + t.len){
+      t.fini = true;
       if (t.type !== 3) fileSeg.push(segTerrain(96), segTunnel(t.type));
     }
   }
@@ -709,12 +710,13 @@ function tunnels(){
 /* ---- laser -------------------------------------------------------- */
 const tireEnfonce = () => touches['.'] || touches[' '] || touches['0'] || touches['y'] || touches.souris;
 function laser(){
-  const n = G.nav, peut = tireEnfonce() && n.y + 4 < SOL_MAX && G.mort === 0;   /* on ne tire jamais dans le sol */
+  const n = G.nav, peut = tireEnfonce() && n.y + NEZ_Y < SOL_MAX && G.mort === 0;
   if (peut){
-    G.chaleur += (1/360) * Math.pow(1.35, G.niveau - 1);      /* six secondes de feu continu au niveau 1 */
-    if (++G.tirT % 6 === 1){ G.laser = 3; bip(1400, .07, .04, 300); toucherAuLaser(n.x + 16, n.y + 4); }
+    G.chaleur += (1/360) * Math.pow(1.35, G.niveau - 1);
+    if (++G.tirT % 6 === 1){ G.laser = 3; SON.laser(); toucherAuLaser(n.x + 16, n.y + NEZ_Y); }
   } else { G.tirT = 0; G.chaleur = Math.max(0, G.chaleur - 1/90); }
   if (G.laser > 0) G.laser--;
+  if (G.chaleur > .5 && (G.t & 7) === 0) SON.chaud();
   if (G.chaleur >= 1){ perdreVaisseau(); }
 }
 function toucherAuLaser(x0, y){
@@ -722,18 +724,18 @@ function toucherAuLaser(x0, y){
   for (const e of G.ennemis) if (e.x + e.w > x0 && y >= e.y && y < e.y + e.h && (!cible || e.x < cible.x)) cible = e;
   for (const a of G.asteroides) if (a.x + a.sp.w > x0 && y >= a.y && y < a.y + a.sp.h && (!cible || a.x < cible.x)) cible = a;
   if (!cible) return;
-  if (cible.sp && !cible.type){                       /* un astéroïde */
-    G.asteroides.splice(G.asteroides.indexOf(cible), 1); exploser(cible.x + 3, cible.y + 3, 14, 10); bruit(.15, .08); gagner(100); return;
+  if (cible.sp && !cible.type){
+    G.asteroides.splice(G.asteroides.indexOf(cible), 1); exploser(cible.x + 3, cible.y + 3, 14, 10); SON.asteroide(); gagner(100); return;
   }
   const e = cible;
-  if (e.type === 'urbite' && e.t < 120) return;      /* un Urbite est invulnérable ses deux premières secondes */
+  if (e.type === 'urbite' && e.t < 120) return;
   e.pv--;
-  if (e.pv > 0){                                     /* touché : il change de couleur — le Bynite passe au noir */
+  if (e.pv > 0){
     e.col = (e.type === 'bynite' && G.niveau >= 2) ? 1 : (e.pv === 1 ? 15 : 9);
-    bip(600, .06, .04); return;
+    SON.tic(); return;
   }
   G.ennemis.splice(G.ennemis.indexOf(e), 1);
-  exploser(e.x + e.w/2, e.y + e.h/2, e.col === 1 ? 5 : e.col); bruit(.22, .12);
+  exploser(e.x + e.w/2, e.y + e.h/2, e.col === 1 ? 5 : e.col); SON.ennemi();
   gagner(pointsDe(e.type));
   if (G.vg && G.vg.type === e.type){ G.vg.abattus++; }
   if (Math.random() < .3) parler(COMPLIMENTS[Math.random()*3|0]);
@@ -746,49 +748,49 @@ function ennemis(){
     e.t++;
     switch (e.type){
       case 'swooper':
-      case 'ltf': {                                    /* il pique d'en haut à droite, et accélère tant qu'il vole */
+      case 'ltf': {
         const acc = e.type === 'ltf' ? .0016 : .0008, vmax = e.type === 'ltf' ? 3.2 : 2.6;
         e.x -= Math.min(vmax, .7 + e.t * acc + (G.niveau - 1) * .1);
         e.y += (e.cible - e.y) * .04;
-        if (e.x < -e.w){ e.x = L + 8; e.cible = 16 + Math.random()*100; }
+        if (e.x < -e.w){ e.x = L + 8; e.cible = 16 + Math.random()*90; }
         break;
       }
-      case 'saucer': {                                 /* par derrière ; s'il rate, il fait demi-tour et charge de face */
+      case 'saucer': {
         e.x += e.vx;
         if (e.vx > 0 && e.x > L - 18){ e.vx = -2.3; }
         if (e.vx < 0) e.y += Math.sign(n.y - e.y) * .5;
-        if (e.x < -e.w){ e.x = -e.w; e.vx = 1.7; e.y = G.vies - 1 >= 4 ? 12 + Math.random()*104 : 12 + (e.t/7|0) % 104; }
+        if (e.x < -e.w){ e.x = -e.w; e.vx = 1.7; e.y = G.vies - 1 >= 4 ? 12 + Math.random()*96 : 12 + (e.t/7|0) % 96; }
         break;
       }
-      default: {                                       /* les croiseurs suivent votre altitude et tirent dans l'axe */
+      default: {
         const vit = { urbite:.4, dramite:1.0, bynite:.55, satellite:.7 }[e.type];
         const avance = { urbite:.12, dramite:.35, bynite:.28, satellite:.45 }[e.type];
-        e.y += Math.sign(n.y + 2 - e.y) * Math.min(vit, Math.abs(n.y + 2 - e.y));
+        e.y += Math.sign(n.y + 3 - e.y) * Math.min(vit, Math.abs(n.y + 3 - e.y));
         e.x -= avance;
         if (e.x < -e.w) e.x = L + 8;
         e.tir++;
-        const aligne = Math.abs(n.y + 3 - (e.y + e.h/2)) < (e.type === 'urbite' ? 4 : 7);
+        const aligne = Math.abs(n.y + 5 - (e.y + e.h/2)) < (e.type === 'urbite' ? 5 : 8);
         if (!bas && aligne && e.x > n.x + 20 && G.mort === 0){
-          if (e.type === 'urbite' && e.tir > 90){ e.tir = 0; missile(e.x, e.y + 2); missile(e.x, e.y + 5); }
-          if (e.type === 'dramite' && e.tir > 36){ e.tir = 0; missile(e.x, e.y + 3); }
-          if (e.type === 'satellite' && e.tir > 55){ e.tir = 0; missile(e.x, e.y + 3); }
-          if (e.type === 'bynite' && e.tir > 100){ e.tir = 0; missile(e.x, e.y + 3, -.5); missile(e.x, e.y + 3); missile(e.x, e.y + 3, .5); }
+          if (e.type === 'urbite' && e.tir > 90){ e.tir = 0; missile(e.x, e.y + 3); missile(e.x, e.y + 8); }
+          if (e.type === 'dramite' && e.tir > 36){ e.tir = 0; missile(e.x, e.y + 4); }
+          if (e.type === 'satellite' && e.tir > 55){ e.tir = 0; missile(e.x, e.y + 4); }
+          if (e.type === 'bynite' && e.tir > 100){ e.tir = 0; missile(e.x, e.y + 4, -.5); missile(e.x, e.y + 4); missile(e.x, e.y + 4, .5); }
         }
       }
     }
     e.y = Math.max(2, Math.min(SOL_MAX - e.h - 2, e.y));
   }
   for (const m of G.missiles){ m.x += m.vx; m.y += m.vy; }
-  G.missiles = G.missiles.filter((m) => m.x > -6 && m.y > 0 && m.y < SOL_MAX);
+  G.missiles = G.missiles.filter((m) => m.x > -12 && m.y > 0 && m.y < SOL_MAX);
   for (const a of G.asteroides){ a.x += a.vx; a.y += a.vy; }
-  G.asteroides = G.asteroides.filter((a) => a.x > -12);
+  G.asteroides = G.asteroides.filter((a) => a.x > -14);
 }
 function collisions(){
   if (G.mort > 0 || enBas()) return;
-  const n = G.nav, x0 = n.x + 1, x1 = n.x + 15, y0 = n.y + 1, y1 = n.y + 6;
+  const n = G.nav, x0 = n.x + 1, x1 = n.x + 15, y0 = n.y + 1, y1 = n.y + 9;
   for (const e of G.ennemis) if (e.x < x1 && e.x + e.w > x0 && e.y < y1 && e.y + e.h > y0){ perdreVaisseau(); return; }
   for (const a of G.asteroides) if (a.x < x1 && a.x + a.sp.w > x0 && a.y < y1 && a.y + a.sp.h > y0){ perdreVaisseau(); return; }
-  for (const m of G.missiles) if (m.x >= x0 - 1 && m.x <= x1 && m.y >= y0 - 1 && m.y <= y1 + 1){ perdreVaisseau(); return; }
+  for (const m of G.missiles) if (m.x + 2 >= x0 && m.x <= x1 && m.y + 2 >= y0 && m.y + 2 <= y1 + 1){ perdreVaisseau(); return; }
 }
 function eclats(){
   for (const p of G.eclats){ p.x += p.vx; p.y += p.vy; p.vie--; }
@@ -800,14 +802,14 @@ function pilotage(){
   const n = G.nav, vy = [0, .45, .9, 1.5][G.lift];
   if (touches.ArrowUp   || touches.e) n.y -= vy;
   if (touches.ArrowDown || touches.x) n.y += vy;
-  if (touches.ArrowRight || touches.d) n.vx = Math.min(1.6, n.vx + .07);        /* les fusées poussent */
-  else if (touches.ArrowLeft || touches.s) n.vx = Math.max(-.8, n.vx - .08);    /* au ralenti, on dérive vers l'arrière */
+  if (touches.ArrowRight || touches.d) n.vx = Math.min(1.6, n.vx + .07);
+  else if (touches.ArrowLeft || touches.s) n.vx = Math.max(-.8, n.vx - .08);
   else n.vx *= .9;
   n.x = Math.max(2, Math.min(L - 18, n.x + n.vx));
   n.y = Math.max(0, Math.min(BANDE - 1, n.y));
 }
 function carburant(){
-  if (enBas()){ if (G.t % 24 === 0) bip(1500, .03, .03); return; }             /* figé sous les crêtes — et ça tinte */
+  if (enBas()){ if (G.t % 24 === 0) SON.ding(); return; }
   G.carburant -= 1/7200;
   if (G.carburant < .25 && !G.ravitoDemande) demanderTunnel();
   if (G.carburant <= 0){ G.carburant = 0; perdreVaisseau(); }
@@ -841,50 +843,53 @@ function dessiner(){
 
   /* le relief, colonne par colonne, puis la bande de sol */
   for (let x = 0; x < L; x++){
-    const c = colonne(defil + x);
-    if (c) for (let r = 0; r < NREL; r++) if ((c >> r) & 1) pset(x, SOL_MAX + r, sol);
+    const i = (defil + x) & 4095, lo = COLS_LO[i], hi = COLS_HI[i];
+    if (lo) for (let r = 0; r < 32; r++) if ((lo >>> r) & 1) pset(x, Y0 + r, sol);
+    if (hi) for (let r = 0; r < 26; r++) if ((hi >>> r) & 1) pset(x, Y0 + 32 + r, sol);
   }
-  rect(0, BANDE, L, 8, sol);
-  if (G.msg && G.msg.t > 0 && (G.msg.fixe || (G.t >> 3) & 1)) centrer(G.msg.txt, BANDE, 1);
-  for (const t of G.tunnels){ const x = t.x0 + t.labelI - defil; if (x > -40 && x < L) ecrire('FUEL', x, SOL_MAX + 9, 1); }
+  rect(0, BANDE, L, H_BANDE, sol);
+  if (G.msg && G.msg.t > 0 && (G.msg.fixe || (G.t >> 3) & 1)){
+    const x0 = G.msg.txt.length <= 25 ? 49 : Math.max(1, (L - G.msg.txt.length * 8) >> 1);   /* relevé : le texte part de x = 49 */
+    ecrireBande(G.msg.txt, x0, BANDE + 2);
+  }
+  for (const t of G.tunnels){ const x = t.x0 + t.labelI - defil; if (x > -40 && x < L) ecrireBande('FUEL', x + 1, SOL_MAX + 10); }
 
   for (const a of G.asteroides) poser(a.sp, a.x, a.y, 14);
   for (const e of G.ennemis) poser(e.sp, e.x, e.y, e.col);
-  for (const m of G.missiles){ pset(m.x, m.y, 8); pset(m.x-1, m.y, 8); pset(m.x+1, m.y, 8); pset(m.x, m.y-1, 8); pset(m.x, m.y+1, 8); pset(m.x+3, m.y, 6); pset(m.x+5, m.y, 6); }
-  if (G.laser > 0){ const y = (n.y + 4) | 0; ligneH(n.x + 16, L - 1, y, COUL_LIGNE[y & 15]); }
+  for (const m of G.missiles) poser(MISSILE, m.x, m.y, 8);
+  if (G.laser > 0){ const y = (n.y + NEZ_Y) | 0; ligneH(n.x + 16, L - 1, y, COUL_LIGNE[y & 15]); }
 
   if (G.mort === 0 && G.mode !== 'titre' && G.mode !== 'fini'){
-    const chaud = G.chaleur > .5 && ((G.t >> 2) & 1);     /* le laser chauffe : rouge et vert en alternance */
-    poser(VAISSEAU, n.x, n.y, chaud ? 8 : 2);
-    poser(ECHAPPEMENT[(G.t >> 2) & 1], n.x - 7, n.y + 3, 14);
+    const chaud = G.chaleur > .5 && ((G.t >> 2) & 1);
+    poser(VAISSEAU, n.x, n.y, chaud ? 8 : 12);
+    poser(ECHAPPEMENT[(G.t >> 2) & 1], n.x - 11, n.y + 5, 14);
   }
   for (const p of G.eclats) pset(p.x, p.y, p.vie > 8 ? p.c : 8);
 
-  /* ---- la ligne d'état, telle que la décrit le manuel ---- */
-  ecrire('FUEL', 24, 170, 7);
-  for (let x = 63; x <= 145; x++){ pset(x, 169, 14); pset(x, 177, 14); }
-  for (let y = 169; y <= 177; y++){ pset(63, y, 14); pset(145, y, 14); }
-  rect(64, 170, Math.round(81 * G.carburant), 7, 9);
-  ligneH(160, 186, 173, 7); pset(160, 172, 7); pset(160, 174, 7);
-  for (let i = 0; i < 4; i++){ pset(186 - i, 173 - i, 7); pset(186 - i, 173 + i, 7); }
-  ecrire(String(G.score % 1000000).padStart(6, '0'), 192, 170, 15);
-  for (let i = 0; i < Math.min(4, G.vies - 1); i++) poser(RESERVE, 24 + i*16, 185, 7);
-  ecrire('LIFT ' + G.lift, 96, 184, 7);
-  ecrire('TOP', 160, 184, 7);
-  ecrire(String(G.top % 1000000).padStart(6, '0'), 192, 184, 15);
+  /* ---- la ligne d'état, aux positions relevées ---- */
+  ecrireEtat('FUEL', 24, 169, 7);
+  cadre(63, 168, 82, 8, 14);
+  rect(64, 169, Math.round(80 * G.carburant), 6, 6);
+  poser(FLECHE, 160, 169, 7);
+  ecrireEtat(String(G.score % 1000000).padStart(6, '0'), 192, 169, 15);
+  for (let i = 0; i < Math.min(4, G.vies - 1); i++) poser(VAISSEAU, 24 + i*16, 182, 7);
+  ecrireEtat('LIFT', 96, 184, 7);
+  ecrireAvec(RELEVE.polices.lift, String(G.lift), 136, 184, 7);
+  ecrireEtat('TOP', 160, 184, 7);
+  ecrireEtat(String(G.top % 1000000).padStart(6, '0'), 192, 184, 15);
 
   /* ---- écrans ---- */
   if (G.mode === 'titre'){
-    centrer('PARSEC', 44, 11, 3);
+    ecrire2x('PARSEC', (L - 6 * 24) >> 1, 44, 11);
     centrer('TEXAS INSTRUMENTS', 84, 14);
     centrer('1982', 96, 14);
   }
-  if (G.mode === 'fini'){                                /* les lignes multicolores du mode bitmap */
-    for (let y = 20; y < 124; y += 2){ const s = 64 + ((y * 37) % 5) * 0, lg = 96 + ((y * 53) % 97); ligneH(s, Math.min(L - 1, s + lg), y, COUL_LIGNE[(y >> 1) & 15]); }
-    rect(60, 76, 140, 12, 1);
-    centrer('GAME OVER', 78, (y) => COUL_LIGNE[(y >> 1) & 15]);
+  if (G.mode === 'fini'){
+    for (let y = 20; y < 130; y += 2){ const lg = 60 + ((y * 53) % 131); ligneH(64, Math.min(L - 1, 64 + lg), y, COUL_LIGNE[(y >> 1) & 15]); }
+    rect(60, 70, 140, 12, 1);
+    ecrireEtat('G A M E  O V E R', 64, 72, (y) => COUL_LIGNE[(y >> 1) & 15]);
   }
-  if (G.pause && G.mode === 'jeu') centrer('TIME WARP ACTIVATED', BANDE, 1);
+  if (G.pause && G.mode === 'jeu') ecrireBande('TIME WARP ACTIVATED', 49, BANDE + 2);
 
   cx.putImageData(img, 0, 0);
 }
@@ -904,8 +909,8 @@ requestAnimationFrame(boucle);
 
 let voixPrete = false;
 function feu(){
-  audio();
-  if (!voixPrete && window.speechSynthesis){          /* iOS n'autorise la voix qu'après un geste : on l'amorce */
+  PSG.ctx();
+  if (!voixPrete && window.speechSynthesis){
     try{ speechSynthesis.speak(new SpeechSynthesisUtterance('')); }catch(e){} voixPrete = true;
   }
   if (G.pause){ G.pause = false; return; }
@@ -918,7 +923,7 @@ addEventListener('keydown', (e) => {
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Enter'].includes(e.key)) e.preventDefault();
   if (touches[k]) return;
   touches[k] = true;
-  if (G.pause){ G.pause = false; return; }               /* n'importe quelle touche reprend le jeu */
+  if (G.pause){ G.pause = false; return; }
   if (k === 'p' && G.mode === 'jeu'){ G.pause = true; return; }
   if (k === '1' || k === '2' || k === '3') choisirLift(+k);
   if (k === '.' || k === ' ' || k === '0' || k === 'y' || k === 'Enter') feu();
@@ -927,16 +932,12 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => { touches[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false; });
 addEventListener('blur', () => { for (const k in touches) touches[k] = false; });
 
-function choisirLift(n){
-  G.lift = n; bip(500 + n * 150, .05, .03);
-  document.querySelectorAll('[data-lift]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.lift === n)));
-}
+function majLifts(){ document.querySelectorAll('[data-lift]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.lift === G.lift))); }
+function choisirLift(n){ G.lift = n; SON.lift(n); majLifts(); }
 document.querySelectorAll('[data-lift]').forEach((b) =>
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); choisirLift(+b.dataset.lift); }));
 
-/* ---- la manette tactile ----------------------------------------------
-   Un stick flottant : la base se pose là où le doigt se pose, et les
-   directions sont tout ou rien, comme une manette à contacts. ---- */
+/* ---- la manette tactile ---- */
 const stick = document.getElementById('stick');
 {
   const base = stick.querySelector('.base'), knob = stick.querySelector('.knob');
@@ -951,7 +952,7 @@ const stick = document.getElementById('stick');
     try{ stick.setPointerCapture(doigt); }catch(err){}
     const r = stick.getBoundingClientRect();
     base.style.left = (ox - r.left) + 'px'; base.style.top = (oy - r.top) + 'px'; base.classList.add('on');
-    audio(); e.preventDefault();
+    PSG.ctx(); e.preventDefault();
   });
   stick.addEventListener('pointermove', (e) => {
     if (e.pointerId !== doigt) return;
@@ -964,7 +965,6 @@ const stick = document.getElementById('stick');
   stick.addEventListener('pointercancel', (e) => { if (e.pointerId === doigt) lacher(); });
   stick.addEventListener('lostpointercapture', lacher);
 }
-/* Au doigt (pointer:coarse) la manette apparaît d'elle-même ; le bouton Manette force dans les deux sens. */
 const bTactile = document.getElementById('bTactile');
 function tactile(on){ document.documentElement.classList.toggle('tactile', on); bTactile.setAttribute('aria-pressed', String(on)); }
 {
@@ -998,14 +998,14 @@ const bascule = (btn, cle, apres) => {
   });
 };
 bascule(document.getElementById('bVoix'), 'voix');
-bascule(document.getElementById('bSon'), 'son');
+bascule(document.getElementById('bSon'), 'son', (on) => { PSG.actif = on; });
 bascule(document.getElementById('bBalayage'), null, (on) => document.documentElement.style.setProperty('--balayage', on ? '1' : '0'));
 document.getElementById('bPause').addEventListener('click', () => { if (G.mode === 'jeu') G.pause = !G.pause; });
 
 /* Première image tout de suite : la page ne s'ouvre jamais sur du noir. */
 engendrer(L + 8);
 dessiner();
-window.PARSEC = { G, avancer, dessiner, scene, commencer, touches, fileSeg, colonne: (x) => colonne(x), get defil(){ return defil; } };
+window.PARSEC = { G, avancer, dessiner, scene, commencer, touches, fileSeg, SON, PSG, solA, get defil(){ return defil; } };
 </script>
 
 </body>
