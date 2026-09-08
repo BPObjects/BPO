@@ -54,7 +54,7 @@ function charger(file){
 /* ------------------------------------------------------------ 2. poché gris */
 function masquePoche(img, W, H, o){
   o = o || {};
-  var satMax = o.satMax || 60, vMin = o.vMin || 90, vMax = o.vMax || 185, sdMax = o.sdMax || 26, aireMin = o.aireMin || 2500;
+  var satMax = o.satMax || 28, vMin = o.vMin || 90, vMax = o.vMax || 185, sdMax = o.sdMax || 26, aireMin = o.aireMin || 2500;
   var N = W * H, d = img.data, g = new Float32Array(N), gris = new Uint8Array(N);
   for (var i = 0, p = 0; i < N; i++, p += 4){
     var r = d[p], gg = d[p + 1], b = d[p + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
@@ -346,6 +346,39 @@ function importer(plan, opts){
   build();                                                                  /* IM_EDGES reconstruites */
   var cat = (typeof IM_MENUIS !== 'undefined') ? IM_MENUIS : [];
   var PF = cat.filter(function(m){ return m.id === 'm-pf'; })[0] || { kind: 'fenetre', l: 'Porte-fenêtre', w: 140, h: 215, sill: 0, pov: { type: 'battant', nv: 2 } };
+  if (opts.baies === 'f2') PF = cat.filter(function(m){ return m.id === 'm-f2'; })[0] || { kind: 'fenetre', l: 'Fenêtre 2 vantaux', w: 120, h: 125, sill: 100, pov: { type: 'battant', nv: 2 } };
+  else if (opts.baies === 'haute') PF = { kind: 'fenetre', l: 'Fenêtre haute', w: 120, h: 60, sill: 180, pov: { type: 'fixe', nv: 1 } };
+  /* ÉPAISSEUR DES FAÇADES = médiane du poché mesuré, portée par une config MUR de la bibliothèque
+     (c'est ainsi que l'immeuble connaît l'épaisseur d'un pan ; sans config, un pan « mur » fait 16 cm) */
+  var epF = null;
+  if (opts.epaisseurFacade !== false){
+    var ts = plan.murs.filter(function(m){ return m.facade; }).map(function(m){ return m.epaisseur; }).sort(function(a, b){ return a - b; });
+    if (ts.length) epF = Math.round(ts[ts.length >> 1] * 100);
+  }
+  var cfgMur = null;
+  if (epF && epF >= 10 && typeof cfgLoad === 'function' && typeof cfgStore === 'function'){
+    try {
+      var nomC = 'Mur du plan (' + epF + ' cm)', lst = cfgLoad();
+      cfgMur = lst.filter(function(c){ return c.mode === 'mur' && c.name === nomC; })[0] || null;
+      if (!cfgMur){
+        var base = (typeof PM !== 'undefined') ? JSON.parse(JSON.stringify(PM)) : {};
+        var mats = (typeof WALL_CORE_MATS !== 'undefined') ? WALL_CORE_MATS : [];
+        var pierre = mats.filter(function(m){ return /pierre|moellon/i.test(m.id + ' ' + (m.l || '')); })[0];
+        base.finExt = 1.5; base.isoExtOn = 0; base.isoIntOn = 0; base.finInt = 1.3; base.core = Math.max(5, epF - 2.8);
+        if (pierre) base.coreMat = pierre.id;
+        cfgMur = { id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: nomC, mode: 'mur', label: 'Mur',
+                   params: base, finish: null, date: new Date().toLocaleDateString('fr-FR') };
+        lst.unshift(cfgMur); cfgStore(lst);
+        if (typeof cfgRender === 'function'){ try { cfgRender(); } catch (e) {} }
+      }
+    } catch (e){ cfgMur = null; }
+  }
+  if (cfgMur){
+    PIM.wallCfg = {}; var vus = {};
+    IM_EDGES.forEach(function(ed){ var k = ed.o + '|' + (ed.floor | 0) + '|' + (ed.seg || 0); if (vus[k]) return; vus[k] = 1; PIM.wallCfg[k] = cfgMur.id; });
+    if (typeof _IMW_CACHE !== 'undefined') _IMW_CACHE = {};
+    build();                                                                /* les pans prennent l'épaisseur : IM_EDGES.ep à jour */
+  }
   var nOuv = 0, perdues = 0;
   plan.ouvertures.forEach(function(o){ if (o.type !== 'fenetre') return; var c = mid(o), best = null;
     IM_EDGES.forEach(function(ed){ if ((ed.floor | 0) !== 1) return;
@@ -360,7 +393,7 @@ function importer(plan, opts){
     PIM.imOpenings.push(op); nOuv++; });
   build();
   if (typeof refreshView === 'function'){ try { refreshView(); } catch (e) {} }
-  return { sommets: env.length, cloisons: PIM.partitions.length, portes: nPortes, menuiseries: nOuv, perdues: perdues, centre: [cx, cy] };
+  return { sommets: env.length, cloisons: PIM.partitions.length, portes: nPortes, menuiseries: nOuv, perdues: perdues, centre: [cx, cy], epaisseurFacade: epF, cfgMur: cfgMur ? cfgMur.name : null };
 }
 
 
@@ -429,6 +462,11 @@ function ouvrir(){
   r4.appendChild(el('span', 'color:var(--dm,#8b92a0);flex:1', "Hauteur d'étage"));
   var inH = document.createElement('input'); inH.type = 'number'; inH.min = '200'; inH.max = '800'; inH.step = '5'; inH.value = '300'; inH.style.cssText = 'width:64px;font-size:11px;'; r4.appendChild(inH); r4.appendChild(el('span', 'color:var(--dm,#8b92a0)', 'cm'));
   right.appendChild(r4);
+  var r6 = el('div', 'display:flex;align-items:center;gap:5px;');
+  r6.appendChild(el('span', 'color:var(--dm,#8b92a0);flex:1', 'Baies de façade'));
+  var selB = document.createElement('select'); selB.style.fontSize = '11px';
+  [['pf', 'Porte-fenêtre'], ['f2', 'Fenêtre 2 vantaux'], ['haute', 'Fenêtre haute']].forEach(function(o){ var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; selB.appendChild(op); });
+  selB.title = 'Le plan ne dit pas le type : toutes les baies reçoivent celui-ci, à la largeur mesurée ; change ensuite celles qui diffèrent'; r6.appendChild(selB); right.appendChild(r6);
   var r5 = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
   var ckF = document.createElement('input'); ckF.type = 'checkbox'; ckF.checked = true; r5.appendChild(ckF); r5.appendChild(el('span', '', 'Poser le scan en fond de plan')); right.appendChild(r5);
   var bAna = btn('Analyser le plan'); bAna.disabled = true; right.appendChild(bAna);
@@ -489,7 +527,7 @@ function ouvrir(){
   };
   bGo.onclick = function(){
     if (!ETAT.R) return;
-    var rep = importer(ETAT.R.plan, { hauteur: parseInt(inH.value, 10) || 300 });
+    var rep = importer(ETAT.R.plan, { hauteur: parseInt(inH.value, 10) || 300, baies: selB.value });
     if (ckF.checked) poserFond(ETAT.S, ETAT.R.plan, rep, ETAT.nom);
     if (typeof buildCatList === 'function'){ try { buildCatList(); } catch (e) {} }
     try { if (typeof LAYOUT !== 'undefined' && LAYOUT !== 'quad' && typeof SINGLEVIEW !== 'undefined' && SINGLEVIEW !== 'top'){ SINGLEVIEW = 'top'; LAYOUT = 'single'; } } catch (e) {}
@@ -497,7 +535,7 @@ function ouvrir(){
     if (typeof DIRTY !== 'undefined') DIRTY = true;
     if (typeof imgUiRefresh === 'function'){ try { imgUiRefresh(); } catch (e) {} }
     fermer();
-    var msg = 'Plan importé : ' + rep.sommets + ' sommets, ' + rep.cloisons + ' cloisons, ' + rep.menuiseries + ' menuiseries de façade' + (rep.perdues ? ' (' + rep.perdues + ' non accrochée(s))' : '') + '.';
+    var msg = 'Plan importé : ' + rep.sommets + ' sommets, ' + rep.cloisons + ' cloisons, ' + rep.menuiseries + ' menuiseries de façade' + (rep.perdues ? ' (' + rep.perdues + ' non accrochée(s))' : '') + (rep.epaisseurFacade ? ', façades ' + rep.epaisseurFacade + ' cm' : '') + '.';
     if (typeof toast === 'function'){ try { toast(msg); return; } catch (e) {} }
     console.log(msg);
   };
