@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Parsec 2026">
 <meta name="description" content="Parsec 2026 — le jeu de 1982 en 3D, à 360°, au-dessus d'un désert à deux soleils.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%23d9b46a%27/%3E%3Ccircle cx=%275%27 cy=%275%27 r=%272%27 fill=%27%23fff3c4%27/%3E%3Ccircle cx=%2710%27 cy=%274%27 r=%271.4%27 fill=%27%23ffd27a%27/%3E%3Cpath d=%27M0 11 Q4 8 8 11 T16 11 V16 H0Z%27 fill=%27%23a8743a%27/%3E%3C/svg%3E">
+<meta charset="utf-8">
 <title>Parsec 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3680,7 +3681,9 @@ function dessinerHUD(){
 
   /* la bande d'état, en bas, agrandie */
   dessinerBandeau();
-  let s = Math.max(1, Math.min(8, H / 192 * .62, W / BANDEAU_L));
+  /* la bande occupe au plus un cinquième de la hauteur et 92 % de la largeur ; en paysage
+     c'est la hauteur qui commande, en portrait la largeur — et jamais plus de 4 px par point */
+  let s = Math.max(1, Math.min(4, H * 0.20 / BANDEAU_H, W * 0.92 / BANDEAU_L));
   const bw = BANDEAU_L * s, bh = BANDEAU_H * s, bx = Math.round((W - bw) / 2), by = Math.round(H - bh);
   hcx.drawImage(bandeau, 0, 0, BANDEAU_L, BANDEAU_H, bx, by, bw, bh);
 
