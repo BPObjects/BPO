@@ -2027,297 +2027,321 @@ function avancerAtmosphere(dt){
 <script>
 /* ==== 34-cockpit.js ==== */
 /* ==================================================================
-   LE POSTE DE PILOTAGE — façon Rafale, et sali par l'usage.
+   LE POSTE DE PILOTAGE — une baignoire fermée, une dalle numérique.
 
-   Ce qu'AL a vu à l'écran de la première version : des silhouettes
-   noires découpées, une casquette qui montait en arc au-dessus de la
-   ligne des yeux et barrait tout. Le vrai sujet d'un cockpit n'est pas
-   la forme des pièces, c'est L'ENCAPSULEMENT : on doit sentir la
-   baignoire autour de soi, la planche qui ferme le bas, les montants
-   qui cadrent — sans rien perdre du champ utile, au-dessus de la ligne
-   d'horizon, là où se joue le combat.
+   Deux corrections après essai en vol par AL :
 
-   D'où cette disposition, reprise du Rafale : une planche large et
-   basse portant trois écrans (deux latéraux inclinés vers le pilote, un
-   central en portrait), un collimateur tête haute incliné devant les
-   yeux, deux flancs de baignoire qui montent à hauteur de coude, un
-   arceau fin au bout de la verrière. Rien ne dépasse la ligne des yeux
-   sauf l'arceau, à 1,35 m, où il ne couvre qu'un degré.
+   1. ON VOYAIT LE DÉSERT SOUS LA PLANCHE. Le poste n'était qu'un
+      assemblage de panneaux flottants : en virage, le regard passait
+      dessous et sortait de l'avion. Il est maintenant une BAIGNOIRE
+      FERMÉE — plancher, parois latérales pleines, cloison sous la
+      dalle, dossier derrière la tête. Quel que soit l'angle, on est
+      dedans.
 
-   Et rien n'est neuf : la peinture est rayée, la poussière s'est
-   déposée dans les angles, les écrans ont des traces de doigts. C'est
-   cette saleté qui fait la différence entre une maquette et une machine.
+   2. LA PLANCHE ÉTAIT DE LA TÔLE. Elle est devenue une dalle unique,
+      incurvée autour du pilote, entièrement numérique : horizon
+      artificiel au centre, échelles de vitesse et d'altitude en bandes
+      défilantes, arcs de poussée, de température et de carburant,
+      radar, ligne d'état — redessinée en vol, avec ses lignes de
+      balayage, son grain et ses traces de doigts. Les rares pièces
+      physiques qui restent (lisses, arceau, boîtier du collimateur)
+      sont rayées et poussiéreuses : c'est une machine qui a servi.
+
+   La géométrie de la dalle est construite à la main, quad par quad,
+   plutôt qu'avec un tronçon de cylindre : l'orientation d'un secteur
+   tourné est difficile à prévoir, et la première version s'était
+   retrouvée en travers du champ.
    ================================================================== */
 const COCKPIT = (() => {
   const T = THREE;
 
-  /* ---- la saleté : rayures fines, poussière dans les creux, traces ---- */
+  /* ---- l'usure : rayures, poussière dans les angles, traces ---- */
   let _usure = null;
   function textureUsure(){
     if (_usure) return _usure;
     const N = 512, c = document.createElement('canvas'); c.width = c.height = N;
     const g = c.getContext('2d');
-    g.fillStyle = '#8a8a8a'; g.fillRect(0, 0, N, N);
-    /* le grain de la peinture */
-    const im = g.getImageData(0, 0, N, N), d = im.data;
+    const im = g.createImageData(N, N), d = im.data;
     for (let i = 0; i < d.length; i += 4){
       const h = Math.sin(i * 12.9898) * 43758.5453, r = h - Math.floor(h);
       const v = 118 + r * 44;
-      d[i] = d[i + 1] = d[i + 2] = v;
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
     }
     g.putImageData(im, 0, 0);
-    /* les rayures : longues, fines, dans le sens du geste */
-    for (let k = 0; k < 260; k++){
-      const x = Math.random() * N, y = Math.random() * N, l = 8 + Math.random() * 90, a = (Math.random() - 0.5) * 0.7;
-      g.strokeStyle = 'rgba(' + (Math.random() < 0.6 ? '210,210,205,' : '60,58,56,') + (0.05 + Math.random() * 0.20) + ')';
+    for (let k = 0; k < 300; k++){
+      const x = Math.random() * N, y = Math.random() * N, l = 8 + Math.random() * 110, a = (Math.random() - 0.5) * 0.7;
+      g.strokeStyle = 'rgba(' + (Math.random() < 0.6 ? '215,215,210,' : '55,53,50,') + (0.05 + Math.random() * 0.22) + ')';
       g.lineWidth = Math.random() < 0.8 ? 1 : 2;
       g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
     }
-    /* la poussière : des taches douces, plus denses vers les bords (les angles morts du chiffon) */
-    for (let k = 0; k < 120; k++){
-      const x = Math.random() * N, y = Math.random() * N, r = 10 + Math.random() * 60;
+    for (let k = 0; k < 130; k++){
+      const x = Math.random() * N, y = Math.random() * N, r = 10 + Math.random() * 64;
       const bord = Math.min(x, y, N - x, N - y) / (N / 2);
       const rg = g.createRadialGradient(x, y, 0, x, y, r);
-      const a = (0.05 + Math.random() * 0.10) * (1.4 - bord);
-      rg.addColorStop(0, 'rgba(150,142,128,' + a + ')'); rg.addColorStop(1, 'rgba(150,142,128,0)');
+      rg.addColorStop(0, 'rgba(150,142,128,' + ((0.05 + Math.random() * 0.10) * (1.4 - bord)) + ')');
+      rg.addColorStop(1, 'rgba(150,142,128,0)');
       g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2);
     }
     _usure = new T.CanvasTexture(c);
     _usure.wrapS = _usure.wrapT = T.RepeatWrapping;
     return _usure;
   }
-  /* La peinture du poste : gris-vert sombre d'avion de combat, mate, rayée. Elle n'est
-     jamais tout à fait noire — une silhouette noire, c'est du carton découpé. */
   function peinture(couleur, rugosite){
     const u = textureUsure();
     return new T.MeshStandardMaterial({
-      color: couleur === undefined ? 0x3B4046 : couleur,
-      roughness: rugosite === undefined ? 0.86 : rugosite, metalness: 0.18,
-      roughnessMap: u, map: u,
-      emissive: 0x0E1114, emissiveIntensity: 0.55,      /* la lueur des écrans, sans les compter un à un */
+      color: couleur === undefined ? 0x2C3036 : couleur,
+      roughness: rugosite === undefined ? 0.88 : rugosite, metalness: 0.20,
+      roughnessMap: u, map: u, emissive: 0x0B0E12, emissiveIntensity: 0.5,
+      side: T.DoubleSide,
     });
-  }
-
-  /* ---- les écrans ---- */
-  function ecran(dessin, l, h, pixels){
-    const c = document.createElement('canvas'); c.width = pixels || 256; c.height = Math.round((pixels || 256) * h / l);
-    dessin(c.getContext('2d'), c.width, c.height);
-    const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace;
-    const m = new T.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 1.25, roughness: 0.30, metalness: 0 });
-    const mesh = new T.Mesh(new T.PlaneGeometry(l, h), m);
-    mesh.userData.canvas = c; mesh.userData.texture = t;
-    return mesh;
-  }
-  const VERT = '#7FEBA8', AMBRE = '#E8C06A', CYAN = '#7FD8E8';
-  function fondEcran(g, w, h){
-    g.fillStyle = '#0A1210'; g.fillRect(0, 0, w, h);
-    for (let y = 0; y < h; y += 3){ g.fillStyle = 'rgba(255,255,255,0.020)'; g.fillRect(0, y, w, 1); }
-    /* traces de doigts : deux ou trois taches grasses */
-    for (let k = 0; k < 3; k++){
-      const x = Math.random() * w, y = Math.random() * h, r = 12 + Math.random() * 22;
-      const rg = g.createRadialGradient(x, y, 0, x, y, r);
-      rg.addColorStop(0, 'rgba(190,200,190,0.055)'); rg.addColorStop(1, 'rgba(190,200,190,0)');
-      g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-  }
-  /* l'écran de gauche : les paramètres moteur, en barres */
-  function ecranMoteur(g, w, h){
-    fondEcran(g, w, h);
-    g.fillStyle = AMBRE; g.font = 'bold ' + Math.round(h * 0.09) + 'px monospace';
-    g.fillText('M 88-2', w * 0.08, h * 0.16);
-    const barres = [['N1', 0.82, VERT], ['N2', 0.74, VERT], ['T4', 0.61, AMBRE], ['CARB', 0.45, AMBRE], ['HYD', 0.90, VERT]];
-    barres.forEach(([nom, v, coul], i) => {
-      const y = h * (0.28 + i * 0.145);
-      g.fillStyle = '#4A5A52'; g.fillRect(w * 0.30, y, w * 0.62, h * 0.075);
-      g.fillStyle = coul; g.fillRect(w * 0.30, y, w * 0.62 * v, h * 0.075);
-      g.fillStyle = '#9FB0A8'; g.font = Math.round(h * 0.075) + 'px monospace'; g.fillText(nom, w * 0.06, y + h * 0.068);
-    });
-  }
-  /* l'écran de droite : la carte, avec le relief en courbes et des pistes */
-  function ecranCarte(g, w, h){
-    fondEcran(g, w, h);
-    g.strokeStyle = 'rgba(127,216,232,0.30)'; g.lineWidth = 1;
-    for (let k = 0; k < 9; k++){
-      g.beginPath();
-      for (let x = 0; x <= w; x += 6){
-        const y = h * (0.1 + k * 0.1) + Math.sin(x * 0.05 + k * 1.7) * h * 0.035 + Math.sin(x * 0.017 + k) * h * 0.02;
-        x === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
-      }
-      g.stroke();
-    }
-    g.strokeStyle = AMBRE; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(w * 0.5, h); g.lineTo(w * 0.5, h * 0.42); g.lineTo(w * 0.72, h * 0.18); g.stroke();
-    g.fillStyle = VERT; g.beginPath(); g.moveTo(w * 0.5, h * 0.92); g.lineTo(w * 0.54, h * 0.99); g.lineTo(w * 0.46, h * 0.99); g.fill();
-    g.fillStyle = CYAN; g.font = Math.round(h * 0.08) + 'px monospace'; g.fillText('NAV', w * 0.06, h * 0.12);
-  }
-  /* l'écran central : l'horizon artificiel — le seul qu'on redessine en vol */
-  function dessinerHorizon(g, w, h, roulis, tangage, alt, vit){
-    const cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.44;
-    g.fillStyle = '#0A1210'; g.fillRect(0, 0, w, h);
-    g.save();
-    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
-    g.translate(cx, cy); g.rotate(-roulis);
-    const d = tangage * h * 0.9;
-    g.fillStyle = '#2E5C7A'; g.fillRect(-w, -h + d, w * 2, h);          /* le ciel */
-    g.fillStyle = '#4A3A22'; g.fillRect(-w, d, w * 2, h);               /* la terre */
-    g.strokeStyle = '#CFE8E0'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(-w, d); g.lineTo(w, d); g.stroke();
-    g.strokeStyle = 'rgba(207,232,224,0.65)'; g.lineWidth = 1;
-    for (let k = -3; k <= 3; k++){                                       /* l'échelle de tangage */
-      if (!k) continue;
-      const y = d - k * h * 0.16, l = k % 2 ? R * 0.22 : R * 0.38;
-      g.beginPath(); g.moveTo(-l, y); g.lineTo(l, y); g.stroke();
-    }
-    g.restore();
-    g.strokeStyle = 'rgba(127,235,168,0.5)'; g.lineWidth = 1.5;
-    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
-    g.strokeStyle = VERT; g.lineWidth = 2.5;                             /* la maquette d'avion, fixe */
-    g.beginPath(); g.moveTo(cx - R * 0.34, cy); g.lineTo(cx - R * 0.10, cy); g.moveTo(cx + R * 0.10, cy); g.lineTo(cx + R * 0.34, cy);
-    g.moveTo(cx, cy - R * 0.06); g.lineTo(cx, cy + R * 0.06); g.stroke();
-    g.fillStyle = VERT; g.font = 'bold ' + Math.round(h * 0.062) + 'px monospace';
-    g.fillText(String(Math.round(vit)).padStart(3, ' '), w * 0.04, cy + h * 0.02);
-    g.fillText(String(Math.round(alt)).padStart(4, ' '), w * 0.74, cy + h * 0.02);
-    g.fillStyle = 'rgba(159,176,168,0.75)'; g.font = Math.round(h * 0.045) + 'px monospace';
-    g.fillText('KM/H', w * 0.04, cy + h * 0.09); g.fillText('M', w * 0.74, cy + h * 0.09);
   }
 
   /* ==================================================================
-     Le poste complet. `poste` est la position de l'œil dans le repère du
-     vaisseau, `ech` met à l'échelle l'ensemble selon la taille du cockpit.
+     LA DALLE : une surface incurvée autour du pilote, construite quad
+     par quad. u va de gauche à droite, v du haut vers le bas ; le bas
+     est plus proche des yeux, comme une planche inclinée.
+     ================================================================== */
+  function geometrieDalle(R, demiAngle, yHaut, yBas, prochePres, N){
+    const pos = [], uv = [], idx = [];
+    for (let j = 0; j <= 1; j++){
+      const y = j ? yBas : yHaut, k = j ? prochePres : 1;
+      for (let i = 0; i <= N; i++){
+        const a = (i / N - 0.5) * 2 * demiAngle;
+        pos.push(Math.sin(a) * R * k, y, R - Math.cos(a) * R * k);
+        uv.push(i / N, 1 - j);
+      }
+    }
+    for (let i = 0; i < N; i++){
+      const a = i, b = i + 1, c = i + N + 1, d = i + N + 2;
+      idx.push(a, c, b, b, c, d);
+    }
+    const g = new T.BufferGeometry();
+    g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals();
+    return g;
+  }
+
+  /* ---- le dessin de la dalle : tout l'affichage du bord ---- */
+  const CYAN = '#5FE3F0', VERT = '#78F0A8', AMBRE = '#F0C060', ROUGE = '#FF5A48', GRIS = '#7E8C96';
+  /* une échelle défilante : la valeur est au centre, les graduations glissent autour */
+  function echelle(g, x, y, w, h, valeur, pas, coul, aDroite){
+    g.save();
+    g.beginPath(); g.rect(x, y, w, h); g.clip();
+    g.fillStyle = 'rgba(8,16,20,0.55)'; g.fillRect(x, y, w, h);
+    const parPixel = h / (pas * 10);
+    const base = Math.floor(valeur / pas) * pas;
+    g.font = Math.round(h * 0.052) + 'px monospace';
+    for (let k = -6; k <= 6; k++){
+      const v = base + k * pas, yy = y + h / 2 + (valeur - v) * parPixel;
+      if (yy < y - 2 || yy > y + h + 2) continue;
+      const grand = v % (pas * 2) === 0;
+      g.strokeStyle = coul; g.globalAlpha = grand ? 0.85 : 0.45; g.lineWidth = 1;
+      g.beginPath();
+      if (aDroite){ g.moveTo(x + w, yy); g.lineTo(x + w - (grand ? w * 0.34 : w * 0.18), yy); }
+      else { g.moveTo(x, yy); g.lineTo(x + (grand ? w * 0.34 : w * 0.18), yy); }
+      g.stroke();
+      if (grand){
+        g.globalAlpha = 0.8; g.fillStyle = coul; g.textAlign = aDroite ? 'right' : 'left';
+        g.fillText(String(v), aDroite ? x + w - w * 0.40 : x + w * 0.40, yy + h * 0.018);
+      }
+    }
+    g.globalAlpha = 1;
+    g.restore();
+    /* la fenêtre de lecture : la valeur courante, en grand */
+    const wy = y + h / 2;
+    g.fillStyle = 'rgba(6,14,18,0.92)'; g.strokeStyle = coul; g.lineWidth = 1.5;
+    g.beginPath(); g.rect(x - w * 0.06, wy - h * 0.055, w * 1.12, h * 0.11); g.fill(); g.stroke();
+    g.fillStyle = coul; g.font = 'bold ' + Math.round(h * 0.075) + 'px monospace';
+    g.textAlign = 'center';
+    g.fillText(String(Math.round(valeur)), x + w / 2, wy + h * 0.026);
+  }
+  /* un arc de jauge, façon instrument numérique */
+  function arcJauge(g, cx, cy, r, part, coul, titre){
+    const a0 = Math.PI * 0.75, a1 = Math.PI * 1.85;
+    g.lineWidth = r * 0.17; g.lineCap = 'butt';
+    g.strokeStyle = 'rgba(120,140,150,0.22)';
+    g.beginPath(); g.arc(cx, cy, r, a0, a1); g.stroke();
+    g.strokeStyle = coul;
+    g.beginPath(); g.arc(cx, cy, r, a0, a0 + (a1 - a0) * Math.max(0, Math.min(1, part))); g.stroke();
+    g.fillStyle = GRIS; g.font = Math.round(r * 0.36) + 'px monospace'; g.textAlign = 'center';
+    g.fillText(titre, cx, cy + r * 0.44);
+  }
+  function dessinerDalle(g, W, H, e){
+    /* le fond : noir bleuté, quadrillage lâche */
+    g.fillStyle = '#04080C'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(95,227,240,0.055)'; g.lineWidth = 1;
+    for (let x = 0; x < W; x += W / 48){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    for (let y = 0; y < H; y += H / 12){ g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+
+    /* ---- au centre : l'horizon artificiel ---- */
+    const cx = W * 0.5, cy = H * 0.46, R = H * 0.34;
+    g.save();
+    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
+    g.fillStyle = '#061218'; g.fillRect(cx - R, cy - R, R * 2, R * 2);
+    g.translate(cx, cy); g.rotate(-e.roulis);
+    const dh = e.tangage * R * 1.9;
+    g.fillStyle = 'rgba(50,120,150,0.32)'; g.fillRect(-R * 2, -R * 2 + dh, R * 4, R * 2);
+    g.fillStyle = 'rgba(150,105,45,0.32)'; g.fillRect(-R * 2, dh, R * 4, R * 2);
+    g.strokeStyle = CYAN; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(-R * 2, dh); g.lineTo(R * 2, dh); g.stroke();
+    g.lineWidth = 1; g.strokeStyle = 'rgba(95,227,240,0.55)';
+    for (let k = -4; k <= 4; k++){
+      if (!k) continue;
+      const y = dh - k * R * 0.30, l = (k % 2 ? R * 0.16 : R * 0.30);
+      g.beginPath(); g.moveTo(-l, y); g.lineTo(l, y); g.stroke();
+    }
+    g.restore();
+    g.strokeStyle = 'rgba(95,227,240,0.45)'; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = VERT; g.lineWidth = 2.5;
+    g.beginPath();
+    g.moveTo(cx - R * 0.42, cy); g.lineTo(cx - R * 0.14, cy); g.moveTo(cx + R * 0.14, cy); g.lineTo(cx + R * 0.42, cy);
+    g.moveTo(cx, cy - R * 0.07); g.lineTo(cx, cy + R * 0.07);
+    g.stroke();
+    /* le cap, sous l'horizon */
+    g.fillStyle = CYAN; g.font = 'bold ' + Math.round(H * 0.055) + 'px monospace'; g.textAlign = 'center';
+    g.fillText(String(Math.round(e.cap)).padStart(3, '0'), cx, cy + R + H * 0.085);
+    g.fillStyle = GRIS; g.font = Math.round(H * 0.036) + 'px monospace';
+    g.fillText('CAP', cx, cy + R + H * 0.135);
+
+    /* ---- à gauche : la vitesse, la poussée, la température du laser ---- */
+    echelle(g, W * 0.145, H * 0.14, W * 0.070, H * 0.66, e.vitesse, 50, VERT, false);
+    arcJauge(g, W * 0.062, H * 0.30, H * 0.115, e.poussee, AMBRE, 'PA');
+    arcJauge(g, W * 0.062, H * 0.68, H * 0.115, e.chaleur, e.chaleur > 0.5 ? ROUGE : CYAN, 'T');
+
+    /* ---- à droite : l'altitude, le carburant, le radar ---- */
+    echelle(g, W * 0.785, H * 0.14, W * 0.070, H * 0.66, e.altitude, 100, CYAN, true);
+    arcJauge(g, W * 0.938, H * 0.30, H * 0.115, e.carburant, e.carburant < 0.25 ? ROUGE : VERT, 'CARB');
+    const rx = W * 0.938, ry = H * 0.68, rr = H * 0.135;
+    g.fillStyle = 'rgba(6,16,20,0.85)'; g.beginPath(); g.arc(rx, ry, rr, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(95,227,240,0.40)'; g.lineWidth = 1;
+    g.beginPath(); g.arc(rx, ry, rr, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(rx, ry, rr * 0.5, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(rx, ry - rr); g.lineTo(rx, ry + rr); g.moveTo(rx - rr, ry); g.lineTo(rx + rr, ry); g.stroke();
+    for (const c of (e.contacts || [])){
+      g.fillStyle = c.coul || ROUGE;
+      g.fillRect(rx + c.x * rr - 2.5, ry - c.z * rr - 2.5, 5, 5);
+    }
+    g.fillStyle = VERT; g.beginPath();
+    g.moveTo(rx, ry - 5); g.lineTo(rx + 4, ry + 4); g.lineTo(rx - 4, ry + 4); g.fill();
+
+    /* ---- en bas : la ligne d'état ---- */
+    g.textAlign = 'left'; g.font = Math.round(H * 0.042) + 'px monospace';
+    const etats = [
+      ['SYS', 'NOMINAL', VERT],
+      ['LASER', e.chaleur > 0.5 ? 'CHAUD' : 'PRET', e.chaleur > 0.5 ? ROUGE : VERT],
+      ['CARB', e.carburant < 0.25 ? 'BAS' : 'OK', e.carburant < 0.25 ? ROUGE : VERT],
+      ['LIFT', String(e.lift), CYAN],
+      ['NIV', String(e.niveau), AMBRE],
+    ];
+    let x = W * 0.285;
+    for (const [n, v, c] of etats){
+      g.fillStyle = GRIS; g.fillText(n, x, H * 0.955);
+      g.fillStyle = c; g.fillText(v, x + W * 0.038, H * 0.955);
+      x += W * 0.088;
+    }
+    /* ---- la patine de l'écran : balayage, traces de doigts ---- */
+    g.fillStyle = 'rgba(0,0,0,0.16)';
+    for (let y = 0; y < H; y += 3) g.fillRect(0, y, W, 1);
+    for (let k = 0; k < 5; k++){
+      const tx = (k * 137.5) % W, ty = (k * 91.3) % H, r = W * 0.04 + k * 6;
+      const rg = g.createRadialGradient(tx, ty, 0, tx, ty, r);
+      rg.addColorStop(0, 'rgba(180,200,205,0.045)'); rg.addColorStop(1, 'rgba(180,200,205,0)');
+      g.fillStyle = rg; g.fillRect(tx - r, ty - r, r * 2, r * 2);
+    }
+  }
+
+  /* ==================================================================
+     Le poste complet.
      ================================================================== */
   function creer(poste, ech){
     ech = ech || 1;
     const g = new T.Group(); g.name = 'cockpit'; g.visible = false;
     const px = poste.x, py = poste.y, pz = poste.z;
-    const gris = peinture(0x3B4046), sombre = peinture(0x24282C, 0.92), metal = new T.MeshStandardMaterial({ color: 0x5A6068, metalness: .75, roughness: .45, roughnessMap: textureUsure() });
+    const coque = peinture(0x2C3036), noir = peinture(0x15181C, 0.94);
+    const metal = new T.MeshStandardMaterial({ color: 0x59606A, metalness: .78, roughness: .42, roughnessMap: textureUsure() });
 
-    /* --- la planche de bord ---
-       Elle est dimensionnée par les ANGLES qu'elle doit couvrir, pas par des tailles
-       choisies au hasard : de 12 degrés sous la ligne des yeux (la lèvre) à 36 degrés
-       (le bas), soit de 19 à 65 cm plus bas à 90 cm devant ; et jusqu'à 25 degrés de
-       part et d'autre. Trois panneaux plats, les latéraux tournés vers le pilote :
-       c'est ainsi que sont faites les vraies planches, et cela évite les surfaces
-       courbes dont l'orientation est difficile à prévoir. */
-    /* Les angles visés : la lèvre à 13 degrés sous les yeux (elle ne doit pas mordre sur le
-       ciel), le bas de la planche vers 36. Avec des panneaux de 42 cm inclinés de 0,55 rad,
-       le haut se trouve 18 cm au-dessus du centre : d'où yPlanche à 34 cm sous l'œil. */
-    const AVANT = 0.70 * ech, INCL = -0.55;
-    const yPlanche = py - 0.34 * ech;
-    const panneau = (l, h, dx, ry) => {
-      const m = new T.Mesh(new T.BoxGeometry(l, h, 0.05 * ech), gris);
-      m.position.set(px + dx, yPlanche, pz - AVANT + Math.abs(dx) * 0.22);
-      m.rotation.set(INCL, ry, 0);
-      g.add(m); return m;
-    };
-    panneau(0.46 * ech, 0.42 * ech, 0, 0);
-    panneau(0.30 * ech, 0.38 * ech, -0.36 * ech, 0.55);
-    panneau(0.30 * ech, 0.38 * ech, 0.36 * ech, -0.55);
-    /* la lèvre : le bandeau sombre qui ferme le bas du champ, à 12 degrés sous les yeux */
-    const levre = new T.Mesh(new T.BoxGeometry(0.98 * ech, 0.05 * ech, 0.13 * ech), sombre);
-    levre.position.set(px, py - 0.155 * ech, pz - AVANT - 0.02 * ech); levre.rotation.x = -0.34;
-    g.add(levre);
-
-    /* --- les trois écrans, comme au Rafale : deux latéraux inclinés, un central --- */
-    const ecrans = {};
-    /* Un écran se pose SUR la tôle, pas dedans : le panneau a 5 cm d'épaisseur, sa face
-       avant est donc à 2,5 cm de son centre le long de la normale. En deçà, l'écran
-       disparaît dans la planche — c'est ce qui est arrivé à la première version. */
-    const surPanneau = (m, dx, ry) => {
-      m.position.set(px + dx, yPlanche + 0.015 * ech, pz - AVANT + Math.abs(dx) * 0.22);
-      m.rotation.set(INCL, ry, 0);
-      m.translateZ(0.045 * ech);
-      return m;
-    };
-    const gauche = surPanneau(ecran(ecranMoteur, 0.21 * ech, 0.165 * ech), -0.36 * ech, 0.55);
-    const droite = surPanneau(ecran(ecranCarte, 0.21 * ech, 0.165 * ech), 0.36 * ech, -0.55);
-    const central = surPanneau(ecran((gg, w, h) => dessinerHorizon(gg, w, h, 0, 0, 0, 0), 0.25 * ech, 0.25 * ech, 256), 0, 0);
-    central.translateY(-0.035 * ech);                        /* sous le collimateur, qui le masquerait */
-    g.add(gauche, droite, central);
-    ecrans.central = central;
-    /* les cadres des écrans : un liseré de métal sali */
-    for (const e of [gauche, droite, central]){
-      const b = new T.Mesh(new T.BoxGeometry(e.geometry.parameters.width * 1.12, e.geometry.parameters.height * 1.14, 0.014 * ech), sombre);
-      b.position.copy(e.position); b.rotation.copy(e.rotation); b.translateZ(-0.010 * ech);
-      g.add(b);
-    }
-    /* trois voyants d'alarme au-dessus du central */
-    const voyants = [];
-    [[-0.13, 0x21C842], [0, 0xD4C154], [0.13, 0xFF3B30]].forEach(([dx, c]) => {
-      const v = new T.Mesh(new T.CylinderGeometry(0.014 * ech, 0.014 * ech, 0.008 * ech, 8),
-        new T.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.6, roughness: .4 }));
-      v.rotation.x = Math.PI / 2 + INCL;
-      v.position.set(px + dx * ech, py - 0.185 * ech, pz - AVANT - 0.005 * ech);
-      g.add(v); voyants.push(v);
-    });
-
-    /* --- les flancs de la baignoire : c'est eux qui donnent l'encapsulement --- */
+    /* --- LA BAIGNOIRE : on ne doit jamais voir dehors par en bas ---
+       Un plancher, deux parois pleines, une cloison avant sous la dalle,
+       un dossier derrière la tête. C'est ce qui manquait : le regard
+       passait sous la planche et sortait de l'avion. */
+    const DEM = 0.44 * ech, AV = 1.05 * ech, AR = 0.62 * ech, SOL = py - 1.00 * ech, BORD = py - 0.06 * ech;
+    const plancher = new T.Mesh(new T.BoxGeometry(DEM * 2, 0.04 * ech, AV + AR), noir);
+    plancher.position.set(px, SOL, pz - (AV - AR) / 2); g.add(plancher);
     for (const sx of [-1, 1]){
-      const flanc = new T.Mesh(new T.BoxGeometry(0.035 * ech, 0.52 * ech, 1.30 * ech), gris);
-      flanc.position.set(px + sx * 0.43 * ech, py - 0.34 * ech, pz - 0.35 * ech);
-      flanc.rotation.z = sx * 0.10;
-      g.add(flanc);
-      /* la lisse supérieure du flanc, en métal usé : la main du pilote s'y pose */
-      const lisse = new T.Mesh(new T.BoxGeometry(0.055 * ech, 0.028 * ech, 1.30 * ech), metal);
-      lisse.position.set(px + sx * 0.445 * ech, py - 0.09 * ech, pz - 0.35 * ech);
-      g.add(lisse);
+      const paroi = new T.Mesh(new T.BoxGeometry(0.035 * ech, BORD - SOL, AV + AR), coque);
+      paroi.position.set(px + sx * DEM, (SOL + BORD) / 2, pz - (AV - AR) / 2); g.add(paroi);
+      /* la lisse : le rebord où le pilote pose le coude, usé jusqu'au métal */
+      const lisse = new T.Mesh(new T.BoxGeometry(0.06 * ech, 0.03 * ech, AV + AR), metal);
+      lisse.position.set(px + sx * DEM, BORD, pz - (AV - AR) / 2); g.add(lisse);
     }
+    const cloison = new T.Mesh(new T.BoxGeometry(DEM * 2, BORD - SOL, 0.035 * ech), noir);
+    cloison.position.set(px, (SOL + BORD) / 2, pz - AV); g.add(cloison);
+    const dossier = new T.Mesh(new T.BoxGeometry(DEM * 1.7, BORD - SOL + 0.35 * ech, 0.05 * ech), coque);
+    dossier.position.set(px, (SOL + BORD) / 2 + 0.15 * ech, pz + AR); g.add(dossier);
 
-    /* --- le collimateur tête haute : lame de verre inclinée, cadre fin, boîtier sous elle --- */
-    const zC = pz - 0.62 * ech, yC = py - 0.010 * ech, LC = 0.130 * ech, HC = 0.100 * ech, SC = 0.007 * ech;
-    const incl = -0.34;                                      /* la lame penche vers le pilote */
+    /* --- LA DALLE : l'écran unique, incurvé, incliné vers le pilote --- */
+    const R = 0.72 * ech, yH = py - 0.13 * ech, yB = py - 0.50 * ech;
+    const geoD = geometrieDalle(R, 0.62, yH, yB, 0.80, 24);
+    const cD = document.createElement('canvas'); cD.width = 1024; cD.height = 384;
+    const texD = new T.CanvasTexture(cD); texD.colorSpace = T.SRGBColorSpace; texD.anisotropy = 4;
+    const matD = new T.MeshStandardMaterial({ map: texD, emissiveMap: texD, emissive: 0xffffff, emissiveIntensity: 1.15, roughness: 0.34, metalness: 0.0, side: T.DoubleSide });
+    const dalle = new T.Mesh(geoD, matD);
+    /* La géométrie place son point CENTRAL en z = 0 et fait revenir ses bords vers +z (donc
+       vers le pilote, qui regarde −z) : il suffit de poser ce centre à 70 cm devant l'œil.
+       La première version ajoutait le rayon et envoyait la dalle derrière la tête. */
+    dalle.position.set(px, 0, pz - 0.66 * ech);
+    g.add(dalle);
+    /* la visière qui protège la dalle du soleil, et la retombée sous elle */
+    const visiere = new T.Mesh(geometrieDalle(R, 0.66, yH + 0.085 * ech, yH - 0.005 * ech, 0.94, 24), noir);
+    visiere.position.copy(dalle.position); g.add(visiere);
+    const retombee = new T.Mesh(geometrieDalle(R * 0.80, 0.62, yB, yB - 0.30 * ech, 1.0, 24), coque);
+    retombee.position.copy(dalle.position); g.add(retombee);
+
+    /* --- le collimateur : lame inclinée, cadre fin, boîtier --- */
+    const zC = pz - 0.60 * ech, yC = py - 0.005 * ech, LC = 0.125 * ech, HC = 0.095 * ech, SC = 0.006 * ech, incl = -0.34;
     const lame = new T.Mesh(new T.PlaneGeometry(LC * 2, HC * 2),
-      new T.MeshPhysicalMaterial({ color: 0xAFE8C8, transparent: true, opacity: 0.085, roughness: 0.06, metalness: 0, transmission: 0, side: T.DoubleSide, depthWrite: false }));
-    lame.position.set(px, yC, zC); lame.rotation.x = incl; lame.renderOrder = 4;
-    g.add(lame);
+      new T.MeshBasicMaterial({ color: 0x9FE8D0, transparent: true, opacity: 0.07, side: T.DoubleSide, depthWrite: false }));
+    lame.position.set(px, yC, zC); lame.rotation.x = incl; lame.renderOrder = 4; g.add(lame);
     for (const [lx, ly, w, h] of [[0, HC, LC * 2 + SC, SC], [0, -HC, LC * 2 + SC, SC], [-LC, 0, SC, HC * 2], [LC, 0, SC, HC * 2]]){
-      const barre = new T.Mesh(new T.BoxGeometry(w, h, 0.010 * ech), metal);
-      barre.position.set(px + lx, yC + ly * Math.cos(incl), zC + ly * Math.sin(incl)); barre.rotation.x = incl;
-      g.add(barre);
+      const barre = new T.Mesh(new T.BoxGeometry(w, h, 0.008 * ech), metal);
+      barre.position.set(px + lx, yC + ly * Math.cos(incl), zC + ly * Math.sin(incl)); barre.rotation.x = incl; g.add(barre);
     }
-    const boitier = new T.Mesh(new T.BoxGeometry(LC * 2.1, 0.09 * ech, 0.18 * ech), sombre);
-    boitier.position.set(px, yC - HC - 0.05 * ech, zC + 0.02 * ech);
-    g.add(boitier);
+    const boitier = new T.Mesh(new T.BoxGeometry(LC * 2.2, 0.07 * ech, 0.15 * ech), noir);
+    boitier.position.set(px, yC - HC - 0.04 * ech, zC + 0.02 * ech); g.add(boitier);
 
-    /* --- l'arceau de verrière : au bout du pare-brise, où il ne couvre qu'un degré --- */
-    const AV = 1.35 * ech;
-    const arc = new T.Mesh(new T.TorusGeometry(0.40 * ech, 0.018 * ech, 6, 22, Math.PI), metal);
-    arc.position.set(px, py - 0.14 * ech, pz - AV); arc.rotation.x = 0.18;
-    g.add(arc);
+    /* --- l'arceau de verrière, au bout du pare-brise --- */
+    const AVANT_ARC = 1.35 * ech;
+    const arceau = new T.Mesh(new T.TorusGeometry(0.40 * ech, 0.016 * ech, 6, 22, Math.PI), metal);
+    arceau.position.set(px, py - 0.13 * ech, pz - AVANT_ARC); arceau.rotation.x = 0.18; g.add(arceau);
     for (const sx of [-1, 1]){
-      const montant = new T.Mesh(new T.BoxGeometry(0.022 * ech, 0.022 * ech, 0.55 * ech), metal);
-      montant.position.set(px + sx * 0.395 * ech, py - 0.11 * ech, pz - AV + 0.27 * ech);
-      g.add(montant);
+      const m = new T.Mesh(new T.BoxGeometry(0.020 * ech, 0.020 * ech, 0.50 * ech), metal);
+      m.position.set(px + sx * 0.395 * ech, py - 0.10 * ech, pz - AVANT_ARC + 0.25 * ech); g.add(m);
     }
 
-    /* --- la verrière vue de l'intérieur : une coquille à peine teintée, poussiéreuse,
-           qui referme le poste par-dessus. C'est la dernière pièce de l'encapsulement. --- */
+    /* --- la verrière vue de l'intérieur : poussiéreuse, elle referme le poste --- */
     const verre = new T.Mesh(new T.SphereGeometry(1, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.62),
-      new T.MeshBasicMaterial({ color: 0xBFD8D0, transparent: true, opacity: 0.055, side: T.BackSide, depthWrite: false, map: textureUsure(), fog: false }));
-    verre.scale.set(0.60 * ech, 0.62 * ech, 1.55 * ech);
-    verre.position.set(px, py - 0.20 * ech, pz - 0.35 * ech);
-    verre.renderOrder = 5;
-    g.add(verre);
+      new T.MeshBasicMaterial({ color: 0xBFD8D0, transparent: true, opacity: 0.05, side: T.BackSide, depthWrite: false, map: textureUsure(), fog: false }));
+    verre.scale.set(0.60 * ech, 0.66 * ech, 1.55 * ech);
+    verre.position.set(px, py - 0.22 * ech, pz - 0.35 * ech); verre.renderOrder = 5; g.add(verre);
 
     g.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
-    g.userData.ecrans = ecrans;
-    g.userData.voyants = voyants;
-    /* l'horizon artificiel suit vraiment l'avion — quatre rafraîchissements par seconde suffisent */
-    let horloge = 0;
+    /* la dalle se redessine cinq fois par seconde : assez pour que l'horizon suive, assez
+       peu pour que le canvas ne pèse rien dans le budget d'image */
+    let horloge = 1;
     g.animer = (dt, etat) => {
       if (!g.visible) return;
       horloge += dt;
-      if (horloge < 0.25) return;
+      if (horloge < 0.20) return;
       horloge = 0;
-      const c = ecrans.central.userData.canvas, t = ecrans.central.userData.texture;
-      dessinerHorizon(c.getContext('2d'), c.width, c.height, etat.roulis, etat.tangage, etat.altitude, etat.vitesse);
-      t.needsUpdate = true;
-      voyants[0].material.emissiveIntensity = etat.carburant > 0.25 ? 1.8 : 0.2;
-      voyants[1].material.emissiveIntensity = etat.carburant <= 0.25 ? (etat.clignote ? 4.2 : 0.3) : 0.5;
-      voyants[2].material.emissiveIntensity = etat.chaleur > 0.5 ? (etat.clignote ? 4.5 : 0.3) : 0.35;
+      dessinerDalle(cD.getContext('2d'), cD.width, cD.height, etat);
+      texD.needsUpdate = true;
     };
+    g.userData.dalle = dalle;
     return g;
   }
-  return { creer, textureUsure };
+  return { creer, textureUsure, dessinerDalle };
 })();
 </script>
 <script>
@@ -4586,7 +4610,7 @@ function dessinerHUD(){
      En vue cockpit elle se fait plus discrète : le tableau de bord tient le bas de l'écran,
      et les deux se disputeraient la même bande. */
   const cockpit = G.vue === 'cockpit' && G.mode !== 'titre';
-  let s = Math.max(1, Math.min(4, H * (cockpit ? 0.125 : 0.20) / BANDEAU_H, W * (cockpit ? 0.62 : 0.92) / BANDEAU_L));
+  let s = Math.max(1, Math.min(4, H * (cockpit ? 0.105 : 0.20) / BANDEAU_H, W * (cockpit ? 0.55 : 0.92) / BANDEAU_L));
   const bw = BANDEAU_L * s, bh = BANDEAU_H * s, bx = Math.round((W - bw) / 2), by = Math.round(H - bh);
   hcx.drawImage(bandeau, 0, 0, BANDEAU_L, BANDEAU_H, bx, by, bw, bh);
 
@@ -4704,8 +4728,23 @@ function poserObjets(dt){
   NAV3D.animer(dt, tRendu, pou);
   if (G.vue === 'cockpit'){
     const ck = NAV3D.getObjectByName('cockpit');
-    if (ck && ck.animer) ck.animer(dt, { roulis: RENDU.roulis, tangage: RENDU.tangage, altitude: Math.max(0, P.y - n.solY),
-      vitesse: n.v * 3.6, carburant: G.carburant, chaleur: G.chaleur, clignote: ((G.t >> 3) & 1) === 1 });
+    if (ck && ck.animer){
+      /* les contacts du radar de bord, dans le repère du vaisseau, normalisés à 900 m */
+      const contacts = [];
+      for (const e of G.ennemis){
+        if (e.type === 'satellite' || e.noir) continue;
+        const r = enRepere(e.p), d = Math.hypot(r.avant, r.droite);
+        if (d > 900) continue;
+        contacts.push({ x: r.droite / 900, z: r.avant / 900, coul: PAL[e.col] });
+      }
+      if (G.canyon && !G.canyon.fini){
+        const r = enRepere(G.canyon.entree), d = Math.hypot(r.avant, r.droite);
+        contacts.push({ x: r.droite / Math.max(900, d), z: r.avant / Math.max(900, d), coul: PAL[10] });
+      }
+      ck.animer(dt, { roulis: RENDU.roulis, tangage: RENDU.tangage, altitude: Math.max(0, P.y - n.solY),
+        vitesse: n.v * 3.6, carburant: G.carburant, chaleur: G.chaleur, poussee: pou,
+        cap: ((-RENDU.lacet * 180 / Math.PI) % 360 + 360) % 360, lift: G.lift, niveau: G.niveau, contacts });
+    }
   }
   const chaud = G.chaleur > .5 && ((G.t >> 2) & 1);
   NAV3D.teinter(G.chaleur > .5 ? (chaud ? 0xFC5554 : 0x21C842) : null);
