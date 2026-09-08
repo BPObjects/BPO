@@ -111,6 +111,7 @@ html.tactile .lifts{display:flex}
   <a class="retour" href="https://bpo.archi/ti/">← TI-99/4A</a>
   <div class="reglages">
     <button class="b" id="bAide" type="button" aria-pressed="false" title="Commandes">?</button>
+    <button class="b" id="bVue" type="button" aria-pressed="false" title="Vue : poursuite ou cockpit (C)">Poursuite</button>
     <button class="b" id="bHangar" type="button" title="Hangar : F-104 ou Sabre (H)">F-104</button>
     <button class="b" id="bTactile" type="button" aria-pressed="false" title="Manette tactile">Manette</button>
     <button class="b" id="bVoix" type="button" aria-pressed="true" title="Voix de bord">Voix</button>
@@ -123,7 +124,8 @@ html.tactile .lifts{display:flex}
   <h2>Commandes</h2>
   <p><kbd>S</kbd> <kbd>D</kbd> ou <kbd>←</kbd> <kbd>→</kbd> virer &nbsp;·&nbsp; <kbd>E</kbd> <kbd>X</kbd> ou <kbd>↑</kbd> <kbd>↓</kbd> monter, descendre</p>
   <p><kbd>A</kbd> pousser &nbsp;·&nbsp; <kbd>Z</kbd> couper les rétrofusées &nbsp;·&nbsp; <kbd>.</kbd> ou <kbd>espace</kbd> tirer</p>
-  <p><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> lift (vitesse verticale) &nbsp;·&nbsp; <kbd>P</kbd> time warp (pause) &nbsp;·&nbsp; <kbd>H</kbd> hangar (F-104 / Sabre)</p>
+  <p><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> lift (vitesse verticale) &nbsp;·&nbsp; <kbd>P</kbd> time warp (pause)</p>
+  <p><kbd>C</kbd> vue cockpit ou poursuite &nbsp;·&nbsp; <kbd>H</kbd> hangar (F-104 / Sabre)</p>
   <p class="note">Manette de jeu : stick gauche, gâchettes = poussée, A = tir, B X Y = lifts 1 2 3. Sur l'écran tactile : stick flottant à gauche, FIRE et poussée à droite.</p>
   <p class="note">Le désert est infini : le radar en haut à droite montre les appareils, et le canyon de ravitaillement en jaune quand il est temps de refaire le plein.</p>
 </div>
@@ -1298,6 +1300,15 @@ const U = {
   uCanyonLarg: { value: 30 }, uCanyonProf: { value: 40 },
   uCanyonNiveau: { value: 0 }, uCanyonActif: { value: 0 },
   uLampeN: { value: 0 }, uLampeCoul: { value: new THREE.Color(0xFFA040).multiplyScalar(1.0) },
+  /* les corps célestes : direction, (cos du rayon, anneau intérieur, anneau extérieur),
+     couleur de fond, couleur des bandes, axe de rotation ; uPlanN dit combien sont posés */
+  uPlanN: { value: 0 },
+  uPlanDir: { value: [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0)] },
+  uPlanPar: { value: [new THREE.Vector3(0.999, 0, 0), new THREE.Vector3(0.999, 0, 0), new THREE.Vector3(0.999, 0, 0)] },
+  uPlanCol: { value: [new THREE.Color(0xffffff), new THREE.Color(0xffffff), new THREE.Color(0xffffff)] },
+  uPlanCol2: { value: [new THREE.Color(0xffffff), new THREE.Color(0xffffff), new THREE.Color(0xffffff)] },
+  uPlanAxe: { value: [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0)] },
+  uEtoiles: { value: 0 },
 };
 
 /* ---- §3 terrain : anneaux emboîtés recalés sur la caméra ------------ */
@@ -1553,13 +1564,100 @@ void main(){
   gl_Position = cp.xyww;
 }`;
 const FS_CIEL = GLSL_CIEL + /* glsl */`
-uniform float uSolRadA, uSolRadB, uSolCosA, uSolCosB;
+uniform float uSolRadA, uSolRadB, uSolCosA, uSolCosB, uEtoiles;
+uniform int uPlanN;
+uniform vec3 uPlanDir[3], uPlanPar[3], uPlanCol[3], uPlanCol2[3], uPlanAxe[3];
 varying vec3 vDir;
+
+float hash13(vec3 p){ p = fract(p * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
+float bruitS(vec3 p){
+  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  float a = mix(mix(hash13(i), hash13(i + vec3(1,0,0)), f.x), mix(hash13(i + vec3(0,1,0)), hash13(i + vec3(1,1,0)), f.x), f.y);
+  float b = mix(mix(hash13(i + vec3(0,0,1)), hash13(i + vec3(1,0,1)), f.x), mix(hash13(i + vec3(0,1,1)), hash13(i + vec3(1,1,1)), f.x), f.y);
+  return mix(a, b, f.z);
+}
+/* Un corps céleste vu de loin. La sphère est de rayon 1, l'observateur à D = 1/tan(rayon)
+   rayons de son centre ; on résout le disque en coordonnées (x, y) exprimées en rayons
+   planétaires, la normale de surface s'en déduit, et le soleil A donne la phase — c'est
+   le croissant qui rend une lune crédible. Les bandes suivent la latitude autour de
+   l'axe ; l'anneau est l'intersection du rayon de vue avec le plan équatorial.
+   Rend (couleur, opacité). */
+vec4 corps(vec3 v, vec3 d, vec3 par, vec3 col1, vec3 col2, vec3 axe, vec3 L){
+  float cd = dot(v, d);
+  if (cd < 0.90) return vec4(0.0);                 /* hors du voisinage : rien à faire */
+  float cosR = par.x, r1 = par.y, r2 = par.z;
+  float sinR = sqrt(max(1e-6, 1.0 - cosR * cosR));
+  vec3 a = normalize(axe);
+  vec3 t = normalize(cross(a, d) + vec3(1e-4, 0.0, 0.0));
+  vec3 b = cross(d, t);
+  float x = dot(v, t) / sinR, y = dot(v, b) / sinR;
+  float rr = x * x + y * y;
+  float D = 1.0 / sinR;                             /* distance de l'observateur, en rayons : sin(R) = 1/D */
+  vec3 sortie = vec3(0.0); float alpha = 0.0;
+  /* --- l'anneau : deux passes, derrière puis devant --- */
+  vec3 P = vec3(0.0); float rho = 0.0; bool anneau = false; bool devant = false;
+  if (r2 > 0.0){
+    float vn = dot(v, a);
+    if (abs(vn) > 1e-4){
+      float s = D * dot(d, a) / vn;
+      if (s > 0.0){
+        P = -D * d + s * v;
+        rho = length(P);
+        anneau = rho > r1 && rho < r2;
+        devant = dot(P, d) < 0.0;
+      }
+    }
+  }
+  vec3 colAnneau = vec3(0.0); float aAnneau = 0.0;
+  if (anneau){
+    float u = (rho - r1) / max(1e-4, r2 - r1);
+    float bandes = 0.55 + 0.45 * sin(u * 34.0) * sin(u * 11.0 + 1.3);
+    float creux = smoothstep(0.44, 0.47, u) * (1.0 - smoothstep(0.50, 0.53, u));   /* une division, façon Cassini */
+    aAnneau = (0.30 + 0.45 * bandes) * (1.0 - creux) * (1.0 - smoothstep(0.85, 1.0, u));
+    float ombreP = 1.0;
+    vec3 perp = P - L * dot(P, L);
+    if (length(perp) < 1.0 && dot(P, L) < 0.0) ombreP = 0.25;      /* l'anneau passe dans l'ombre de la planète */
+    colAnneau = mix(col1, vec3(1.0), 0.35) * (0.55 + 0.45 * bandes) * ombreP;
+    aAnneau *= clamp(abs(dot(v, a)) * 6.0, 0.15, 1.0);              /* vu par la tranche, il s'efface */
+  }
+  if (anneau && !devant){ sortie = colAnneau; alpha = aAnneau; }
+  /* --- le globe --- */
+  if (rr < 1.0){
+    float z = sqrt(max(0.0, 1.0 - rr));
+    vec3 n = normalize(x * t + y * b - z * d);
+    float lam = max(0.0, dot(n, L));
+    float phase = smoothstep(-0.06, 0.16, dot(n, L));               /* terminateur adouci */
+    float lat = dot(n, a);
+    float bandes = bruitS(vec3(lat * 9.0, 2.0, 0.0)) * 0.6 + 0.4 * bruitS(vec3(lat * 26.0, 7.0, 1.0));
+    float tourbillon = bruitS(n * 5.0) * 0.35;
+    vec3 col = mix(col1, col2, clamp(bandes + tourbillon - 0.15, 0.0, 1.0));
+    float limbe = pow(rr, 3.0);
+    col = mix(col, mix(col, vec3(1.0), 0.5), limbe * 0.45);          /* halo d'atmosphère au bord */
+    vec3 cg = col * (0.11 + 1.15 * lam * phase);                    /* 11 % de lumière cendrée : le côté nuit se devine */
+    float ag = smoothstep(1.0, 0.985, rr);
+    sortie = mix(sortie, cg, ag); alpha = mix(alpha, 1.0, ag);
+  }
+  if (anneau && devant){ sortie = mix(sortie, colAnneau, aAnneau); alpha = max(alpha, aAnneau); }
+  return vec4(sortie, alpha);
+}
 void main(){
   vec3 d = normalize(vDir);
   vec3 c = cielSansSoleils(d, 1.0);
-  float cA = dot(d, uSolDirA), cB = dot(d, uSolDirB);
   float dessus = step(0.0, d.y);
+  /* les étoiles, d'abord : elles sont derrière tout le reste */
+  if (uEtoiles > 0.001 && d.y > -0.02){
+    vec3 g = floor(d * 380.0);
+    float h = hash13(g);
+    float et = smoothstep(0.9982, 0.99955, h) * (0.4 + 0.6 * hash13(g + 5.7));
+    c += vec3(0.85, 0.9, 1.0) * et * 3.2 * uEtoiles * smoothstep(-0.02, 0.12, d.y);
+  }
+  /* les corps célestes, du plus lointain au plus proche (l'ordre de la table) */
+  for (int i = 0; i < 3; i++){
+    if (i >= uPlanN) break;
+    vec4 p = corps(d, uPlanDir[i], uPlanPar[i], uPlanCol[i], uPlanCol2[i], uPlanAxe[i], uSolDirA);
+    c = mix(c, p.rgb, p.a * dessus);
+  }
+  float cA = dot(d, uSolDirA), cB = dot(d, uSolDirB);
   c += uSolColA * uSolRadA * smoothstep(uSolCosA - 0.00003, uSolCosA + 0.00001, cA) * dessus;
   c += uSolColB * uSolRadB * smoothstep(uSolCosB - 0.00003, uSolCosB + 0.00001, cB) * dessus;
   gl_FragColor = vec4(c, 1.0 - 0.9 * exp(-abs(d.y) * 25.0));
@@ -1605,17 +1703,14 @@ function poserLampes(liste){
   liste.forEach((p, i) => { LAMPES.push(p); if (i < 4){ LAMPES_OBJ[i].position.copy(p); LAMPES_OBJ[i].intensity = 2600; LAMPES_OBJ[i].visible = true; } });
   for (let i = liste.length; i < 4; i++){ LAMPES_OBJ[i].visible = false; LAMPES_OBJ[i].intensity = 0; }
 }
-/* les soleils tournent avec le niveau : 22,5° d'azimut par niveau, l'élévation respire */
-const AZ_A0 = Math.atan2(MONDE.DIR_A.x, MONDE.DIR_A.z), EL_A0 = Math.asin(MONDE.DIR_A.y);
-function placerSoleils(niveau){
-  const k = (niveau - 1), az = AZ_A0 + k * 22.5 * Math.PI / 180, el = EL_A0 + 0.10 * Math.sin(k * 0.9);
-  MONDE.DIR_A.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize();
-  const az2 = az - 9 * Math.PI / 180, el2 = Math.max(0.04, el - 15 * Math.PI / 180);
-  MONDE.DIR_B.set(Math.sin(az2) * Math.cos(el2), Math.sin(el2), Math.cos(az2) * Math.cos(el2)).normalize();
+/* Pose les deux soleils d'après un azimut et deux élévations (en degrés) et rafraîchit
+   l'environnement réfléchi. La table des mondes (32-mondes.js) l'appelle. */
+function placerSoleils(azDeg, elADeg, elBDeg, ecartDeg){
+  const az = azDeg * Math.PI / 180, elA = elADeg * Math.PI / 180, elB = elBDeg * Math.PI / 180, az2 = (azDeg - (ecartDeg === undefined ? 9 : ecartDeg)) * Math.PI / 180;
+  MONDE.DIR_A.set(Math.sin(az) * Math.cos(elA), Math.sin(elA), Math.cos(az) * Math.cos(elA)).normalize();
+  MONDE.DIR_B.set(Math.sin(az2) * Math.cos(elB), Math.sin(elB), Math.cos(az2) * Math.cos(elB)).normalize();
   lumA.position.copy(MONDE.DIR_A).multiplyScalar(900); lumB.position.copy(MONDE.DIR_B).multiplyScalar(900);
-  refaireEnvironnement();
 }
-placerSoleils(1);
 
 /* ---- la brume greffée sur les matériaux des objets ------------------
    Même formule que le sol : perspective aérienne = le ciel dans la
@@ -1666,6 +1761,13 @@ geoPouss.setAttribute('position', new THREE.BufferAttribute(poussLocal, 3).setUs
 const poussiere = new THREE.Points(geoPouss, new THREE.PointsMaterial({
   map: spriteGrain(), size: 1.3, sizeAttenuation: true, transparent: true, depthWrite: false, opacity: 0.28, color: 0xE8C48A, fog: false,
 }));
+/* les grains prennent la couleur du sable du monde et s'effacent quand le ciel s'assombrit :
+   sur un monde de nuit, une poussière ambrée à pleine opacité fait des confettis */
+function accorderPoussiere(){
+  poussiere.material.color.copy(U.uSable1.value).lerp(new THREE.Color(1, 1, 1), 0.25);
+  const c = U.uCielM.value, lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  poussiere.material.opacity = 0.10 + 0.22 * Math.min(1, lum * 1.6);
+}
 poussiere.frustumCulled = false;
 scene.add(poussiere);
 let poussInit = false;
@@ -1737,7 +1839,7 @@ const camPost = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
 const tailleRendu = new THREE.Vector2();
 function redimensionnerRendu(){
-  const w = Math.max(1, vue.clientWidth || innerWidth), h = Math.max(1, vue.clientHeight || innerHeight);
+  const w = Math.max(2, vue.clientWidth || innerWidth || 960), h = Math.max(2, vue.clientHeight || innerHeight || 540);
   renderer.setSize(w, h, false);
   renderer.getDrawingBufferSize(tailleRendu);
   rt.setSize(Math.max(1, tailleRendu.x), Math.max(1, tailleRendu.y));
@@ -1771,13 +1873,151 @@ function appliquerQualite(k){
   return c.nom;
 }
 
+/* La taille peut changer sans qu'aucun événement ne le dise : onglet ouvert masqué, barre
+   d'URL de l'iPhone qui se replie, rotation. On la vérifie à chaque image — trois nombres
+   comparés, et un redimensionnement seulement s'il a bougé. */
+function verifierTaille(){
+  const w = vue.clientWidth || innerWidth, h = vue.clientHeight || innerHeight;
+  if (w < 2 || h < 2) return;                    /* onglet en arrière-plan : sa mise en page mesure zéro, on garde la taille */
+  if (Math.abs(w - tailleCSS.x) > 0.5 || Math.abs(h - tailleCSS.y) > 0.5){ tailleCSS.set(w, h); redimensionnerRendu(); }
+}
+const tailleCSS = new THREE.Vector2(0, 0);
+
 /* ---- le rendu d'une image : scène → HDR → post ----
    La passe de post n'est JAMAIS supprimée : c'est elle qui porte le tone mapping ACES
    et la conversion sRGB (nos ShaderMaterial n'ont pas ces includes). La retirer
    délaverait le sable et le ciel. Ce qui s'allège avec le cran, c'est le MSAA. */
 function rendre(){
+  verifierTaille();
   renderer.setRenderTarget(rt); renderer.render(scene, camera);
   renderer.setRenderTarget(null); renderer.render(scPost, camPost);
+}
+</script>
+<script>
+/* ==== 32-mondes.js ==== */
+/* ==================================================================
+   LES MONDES — un par niveau, et ils bouclent.
+
+   En 1982, le sol changeait de couleur à chaque niveau : c'était le seul
+   indicateur de progression du jeu (aucun numéro à l'écran). On garde ce
+   signal — la bande du HUD suit toujours COUL_SOL — et on l'étend : à
+   chaque niveau, une autre planète. Ciel, sable, roche, soleils, brume,
+   étoiles et corps célestes changent ensemble, en deux secondes de fondu.
+
+   Chaque monde est une palette tenue : trois couleurs de ciel (horizon,
+   quinze degrés, zénith), trois de sable (crête, pente, creux), deux de
+   roche, deux soleils avec leur hauteur, et zéro à deux corps dans le
+   ciel. Les rayons angulaires sont en degrés : notre Lune en fait 0,26 ;
+   à 6 degrés une géante gazeuse remplit un poing tendu.
+   ================================================================== */
+const MONDES = [
+  { nom:'TATOOINE',                                      /* l'original : deux soleils, et la grande lune pâle du soir */
+    ciel:[0xF1DFB7, 0xC2C3B9, 0x7191B3], sable:[0xE3C08E, 0xD2A56B, 0xB57A4C], roche:[0xC9A47F, 0x8C6249],
+    soleils:[0xFFF3D9, 0xFFC784], az:39, elA:22, elB:7, brume:1/2400, etoiles:0,
+    corps:[{ az:-58, el:29, rayon:9.0, col:0xE8DCC8, col2:0xB8A890, axe:[0.2, 1, 0] }] },
+
+  { nom:'VESPER',                                        /* crépuscule violet, une géante à anneaux posée sur l'horizon */
+    ciel:[0xFFC9A0, 0xC79ACB, 0x3B2A6B], sable:[0xD9BBD1, 0xB08FB8, 0x7A5C86], roche:[0x8E7BA6, 0x4E3F63],
+    soleils:[0xFFD9C0, 0xFF9E7A], az:-52, elA:9, elB:3, brume:1/2000, etoiles:0.35,
+    corps:[{ az:43, el:19, rayon:14.0, col:0xC9A6E8, col2:0x8E6BC0, anneau:[1.35, 2.30], axe:[0.25, 1, 0.1] }] },
+
+  { nom:'RUBICON',                                       /* rouille et poussière, une lune craquelée */
+    ciel:[0xF3B489, 0xD97F5A, 0x6E2E2A], sable:[0xE08A5A, 0xB85F38, 0x7E3B24], roche:[0xC46A45, 0x6E3520],
+    soleils:[0xFFE0C0, 0xFF8A50], az:14, elA:26, elB:11, brume:1/1700, etoiles:0.15,
+    corps:[{ az:-76, el:34, rayon:12.0, col:0xC8C0B8, col2:0x8A857E, axe:[0, 1, 0.4] }] },
+
+  { nom:'HALIDE',                                        /* monde de sel : une planète bleue et sa lune, côte à côte */
+    ciel:[0xE8F4FF, 0xA9D2E8, 0x2E6E9E], sable:[0xF2F4F6, 0xD6DEE6, 0xA8B6C4], roche:[0xC3CDD6, 0x7E8C99],
+    soleils:[0xFFFFFF, 0xCFE6FF], az:76, elA:34, elB:14, brume:1/2600, etoiles:0.10,
+    corps:[{ az:-24, el:30, rayon:20.0, col:0x6FA8D8, col2:0x2F5F92, axe:[0.1, 1, 0] },
+           { az:2,   el:18, rayon:7.0,  col:0xE6E8EA, col2:0xB8BCC0, axe:[0, 1, 0.2] }] },
+
+  { nom:'VERDIGRIS',                                     /* vert-de-gris, deux lunes hautes */
+    ciel:[0xF0E9A8, 0xB9C77A, 0x3E6B4E], sable:[0xC9C87A, 0x9AA652, 0x6B7538], roche:[0xA8A268, 0x5F6238],
+    soleils:[0xFFF6C0, 0xD8FF9E], az:-18, elA:30, elB:12, brume:1/2200, etoiles:0.20,
+    corps:[{ az:70, el:48, rayon:10.0, col:0xD8D2A8, col2:0x9E9A78, axe:[0.3, 1, 0] },
+           { az:96, el:28, rayon:6.0,  col:0xA8C0A0, col2:0x6E8068, axe:[0, 1, 0.3] }] },
+
+  { nom:'NOCTIS',                                        /* nuit bleue : la géante à anneaux occupe un huitième du ciel */
+    ciel:[0x54679A, 0x2B3D6E, 0x111A3E], sable:[0x94A2C4, 0x6E7A9C, 0x4C5878], roche:[0x7A86AE, 0x424E70],
+    soleils:[0xE0E8FF, 0x9AB4FF], az:128, elA:9, elB:4, brume:1/2800, etoiles:1.0,
+    corps:[{ az:38, el:34, rayon:16.0, col:0x8FA8E4, col2:0x4A66AE, anneau:[1.30, 2.45], axe:[-0.35, 1, 0.15] }] },
+
+  { nom:'CUPRUM',                                        /* cuivre et turquoise, une planète rayée */
+    ciel:[0xFFD9A8, 0x6ECFC0, 0x14657A], sable:[0xF0A860, 0xC87A38, 0x8E5020], roche:[0xD89050, 0x7A4A22],
+    soleils:[0xFFF0D0, 0xFFB070], az:-74, elA:28, elB:10, brume:1/2000, etoiles:0.05,
+    corps:[{ az:16, el:27, rayon:22.0, col:0xE8C060, col2:0xA87830, axe:[0.15, 1, -0.2] }] },
+
+  { nom:'OBSIDIAN',                                      /* basalte noir sous un ciel d'or, une lune noire qui frôle le soleil */
+    ciel:[0xFFD070, 0xB06830, 0x2A1A22], sable:[0x6E6270, 0x4A4250, 0x2E2A36], roche:[0x5E5468, 0x33303E],
+    soleils:[0xFFE8B0, 0xFF7A40], az:100, elA:18, elB:6, brume:1/2300, etoiles:0.60,
+    corps:[{ az:110, el:26, rayon:26.0, col:0x2A2430, col2:0x100C14, axe:[0, 1, 0.5] }] },
+];
+const mondeDe = (niveau) => MONDES[(Math.max(1, niveau) - 1) % MONDES.length];
+
+/* Une direction du ciel depuis un azimut et une élévation en degrés (mêmes conventions
+   que le vol : azimut 0 = le nord, c'est-à-dire −z ; il croît vers l'est, +x). */
+function direction(azDeg, elDeg, out){
+  const az = azDeg * Math.PI / 180, el = elDeg * Math.PI / 180, c = Math.cos(el);
+  return (out || new THREE.Vector3()).set(Math.sin(az) * c, Math.sin(el), Math.cos(az) * c).normalize();
+}
+
+/* L'état courant et la cible : on interpole entre les deux pendant le fondu. */
+const ATM = { de: null, vers: null, k: 1, duree: 2.0 };
+const _cA = new THREE.Color(), _cB = new THREE.Color();
+const melange = (uni, hexDe, hexVers, k) => { _cA.set(hexDe); _cB.set(hexVers); uni.value.copy(_cA).lerp(_cB, k); };
+
+function poserCorps(monde, k, mondeDe_){
+  const corps = monde.corps || [];
+  U.uPlanN.value = Math.min(corps.length, U.uPlanDir.value.length);
+  for (let i = 0; i < U.uPlanN.value; i++){
+    const c = corps[i];
+    direction(c.az, c.el, U.uPlanDir.value[i]);
+    const rad = c.rayon * Math.PI / 180;
+    U.uPlanPar.value[i].set(Math.cos(rad), c.anneau ? c.anneau[0] : 0, c.anneau ? c.anneau[1] : 0);
+    U.uPlanCol.value[i].set(c.col); U.uPlanCol2.value[i].set(c.col2);
+    U.uPlanAxe.value[i].set(c.axe[0], c.axe[1], c.axe[2]).normalize();
+    /* pendant le fondu, les corps grandissent depuis un point : ils « arrivent » avec le monde */
+    if (k < 1){ const r2 = rad * (0.15 + 0.85 * k); U.uPlanPar.value[i].x = Math.cos(r2); }
+  }
+}
+
+/* Applique un monde (fondu de `duree` secondes ; duree 0 = tout de suite). */
+function appliquerMonde(niveau, duree){
+  const vers = mondeDe(niveau);
+  ATM.de = ATM.vers || vers; ATM.vers = vers;
+  ATM.duree = duree === undefined ? 2.0 : duree;
+  ATM.k = ATM.duree > 0 ? 0 : 1;
+  avancerAtmosphere(0);
+  if (ATM.k >= 1) refaireEnvironnement();
+}
+
+/* Un pas de fondu : toutes les couleurs, les soleils, la brume, les étoiles, les corps. */
+let _envRetard = 0;
+function avancerAtmosphere(dt){
+  if (!ATM.vers) return;
+  const fini = ATM.k >= 1;
+  if (!fini) ATM.k = Math.min(1, ATM.k + (ATM.duree > 0 ? dt / ATM.duree : 1));
+  const a = ATM.de, b = ATM.vers, k = ATM.k * ATM.k * (3 - 2 * ATM.k);
+  melange(U.uCielH, a.ciel[0], b.ciel[0], k); melange(U.uCielM, a.ciel[1], b.ciel[1], k); melange(U.uCielZ, a.ciel[2], b.ciel[2], k);
+  melange(U.uSable0, a.sable[0], b.sable[0], k); melange(U.uSable1, a.sable[1], b.sable[1], k); melange(U.uSable2, a.sable[2], b.sable[2], k);
+  melange(U.uRoche0, a.roche[0], b.roche[0], k); melange(U.uRoche1, a.roche[1], b.roche[1], k);
+  _cA.set(a.soleils[0]); _cB.set(b.soleils[0]); U.uSolColA.value.copy(_cA).lerp(_cB, k).multiplyScalar(MONDE.ECLAIREMENT_A / Math.PI);
+  lumA.color.copy(_cA).lerp(_cB, k);
+  _cA.set(a.soleils[1]); _cB.set(b.soleils[1]); U.uSolColB.value.copy(_cA).lerp(_cB, k).multiplyScalar(MONDE.ECLAIREMENT_B / Math.PI);
+  lumB.color.copy(_cA).lerp(_cB, k);
+  const lerp = (x, y) => x + (y - x) * k;
+  placerSoleils(lerp(a.az, b.az), lerp(a.elA, b.elA), lerp(a.elB, b.elB));
+  U.uBrumeDens.value = lerp(a.brume, b.brume);
+  U.uPoussDens.value = U.uBrumeDens.value * 1.1;
+  U.uEtoiles.value = lerp(a.etoiles, b.etoiles);
+  hemi.color.copy(U.uCielM.value); hemi.groundColor.copy(U.uSable2.value);
+  accorderPoussiere();
+  poserCorps(ATM.k < 1 ? b : b, ATM.k, a);
+  /* l'environnement réfléchi coûte plusieurs millisecondes : on ne le refait que trois
+     fois par seconde pendant le fondu, puis une dernière fois à l'arrivée */
+  _envRetard += dt;
+  if (!fini && (_envRetard > 0.33 || ATM.k >= 1)){ _envRetard = 0; refaireEnvironnement(); }
 }
 </script>
 <script>
@@ -2731,6 +2971,9 @@ const VAISSEAU3D = (() => {
       const p = marquage('PARSEC', 1.6, 0.4); p.position.set(sx * 0.075, 1.35, 5.9); p.rotation.y = sx * Math.PI / 2; grp.add(p);
     }
     const ech = tuyere(grp, 7.3, 0.44);
+    /* le poste : sous la verrière, juste au-dessus du capot (rayon du fuselage 0,68 m ici) */
+    grp.userData.poste = new T.Vector3(0, 0.75, -4.25);
+    grp.add(cockpit(grp.userData.poste, 1.0));
     grp.userData.longueur = 16.7; grp.userData.envergure = 7.6;
     grp.userData.teintables = teintables;
     grp.animer = (dt, t, poussee) => animerFlamme(ech, poussee);
@@ -2770,11 +3013,57 @@ const VAISSEAU3D = (() => {
       const p = marquage('PARSEC', 1.3, 0.35); p.position.set(sx * 0.075, 1.75, 5.0); p.rotation.y = sx * Math.PI / 2; grp.add(p);
     }
     const ech = tuyere(grp, 5.7, 0.4);
+    grp.userData.poste = new T.Vector3(0, 0.95, -2.40);
+    grp.add(cockpit(grp.userData.poste, 1.15));
     grp.userData.longueur = 11.4; grp.userData.envergure = 11.3;
     grp.userData.teintables = [acier];
     grp.animer = (dt, t, poussee) => animerFlamme(ech, poussee);
     grp.teinter = (hex) => teinterVaisseau(grp, hex);
     return grp;
+  }
+
+  /* Le cockpit : cadre de verrière, casquette de tableau de bord, voyants, collimateur.
+     Rendu seulement en vue subjective (grp.visible piloté par le jeu) ; il ne projette
+     pas d'ombre — il est à l'intérieur de l'avion, et sa carte d'ombre ne servirait à rien.
+     Les distances comptent plus que les formes : un montant de 3 cm à 1,3 m de l'œil couvre
+     1,3 degré et se laisse oublier ; le même à 35 cm en couvre cinq et barre la vue. */
+  function cockpit(poste, ech){
+    const g = new T.Group(); g.name = 'cockpit'; g.visible = false;
+    const metal = new T.MeshStandardMaterial({ color: 0x24262A, metalness: .55, roughness: .62 });
+    const noir = new T.MeshStandardMaterial({ color: 0x121316, metalness: .25, roughness: .85 });
+    const px = poste.x, py = poste.y, pz = poste.z;
+    const AV = 1.35 * ech;                                     /* le pare-brise, en avant des yeux */
+    const arc = new T.Mesh(new T.TorusGeometry(0.40 * ech, 0.022 * ech, 6, 20, Math.PI), metal);
+    arc.position.set(px, py - 0.16 * ech, pz - AV); arc.rotation.x = 0.20; g.add(arc);
+    /* pas de longeron latéral : un longeron qui file de l'avant jusque derrière l'œil se
+       projette en diagonale sur tout le champ. Le Starfighter n'en a pas ; seuls les deux
+       pieds de l'arceau restent, courts, à hauteur d'épaule. */
+    const pied = new T.Mesh(new T.BoxGeometry(0.026 * ech, 0.026 * ech, 0.42 * ech), metal);
+    for (const sx of [-1, 1]){ const m = pied.clone(); m.position.set(px + sx * 0.385 * ech, py - 0.20 * ech, pz - AV + 0.20 * ech); g.add(m); }
+    const haut = new T.Mesh(new T.BoxGeometry(0.62 * ech, 0.025 * ech, 0.03 * ech), metal);
+    haut.position.set(px, py + 0.30 * ech, pz - AV + 0.02 * ech); g.add(haut);
+    /* La casquette. Au banc (banc-cockpit.js), la première version était entièrement
+       masquée par le capot : l'œil est à 10 cm au-dessus du dos du fuselage, et tout ce
+       qui descend sous cette ligne passe derrière lui. Elle affleure donc juste au-dessus,
+       à hauteur du capot, comme la vraie planche de bord d'un Starfighter. */
+    const casq = new T.Mesh(new T.CylinderGeometry(0.40 * ech, 0.44 * ech, 0.34 * ech, 20, 1, true, -Math.PI * 0.70, Math.PI * 1.40), noir);
+    casq.material.side = T.DoubleSide;
+    casq.rotation.x = Math.PI / 2; casq.position.set(px, py - 0.26 * ech, pz - 0.78 * ech); g.add(casq);
+    /* trois voyants sur la planche : régime, carburant, détection */
+    [[-0.17, 0x21C842], [0, 0xD4C154], [0.17, 0x42EBF5]].forEach(([dx, c]) => {
+      const v = new T.Mesh(new T.SphereGeometry(0.016 * ech, 6, 5), new T.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 2.6 }));
+      v.position.set(px + dx * ech, py - 0.175 * ech, pz - 0.86 * ech); g.add(v);
+    });
+    /* le collimateur : un cadre ÉVIDÉ — quatre barres — et sa lame de verre à peine teintée */
+    const zC = pz - 0.72 * ech, yC = py - 0.10 * ech, LC = 0.21 * ech, HC = 0.15 * ech, SC = 0.010 * ech;
+    for (const [lx, ly, w, h] of [[0, HC, LC * 2 + SC, SC], [0, -HC, LC * 2 + SC, SC], [-LC, 0, SC, HC * 2], [LC, 0, SC, HC * 2]]){
+      const barre = new T.Mesh(new T.BoxGeometry(w, h, 0.012 * ech), metal);
+      barre.position.set(px + lx, yC + ly, zC); g.add(barre);
+    }
+    const vitre = new T.Mesh(new T.PlaneGeometry(LC * 2, HC * 2), new T.MeshBasicMaterial({ color: 0x9FE8C0, transparent: true, opacity: 0.055, depthWrite: false, side: T.DoubleSide }));
+    vitre.position.set(px, yC, zC + 0.004 * ech); vitre.renderOrder = 4; g.add(vitre);
+    g.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
+    return g;
   }
 
   function animerFlamme(ech, poussee){
@@ -2790,7 +3079,7 @@ const VAISSEAU3D = (() => {
     }
   }
   function creer(type){ return type === 'sabre' ? sabre() : f104(); }
-  return { creer, types: ['f104', 'sabre'], textureBrossage };
+  return { creer, types: ['f104', 'sabre'], textureBrossage, cockpit };
 })();
 </script>
 <script>
@@ -2982,7 +3271,7 @@ const G = {
   mort:0, ennemis:[], missiles:[], asteroides:[],
   phase:'attente', phaseT:0, suite:null, vague:-1, vg:null, ceinture:null, satellitesAvant:false,
   msg:null, canyon:null, tunnelIdx:1, ravitoDemande:false, dedans:null,
-  laser:0, tirT:0, impact:0, hangar:'f104',
+  laser:0, tirT:0, impact:0, hangar:'f104', vue:'poursuite', laserCible:null, laserDist:0, vue:'poursuite', laserCible:null, laserDist:0,
   cam:{ p:new THREE.Vector3(0, 126, 26), cible:new THREE.Vector3(0, 120, -45), roulis:0, fov:62, mortP:new THREE.Vector3(), derive:new THREE.Vector3() },
 };
 try{ G.top = parseInt(localStorage.getItem('parsec2026-top') || '0', 10) || 0; }catch(e){}
@@ -3022,6 +3311,8 @@ function poserVaisseau(type){
   const laserL = MODELES.creerLaser(VOL.laserPortee); laserL.rotation.y = Math.PI; laserL.position.z = -NAV3D.userData.longueur * 0.5; laserL.visible = false;
   NAV3D.add(laserL); NAV3D.userData.laser = laserL;
   G.hangar = type; try{ localStorage.setItem('parsec2026-hangar', type); }catch(e){}
+  if (typeof majVue === 'function') majVue();
+  if (typeof majVue === 'function') majVue();
 }
 poserVaisseau(G.hangar);
 
@@ -3218,7 +3509,7 @@ function presentation(){
   Object.assign(G, { mode:'scene', score:0, vies:5, niveau:1, prochainBonus:5000, carburant:1, chaleur:0, lift:3, mort:0, laser:0, msg:null, tunnelIdx:1, ravitoDemande:false, dedans:null });
   if (G.canyon) reboucherCanyon(G.canyon);
   toutRetirer(); nouveauVaisseau(true);
-  placerSoleils(1);
+  appliquerMonde(1, 0);
   message('PRESS FIRE TO BEGIN', 1, true); parler('Press fire to begin.', { prio:true }); majLifts();
   SON2026.reprendre();
 }
@@ -3401,14 +3692,20 @@ function laser(){
   if (G.laser > 0) G.laser--;
   if (G.chaleur >= 1) perdreVaisseau();
 }
-function toucherAuLaser(){
+/* Ce que le rayon du nez rencontre, s'il rencontre quelque chose. Appelé à chaque image
+   pour la mire (viser), et au moment du tir pour toucher. */
+function cibleDuRayon(){
   const n = G.nav, ct = Math.cos(n.tangage);
   const F = _v3.set(-Math.sin(n.lacet) * ct, Math.sin(n.tangage), -Math.cos(n.lacet) * ct);
   let cible = null, dmin = VOL.laserPortee;
   const tester = (o) => { _v.subVectors(o.p, n.p); const d = _v.dot(F); if (d < 5 || d > dmin) return; _v2.copy(F).multiplyScalar(d); const lat = _v.sub(_v2).length(); if (lat < VOL.laserTol + VOL.laserTolParM * d + o.rayon * .5){ cible = o; dmin = d; } };
   for (const e of G.ennemis) tester(e);
   for (const a of G.asteroides) tester(a);
-  G.laserDist = cible ? dmin : VOL.laserPortee;
+  G.laserCible = cible; G.laserDist = cible ? dmin : VOL.laserPortee;
+  return cible;
+}
+function toucherAuLaser(){
+  const cible = cibleDuRayon();
   if (!cible) return;
   if (!cible.type){ ASTER.rendre(cible.inst); G.asteroides.splice(G.asteroides.indexOf(cible), 1); exploser(cible.p, 14, false); SON.asteroide(cible.p, cible.v); gagner(100); return; }
   const e = cible;
@@ -3481,7 +3778,7 @@ function ceinture(){
     G.niveau++; G.vague = -1; G.ceinture = null;
     if (G.niveau >= 4) G.satellitesAvant = true;
     parler('Advance to next level.', { file:true }); SON.niveau(); message('ADVANCE TO NEXT LEVEL', 120);
-    placerSoleils(G.niveau);
+    appliquerMonde(G.niveau);   /* le monde change sous les yeux, en deux secondes */
     G.phase = 'attente'; G.phaseT = 150;
   }
 }
@@ -3501,6 +3798,8 @@ function avancer(){
   if (toucheSol() || toucheTunnel()){ perdreVaisseau(); return; }
   if (G.mode !== 'jeu') return;
   carburant(); laser(); ennemis(); missiles(); asteroides(); collisions(); phases();
+  if (G.tirT % 6 !== 1) cibleDuRayon();      /* la mire sait ce qu'elle vise, qu'on tire ou non */
+  if (G.tirT % 6 !== 1) cibleDuRayon();      /* la mire sait ce qu'elle vise, qu'on tire ou non */
 }
 
 /* ---- commandes ---- */
@@ -3521,13 +3820,41 @@ function hangar(){
   poserVaisseau(G.hangar === 'f104' ? 'sabre' : 'f104'); majHangar();
 }
 function majHangar(){ const b = document.getElementById('bHangar'); if (b) b.textContent = G.hangar === 'f104' ? 'F-104' : 'Sabre'; }
-majHangar();
+/* La vue : de derrière, ou depuis le poste. Le cockpit n'est modélisé que pour la vue
+   subjective ; en poursuite il resterait visible à travers la verrière. */
+function basculerVue(){
+  G.vue = G.vue === 'cockpit' ? 'poursuite' : 'cockpit';
+  majVue();
+}
+function majVue(){
+  const c = NAV3D && NAV3D.getObjectByName('cockpit');
+  if (c) c.visible = G.vue === 'cockpit';
+  const b = document.getElementById('bVue');
+  if (b){ b.textContent = G.vue === 'cockpit' ? 'Cockpit' : 'Poursuite'; b.setAttribute('aria-pressed', String(G.vue === 'cockpit')); }
+}
+document.getElementById('bVue').addEventListener('click', basculerVue);
+/* La vue : de derrière, ou depuis le poste. Le cockpit n'est modélisé que pour la vue
+   subjective ; en poursuite il resterait visible à travers la verrière. */
+function basculerVue(){
+  G.vue = G.vue === 'cockpit' ? 'poursuite' : 'cockpit';
+  majVue();
+}
+function majVue(){
+  const c = NAV3D && NAV3D.getObjectByName('cockpit');
+  if (c) c.visible = G.vue === 'cockpit';
+  const b = document.getElementById('bVue');
+  if (b){ b.textContent = G.vue === 'cockpit' ? 'Cockpit' : 'Poursuite'; b.setAttribute('aria-pressed', String(G.vue === 'cockpit')); }
+}
+document.getElementById('bVue').addEventListener('click', basculerVue);
+majHangar(); majVue();
 document.getElementById('bHangar').addEventListener('click', hangar);
 addEventListener('keydown', (e) => {
   if (!window.PARSEC2026) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (k === 'Escape' && G.mode === 'fini'){ G.mode = 'titre'; G.t = 0; toutRetirer(); }
   if (k === 'h') hangar();
+  if (k === 'c') basculerVue();
+  if (k === 'c') basculerVue();
   if (G.mode === 'titre' && k !== 'Escape' && k !== 'h' && !e.altKey && !e.ctrlKey && !e.metaKey) presentation();
 });
 </script>
@@ -3655,8 +3982,71 @@ function dessinerRadar(x, y, r){
   hcx.restore();
 }
 
+/* ---- la mire ----------------------------------------------------
+   Le laser part du nez dans l'axe du vaisseau : la mire est ce rayon
+   projeté à l'écran. Deux cercles (250 m et 700 m) donnent la
+   profondeur ; quand un appareil entre dans le cône, la mire se ferme,
+   la cible est encadrée et sa distance s'affiche. */
+const _pv = new THREE.Vector3(), _pm = new THREE.Vector3();
+function pointEcran(p, W, H, out){
+  _pm.copy(p).project(camera);
+  if (_pm.z > 1) return null;                                  /* derrière la caméra */
+  out.x = (_pm.x * 0.5 + 0.5) * W; out.y = (-_pm.y * 0.5 + 0.5) * H;
+  return out;
+}
+const _e1p = { x: 0, y: 0 }, _e2p = { x: 0, y: 0 }, _e3p = { x: 0, y: 0 };
+function dessinerMire(W, H, s){
+  const n = G.nav, ct = Math.cos(n.tangage);
+  const fx = -Math.sin(n.lacet) * ct, fy = Math.sin(n.tangage), fz = -Math.cos(n.lacet) * ct;
+  const nez = NAV3D ? NAV3D.userData.longueur * 0.5 : 8;
+  const p1 = pointEcran(_pv.set(n.p.x + fx * (nez + 250), n.p.y + fy * (nez + 250), n.p.z + fz * (nez + 250)), W, H, _e1p);
+  const p2 = pointEcran(_pv.set(n.p.x + fx * (nez + 700), n.p.y + fy * (nez + 700), n.p.z + fz * (nez + 700)), W, H, _e2p);
+  const cible = G.laserCible;
+  const chaud = G.chaleur > .8, coul = chaud ? '#FC5554' : cible ? '#D4C154' : 'rgba(66,235,245,.75)';
+  hcx.save();
+  hcx.strokeStyle = coul; hcx.fillStyle = coul; hcx.lineWidth = Math.max(1, s * .55);
+  if (p2){                                                     /* le cercle lointain : un simple repère */
+    hcx.globalAlpha = .35;
+    hcx.beginPath(); hcx.arc(p2.x, p2.y, 3.5 * s, 0, Math.PI * 2); hcx.stroke();
+    hcx.globalAlpha = 1;
+  }
+  if (p1){
+    const r = 9 * s;
+    hcx.beginPath();
+    for (let k = 0; k < 4; k++){                                /* quatre arcs, ouverts aux axes */
+      const a0 = k * Math.PI / 2 + 0.22, a1 = (k + 1) * Math.PI / 2 - 0.22;
+      hcx.moveTo(p1.x + Math.cos(a0) * r, p1.y + Math.sin(a0) * r);
+      hcx.arc(p1.x, p1.y, r, a0, a1);
+    }
+    hcx.stroke();
+    hcx.beginPath();                                            /* les quatre tirets, vers le centre */
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){
+      hcx.moveTo(p1.x + dx * r * 1.55, p1.y + dy * r * 1.55);
+      hcx.lineTo(p1.x + dx * r * .58, p1.y + dy * r * .58);
+    }
+    hcx.stroke();
+    hcx.fillRect(p1.x - s * .5, p1.y - s * .5, s, s);            /* le point de visée */
+    if (cible){                                                 /* verrouillage : un carré qui se ferme */
+      const q = pointEcran(_pv.copy(cible.p), W, H, _e3p);
+      if (q){
+        const c = Math.max(7 * s, 1400 * s / Math.max(60, G.laserDist));
+        hcx.lineWidth = Math.max(1, s * .7);
+        hcx.beginPath();
+        for (const [ax, ay] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]){
+          hcx.moveTo(q.x + ax * c, q.y + ay * c * .72);
+          hcx.lineTo(q.x + ax * c * .45, q.y + ay * c * .72);
+          hcx.moveTo(q.x + ax * c, q.y + ay * c * .72);
+          hcx.lineTo(q.x + ax * c, q.y + ay * c * .30);
+        }
+        hcx.stroke();
+        tracer(POLICES.etat, String(Math.round(G.laserDist)) + ' M', q.x - 12 * s, q.y + c * .72 + 3 * s, Math.max(1, s * .8), coul);
+      }
+    }
+  }
+  hcx.restore();
+}
+
 /* Les flèches hors champ : un appareil (ou le tunnel) qui n'est pas dans l'image est pointé au bord de l'écran, dans sa couleur. */
-const _pv = new THREE.Vector3();
 function flechesHorsChamp(W, H, s){
   const cibles = [];
   for (const e of G.ennemis) if (e.type !== 'satellite' && !e.noir) cibles.push({ p: e.p, coul: PAL[e.col] });
@@ -3705,6 +4095,7 @@ function dessinerHUD(){
     tracer(POLICES.etat, 'NIV ' + G.niveau, 14, yL + 20 * petit, petit, '#42EBF5');
     if (typeof PERF !== 'undefined' && PERF.fps) tracer(POLICES.etat, PERF.fps + ' I/S ' + (PERF.cran || '').toUpperCase(), 14, yL + 30 * petit, petit, 'rgba(66,235,245,.55)');
     flechesHorsChamp(W, H, petit);
+    if (G.mort === 0 && !G.dedans) dessinerMire(W, H, petit);
   }
   if (G.mode === 'titre'){
     const g = Math.max(3, Math.min(10, Math.round(W / 120)));
@@ -3755,6 +4146,14 @@ function cameraSuivre(dt){
     C.p.addScaledVector(C.derive, dt); C.derive.multiplyScalar(1 - dt * 1.2);
     const sol = hauteur(C.p.x, C.p.z) + 2.5; if (C.p.y < sol) C.p.y = sol;
     C.cible.lerp(C.mortP, lam(6)); C.roulis *= 1 - dt * 3;
+  } else if (G.vue === 'cockpit'){
+    /* au poste : la tête est solidaire du vaisseau, sans amortissement — c'est lui qui
+       amortit. Le regard file dans l'axe de tir, et le monde roule avec l'appareil. */
+    _v.copy(NAV3D.userData.poste).applyEuler(_eul.set(RENDU.tangage, RENDU.lacet, RENDU.roulis, 'YXZ')).add(P);
+    C.p.copy(_v);
+    const ct = Math.cos(RENDU.tangage), fx = -Math.sin(RENDU.lacet) * ct, fy = Math.sin(RENDU.tangage), fz = -Math.cos(RENDU.lacet) * ct;
+    C.cible.set(_v.x + fx * 500, _v.y + fy * 500, _v.z + fz * 500);
+    C.roulis += (RENDU.roulis - C.roulis) * lam(18);
   } else {
     const dedans = !!G.dedans, dist = dedans ? CAMV.tunnelRecul : CAMV.recul, haut = dedans ? CAMV.tunnelHaut : CAMV.haut, f = avantDe(RENDU.lacet);
     _v.set(P.x - f.x * dist, P.y + haut, P.z - f.z * dist);
@@ -3770,6 +4169,7 @@ function cameraSuivre(dt){
   _v3.subVectors(C.cible, C.p).normalize(); _q.setFromAxisAngle(_v3, C.roulis); camera.quaternion.premultiply(_q);
   const aspect = camera.aspect;
   let fov = aspect < 1 ? Math.min(90, 2 * Math.atan(Math.tan(31 * DEG) / aspect) / DEG) : 62;
+  if (G.vue === 'cockpit') fov += 6;                      /* un peu plus large : le cadre mange du champ */
   if (G.mode !== 'titre') fov += 10 * (n.v - VOL.croisiere) / 60 + (G.dedans ? 5 : 0);
   C.fov += (fov - C.fov) * lam(5);
   if (Math.abs(camera.fov - C.fov) > .01){ camera.fov = C.fov; camera.updateProjectionMatrix(); }
@@ -3820,6 +4220,7 @@ function poserObjets(dt){
   if (G.canyon){ for (const b of G.canyon.balises) b.animer(dt, tRendu); }
   ombresPoser(OMBRES_PORTEES ? [] : OMBRES_LISTE);
   U.uTemps.value = tRendu;
+  avancerAtmosphere(dt);
   matPost.uniforms.uRouge.value = G.impact;
   calerAnneaux(camera.position, P);
   dome.position.copy(camera.position);
@@ -3880,10 +4281,11 @@ document.getElementById('bPlein').addEventListener('click', () => {
   try{ if (document.fullscreenElement){ document.exitFullscreen(); b.setAttribute('aria-pressed', 'false'); } else { document.documentElement.requestFullscreen().then(() => b.setAttribute('aria-pressed', 'true')); } }catch(e){}
 });
 QUAL.depart = QUAL.cran; appliquerQualite(QUAL.cran);
+appliquerMonde(1, 0);
 SON2026.deverrouiller();
 /* première image tout de suite, et l'export pour les bancs d'essai */
 G.nav.p.y = hauteur(0, 0) + 120; G.nav.p0.copy(G.nav.p); G.nav.solY = hauteur(0, 0); cameraReplacer();
-window.PARSEC2026 = { G, avancer, image, presentation, commencer, touches, AXES, SON2026, MODELES, VAISSEAU3D, RELIEF, MONDE, U, scene, camera, renderer, lancer, creuserCanyon, poserVaisseau, PERF, hauteur, TUN, QUAL, CRANS, appliquerQualite, MOBILE, OMBRES_PORTEES,
+window.PARSEC2026 = { G, avancer, image, presentation, commencer, touches, AXES, SON2026, MODELES, VAISSEAU3D, RELIEF, MONDE, U, scene, camera, renderer, lancer, creuserCanyon, poserVaisseau, PERF, hauteur, TUN, QUAL, CRANS, appliquerQualite, MOBILE, OMBRES_PORTEES, MONDES, appliquerMonde, ATM,
   pas(n = 1){ for (let i = 0; i < n; i++){ avancer(); interpoler(1); cameraSuivre(1 / 60); } poserObjets(1 / 60); rendre(); dessinerHUD(); } };
 </script>
 
