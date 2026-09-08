@@ -1034,7 +1034,24 @@ const SON2026 = (() => {
    vaisseau part cap au nord (−z) ; avant = (−sin φ, 0, −cos φ),
    droite = (cos φ, 0, −sin φ). Toutes les longueurs sont en mètres.
    ================================================================== */
-const MOBILE = matchMedia('(pointer:coarse)').matches || /iPhone|iPad|Android/i.test(navigator.userAgent);
+const ARG = new URLSearchParams(location.search);
+const MOBILE = ARG.has('mobile') ? ARG.get('mobile') !== '0'
+  : (matchMedia('(pointer:coarse)').matches || /iPhone|iPad|Android/i.test(navigator.userAgent));
+
+/* ------------------------------------------------------------------
+   Les crans de qualité. 0 = tout ; 4 = le strict nécessaire. On y
+   descend tout seul quand les images par seconde tombent, on y remonte
+   quand elles tiennent — pour qu'un iPhone reste jouable sans réglage.
+   ------------------------------------------------------------------ */
+const CRANS = [
+  { nom: 'haute',   dpr: 2.0, anneaux: 6, detail: 1.00, poussiere: 3500, msaa: 4, ombres: true,  post: true },
+  { nom: 'bonne',   dpr: 1.5, anneaux: 6, detail: 0.85, poussiere: 2000, msaa: 2, ombres: true,  post: true },
+  { nom: 'moyenne', dpr: 1.5, anneaux: 5, detail: 0.60, poussiere: 1200, msaa: 2, ombres: false, post: true },
+  { nom: 'basse',   dpr: 1.25, anneaux: 5, detail: 0.35, poussiere: 600,  msaa: 0, ombres: false, post: true },
+  { nom: 'minime',  dpr: 1.0, anneaux: 4, detail: 0.00, poussiere: 0,    msaa: 0, ombres: false, post: true },
+];
+const QUAL = { cran: MOBILE ? 2 : 0, fige: ARG.has('q') ? Math.max(0, Math.min(4, +ARG.get('q'))) : -1 };
+if (QUAL.fige >= 0) QUAL.cran = QUAL.fige;
 
 /* ---- §0 les nombres ---------------------------------------------- */
 const MONDE = {
@@ -1250,9 +1267,11 @@ const vue = document.getElementById('vue');
 const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' });
 if (!renderer.capabilities.isWebGL2){ vue.textContent = 'WebGL2 requis (iOS 15+, tout PC récent).'; throw new Error('WebGL2 requis'); }
 vue.appendChild(renderer.domElement);
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, MOBILE ? 1.5 : 2));
-/* ombres portées : sur PC seulement (l'iPhone garde l'ombre analytique du vaisseau) */
-const OMBRES_PORTEES = !MOBILE && !/[?&]sansombres/.test(location.search);
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, CRANS[QUAL.cran].dpr));
+/* Les ombres portées coûtent une passe entière : elles ne sont câblées que si le cran
+   de DÉPART les admet (on ne peut pas les rebrancher à chaud sans recompiler tous les
+   shaders) ; les crans plus bas les éteignent en coupant la carte, pas en recompilant. */
+const OMBRES_PORTEES = CRANS[QUAL.cran].ombres && !ARG.has('sansombres');
 if (OMBRES_PORTEES){ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -1639,7 +1658,7 @@ function spriteGrain(){
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-const N_POUSS = MOBILE ? 1200 : 3500, BOITE = 180;
+const N_POUSS = CRANS[0].poussiere, BOITE = 180;
 const poussMonde = new Float32Array(N_POUSS * 3), poussLocal = new Float32Array(N_POUSS * 3);
 const geoPouss = new THREE.BufferGeometry();
 geoPouss.setAttribute('position', new THREE.BufferAttribute(poussLocal, 3).setUsage(THREE.DynamicDrawUsage));
@@ -1650,8 +1669,9 @@ poussiere.frustumCulled = false;
 scene.add(poussiere);
 let poussInit = false;
 function avancerPoussiere(dt, camPos, t){
+  const n = geoPouss.drawRange.count === Infinity ? N_POUSS : geoPouss.drawRange.count;
   const vx = MONDE.VENT.x * 7, vz = MONDE.VENT.y * 7;
-  for (let i = 0; i < N_POUSS; i++){
+  for (let i = 0; i < n; i++){
     const k = i * 3;
     if (!poussInit){
       poussMonde[k] = camPos.x + (Math.random() - 0.5) * 2 * BOITE;
@@ -1675,7 +1695,7 @@ function avancerPoussiere(dt, camPos, t){
 /* ---- §8 post : cible HDR → quad (ACES, vignette, grain, chaleur) --- */
 const rt = new THREE.WebGLRenderTarget(2, 2, {
   type: TYPE_HDR, format: THREE.RGBAFormat, colorSpace: THREE.LinearSRGBColorSpace,
-  samples: MOBILE ? 2 : 4, depthBuffer: true, stencilBuffer: false, generateMipmaps: false,
+  samples: CRANS[QUAL.cran].msaa, depthBuffer: true, stencilBuffer: false, generateMipmaps: false,
   minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
 });
 const FS_POST = /* glsl */`
@@ -1720,6 +1740,7 @@ function redimensionnerRendu(){
   renderer.setSize(w, h, false);
   renderer.getDrawingBufferSize(tailleRendu);
   rt.setSize(Math.max(1, tailleRendu.x), Math.max(1, tailleRendu.y));
+  if (typeof QUAL !== 'undefined') U.uDetail.value = CRANS[QUAL.cran].detail;
   matPost.uniforms.uRes.value.copy(tailleRendu);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -1730,7 +1751,29 @@ if (window.visualViewport) visualViewport.addEventListener('resize', redimension
 document.addEventListener('visibilitychange', redimensionnerRendu);
 redimensionnerRendu();
 
-/* ---- le rendu d'une image : scène → HDR → post ---- */
+/* ---- appliquer un cran de qualité ---- */
+function appliquerQualite(k){
+  k = Math.max(0, Math.min(CRANS.length - 1, k));
+  QUAL.cran = k;
+  const c = CRANS[k];
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, c.dpr));
+  U.uDetail.value = c.detail;
+  for (let l = 0; l < anneaux.length; l++) anneaux[l].mesh.visible = l < c.anneaux;
+  geoPouss.setDrawRange(0, Math.min(N_POUSS, c.poussiere));
+  poussiere.visible = c.poussiere > 0;
+  if (renderer.shadowMap.enabled !== (OMBRES_PORTEES && c.ombres)){
+    renderer.shadowMap.enabled = OMBRES_PORTEES && c.ombres;
+    renderer.shadowMap.needsUpdate = true;
+    lumA.castShadow = OMBRES_PORTEES && c.ombres;
+  }
+  redimensionnerRendu();
+  return c.nom;
+}
+
+/* ---- le rendu d'une image : scène → HDR → post ----
+   La passe de post n'est JAMAIS supprimée : c'est elle qui porte le tone mapping ACES
+   et la conversion sRGB (nos ShaderMaterial n'ont pas ces includes). La retirer
+   délaverait le sable et le ciel. Ce qui s'allège avec le cran, c'est le MSAA. */
 function rendre(){
   renderer.setRenderTarget(rt); renderer.render(scene, camera);
   renderer.setRenderTarget(null); renderer.render(scPost, camPost);
@@ -3657,7 +3700,7 @@ function dessinerHUD(){
     tracer(POLICES.etat, 'ALT ' + String(Math.round(alt)).padStart(3, ' ') + ' M', 14, yL, petit, '#42EBF5');
     tracer(POLICES.etat, 'VIT ' + String(Math.round(n.v * 3.6)).padStart(3, ' ') + ' KM/H', 14, yL + 10 * petit, petit, '#42EBF5');
     tracer(POLICES.etat, 'NIV ' + G.niveau, 14, yL + 20 * petit, petit, '#42EBF5');
-    if (typeof PERF !== 'undefined' && PERF.fps) tracer(POLICES.etat, String(PERF.fps) + ' I/S', 14, yL + 30 * petit, petit, 'rgba(66,235,245,.55)');
+    if (typeof PERF !== 'undefined' && PERF.fps) tracer(POLICES.etat, PERF.fps + ' I/S ' + (PERF.cran || '').toUpperCase(), 14, yL + 30 * petit, petit, 'rgba(66,235,245,.55)');
     flechesHorsChamp(W, H, petit);
   }
   if (G.mode === 'titre'){
@@ -3787,8 +3830,17 @@ function poserObjets(dt){
 
 /* ---- la boucle ---- */
 let tPrec = 0, acc = 0;
-const PERF = { images: 0, ms: 0, t0: 0, fps: 0, sim: 0 };
-const AFFICHER_PERF = /[?&]perf=1/.test(location.search);
+const PERF = { images: 0, ms: 0, t0: 0, fps: 0, sim: 0, cran: CRANS[QUAL.cran].nom, bas: 0, haut: 0 };
+const AFFICHER_PERF = ARG.has('perf');
+/* Le régulateur : deux secondes sous 45 i/s → un cran plus bas ; huit secondes au-dessus
+   de 57 → un cran plus haut. On ne remonte jamais au-dessus du cran de départ (le câblage
+   des ombres et de la post-production y est figé), et jamais si l'utilisateur a figé un cran. */
+function reglerQualite(fps){
+  if (QUAL.fige >= 0) return;
+  if (fps < 45){ PERF.bas++; PERF.haut = 0; } else if (fps > 57){ PERF.haut++; PERF.bas = 0; } else { PERF.bas = 0; PERF.haut = 0; }
+  if (PERF.bas >= 2 && QUAL.cran < CRANS.length - 1){ PERF.cran = appliquerQualite(QUAL.cran + 1); PERF.bas = 0; }
+  else if (PERF.haut >= 8 && QUAL.cran > QUAL.depart){ PERF.cran = appliquerQualite(QUAL.cran - 1); PERF.haut = 0; }
+}
 function image(t){
   const dt = Math.min(0.1, tPrec ? (t - tPrec) / 1000 : 1 / 60); tPrec = t;
   if (!G.pause){
@@ -3804,7 +3856,9 @@ function image(t){
   dessinerHUD();
   PERF.ms += performance.now() - t1; PERF.images++;
   if (t - PERF.t0 > 1000){
-    PERF.fps = PERF.images; if (AFFICHER_PERF) document.title = `${PERF.fps} i/s · sim ${(PERF.sim / PERF.images).toFixed(2)} ms · rendu JS ${(PERF.ms / PERF.images).toFixed(2)} ms`;
+    PERF.fps = PERF.images;
+    if (AFFICHER_PERF) document.title = `${PERF.fps} i/s · sim ${(PERF.sim / PERF.images).toFixed(2)} ms · rendu JS ${(PERF.ms / PERF.images).toFixed(2)} ms · ${PERF.cran}`;
+    if (PERF.t0) reglerQualite(PERF.fps);      /* pas sur la toute première seconde : compilation des shaders */
     PERF.images = 0; PERF.ms = 0; PERF.sim = 0; PERF.t0 = t;
   }
 }
@@ -3822,10 +3876,11 @@ document.getElementById('bPlein').addEventListener('click', () => {
   const b = document.getElementById('bPlein');
   try{ if (document.fullscreenElement){ document.exitFullscreen(); b.setAttribute('aria-pressed', 'false'); } else { document.documentElement.requestFullscreen().then(() => b.setAttribute('aria-pressed', 'true')); } }catch(e){}
 });
+QUAL.depart = QUAL.cran; appliquerQualite(QUAL.cran);
 SON2026.deverrouiller();
 /* première image tout de suite, et l'export pour les bancs d'essai */
 G.nav.p.y = hauteur(0, 0) + 120; G.nav.p0.copy(G.nav.p); G.nav.solY = hauteur(0, 0); cameraReplacer();
-window.PARSEC2026 = { G, avancer, image, presentation, commencer, touches, AXES, SON2026, MODELES, VAISSEAU3D, RELIEF, MONDE, U, scene, camera, renderer, lancer, creuserCanyon, poserVaisseau, PERF, hauteur, TUN,
+window.PARSEC2026 = { G, avancer, image, presentation, commencer, touches, AXES, SON2026, MODELES, VAISSEAU3D, RELIEF, MONDE, U, scene, camera, renderer, lancer, creuserCanyon, poserVaisseau, PERF, hauteur, TUN, QUAL, CRANS, appliquerQualite, MOBILE, OMBRES_PORTEES,
   pas(n = 1){ for (let i = 0; i < n; i++){ avancer(); interpoler(1); cameraSuivre(1 / 60); } poserObjets(1 / 60); rendre(); dessinerHUD(); } };
 </script>
 
