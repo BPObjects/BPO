@@ -326,7 +326,10 @@ function importer(plan, opts){
   var env = plan.enveloppe.map(X), A = 0;
   for (var i = 0; i < env.length; i++){ var a = env[i], b = env[(i + 1) % env.length]; A += a[0] * b[1] - b[0] * a[1]; }
   if (A < 0) env.reverse();                                                 /* même sens que outlinePoly('rect') */
-  if (typeof selectCat === 'function'){ try { selectCat('immeuble'); } catch (e) {} }
+  /* depuis la catégorie « Plan scanné » on reste dans son espace ; depuis « Immeuble » on y bascule */
+  var planscan = (typeof CAT !== 'undefined' && CAT === 'planscan') || PIM.kind === 'planscan';
+  if (!planscan && typeof selectCat === 'function'){ try { selectCat('immeuble'); } catch (e) {} }
+  if (planscan){ PIM.kind = 'planscan'; PIM.p2bOk = 1; }              /* le bâtiment a désormais un plan : on le dessine */
   PIM.shape = 'libre'; PIM.verts = str(env); PIM.bulges = [];
   PIM.nFloors = 1; PIM.heights = [Hc];
   if (opts.toit) PIM.toit = opts.toit;
@@ -541,8 +544,19 @@ function ouvrir(){
   };
 }
 function fermer(){ if (UI) UI.style.display = 'none'; }
+/* entrée dans la catégorie « Plan scanné » : espace vide (buildImmeuble ne dessine rien tant que
+   PIM.p2bOk est faux) et fenêtre d'import ouverte d'emblée. Un bâtiment déjà importé reste. */
+function entrer(){
+  if (typeof PIM === 'undefined') return;
+  if (PIM.kind !== 'planscan' || !PIM.p2bOk){
+    PIM.kind = 'planscan'; PIM.p2bOk = 0;
+    PIM.nFloors = 1; PIM.heights = [300]; PIM.toit = 'terrasse';
+    PIM.partitions = []; PIM.imOpenings = []; PIM.tremies = []; PIM.terrasses = []; PIM.wallCfg = {}; PIM.dalleCfg = {};
+    setTimeout(ouvrir, 0);
+  }
+}
 
-window.BPO_P2B = { FORMATS: FORMATS, charger: charger, extraire: extraire, controle: controle, importer: importer, poserFond: poserFond, ouvrir: ouvrir, fermer: fermer,
+window.BPO_P2B = { FORMATS: FORMATS, charger: charger, extraire: extraire, controle: controle, importer: importer, poserFond: poserFond, ouvrir: ouvrir, fermer: fermer, entrer: entrer,
   _: { masquePoche: masquePoche, mursEtOuvertures: mursEtOuvertures, piecesEtEnveloppe: piecesEtEnveloppe, composantes: composantes },
   mmpxDe: function(largeurMm, W, echelle){ return largeurMm / W * echelle; } };
 })();
