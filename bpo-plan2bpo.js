@@ -54,13 +54,13 @@ function charger(file){
 /* ------------------------------------------------------------ 2. poché gris */
 function masquePoche(img, W, H, o){
   o = o || {};
-  var satMax = o.satMax || 28, vMin = o.vMin || 90, vMax = o.vMax || 185, sdMax = o.sdMax || 26, aireMin = o.aireMin || 2500;
+  var satMax = o.satMax || 28, vMin = o.vMin || 90, vMax = o.vMax || 185, sdMax = o.sdMax || 26, aireMin = o.aireMin || 2500, noir = (o.mode === 'noir');
   var N = W * H, d = img.data, g = new Float32Array(N), gris = new Uint8Array(N);
   for (var i = 0, p = 0; i < N; i++, p += 4){
     var r = d[p], gg = d[p + 1], b = d[p + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
     var s = mx ? (mx - mn) * 255 / mx : 0;
     g[i] = 0.299 * r + 0.587 * gg + 0.114 * b;
-    gris[i] = (s < satMax && mx > vMin && mx < vMax) ? 1 : 0;
+    gris[i] = noir ? (mx < 80 ? 1 : 0) : ((s < satMax && mx > vMin && mx < vMax) ? 1 : 0);   /* encre noire : sombre, saturation indifférente */
   }
   /* écart-type local 11×11 par sommes intégrales séparables */
   var K = o.sdK || 5, mu = boxMean(g, W, H, K), g2 = new Float32Array(N);
@@ -162,7 +162,7 @@ function mursEtOuvertures(mask, W, H, mmpx){
     murs.push({ dir: Lg.dir, c: Lg.c, s0: p[0][0], s1: p[p.length - 1][1], t: Lg.t });
   });
   /* traits fins et courts (marches, mobilier) : pas des murs */
-  murs = murs.filter(function(w){ return !(w.t * mmpx < 120 && (w.s1 - w.s0) * mmpx < 1500); });
+  murs = murs.filter(function(w){ return w.t * mmpx >= 60 && !(w.t * mmpx < 120 && (w.s1 - w.s0) * mmpx < 1500); });
   ouv = ouv.filter(function(o){ return o.t * mmpx >= 120 || (o.s1 - o.s0) * mmpx >= 1500; });
   return { murs: murs, ouv: ouv };
 }
@@ -192,6 +192,9 @@ function piecesEtEnveloppe(img, W, H, murs, mmpx){
   pieces.forEach(function(P){ P.rgb = P.rgb.map(function(v){ return Math.round(v / Math.max(1, P.n)); }); delete P.n; });
   var env = new Uint8Array(W * H);
   for (i = 0; i < W * H; i++) env[i] = (wm[i] || okP[c.lab[i]]) ? 1 : 0;
+  /* ENVELOPPE SEULEMENT : un trou de moins de 2 m entre deux murs (baie, cloison dessinée en creux)
+     est rebouché, ligne par ligne puis colonne par colonne — les pièces, elles, restent ouvertes */
+  env = boucherTrous(env, W, H, Math.round(2000 / mmpx));
   env = morphFermer(env, W, H, 7);
   var ce = composantes(env, W, H), big = 1;
   if (!ce.n) throw new Error("aucun mur trouvé : pas de poché gris uniforme sur ce plan, ou échelle fausse");
@@ -199,6 +202,16 @@ function piecesEtEnveloppe(img, W, H, murs, mmpx){
   var contour = tracer(ce.lab, W, H, big, ce.stats[big]);
   var poly = rectilineariser(douglasPeucker(contour, 300 / mmpx), 300 / mmpx);
   return { pieces: pieces, env: poly, lab: c.lab, okP: okP };
+}
+function boucherTrous(m, W, H, G){
+  var out = new Uint8Array(m), x, y, a, b;
+  for (y = 0; y < H; y++){ var r = y * W; x = 0;
+    while (x < W){ if (m[r + x]){ x++; continue; } a = x; while (x < W && !m[r + x]) x++; b = x;
+      if (a > 0 && b < W && b - a < G) for (var k = a; k < b; k++) out[r + k] = 1; } }
+  for (x = 0; x < W; x++){ y = 0;
+    while (y < H){ if (m[y * W + x]){ y++; continue; } a = y; while (y < H && !m[y * W + x]) y++; b = y;
+      if (a > 0 && b < H && b - a < G) for (var k2 = a; k2 < b; k2++) out[k2 * W + x] = 1; } }
+  return out;
 }
 /* suivi de contour extérieur (Moore, 8-voisins) d'une composante */
 function tracer(lab, W, H, id, st){
@@ -288,12 +301,26 @@ function exporter(W, H, mmpx, murs, ouv, pieces, env){
 /* ------------------------------------------------------------ 6. tout enchaîner */
 function extraire(src, mmpx, opts){
   if (src && src.getContext) src = source(src);
-  var W = src.W, H = src.H, img = src.img;
-  var mask = masquePoche(img, W, H, opts);
-  var mo = mursEtOuvertures(mask, W, H, mmpx);
+  opts = opts || {};
+  var W = src.W, H = src.H, img = src.img, mask, mo, mode = opts.mode || 'auto';
+  if (mode === 'auto'){
+    /* poché gris (Thauvenay) ou encre noire (Assomption) ? on essaie les deux et on garde
+       celui qui donne le plus de longueur de murs — un plan n'a qu'un seul style de poché */
+    var best = null;
+    ['gris', 'noir'].forEach(function(md){
+      var o2 = {}; for (var k in opts) o2[k] = opts[k]; o2.mode = md;
+      var mk = masquePoche(img, W, H, o2), r = mursEtOuvertures(mk, W, H, mmpx), L = 0;
+      r.murs.forEach(function(w){ L += (w.s1 - w.s0); });
+      if (!best || L > best.L) best = { L: L, mask: mk, mo: r, mode: md };
+    });
+    mask = best.mask; mo = best.mo; mode = best.mode;
+  } else {
+    var o3 = {}; for (var k2 in opts) o3[k2] = opts[k2]; o3.mode = mode;
+    mask = masquePoche(img, W, H, o3); mo = mursEtOuvertures(mask, W, H, mmpx);
+  }
   var pe = piecesEtEnveloppe(img, W, H, mo.murs, mmpx);
   var plan = exporter(W, H, mmpx, mo.murs, mo.ouv, pe.pieces, pe.env);
-  return { plan: plan, mask: mask, murs: mo.murs, ouv: mo.ouv, env: pe.env, pieces: pe.pieces, lab: pe.lab, okP: pe.okP, W: W, H: H };
+  return { plan: plan, mask: mask, murs: mo.murs, ouv: mo.ouv, env: pe.env, pieces: pe.pieces, lab: pe.lab, okP: pe.okP, W: W, H: H, mode: mode };
 }
 /* image de contrôle : pièces teintées, murs rouges, ouvertures cyan, enveloppe noire */
 function controle(src, R){
@@ -456,6 +483,11 @@ function ouvrir(){
   right.appendChild(r2);
   var mmInfo = el('div', 'font-size:9.5px;color:var(--dm,#8b92a0);', ''); right.appendChild(mmInfo);
   right.appendChild(lab('Réglages'));
+  var r7 = el('div', 'display:flex;align-items:center;gap:5px;');
+  r7.appendChild(el('span', 'color:var(--dm,#8b92a0);flex:1', 'Poché des murs'));
+  var selP = document.createElement('select'); selP.style.fontSize = '11px';
+  [['auto', 'Automatique'], ['gris', 'Gris'], ['noir', 'Noir']].forEach(function(o){ var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; selP.appendChild(op); });
+  selP.title = "Gris = murs remplis de gris neutre (aquarelle) ; Noir = murs pleins à l'encre ; Automatique = le style qui donne le plus de murs"; r7.appendChild(selP); right.appendChild(r7);
   var r3 = el('div', 'display:flex;align-items:center;gap:5px;');
   r3.appendChild(el('span', 'color:var(--dm,#8b92a0);flex:1', 'Sensibilité au poché'));
   var inS = document.createElement('input'); inS.type = 'range'; inS.min = '16'; inS.max = '40'; inS.step = '1'; inS.value = '26'; inS.style.width = '100px'; inS.title = 'Plus haut = accepte un gris moins uniforme (hachures, crayon) ; plus bas = ne garde que le poché franc'; r3.appendChild(inS);
@@ -514,11 +546,12 @@ function ouvrir(){
     res.textContent = 'Analyse…'; bAna.disabled = true;
     setTimeout(function(){
       try {
-        var t0 = performance.now(), R = extraire(ETAT.S, ETAT.mmpx, { sdMax: parseInt(inS.value, 10) }); ETAT.R = R;
+        var t0 = performance.now(), R = extraire(ETAT.S, ETAT.mmpx, { sdMax: parseInt(inS.value, 10), mode: selP.value }); ETAT.R = R;
         montrer(controle(ETAT.S, R));
         var P = R.plan, A = 0; for (var i = 0; i < P.enveloppe.length; i++){ var a = P.enveloppe[i], b = P.enveloppe[(i + 1) % P.enveloppe.length]; A += a[0] * b[1] - b[0] * a[1]; }
         res.innerHTML = '';
-        [['Contour', P.enveloppe.length + ' sommets, ' + Math.round(Math.abs(A) / 2) + ' m²'],
+        [['Poché', R.mode === 'noir' ? 'Noir' : 'Gris'],
+         ['Contour', P.enveloppe.length + ' sommets, ' + Math.round(Math.abs(A) / 2) + ' m²'],
          ['Murs intérieurs', String(P.murs.filter(function(m){ return !m.facade; }).length)],
          ['Ouvertures', P.ouvertures.filter(function(o){ return o.type === 'fenetre'; }).length + ' en façade, ' + P.ouvertures.filter(function(o){ return o.type === 'porte'; }).length + ' intérieures'],
          ['Pièces', String(P.pieces.length)]].forEach(function(l){ var d = el('div'); d.appendChild(el('span', 'color:var(--dm,#8b92a0)', l[0])); d.appendChild(document.createTextNode(' : ')); d.appendChild(el('span', '', l[1])); res.appendChild(d); });
