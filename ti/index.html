@@ -140,7 +140,7 @@ const PSG = (() => {
    Trois écrans : maître, sélection, TI BASIC.
    ================================================================== */
 const E = { mode:'maitre', t:0 };
-const JEUX = { '2': ['PARSEC', 'https://bpo.archi/parsec/'], '3': ['TI INVADERS', 'https://bpo.archi/invaders/'] };
+const JEUX = { '2': ['PARSEC', 'https://bpo.archi/parsec/'], '3': ['TI INVADERS', 'https://bpo.archi/invaders/'], '4': ['PARSEC 2026', 'https://bpo.archi/parsec-2026/'] };
 
 /* ---- un petit TI BASIC ------------------------------------------- */
 const B = {
@@ -265,7 +265,7 @@ function dessiner(){
   else if (E.mode === 'selection'){
     logo(RELEVE.selection._logo[0], RELEVE.selection._logo[1]);
     texte('TEXAS INSTRUMENTS', 8, 1); texte('HOME COMPUTER', 8, 3); texte('PRESS', 4, 5);
-    texte('1 FOR TI BASIC', 4, 7); texte('2 FOR ' + JEUX['2'][0], 4, 9); texte('3 FOR ' + JEUX['3'][0], 4, 11);
+    texte('1 FOR TI BASIC', 4, 7); texte('2 FOR ' + JEUX['2'][0], 4, 9); texte('3 FOR ' + JEUX['3'][0], 4, 11); texte('4 FOR ' + JEUX['4'][0], 4, 13);
   }
   else if (E.mode === 'basic'){
     const l = B.lignes; const decal = 24 - l.length - 1;
@@ -312,7 +312,7 @@ document.getElementById('ecran').addEventListener('pointerdown', (e) => {
   e.preventDefault(); PSG.ctx();
   if (E.mode === 'selection'){
     const r = cv.getBoundingClientRect(), row = Math.floor((e.clientY - r.top) / r.height * 24);
-    if (row >= 6 && row <= 8) debutBasic(); else if (row >= 9 && row <= 10) location.href = JEUX['2'][1]; else if (row >= 11 && row <= 13) location.href = JEUX['3'][1];
+    if (row >= 6 && row <= 8) debutBasic(); else if (row >= 9 && row <= 10) location.href = JEUX['2'][1]; else if (row >= 11 && row <= 12) location.href = JEUX['3'][1]; else if (row >= 13 && row <= 14) location.href = JEUX['4'][1];
     return;
   }
   if (E.mode === 'maitre'){ E.mode = 'selection'; return; }
