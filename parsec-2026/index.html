@@ -112,6 +112,7 @@ html.tactile .lifts{display:flex}
   <div class="reglages">
     <button class="b" id="bAide" type="button" aria-pressed="false" title="Commandes">?</button>
     <button class="b" id="bVue" type="button" aria-pressed="false" title="Vue : poursuite ou cockpit (C)">Poursuite</button>
+    <button class="b" id="bManche" type="button" aria-pressed="false" title="Sens du manche en tangage (I)">Manche ↑↓</button>
     <button class="b" id="bHangar" type="button" title="Hangar : F-104 ou Sabre (H)">F-104</button>
     <button class="b" id="bTactile" type="button" aria-pressed="false" title="Manette tactile">Manette</button>
     <button class="b" id="bVoix" type="button" aria-pressed="true" title="Voix de bord">Voix</button>
@@ -125,7 +126,7 @@ html.tactile .lifts{display:flex}
   <p><kbd>S</kbd> <kbd>D</kbd> ou <kbd>←</kbd> <kbd>→</kbd> virer &nbsp;·&nbsp; <kbd>E</kbd> <kbd>X</kbd> ou <kbd>↑</kbd> <kbd>↓</kbd> monter, descendre</p>
   <p><kbd>A</kbd> pousser &nbsp;·&nbsp; <kbd>Z</kbd> couper les rétrofusées &nbsp;·&nbsp; <kbd>.</kbd> ou <kbd>espace</kbd> tirer</p>
   <p><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> lift (vitesse verticale) &nbsp;·&nbsp; <kbd>P</kbd> time warp (pause)</p>
-  <p><kbd>C</kbd> vue cockpit ou poursuite &nbsp;·&nbsp; <kbd>H</kbd> hangar (F-104 / Sabre)</p>
+  <p><kbd>C</kbd> vue cockpit ou poursuite &nbsp;·&nbsp; <kbd>H</kbd> hangar (F-104 / Sabre) &nbsp;·&nbsp; <kbd>I</kbd> inverser le manche</p>
   <p class="note">Manette de jeu : stick gauche, gâchettes = poussée, A = tir, B X Y = lifts 1 2 3. Sur l'écran tactile : stick flottant à gauche, FIRE et poussée à droite.</p>
   <p class="note">Le désert est infini : le radar en haut à droite montre les appareils, et le canyon de ravitaillement en jaune quand il est temps de refaire le plein.</p>
 </div>
@@ -1651,11 +1652,13 @@ void main(){
     float et = smoothstep(0.9982, 0.99955, h) * (0.4 + 0.6 * hash13(g + 5.7));
     c += vec3(0.85, 0.9, 1.0) * et * 3.2 * uEtoiles * smoothstep(-0.02, 0.12, d.y);
   }
-  /* les corps célestes, du plus lointain au plus proche (l'ordre de la table) */
+  /* Les corps célestes. On ne les coupe PAS à l'horizon : c'est le terrain qui les masque,
+     comme un vrai lever de planète — sinon une géante posée sur l'horizon serait tranchée
+     net au milieu. Sous la ligne d'horizon, seule la brume les mange. */
   for (int i = 0; i < 3; i++){
     if (i >= uPlanN) break;
     vec4 p = corps(d, uPlanDir[i], uPlanPar[i], uPlanCol[i], uPlanCol2[i], uPlanAxe[i], uSolDirA);
-    c = mix(c, p.rgb, p.a * dessus);
+    c = mix(c, p.rgb, p.a);
   }
   float cA = dot(d, uSolDirA), cB = dot(d, uSolDirB);
   c += uSolColA * uSolRadA * smoothstep(uSolCosA - 0.00003, uSolCosA + 0.00001, cA) * dessus;
@@ -1848,6 +1851,7 @@ function redimensionnerRendu(){
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   if (typeof MODELES !== 'undefined') MODELES.reglerEchelleParticules(renderer, camera);
+  if (typeof EXPLOSIONS2026 !== 'undefined') EXPLOSIONS2026.reglerEchelle(renderer, camera);
 }
 addEventListener('resize', redimensionnerRendu);
 if (window.visualViewport) visualViewport.addEventListener('resize', redimensionnerRendu);
@@ -1914,44 +1918,44 @@ const MONDES = [
   { nom:'TATOOINE',                                      /* l'original : deux soleils, et la grande lune pâle du soir */
     ciel:[0xF1DFB7, 0xC2C3B9, 0x7191B3], sable:[0xE3C08E, 0xD2A56B, 0xB57A4C], roche:[0xC9A47F, 0x8C6249],
     soleils:[0xFFF3D9, 0xFFC784], az:39, elA:22, elB:7, brume:1/2400, etoiles:0,
-    corps:[{ az:-58, el:29, rayon:9.0, col:0xE8DCC8, col2:0xB8A890, axe:[0.2, 1, 0] }] },
+    corps:[{ az:-58, el:11, rayon:10.0, col:0xE8DCC8, col2:0xB8A890, axe:[0.2, 1, 0] }] },
 
   { nom:'VESPER',                                        /* crépuscule violet, une géante à anneaux posée sur l'horizon */
     ciel:[0xFFC9A0, 0xC79ACB, 0x3B2A6B], sable:[0xD9BBD1, 0xB08FB8, 0x7A5C86], roche:[0x8E7BA6, 0x4E3F63],
     soleils:[0xFFD9C0, 0xFF9E7A], az:-52, elA:9, elB:3, brume:1/2000, etoiles:0.35,
-    corps:[{ az:43, el:19, rayon:14.0, col:0xC9A6E8, col2:0x8E6BC0, anneau:[1.35, 2.30], axe:[0.25, 1, 0.1] }] },
+    corps:[{ az:43, el:8, rayon:15.0, col:0xC9A6E8, col2:0x8E6BC0, anneau:[1.35, 2.30], axe:[0.25, 1, 0.1] }] },
 
   { nom:'RUBICON',                                       /* rouille et poussière, une lune craquelée */
     ciel:[0xF3B489, 0xD97F5A, 0x6E2E2A], sable:[0xE08A5A, 0xB85F38, 0x7E3B24], roche:[0xC46A45, 0x6E3520],
     soleils:[0xFFE0C0, 0xFF8A50], az:14, elA:26, elB:11, brume:1/1700, etoiles:0.15,
-    corps:[{ az:-76, el:34, rayon:12.0, col:0xC8C0B8, col2:0x8A857E, axe:[0, 1, 0.4] }] },
+    corps:[{ az:-76, el:13, rayon:13.0, col:0xC8C0B8, col2:0x8A857E, axe:[0, 1, 0.4] }] },
 
   { nom:'HALIDE',                                        /* monde de sel : une planète bleue et sa lune, côte à côte */
     ciel:[0xE8F4FF, 0xA9D2E8, 0x2E6E9E], sable:[0xF2F4F6, 0xD6DEE6, 0xA8B6C4], roche:[0xC3CDD6, 0x7E8C99],
     soleils:[0xFFFFFF, 0xCFE6FF], az:76, elA:34, elB:14, brume:1/2600, etoiles:0.10,
-    corps:[{ az:-24, el:30, rayon:20.0, col:0x6FA8D8, col2:0x2F5F92, axe:[0.1, 1, 0] },
-           { az:2,   el:18, rayon:7.0,  col:0xE6E8EA, col2:0xB8BCC0, axe:[0, 1, 0.2] }] },
+    corps:[{ az:-24, el:12, rayon:21.0, col:0x6FA8D8, col2:0x2F5F92, axe:[0.1, 1, 0] },
+           { az:8,   el:22, rayon:7.0,  col:0xE6E8EA, col2:0xB8BCC0, axe:[0, 1, 0.2] }] },
 
   { nom:'VERDIGRIS',                                     /* vert-de-gris, deux lunes hautes */
     ciel:[0xF0E9A8, 0xB9C77A, 0x3E6B4E], sable:[0xC9C87A, 0x9AA652, 0x6B7538], roche:[0xA8A268, 0x5F6238],
     soleils:[0xFFF6C0, 0xD8FF9E], az:-18, elA:30, elB:12, brume:1/2200, etoiles:0.20,
-    corps:[{ az:70, el:48, rayon:10.0, col:0xD8D2A8, col2:0x9E9A78, axe:[0.3, 1, 0] },
-           { az:96, el:28, rayon:6.0,  col:0xA8C0A0, col2:0x6E8068, axe:[0, 1, 0.3] }] },
+    corps:[{ az:70, el:9, rayon:11.0, col:0xD8D2A8, col2:0x9E9A78, axe:[0.3, 1, 0] },
+           { az:96, el:21, rayon:6.0,  col:0xA8C0A0, col2:0x6E8068, axe:[0, 1, 0.3] }] },
 
   { nom:'NOCTIS',                                        /* nuit bleue : la géante à anneaux occupe un huitième du ciel */
     ciel:[0x54679A, 0x2B3D6E, 0x111A3E], sable:[0x94A2C4, 0x6E7A9C, 0x4C5878], roche:[0x7A86AE, 0x424E70],
     soleils:[0xE0E8FF, 0x9AB4FF], az:128, elA:9, elB:4, brume:1/2800, etoiles:1.0,
-    corps:[{ az:38, el:34, rayon:16.0, col:0x8FA8E4, col2:0x4A66AE, anneau:[1.30, 2.45], axe:[-0.35, 1, 0.15] }] },
+    corps:[{ az:38, el:14, rayon:16.0, col:0x8FA8E4, col2:0x4A66AE, anneau:[1.30, 2.45], axe:[-0.35, 1, 0.15] }] },
 
   { nom:'CUPRUM',                                        /* cuivre et turquoise, une planète rayée */
     ciel:[0xFFD9A8, 0x6ECFC0, 0x14657A], sable:[0xF0A860, 0xC87A38, 0x8E5020], roche:[0xD89050, 0x7A4A22],
     soleils:[0xFFF0D0, 0xFFB070], az:-74, elA:28, elB:10, brume:1/2000, etoiles:0.05,
-    corps:[{ az:16, el:27, rayon:22.0, col:0xE8C060, col2:0xA87830, axe:[0.15, 1, -0.2] }] },
+    corps:[{ az:16, el:10, rayon:23.0, col:0xE8C060, col2:0xA87830, axe:[0.15, 1, -0.2] }] },
 
   { nom:'OBSIDIAN',                                      /* basalte noir sous un ciel d'or, une lune noire qui frôle le soleil */
     ciel:[0xFFD070, 0xB06830, 0x2A1A22], sable:[0x6E6270, 0x4A4250, 0x2E2A36], roche:[0x5E5468, 0x33303E],
     soleils:[0xFFE8B0, 0xFF7A40], az:100, elA:18, elB:6, brume:1/2300, etoiles:0.60,
-    corps:[{ az:110, el:26, rayon:26.0, col:0x2A2430, col2:0x100C14, axe:[0, 1, 0.5] }] },
+    corps:[{ az:112, el:14, rayon:26.0, col:0x2A2430, col2:0x100C14, axe:[0, 1, 0.5] }] },
 ];
 const mondeDe = (niveau) => MONDES[(Math.max(1, niveau) - 1) % MONDES.length];
 
@@ -2019,6 +2023,302 @@ function avancerAtmosphere(dt){
   _envRetard += dt;
   if (!fini && (_envRetard > 0.33 || ATM.k >= 1)){ _envRetard = 0; refaireEnvironnement(); }
 }
+</script>
+<script>
+/* ==== 34-cockpit.js ==== */
+/* ==================================================================
+   LE POSTE DE PILOTAGE — façon Rafale, et sali par l'usage.
+
+   Ce qu'AL a vu à l'écran de la première version : des silhouettes
+   noires découpées, une casquette qui montait en arc au-dessus de la
+   ligne des yeux et barrait tout. Le vrai sujet d'un cockpit n'est pas
+   la forme des pièces, c'est L'ENCAPSULEMENT : on doit sentir la
+   baignoire autour de soi, la planche qui ferme le bas, les montants
+   qui cadrent — sans rien perdre du champ utile, au-dessus de la ligne
+   d'horizon, là où se joue le combat.
+
+   D'où cette disposition, reprise du Rafale : une planche large et
+   basse portant trois écrans (deux latéraux inclinés vers le pilote, un
+   central en portrait), un collimateur tête haute incliné devant les
+   yeux, deux flancs de baignoire qui montent à hauteur de coude, un
+   arceau fin au bout de la verrière. Rien ne dépasse la ligne des yeux
+   sauf l'arceau, à 1,35 m, où il ne couvre qu'un degré.
+
+   Et rien n'est neuf : la peinture est rayée, la poussière s'est
+   déposée dans les angles, les écrans ont des traces de doigts. C'est
+   cette saleté qui fait la différence entre une maquette et une machine.
+   ================================================================== */
+const COCKPIT = (() => {
+  const T = THREE;
+
+  /* ---- la saleté : rayures fines, poussière dans les creux, traces ---- */
+  let _usure = null;
+  function textureUsure(){
+    if (_usure) return _usure;
+    const N = 512, c = document.createElement('canvas'); c.width = c.height = N;
+    const g = c.getContext('2d');
+    g.fillStyle = '#8a8a8a'; g.fillRect(0, 0, N, N);
+    /* le grain de la peinture */
+    const im = g.getImageData(0, 0, N, N), d = im.data;
+    for (let i = 0; i < d.length; i += 4){
+      const h = Math.sin(i * 12.9898) * 43758.5453, r = h - Math.floor(h);
+      const v = 118 + r * 44;
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    g.putImageData(im, 0, 0);
+    /* les rayures : longues, fines, dans le sens du geste */
+    for (let k = 0; k < 260; k++){
+      const x = Math.random() * N, y = Math.random() * N, l = 8 + Math.random() * 90, a = (Math.random() - 0.5) * 0.7;
+      g.strokeStyle = 'rgba(' + (Math.random() < 0.6 ? '210,210,205,' : '60,58,56,') + (0.05 + Math.random() * 0.20) + ')';
+      g.lineWidth = Math.random() < 0.8 ? 1 : 2;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    }
+    /* la poussière : des taches douces, plus denses vers les bords (les angles morts du chiffon) */
+    for (let k = 0; k < 120; k++){
+      const x = Math.random() * N, y = Math.random() * N, r = 10 + Math.random() * 60;
+      const bord = Math.min(x, y, N - x, N - y) / (N / 2);
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      const a = (0.05 + Math.random() * 0.10) * (1.4 - bord);
+      rg.addColorStop(0, 'rgba(150,142,128,' + a + ')'); rg.addColorStop(1, 'rgba(150,142,128,0)');
+      g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    _usure = new T.CanvasTexture(c);
+    _usure.wrapS = _usure.wrapT = T.RepeatWrapping;
+    return _usure;
+  }
+  /* La peinture du poste : gris-vert sombre d'avion de combat, mate, rayée. Elle n'est
+     jamais tout à fait noire — une silhouette noire, c'est du carton découpé. */
+  function peinture(couleur, rugosite){
+    const u = textureUsure();
+    return new T.MeshStandardMaterial({
+      color: couleur === undefined ? 0x3B4046 : couleur,
+      roughness: rugosite === undefined ? 0.86 : rugosite, metalness: 0.18,
+      roughnessMap: u, map: u,
+      emissive: 0x0E1114, emissiveIntensity: 0.55,      /* la lueur des écrans, sans les compter un à un */
+    });
+  }
+
+  /* ---- les écrans ---- */
+  function ecran(dessin, l, h, pixels){
+    const c = document.createElement('canvas'); c.width = pixels || 256; c.height = Math.round((pixels || 256) * h / l);
+    dessin(c.getContext('2d'), c.width, c.height);
+    const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace;
+    const m = new T.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 1.25, roughness: 0.30, metalness: 0 });
+    const mesh = new T.Mesh(new T.PlaneGeometry(l, h), m);
+    mesh.userData.canvas = c; mesh.userData.texture = t;
+    return mesh;
+  }
+  const VERT = '#7FEBA8', AMBRE = '#E8C06A', CYAN = '#7FD8E8';
+  function fondEcran(g, w, h){
+    g.fillStyle = '#0A1210'; g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 3){ g.fillStyle = 'rgba(255,255,255,0.020)'; g.fillRect(0, y, w, 1); }
+    /* traces de doigts : deux ou trois taches grasses */
+    for (let k = 0; k < 3; k++){
+      const x = Math.random() * w, y = Math.random() * h, r = 12 + Math.random() * 22;
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, 'rgba(190,200,190,0.055)'); rg.addColorStop(1, 'rgba(190,200,190,0)');
+      g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }
+  /* l'écran de gauche : les paramètres moteur, en barres */
+  function ecranMoteur(g, w, h){
+    fondEcran(g, w, h);
+    g.fillStyle = AMBRE; g.font = 'bold ' + Math.round(h * 0.09) + 'px monospace';
+    g.fillText('M 88-2', w * 0.08, h * 0.16);
+    const barres = [['N1', 0.82, VERT], ['N2', 0.74, VERT], ['T4', 0.61, AMBRE], ['CARB', 0.45, AMBRE], ['HYD', 0.90, VERT]];
+    barres.forEach(([nom, v, coul], i) => {
+      const y = h * (0.28 + i * 0.145);
+      g.fillStyle = '#4A5A52'; g.fillRect(w * 0.30, y, w * 0.62, h * 0.075);
+      g.fillStyle = coul; g.fillRect(w * 0.30, y, w * 0.62 * v, h * 0.075);
+      g.fillStyle = '#9FB0A8'; g.font = Math.round(h * 0.075) + 'px monospace'; g.fillText(nom, w * 0.06, y + h * 0.068);
+    });
+  }
+  /* l'écran de droite : la carte, avec le relief en courbes et des pistes */
+  function ecranCarte(g, w, h){
+    fondEcran(g, w, h);
+    g.strokeStyle = 'rgba(127,216,232,0.30)'; g.lineWidth = 1;
+    for (let k = 0; k < 9; k++){
+      g.beginPath();
+      for (let x = 0; x <= w; x += 6){
+        const y = h * (0.1 + k * 0.1) + Math.sin(x * 0.05 + k * 1.7) * h * 0.035 + Math.sin(x * 0.017 + k) * h * 0.02;
+        x === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    g.strokeStyle = AMBRE; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(w * 0.5, h); g.lineTo(w * 0.5, h * 0.42); g.lineTo(w * 0.72, h * 0.18); g.stroke();
+    g.fillStyle = VERT; g.beginPath(); g.moveTo(w * 0.5, h * 0.92); g.lineTo(w * 0.54, h * 0.99); g.lineTo(w * 0.46, h * 0.99); g.fill();
+    g.fillStyle = CYAN; g.font = Math.round(h * 0.08) + 'px monospace'; g.fillText('NAV', w * 0.06, h * 0.12);
+  }
+  /* l'écran central : l'horizon artificiel — le seul qu'on redessine en vol */
+  function dessinerHorizon(g, w, h, roulis, tangage, alt, vit){
+    const cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.44;
+    g.fillStyle = '#0A1210'; g.fillRect(0, 0, w, h);
+    g.save();
+    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
+    g.translate(cx, cy); g.rotate(-roulis);
+    const d = tangage * h * 0.9;
+    g.fillStyle = '#2E5C7A'; g.fillRect(-w, -h + d, w * 2, h);          /* le ciel */
+    g.fillStyle = '#4A3A22'; g.fillRect(-w, d, w * 2, h);               /* la terre */
+    g.strokeStyle = '#CFE8E0'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(-w, d); g.lineTo(w, d); g.stroke();
+    g.strokeStyle = 'rgba(207,232,224,0.65)'; g.lineWidth = 1;
+    for (let k = -3; k <= 3; k++){                                       /* l'échelle de tangage */
+      if (!k) continue;
+      const y = d - k * h * 0.16, l = k % 2 ? R * 0.22 : R * 0.38;
+      g.beginPath(); g.moveTo(-l, y); g.lineTo(l, y); g.stroke();
+    }
+    g.restore();
+    g.strokeStyle = 'rgba(127,235,168,0.5)'; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = VERT; g.lineWidth = 2.5;                             /* la maquette d'avion, fixe */
+    g.beginPath(); g.moveTo(cx - R * 0.34, cy); g.lineTo(cx - R * 0.10, cy); g.moveTo(cx + R * 0.10, cy); g.lineTo(cx + R * 0.34, cy);
+    g.moveTo(cx, cy - R * 0.06); g.lineTo(cx, cy + R * 0.06); g.stroke();
+    g.fillStyle = VERT; g.font = 'bold ' + Math.round(h * 0.062) + 'px monospace';
+    g.fillText(String(Math.round(vit)).padStart(3, ' '), w * 0.04, cy + h * 0.02);
+    g.fillText(String(Math.round(alt)).padStart(4, ' '), w * 0.74, cy + h * 0.02);
+    g.fillStyle = 'rgba(159,176,168,0.75)'; g.font = Math.round(h * 0.045) + 'px monospace';
+    g.fillText('KM/H', w * 0.04, cy + h * 0.09); g.fillText('M', w * 0.74, cy + h * 0.09);
+  }
+
+  /* ==================================================================
+     Le poste complet. `poste` est la position de l'œil dans le repère du
+     vaisseau, `ech` met à l'échelle l'ensemble selon la taille du cockpit.
+     ================================================================== */
+  function creer(poste, ech){
+    ech = ech || 1;
+    const g = new T.Group(); g.name = 'cockpit'; g.visible = false;
+    const px = poste.x, py = poste.y, pz = poste.z;
+    const gris = peinture(0x3B4046), sombre = peinture(0x24282C, 0.92), metal = new T.MeshStandardMaterial({ color: 0x5A6068, metalness: .75, roughness: .45, roughnessMap: textureUsure() });
+
+    /* --- la planche de bord ---
+       Elle est dimensionnée par les ANGLES qu'elle doit couvrir, pas par des tailles
+       choisies au hasard : de 12 degrés sous la ligne des yeux (la lèvre) à 36 degrés
+       (le bas), soit de 19 à 65 cm plus bas à 90 cm devant ; et jusqu'à 25 degrés de
+       part et d'autre. Trois panneaux plats, les latéraux tournés vers le pilote :
+       c'est ainsi que sont faites les vraies planches, et cela évite les surfaces
+       courbes dont l'orientation est difficile à prévoir. */
+    /* Les angles visés : la lèvre à 13 degrés sous les yeux (elle ne doit pas mordre sur le
+       ciel), le bas de la planche vers 36. Avec des panneaux de 42 cm inclinés de 0,55 rad,
+       le haut se trouve 18 cm au-dessus du centre : d'où yPlanche à 34 cm sous l'œil. */
+    const AVANT = 0.70 * ech, INCL = -0.55;
+    const yPlanche = py - 0.34 * ech;
+    const panneau = (l, h, dx, ry) => {
+      const m = new T.Mesh(new T.BoxGeometry(l, h, 0.05 * ech), gris);
+      m.position.set(px + dx, yPlanche, pz - AVANT + Math.abs(dx) * 0.22);
+      m.rotation.set(INCL, ry, 0);
+      g.add(m); return m;
+    };
+    panneau(0.46 * ech, 0.42 * ech, 0, 0);
+    panneau(0.30 * ech, 0.38 * ech, -0.36 * ech, 0.55);
+    panneau(0.30 * ech, 0.38 * ech, 0.36 * ech, -0.55);
+    /* la lèvre : le bandeau sombre qui ferme le bas du champ, à 12 degrés sous les yeux */
+    const levre = new T.Mesh(new T.BoxGeometry(0.98 * ech, 0.05 * ech, 0.13 * ech), sombre);
+    levre.position.set(px, py - 0.155 * ech, pz - AVANT - 0.02 * ech); levre.rotation.x = -0.34;
+    g.add(levre);
+
+    /* --- les trois écrans, comme au Rafale : deux latéraux inclinés, un central --- */
+    const ecrans = {};
+    /* Un écran se pose SUR la tôle, pas dedans : le panneau a 5 cm d'épaisseur, sa face
+       avant est donc à 2,5 cm de son centre le long de la normale. En deçà, l'écran
+       disparaît dans la planche — c'est ce qui est arrivé à la première version. */
+    const surPanneau = (m, dx, ry) => {
+      m.position.set(px + dx, yPlanche + 0.015 * ech, pz - AVANT + Math.abs(dx) * 0.22);
+      m.rotation.set(INCL, ry, 0);
+      m.translateZ(0.045 * ech);
+      return m;
+    };
+    const gauche = surPanneau(ecran(ecranMoteur, 0.21 * ech, 0.165 * ech), -0.36 * ech, 0.55);
+    const droite = surPanneau(ecran(ecranCarte, 0.21 * ech, 0.165 * ech), 0.36 * ech, -0.55);
+    const central = surPanneau(ecran((gg, w, h) => dessinerHorizon(gg, w, h, 0, 0, 0, 0), 0.25 * ech, 0.25 * ech, 256), 0, 0);
+    central.translateY(-0.035 * ech);                        /* sous le collimateur, qui le masquerait */
+    g.add(gauche, droite, central);
+    ecrans.central = central;
+    /* les cadres des écrans : un liseré de métal sali */
+    for (const e of [gauche, droite, central]){
+      const b = new T.Mesh(new T.BoxGeometry(e.geometry.parameters.width * 1.12, e.geometry.parameters.height * 1.14, 0.014 * ech), sombre);
+      b.position.copy(e.position); b.rotation.copy(e.rotation); b.translateZ(-0.010 * ech);
+      g.add(b);
+    }
+    /* trois voyants d'alarme au-dessus du central */
+    const voyants = [];
+    [[-0.13, 0x21C842], [0, 0xD4C154], [0.13, 0xFF3B30]].forEach(([dx, c]) => {
+      const v = new T.Mesh(new T.CylinderGeometry(0.014 * ech, 0.014 * ech, 0.008 * ech, 8),
+        new T.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.6, roughness: .4 }));
+      v.rotation.x = Math.PI / 2 + INCL;
+      v.position.set(px + dx * ech, py - 0.185 * ech, pz - AVANT - 0.005 * ech);
+      g.add(v); voyants.push(v);
+    });
+
+    /* --- les flancs de la baignoire : c'est eux qui donnent l'encapsulement --- */
+    for (const sx of [-1, 1]){
+      const flanc = new T.Mesh(new T.BoxGeometry(0.035 * ech, 0.52 * ech, 1.30 * ech), gris);
+      flanc.position.set(px + sx * 0.43 * ech, py - 0.34 * ech, pz - 0.35 * ech);
+      flanc.rotation.z = sx * 0.10;
+      g.add(flanc);
+      /* la lisse supérieure du flanc, en métal usé : la main du pilote s'y pose */
+      const lisse = new T.Mesh(new T.BoxGeometry(0.055 * ech, 0.028 * ech, 1.30 * ech), metal);
+      lisse.position.set(px + sx * 0.445 * ech, py - 0.09 * ech, pz - 0.35 * ech);
+      g.add(lisse);
+    }
+
+    /* --- le collimateur tête haute : lame de verre inclinée, cadre fin, boîtier sous elle --- */
+    const zC = pz - 0.62 * ech, yC = py - 0.010 * ech, LC = 0.130 * ech, HC = 0.100 * ech, SC = 0.007 * ech;
+    const incl = -0.34;                                      /* la lame penche vers le pilote */
+    const lame = new T.Mesh(new T.PlaneGeometry(LC * 2, HC * 2),
+      new T.MeshPhysicalMaterial({ color: 0xAFE8C8, transparent: true, opacity: 0.085, roughness: 0.06, metalness: 0, transmission: 0, side: T.DoubleSide, depthWrite: false }));
+    lame.position.set(px, yC, zC); lame.rotation.x = incl; lame.renderOrder = 4;
+    g.add(lame);
+    for (const [lx, ly, w, h] of [[0, HC, LC * 2 + SC, SC], [0, -HC, LC * 2 + SC, SC], [-LC, 0, SC, HC * 2], [LC, 0, SC, HC * 2]]){
+      const barre = new T.Mesh(new T.BoxGeometry(w, h, 0.010 * ech), metal);
+      barre.position.set(px + lx, yC + ly * Math.cos(incl), zC + ly * Math.sin(incl)); barre.rotation.x = incl;
+      g.add(barre);
+    }
+    const boitier = new T.Mesh(new T.BoxGeometry(LC * 2.1, 0.09 * ech, 0.18 * ech), sombre);
+    boitier.position.set(px, yC - HC - 0.05 * ech, zC + 0.02 * ech);
+    g.add(boitier);
+
+    /* --- l'arceau de verrière : au bout du pare-brise, où il ne couvre qu'un degré --- */
+    const AV = 1.35 * ech;
+    const arc = new T.Mesh(new T.TorusGeometry(0.40 * ech, 0.018 * ech, 6, 22, Math.PI), metal);
+    arc.position.set(px, py - 0.14 * ech, pz - AV); arc.rotation.x = 0.18;
+    g.add(arc);
+    for (const sx of [-1, 1]){
+      const montant = new T.Mesh(new T.BoxGeometry(0.022 * ech, 0.022 * ech, 0.55 * ech), metal);
+      montant.position.set(px + sx * 0.395 * ech, py - 0.11 * ech, pz - AV + 0.27 * ech);
+      g.add(montant);
+    }
+
+    /* --- la verrière vue de l'intérieur : une coquille à peine teintée, poussiéreuse,
+           qui referme le poste par-dessus. C'est la dernière pièce de l'encapsulement. --- */
+    const verre = new T.Mesh(new T.SphereGeometry(1, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      new T.MeshBasicMaterial({ color: 0xBFD8D0, transparent: true, opacity: 0.055, side: T.BackSide, depthWrite: false, map: textureUsure(), fog: false }));
+    verre.scale.set(0.60 * ech, 0.62 * ech, 1.55 * ech);
+    verre.position.set(px, py - 0.20 * ech, pz - 0.35 * ech);
+    verre.renderOrder = 5;
+    g.add(verre);
+
+    g.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
+    g.userData.ecrans = ecrans;
+    g.userData.voyants = voyants;
+    /* l'horizon artificiel suit vraiment l'avion — quatre rafraîchissements par seconde suffisent */
+    let horloge = 0;
+    g.animer = (dt, etat) => {
+      if (!g.visible) return;
+      horloge += dt;
+      if (horloge < 0.25) return;
+      horloge = 0;
+      const c = ecrans.central.userData.canvas, t = ecrans.central.userData.texture;
+      dessinerHorizon(c.getContext('2d'), c.width, c.height, etat.roulis, etat.tangage, etat.altitude, etat.vitesse);
+      t.needsUpdate = true;
+      voyants[0].material.emissiveIntensity = etat.carburant > 0.25 ? 1.8 : 0.2;
+      voyants[1].material.emissiveIntensity = etat.carburant <= 0.25 ? (etat.clignote ? 4.2 : 0.3) : 0.5;
+      voyants[2].material.emissiveIntensity = etat.chaleur > 0.5 ? (etat.clignote ? 4.5 : 0.3) : 0.35;
+    };
+    return g;
+  }
+  return { creer, textureUsure };
+})();
 </script>
 <script>
 /* ==== 35-modeles.js ==== */
@@ -2842,7 +3142,7 @@ const MODELES = (() => {
    ================================================================== */
 const VAISSEAU3D = (() => {
   const T = THREE, TAU = Math.PI * 2;
-  const JAUNE = 0xD4C154, ACIER = 0xB9BBB8;
+  const JAUNE = 0xD4C154, ACIER = 0xD7DAD8;
 
   /* brossage : stries fines le long de v (l'axe du fuselage), comme une tôle passée à la bande */
   let _brossage = null;
@@ -2862,8 +3162,12 @@ const VAISSEAU3D = (() => {
     _brossage.wrapS = _brossage.wrapT = T.RepeatWrapping; _brossage.repeat.set(2, 4);
     return _brossage;
   }
+  /* Chrome poli, pas tôle mate : la rugosité tombe à 0,13 et l'environnement pèse 1,9 —
+     le ciel, les deux soleils et les planètes se lisent alors dans la carrosserie. Le
+     brossage reste en carte de rugosité : c'est lui qui ÉTIRE les reflets le long du
+     fuselage au lieu d'en faire un miroir plat. */
   function inox(){
-    return new T.MeshPhysicalMaterial({ color: ACIER, metalness: 1, roughness: .40, roughnessMap: textureBrossage(), anisotropy: .7, anisotropyRotation: 0, envMapIntensity: 1.0 });
+    return new T.MeshPhysicalMaterial({ color: ACIER, metalness: 1, roughness: .13, roughnessMap: textureBrossage(), anisotropy: .85, anisotropyRotation: 0, envMapIntensity: 1.9 });
   }
   const jaune = () => new T.MeshStandardMaterial({ color: JAUNE, metalness: .15, roughness: .55 });
   const sombre = () => new T.MeshStandardMaterial({ color: 0x2A2C30, metalness: .6, roughness: .55 });
@@ -2971,9 +3275,11 @@ const VAISSEAU3D = (() => {
       const p = marquage('PARSEC', 1.6, 0.4); p.position.set(sx * 0.075, 1.35, 5.9); p.rotation.y = sx * Math.PI / 2; grp.add(p);
     }
     const ech = tuyere(grp, 7.3, 0.44);
-    /* le poste : sous la verrière, juste au-dessus du capot (rayon du fuselage 0,68 m ici) */
-    grp.userData.poste = new T.Vector3(0, 0.75, -4.25);
-    grp.add(cockpit(grp.userData.poste, 1.0));
+    /* Le poste. Sa HAUTEUR décide de tout : à 0,75 m l'œil frôlait le dos du fuselage et le
+       capot masquait la planche entière (mesuré au banc). À 0,98 m on voit jusqu'à 24 degrés
+       sous l'horizon avant que le capot ne ferme — de quoi loger une planche de bord. */
+    grp.userData.poste = new T.Vector3(0, 0.98, -4.25);
+    grp.add(COCKPIT.creer(grp.userData.poste, 1.0));
     grp.userData.longueur = 16.7; grp.userData.envergure = 7.6;
     grp.userData.teintables = teintables;
     grp.animer = (dt, t, poussee) => animerFlamme(ech, poussee);
@@ -3013,57 +3319,13 @@ const VAISSEAU3D = (() => {
       const p = marquage('PARSEC', 1.3, 0.35); p.position.set(sx * 0.075, 1.75, 5.0); p.rotation.y = sx * Math.PI / 2; grp.add(p);
     }
     const ech = tuyere(grp, 5.7, 0.4);
-    grp.userData.poste = new T.Vector3(0, 0.95, -2.40);
-    grp.add(cockpit(grp.userData.poste, 1.15));
+    grp.userData.poste = new T.Vector3(0, 1.18, -2.40);
+    grp.add(COCKPIT.creer(grp.userData.poste, 1.15));
     grp.userData.longueur = 11.4; grp.userData.envergure = 11.3;
     grp.userData.teintables = [acier];
     grp.animer = (dt, t, poussee) => animerFlamme(ech, poussee);
     grp.teinter = (hex) => teinterVaisseau(grp, hex);
     return grp;
-  }
-
-  /* Le cockpit : cadre de verrière, casquette de tableau de bord, voyants, collimateur.
-     Rendu seulement en vue subjective (grp.visible piloté par le jeu) ; il ne projette
-     pas d'ombre — il est à l'intérieur de l'avion, et sa carte d'ombre ne servirait à rien.
-     Les distances comptent plus que les formes : un montant de 3 cm à 1,3 m de l'œil couvre
-     1,3 degré et se laisse oublier ; le même à 35 cm en couvre cinq et barre la vue. */
-  function cockpit(poste, ech){
-    const g = new T.Group(); g.name = 'cockpit'; g.visible = false;
-    const metal = new T.MeshStandardMaterial({ color: 0x24262A, metalness: .55, roughness: .62 });
-    const noir = new T.MeshStandardMaterial({ color: 0x121316, metalness: .25, roughness: .85 });
-    const px = poste.x, py = poste.y, pz = poste.z;
-    const AV = 1.35 * ech;                                     /* le pare-brise, en avant des yeux */
-    const arc = new T.Mesh(new T.TorusGeometry(0.40 * ech, 0.022 * ech, 6, 20, Math.PI), metal);
-    arc.position.set(px, py - 0.16 * ech, pz - AV); arc.rotation.x = 0.20; g.add(arc);
-    /* pas de longeron latéral : un longeron qui file de l'avant jusque derrière l'œil se
-       projette en diagonale sur tout le champ. Le Starfighter n'en a pas ; seuls les deux
-       pieds de l'arceau restent, courts, à hauteur d'épaule. */
-    const pied = new T.Mesh(new T.BoxGeometry(0.026 * ech, 0.026 * ech, 0.42 * ech), metal);
-    for (const sx of [-1, 1]){ const m = pied.clone(); m.position.set(px + sx * 0.385 * ech, py - 0.20 * ech, pz - AV + 0.20 * ech); g.add(m); }
-    const haut = new T.Mesh(new T.BoxGeometry(0.62 * ech, 0.025 * ech, 0.03 * ech), metal);
-    haut.position.set(px, py + 0.30 * ech, pz - AV + 0.02 * ech); g.add(haut);
-    /* La casquette. Au banc (banc-cockpit.js), la première version était entièrement
-       masquée par le capot : l'œil est à 10 cm au-dessus du dos du fuselage, et tout ce
-       qui descend sous cette ligne passe derrière lui. Elle affleure donc juste au-dessus,
-       à hauteur du capot, comme la vraie planche de bord d'un Starfighter. */
-    const casq = new T.Mesh(new T.CylinderGeometry(0.40 * ech, 0.44 * ech, 0.34 * ech, 20, 1, true, -Math.PI * 0.70, Math.PI * 1.40), noir);
-    casq.material.side = T.DoubleSide;
-    casq.rotation.x = Math.PI / 2; casq.position.set(px, py - 0.26 * ech, pz - 0.78 * ech); g.add(casq);
-    /* trois voyants sur la planche : régime, carburant, détection */
-    [[-0.17, 0x21C842], [0, 0xD4C154], [0.17, 0x42EBF5]].forEach(([dx, c]) => {
-      const v = new T.Mesh(new T.SphereGeometry(0.016 * ech, 6, 5), new T.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 2.6 }));
-      v.position.set(px + dx * ech, py - 0.175 * ech, pz - 0.86 * ech); g.add(v);
-    });
-    /* le collimateur : un cadre ÉVIDÉ — quatre barres — et sa lame de verre à peine teintée */
-    const zC = pz - 0.72 * ech, yC = py - 0.10 * ech, LC = 0.21 * ech, HC = 0.15 * ech, SC = 0.010 * ech;
-    for (const [lx, ly, w, h] of [[0, HC, LC * 2 + SC, SC], [0, -HC, LC * 2 + SC, SC], [-LC, 0, SC, HC * 2], [LC, 0, SC, HC * 2]]){
-      const barre = new T.Mesh(new T.BoxGeometry(w, h, 0.012 * ech), metal);
-      barre.position.set(px + lx, yC + ly, zC); g.add(barre);
-    }
-    const vitre = new T.Mesh(new T.PlaneGeometry(LC * 2, HC * 2), new T.MeshBasicMaterial({ color: 0x9FE8C0, transparent: true, opacity: 0.055, depthWrite: false, side: T.DoubleSide }));
-    vitre.position.set(px, yC, zC + 0.004 * ech); vitre.renderOrder = 4; g.add(vitre);
-    g.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
-    return g;
   }
 
   function animerFlamme(ech, poussee){
@@ -3079,7 +3341,206 @@ const VAISSEAU3D = (() => {
     }
   }
   function creer(type){ return type === 'sabre' ? sabre() : f104(); }
-  return { creer, types: ['f104', 'sabre'], textureBrossage, cockpit };
+  return { creer, types: ['f104', 'sabre'], textureBrossage };
+})();
+</script>
+<script>
+/* ==== 37-explosions.js ==== */
+/* ==================================================================
+   LES EXPLOSIONS — cinq couches, dans l'ordre où l'œil les lit.
+
+   Une explosion n'est pas un nuage de confettis : c'est un éclair, puis
+   une boule de feu qui se dilate ET REFROIDIT (blanc, jaune, orange,
+   rouge sombre), des débris qui partent vite et retombent, une onde de
+   choc qui file plus vite que tout, et de la fumée qui reste. Ce sont
+   ces cinq temps, et surtout le refroidissement, qui font qu'on y croit.
+
+   Tout est en THREE.Points avec un matériau maison (taille et couleur
+   par point : PointsMaterial ne sait pas faire), plus une sphère pour
+   l'onde. Deux appels de dessin par explosion, pas un de plus.
+   ================================================================== */
+const EXPLOSIONS2026 = (() => {
+  const T = THREE, TAU = Math.PI * 2;
+
+  /* ---- les deux sprites, dessinés au canvas ---- */
+  function sprite(dessin, taille){
+    const c = document.createElement('canvas'); c.width = c.height = taille || 64;
+    dessin(c.getContext('2d'), c.width);
+    const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; return t;
+  }
+  let _feu = null, _fumee = null;
+  const texFeu = () => _feu || (_feu = sprite((g, n) => {
+    const r = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.25, 'rgba(255,255,255,0.85)');
+    r.addColorStop(0.55, 'rgba(255,255,255,0.35)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r; g.fillRect(0, 0, n, n);
+  }, 64));
+  /* la fumée n'est pas un disque lisse : un peu de grain lui donne du volume */
+  const texFumee = () => _fumee || (_fumee = sprite((g, n) => {
+    const im = g.createImageData(n, n), d = im.data, c = n / 2;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++){
+      const i = (y * n + x) * 4, dx = (x - c) / c, dy = (y - c) / c, r = Math.sqrt(dx * dx + dy * dy);
+      let a = Math.max(0, 1 - r);
+      a *= a;
+      const h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      a *= 0.55 + 0.45 * (h - Math.floor(h));
+      d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = Math.round(a * 255);
+    }
+    g.putImageData(im, 0, 0);
+  }, 64));
+
+  /* ---- le matériau : taille, couleur et opacité par point ---- */
+  const MATS = [];
+  function matPoints(tex, additif){
+    const m = new T.ShaderMaterial({
+      uniforms: { tSprite: { value: tex }, uEchelle: { value: 700 } },
+      vertexShader: [
+        'attribute float taille; attribute vec3 teinte; attribute float alpha;',
+        'varying vec3 vTeinte; varying float vAlpha;',
+        'uniform float uEchelle;',
+        'void main(){ vTeinte = teinte; vAlpha = alpha;',
+        '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+        '  gl_PointSize = taille * uEchelle / max(1.0, -mv.z);',
+        '  gl_Position = projectionMatrix * mv; }'].join('\n'),
+      fragmentShader: [
+        'uniform sampler2D tSprite; varying vec3 vTeinte; varying float vAlpha;',
+        'void main(){ vec4 s = texture2D(tSprite, gl_PointCoord);',
+        '  gl_FragColor = vec4(vTeinte, s.a * vAlpha); }'].join('\n'),
+      transparent: true, depthWrite: false, blending: additif ? T.AdditiveBlending : T.NormalBlending,
+    });
+    MATS.push(m); return m;
+  }
+  /* gl_PointSize est en pixels : l'échelle dépend de la hauteur du tampon et de la focale */
+  function reglerEchelle(renderer, camera){
+    const e = renderer.domElement.height / (2 * Math.tan(camera.fov * Math.PI / 360));
+    for (const m of MATS) m.uniforms.uEchelle.value = e;
+  }
+
+  function nuage(n, tex, additif){
+    const g = new T.BufferGeometry();
+    g.setAttribute('position', new T.BufferAttribute(new Float32Array(n * 3), 3).setUsage(T.DynamicDrawUsage));
+    g.setAttribute('taille', new T.BufferAttribute(new Float32Array(n), 1).setUsage(T.DynamicDrawUsage));
+    g.setAttribute('teinte', new T.BufferAttribute(new Float32Array(n * 3), 3).setUsage(T.DynamicDrawUsage));
+    g.setAttribute('alpha', new T.BufferAttribute(new Float32Array(n), 1).setUsage(T.DynamicDrawUsage));
+    const p = new T.Points(g, matPoints(tex, additif));
+    p.frustumCulled = false; p.renderOrder = additif ? 3 : 2;
+    return p;
+  }
+
+  /* La couleur d'une flamme selon son âge : on interpole une échelle de température.
+     C'est ce refroidissement, plus que la forme, qui distingue une explosion d'un feu d'artifice. */
+  const ECHELLE = [
+    [0.00, 1.00, 1.00, 0.96],
+    [0.12, 1.00, 0.94, 0.62],
+    [0.30, 1.00, 0.66, 0.20],
+    [0.55, 0.86, 0.28, 0.06],
+    [0.80, 0.34, 0.09, 0.03],
+    [1.00, 0.07, 0.05, 0.05],
+  ];
+  function couleurFeu(u, out){
+    for (let i = 1; i < ECHELLE.length; i++){
+      if (u <= ECHELLE[i][0] || i === ECHELLE.length - 1){
+        const a = ECHELLE[i - 1], b = ECHELLE[i], k = Math.max(0, Math.min(1, (u - a[0]) / (b[0] - a[0])));
+        out[0] = a[1] + (b[1] - a[1]) * k; out[1] = a[2] + (b[2] - a[2]) * k; out[2] = a[3] + (b[3] - a[3]) * k;
+        return out;
+      }
+    }
+    return out;
+  }
+
+  /* ---- une explosion ---- */
+  function creer(opts){
+    opts = opts || {};
+    const NF = opts.feu || 26, ND = opts.debris || 34, NS = opts.fumee || 18;
+    const grp = new T.Group(); grp.name = 'explosion2026'; grp.visible = false;
+    const feu = nuage(NF + ND, texFeu(), true);          /* feu et débris partagent un nuage additif */
+    const fumee = nuage(NS, texFumee(), false);
+    const onde = new T.Mesh(new T.SphereGeometry(1, 20, 10),
+      new T.MeshBasicMaterial({ color: 0xFFE6B0, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false }));
+    onde.renderOrder = 3;
+    grp.add(feu, fumee, onde);
+
+    const P = new Float32Array((NF + ND) * 3), V = new Float32Array((NF + ND) * 3), age = new Float32Array(NF + ND), vie = new Float32Array(NF + ND);
+    const SP = new Float32Array(NS * 3), SV = new Float32Array(NS * 3), sage = new Float32Array(NS), svie = new Float32Array(NS), sr = new Float32Array(NS);
+    const col = [0, 0, 0];
+    let t = 0, duree = 0, actif = false, ech = 1, gravite = 26;
+
+    grp.demarrer = (position, taille) => {
+      ech = taille || 1;
+      grp.position.copy(position); grp.visible = true; actif = true; t = 0;
+      duree = 2.6 * Math.sqrt(ech);
+      const pf = feu.geometry.attributes, pu = fumee.geometry.attributes;
+      for (let i = 0; i < NF + ND; i++){
+        const debris = i >= NF;
+        const u = Math.random() * TAU, w = Math.random() * 2 - 1, s = Math.sqrt(1 - w * w);
+        /* le feu part lentement et gonfle ; les débris partent vite et loin */
+        const v = debris ? (14 + Math.random() * 30) * ech : (3.5 + Math.random() * 7) * ech;
+        const r0 = debris ? 0.2 : (Math.random() * 1.2 * ech);
+        P[i * 3] = s * Math.cos(u) * r0; P[i * 3 + 1] = w * r0 * 0.7; P[i * 3 + 2] = s * Math.sin(u) * r0;
+        V[i * 3] = s * Math.cos(u) * v; V[i * 3 + 1] = w * v + (debris ? 6 : 3.5) * ech; V[i * 3 + 2] = s * Math.sin(u) * v;
+        age[i] = debris ? 0 : -Math.random() * 0.05;
+        vie[i] = debris ? (0.5 + Math.random() * 0.9) * Math.sqrt(ech) : (0.45 + Math.random() * 0.55) * Math.sqrt(ech);
+        pf.taille.array[i] = debris ? (0.22 + Math.random() * 0.3) * ech : (2.6 + Math.random() * 3.4) * ech;
+      }
+      for (let i = 0; i < NS; i++){
+        const u = Math.random() * TAU, r0 = Math.random() * 1.6 * ech;
+        SP[i * 3] = Math.cos(u) * r0; SP[i * 3 + 1] = Math.random() * ech; SP[i * 3 + 2] = Math.sin(u) * r0;
+        SV[i * 3] = Math.cos(u) * (1.2 + Math.random() * 2.6) * ech; SV[i * 3 + 1] = (2.2 + Math.random() * 2.6) * ech; SV[i * 3 + 2] = Math.sin(u) * (1.2 + Math.random() * 2.6) * ech;
+        sage[i] = -0.10 - Math.random() * 0.35;              /* la fumée naît après le feu */
+        svie[i] = (1.6 + Math.random() * 1.4) * Math.sqrt(ech);
+        sr[i] = (2.2 + Math.random() * 2.6) * ech;
+        pu.alpha.array[i] = 0;
+      }
+      grp.avancer(0);
+    };
+
+    grp.avancer = (dt) => {
+      if (!actif) return;
+      t += dt;
+      if (t > duree){ actif = false; grp.visible = false; return; }
+      const pf = feu.geometry.attributes, pu = fumee.geometry.attributes;
+      for (let i = 0; i < NF + ND; i++){
+        const debris = i >= NF;
+        age[i] += dt;
+        const u = age[i] / vie[i];
+        if (age[i] < 0 || u > 1){ pf.alpha.array[i] = 0; continue; }
+        const frein = debris ? Math.max(0, 1 - 2.2 * dt) : Math.max(0, 1 - 5.5 * dt);
+        V[i * 3] *= frein; V[i * 3 + 2] *= frein;
+        V[i * 3 + 1] = V[i * 3 + 1] * frein - (debris ? gravite : -1.5) * dt;   /* le feu monte, les débris tombent */
+        P[i * 3] += V[i * 3] * dt; P[i * 3 + 1] += V[i * 3 + 1] * dt; P[i * 3 + 2] += V[i * 3 + 2] * dt;
+        pf.position.array[i * 3] = P[i * 3]; pf.position.array[i * 3 + 1] = P[i * 3 + 1]; pf.position.array[i * 3 + 2] = P[i * 3 + 2];
+        couleurFeu(debris ? Math.min(1, u * 0.75) : u, col);
+        pf.teinte.array[i * 3] = col[0]; pf.teinte.array[i * 3 + 1] = col[1]; pf.teinte.array[i * 3 + 2] = col[2];
+        pf.alpha.array[i] = debris ? (1 - u) : Math.min(1, (1 - u) * 1.6) * 0.85;
+        if (!debris) pf.taille.array[i] *= 1 + dt * 1.7;      /* la boule de feu gonfle */
+      }
+      pf.position.needsUpdate = pf.teinte.needsUpdate = pf.alpha.needsUpdate = pf.taille.needsUpdate = true;
+      for (let i = 0; i < NS; i++){
+        sage[i] += dt;
+        const u = sage[i] / svie[i];
+        if (sage[i] < 0 || u > 1){ pu.alpha.array[i] = 0; continue; }
+        SV[i * 3] *= 1 - 1.1 * dt; SV[i * 3 + 2] *= 1 - 1.1 * dt;
+        SP[i * 3] += SV[i * 3] * dt; SP[i * 3 + 1] += SV[i * 3 + 1] * dt; SP[i * 3 + 2] += SV[i * 3 + 2] * dt;
+        pu.position.array[i * 3] = SP[i * 3]; pu.position.array[i * 3 + 1] = SP[i * 3 + 1]; pu.position.array[i * 3 + 2] = SP[i * 3 + 2];
+        pu.taille.array[i] = sr[i] * (0.5 + 2.4 * u);
+        /* la fumée sort noire et chaude, puis pâlit en se refroidissant et en se diluant */
+        const g = 0.10 + 0.34 * u;
+        pu.teinte.array[i * 3] = g * 1.15; pu.teinte.array[i * 3 + 1] = g * 1.05; pu.teinte.array[i * 3 + 2] = g;
+        pu.alpha.array[i] = Math.min(1, u * 6) * (1 - u) * 0.62;
+      }
+      pu.position.needsUpdate = pu.teinte.needsUpdate = pu.alpha.needsUpdate = pu.taille.needsUpdate = true;
+      /* l'onde de choc : très rapide, très brève — c'est elle qui donne la violence */
+      const uo = Math.min(1, t / (0.34 * Math.sqrt(ech)));
+      onde.visible = uo < 1;
+      if (onde.visible){
+        onde.scale.setScalar((1.5 + 34 * uo) * ech);
+        onde.material.opacity = 0.5 * (1 - uo) * (1 - uo);
+      }
+    };
+    grp.userData.actif = () => actif;
+    return grp;
+  }
+  return { creer, reglerEchelle, couleurFeu, texFeu, texFumee };
 })();
 </script>
 <script>
@@ -3095,6 +3556,10 @@ const VAISSEAU3D = (() => {
    Les lifts 1/2/3 et P (pause) restent des touches d'événement.
    ================================================================== */
 const AXES = { lacet:0, tangage:0, poussee:0, feu:false };
+/* Tirer sur le manche fait monter : c'est la convention des avions, et le débat le plus
+   vieux des simulateurs. Chacun son camp — le réglage est gardé d'une partie à l'autre. */
+const MANCHE = { inverse: false };
+try{ MANCHE.inverse = localStorage.getItem('parsec2026-manche') === 'inverse'; }catch(e){}
 const touches = Object.create(null);
 const EVENEMENTS = { lift:null, feu:null, pause:null };   /* branchés par les règles */
 
@@ -3201,6 +3666,7 @@ function lireEntrees(){
   const somme = (a, b, c) => Math.max(-1, Math.min(1, a + b + c));
   AXES.lacet = somme(AXES.lacet, MANETTE.lacet, PAD.lacet);
   AXES.tangage = somme(AXES.tangage, MANETTE.tangage, PAD.tangage);
+  if (MANCHE.inverse) AXES.tangage = -AXES.tangage;
   AXES.poussee = somme(AXES.poussee, MANETTE.poussee, PAD.poussee);
   AXES.feu = AXES.feu || PAD.feu;
 }
@@ -3318,12 +3784,56 @@ poserVaisseau(G.hangar);
 
 const FAB = { swooper: MODELES.creerSwooper, urbite: MODELES.creerUrbite, dramite: MODELES.creerDramite, bynite: MODELES.creerBynite, ltf: MODELES.creerLTF, saucer: MODELES.creerSaucer, satellite: MODELES.creerSatellite };
 const ECHELLE_ESP = { swooper: 1.6, urbite: 1.65, dramite: 1.65, bynite: 1.65, ltf: 1.4, saucer: 1.5, satellite: 2.4 };   /* les lutins de 1982 à 0,75 m/px, comme le vaisseau */
+/* Un appareil ennemi ne doit pas ressembler à un jouet. On garde la couleur tirée dans la
+   palette de 1982 — le jeu s'en sert, un appareil touché change de couleur — mais on
+   l'assombrit vers le noir, on allume les hublots en rouge, et on ajoute des pointes.
+   La lueur des hublots PULSE : c'est elle qui donne l'impression que la chose est vivante. */
+const _cTmp = new THREE.Color(), _cNoir = new THREE.Color(0x0A0A0C);
+function rendreMenacant(m, type, colIdx){
+  const pointes = [];
+  m.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const mat = o.material;
+    if (mat.userData && mat.userData.hublot){
+      mat.color.set(0xFF2A18); mat.emissive.set(0xFF2A18); mat.emissiveIntensity = 3.2;
+      mat.userData.pulse = true;
+    } else if (mat.userData && mat.userData.teintable){
+      mat.color.lerp(_cNoir, 0.62);                       /* la coque mange la lumière */
+      mat.emissive.copy(mat.color).multiplyScalar(0.35);
+      mat.emissiveIntensity = 0.30; mat.metalness = 0.55; mat.roughness = 0.45;
+    }
+  });
+  /* des pointes : trois épines pour un croiseur, une lame dorsale pour un chasseur */
+  const epine = new THREE.ConeGeometry(0.18, 1.5, 5);
+  const matEpine = new THREE.MeshStandardMaterial({ color: 0x141416, metalness: .7, roughness: .4 });
+  const croiseur = type === 'urbite' || type === 'dramite' || type === 'bynite';
+  const n = croiseur ? 8 : type === 'satellite' ? 0 : 3;
+  for (let i = 0; i < n; i++){
+    const a = croiseur ? (i / n) * Math.PI * 2 : (i - 1) * 0.5;
+    const e = new THREE.Mesh(epine, matEpine);
+    if (croiseur){ e.position.set(Math.sin(a) * 3.5, 0, Math.cos(a) * 3.5); e.rotation.z = -Math.PI / 2; e.rotation.y = -a; e.scale.setScalar(1.1); }
+    else { e.position.set(a * 0.9, 0.25, 1.1); e.rotation.x = -Math.PI / 2; e.scale.set(0.6, 0.8, 0.6); }
+    m.add(e); pointes.push(e);
+  }
+  /* un œil unique, rouge, qui regarde devant */
+  const oeil = new THREE.Mesh(new THREE.SphereGeometry(croiseur ? 0.42 : 0.26, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0xFF3020, emissive: 0xFF3020, emissiveIntensity: 4.0, roughness: .2 }));
+  oeil.position.set(0, croiseur ? 0.9 : 0.35, croiseur ? 2.6 : 1.9);
+  oeil.userData.oeil = true; m.add(oeil);
+  m.userData.oeil = oeil;
+  return m;
+}
 function ennemiMesh(type, colIdx){
   const w = new THREE.Group(), m = FAB[type](PAL[colIdx]);
+  rendreMenacant(m, type, colIdx);
   m.rotation.y = Math.PI; m.scale.setScalar(ECHELLE_ESP[type]); w.add(m); w.userData.modele = m;
   grefferBrume(w); scene.add(w); return w;
 }
-function recolorer(e, colIdx){ MODELES.teinter(e.mesh.userData.modele, colIdx === 1 ? '#000000' : PAL[colIdx]); }
+function recolorer(e, colIdx){
+  const m = e.mesh.userData.modele;
+  MODELES.teinter(m, colIdx === 1 ? '#000000' : PAL[colIdx]);
+  rendreMenacant(m, e.type, colIdx);       /* la touche change la couleur, pas le caractère */
+}
 function retirerEnnemi(e){
   scene.remove(e.mesh);
   e.mesh.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.dispose) o.material.dispose(); });
@@ -3332,15 +3842,15 @@ function retirerEnnemi(e){
 /* missiles : réserve de 32, le modèle regarde vers +z → enveloppe tournée */
 const MISSILES_MESH = [];
 for (let i = 0; i < 32; i++){ const w = new THREE.Group(), m = MODELES.creerMissile(); m.rotation.y = Math.PI; m.scale.setScalar(1.8); w.add(m); w.visible = false; scene.add(w); MISSILES_MESH.push(w); }
-/* explosions : réserve de 6 */
+/* explosions : réserve de 6, en cinq couches (voir 37-explosions.js) */
 const EXPLOSIONS = [];
-for (let i = 0; i < 6; i++){ const e = MODELES.creerExplosion({ eclats: MOBILE ? 32 : 64 }); scene.add(e); EXPLOSIONS.push(e); }
-const EXPL_ROUGE = ['#FC5554', '#FF7978', '#FFFFFF', '#D4C154'];
+for (let i = 0; i < 6; i++){
+  const e = EXPLOSIONS2026.creer(MOBILE ? { feu: 16, debris: 20, fumee: 10 } : { feu: 26, debris: 34, fumee: 18 });
+  scene.add(e); EXPLOSIONS.push(e);
+}
 function exploser(p, colIdx, joueur){
   const e = EXPLOSIONS.find((x) => !x.userData.actif()) || EXPLOSIONS[0];
-  const pal = joueur ? EXPL_ROUGE : (colIdx === 1 ? ['#5455ED', '#7D76FC', '#FFFFFF'] : [PAL[colIdx], '#FFFFFF', PAL[colIdx], '#E6CE80']);
-  e.demarrer(p, pal);
-  if (joueur) e.scale.setScalar(1.8); else e.scale.setScalar(1.15);
+  e.demarrer(p, joueur ? 1.9 : 1.0);
 }
 /* astéroïdes : trois formes en InstancedMesh, liste libre */
 const ASTER = (() => {
@@ -3822,17 +4332,6 @@ function hangar(){
 function majHangar(){ const b = document.getElementById('bHangar'); if (b) b.textContent = G.hangar === 'f104' ? 'F-104' : 'Sabre'; }
 /* La vue : de derrière, ou depuis le poste. Le cockpit n'est modélisé que pour la vue
    subjective ; en poursuite il resterait visible à travers la verrière. */
-function basculerVue(){
-  G.vue = G.vue === 'cockpit' ? 'poursuite' : 'cockpit';
-  majVue();
-}
-function majVue(){
-  const c = NAV3D && NAV3D.getObjectByName('cockpit');
-  if (c) c.visible = G.vue === 'cockpit';
-  const b = document.getElementById('bVue');
-  if (b){ b.textContent = G.vue === 'cockpit' ? 'Cockpit' : 'Poursuite'; b.setAttribute('aria-pressed', String(G.vue === 'cockpit')); }
-}
-document.getElementById('bVue').addEventListener('click', basculerVue);
 /* La vue : de derrière, ou depuis le poste. Le cockpit n'est modélisé que pour la vue
    subjective ; en poursuite il resterait visible à travers la verrière. */
 function basculerVue(){
@@ -3846,6 +4345,17 @@ function majVue(){
   if (b){ b.textContent = G.vue === 'cockpit' ? 'Cockpit' : 'Poursuite'; b.setAttribute('aria-pressed', String(G.vue === 'cockpit')); }
 }
 document.getElementById('bVue').addEventListener('click', basculerVue);
+function basculerManche(){
+  MANCHE.inverse = !MANCHE.inverse;
+  try{ localStorage.setItem('parsec2026-manche', MANCHE.inverse ? 'inverse' : 'direct'); }catch(e){}
+  majManche(); message(MANCHE.inverse ? 'STICK INVERTED' : 'STICK NORMAL', 90);
+}
+function majManche(){
+  const b = document.getElementById('bManche');
+  if (b){ b.textContent = MANCHE.inverse ? 'Manche \u2193\u2191' : 'Manche \u2191\u2193'; b.setAttribute('aria-pressed', String(MANCHE.inverse)); }
+}
+majManche();
+document.getElementById('bManche').addEventListener('click', basculerManche);
 majHangar(); majVue();
 document.getElementById('bHangar').addEventListener('click', hangar);
 addEventListener('keydown', (e) => {
@@ -3854,7 +4364,7 @@ addEventListener('keydown', (e) => {
   if (k === 'Escape' && G.mode === 'fini'){ G.mode = 'titre'; G.t = 0; toutRetirer(); }
   if (k === 'h') hangar();
   if (k === 'c') basculerVue();
-  if (k === 'c') basculerVue();
+  if (k === 'i') basculerManche();
   if (G.mode === 'titre' && k !== 'Escape' && k !== 'h' && !e.altKey && !e.ctrlKey && !e.metaKey) presentation();
 });
 </script>
@@ -4071,9 +4581,12 @@ function dessinerHUD(){
 
   /* la bande d'état, en bas, agrandie */
   dessinerBandeau();
-  /* la bande occupe au plus un cinquième de la hauteur et 92 % de la largeur ; en paysage
-     c'est la hauteur qui commande, en portrait la largeur — et jamais plus de 4 px par point */
-  let s = Math.max(1, Math.min(4, H * 0.20 / BANDEAU_H, W * 0.92 / BANDEAU_L));
+  /* La bande occupe au plus un cinquième de la hauteur et 92 % de la largeur ; en paysage
+     c'est la hauteur qui commande, en portrait la largeur — jamais plus de 4 px par point.
+     En vue cockpit elle se fait plus discrète : le tableau de bord tient le bas de l'écran,
+     et les deux se disputeraient la même bande. */
+  const cockpit = G.vue === 'cockpit' && G.mode !== 'titre';
+  let s = Math.max(1, Math.min(4, H * (cockpit ? 0.125 : 0.20) / BANDEAU_H, W * (cockpit ? 0.62 : 0.92) / BANDEAU_L));
   const bw = BANDEAU_L * s, bh = BANDEAU_H * s, bx = Math.round((W - bw) / 2), by = Math.round(H - bh);
   hcx.drawImage(bandeau, 0, 0, BANDEAU_L, BANDEAU_H, bx, by, bw, bh);
 
@@ -4189,6 +4702,11 @@ function poserObjets(dt){
   NAV3D.quaternion.setFromEuler(_eul.set(RENDU.tangage, RENDU.lacet, RENDU.roulis, 'YXZ'));
   const pou = clamp((n.v - VOL.vmin) / (VOL.vmax - VOL.vmin), 0, 1);
   NAV3D.animer(dt, tRendu, pou);
+  if (G.vue === 'cockpit'){
+    const ck = NAV3D.getObjectByName('cockpit');
+    if (ck && ck.animer) ck.animer(dt, { roulis: RENDU.roulis, tangage: RENDU.tangage, altitude: Math.max(0, P.y - n.solY),
+      vitesse: n.v * 3.6, carburant: G.carburant, chaleur: G.chaleur, clignote: ((G.t >> 3) & 1) === 1 });
+  }
   const chaud = G.chaleur > .5 && ((G.t >> 2) & 1);
   NAV3D.teinter(G.chaleur > .5 ? (chaud ? 0xFC5554 : 0x21C842) : null);
   const ls = NAV3D.userData.laser; ls.visible = G.laser > 0 && NAV3D.visible;
@@ -4216,7 +4734,14 @@ function poserObjets(dt){
   }
   for (const as of G.asteroides){ _v.lerpVectors(as.p0, as.p, a); ASTER.poser(as.inst, _v, as.q, as.taille); OMBRES_LISTE.push({ p: as.p, rayon: as.rayon }); }
   ASTER.valider();
-  for (const e of EXPLOSIONS) e.animer(dt);
+  for (const e of EXPLOSIONS) e.avancer(dt);
+  /* la lueur des hublots ennemis bat comme un cœur : deux battements par seconde */
+  const bat = 2.6 + 1.6 * Math.sin(tRendu * 12) + 0.7 * Math.sin(tRendu * 31);
+  for (const e of G.ennemis){
+    const md = e.mesh.userData.modele;
+    if (md.userData.oeil) md.userData.oeil.material.emissiveIntensity = 3.0 + 1.8 * Math.sin(tRendu * 9 + e.t * 0.1);
+    md.traverse((o) => { if (o.isMesh && o.material && o.material.userData && o.material.userData.pulse) o.material.emissiveIntensity = bat; });
+  }
   if (G.canyon){ for (const b of G.canyon.balises) b.animer(dt, tRendu); }
   ombresPoser(OMBRES_PORTEES ? [] : OMBRES_LISTE);
   U.uTemps.value = tRendu;
