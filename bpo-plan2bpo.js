@@ -269,8 +269,43 @@ function degommer(P, eps){
   return P;
 }
 
+
+/* ------------------------------------------------------------ 4b. zones colorées : bassins (bleu) et terrasses (beige) hors bâtiment */
+function remplirPoly(m, W, H, poly, v){           /* remplissage pair-impair par balayage */
+  var n = poly.length, ys = poly.map(function(p){ return p[1]; });
+  var y0 = Math.max(0, Math.floor(Math.min.apply(null, ys))), y1 = Math.min(H - 1, Math.ceil(Math.max.apply(null, ys)));
+  for (var y = y0; y <= y1; y++){ var xs = [];
+    for (var i = 0; i < n; i++){ var a = poly[i], b = poly[(i + 1) % n];
+      if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) xs.push(a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])); }
+    xs.sort(function(p, q){ return p - q; });
+    for (var k = 0; k + 1 < xs.length; k += 2){ var xa = Math.max(0, Math.round(xs[k])), xb = Math.min(W - 1, Math.round(xs[k + 1])); for (var x = xa; x <= xb; x++) m[y * W + x] = v; } }
+}
+function zonesColorees(img, W, H, mmpx, env){
+  var N = W * H, d = img.data, eau = new Uint8Array(N), beige = new Uint8Array(N), i, p;
+  for (i = 0, p = 0; i < N; i++, p += 4){
+    var r = d[p], g = d[p + 1], b = d[p + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b), s = mx ? (mx - mn) * 255 / mx : 0, h = 0;
+    if (mx !== mn){ if (mx === r) h = 60 * ((g - b) / (mx - mn)); else if (mx === g) h = 120 + 60 * ((b - r) / (mx - mn)); else h = 240 + 60 * ((r - g) / (mx - mn)); if (h < 0) h += 360; h /= 2; }   /* 0-180 comme OpenCV */
+    eau[i] = (h >= 85 && h <= 125 && s >= 25 && mx >= 130) ? 1 : 0;
+    beige[i] = (h >= 10 && h <= 35 && s >= 22 && s <= 95 && mx >= 150) ? 1 : 0;
+  }
+  var envm = new Uint8Array(N); remplirPoly(envm, W, H, env, 1);
+  var envd = minmax(envm, W, H, Math.round(200 / mmpx), true);          /* bâtiment + 20 cm de chaque côté */
+  for (i = 0; i < N; i++){ if (envm[i]) eau[i] = 0; if (envd[i]) beige[i] = 0; }
+  function zones(m, aireMinM2, closePx, openK, epsMm, rectRatio){
+    m = boucherTrous(boucherTrous(m, W, H, closePx), W, H, closePx); m = morphOuvrir(m, W, H, openK);   /* deux passes : les rides en biais */
+    var c = composantes(m, W, H), out = [];
+    for (var k = 1; k <= c.n; k++){ var st = c.stats[k], a = st.area * mmpx * mmpx / 1e6; if (a < aireMinM2) continue;
+      var w = st.x1 - st.x0 + 1, hh = st.y1 - st.y0 + 1, poly;
+      if (st.area / (w * hh) >= rectRatio) poly = [[st.x0, st.y0], [st.x1 + 1, st.y0], [st.x1 + 1, st.y1 + 1], [st.x0, st.y1 + 1]];
+      else { var ct = tracer(c.lab, W, H, k, st), ap = douglasPeucker(ct, epsMm / mmpx); poly = ap.length >= 4 ? rectilineariser(ap, epsMm / mmpx) : ap; }
+      if (poly.length >= 3) out.push({ aire: Math.round(a * 10) / 10, poly: poly }); }
+    return out;
+  }
+  return { bassins: zones(eau, 2.0, Math.round(1200 / mmpx), 4, 300, 0.75), terrasses: zones(beige, 6.0, Math.round(420 / mmpx), 7, 600, 0.85) };
+}
+
 /* ------------------------------------------------------------ 5. export en mètres */
-function exporter(W, H, mmpx, murs, ouv, pieces, env){
+function exporter(W, H, mmpx, murs, ouv, pieces, env, zn){
   var ox = Math.min.apply(null, env.map(function(p){ return p[0]; })), oy = Math.max.apply(null, env.map(function(p){ return p[1]; }));
   var M = function(x, y){ return [Math.round((x - ox) * mmpx) / 1000, Math.round((oy - y) * mmpx) / 1000]; };
   var seg = function(w){ return w.dir === 'h' ? [M(w.s0, w.c), M(w.s1, w.c)] : [M(w.c, w.s0), M(w.c, w.s1)]; };
@@ -294,7 +329,9 @@ function exporter(W, H, mmpx, murs, ouv, pieces, env){
     enveloppe: env.map(function(p){ return M(p[0], p[1]); }),
     murs: out,
     ouvertures: ouv.map(function(o){ var s = seg(o); return { a: s[0], b: s[1], largeur: Math.round((o.s1 - o.s0) * mmpx / 10) / 100, type: surEnv(o) ? 'fenetre' : 'porte' }; }),
-    pieces: pieces.map(function(p){ return { id: p.id, aire_m2: p.aire_m2, sol_rgb: p.rgb, centre: M(p.bbox[0] + p.bbox[2] / 2, p.bbox[1] + p.bbox[3] / 2) }; })
+    pieces: pieces.map(function(p){ return { id: p.id, aire_m2: p.aire_m2, sol_rgb: p.rgb, centre: M(p.bbox[0] + p.bbox[2] / 2, p.bbox[1] + p.bbox[3] / 2) }; }),
+    bassins: (zn ? zn.bassins : []).map(function(z){ return { aire_m2: z.aire, contour: z.poly.map(function(p){ return M(p[0], p[1]); }) }; }),
+    terrasses: (zn ? zn.terrasses : []).map(function(z){ return { aire_m2: z.aire, contour: z.poly.map(function(p){ return M(p[0], p[1]); }) }; })
   };
 }
 
@@ -319,8 +356,9 @@ function extraire(src, mmpx, opts){
     mask = masquePoche(img, W, H, o3); mo = mursEtOuvertures(mask, W, H, mmpx);
   }
   var pe = piecesEtEnveloppe(img, W, H, mo.murs, mmpx);
-  var plan = exporter(W, H, mmpx, mo.murs, mo.ouv, pe.pieces, pe.env);
-  return { plan: plan, mask: mask, murs: mo.murs, ouv: mo.ouv, env: pe.env, pieces: pe.pieces, lab: pe.lab, okP: pe.okP, W: W, H: H, mode: mode };
+  var zn = (opts.zones === false) ? { bassins: [], terrasses: [] } : zonesColorees(img, W, H, mmpx, pe.env);
+  var plan = exporter(W, H, mmpx, mo.murs, mo.ouv, pe.pieces, pe.env, zn);
+  return { plan: plan, mask: mask, murs: mo.murs, ouv: mo.ouv, env: pe.env, pieces: pe.pieces, lab: pe.lab, okP: pe.okP, W: W, H: H, mode: mode, zones: zn };
 }
 /* image de contrôle : pièces teintées, murs rouges, ouvertures cyan, enveloppe noire */
 function controle(src, R){
@@ -331,6 +369,10 @@ function controle(src, R){
     if (!cols[l]){ seed = (seed * 9301 + 49297) % 233280; cols[l] = [90 + (seed % 140), 90 + ((seed >> 3) % 140), 90 + ((seed >> 6) % 140)]; }
     d[i * 4] = (d[i * 4] + cols[l][0]) >> 1; d[i * 4 + 1] = (d[i * 4 + 1] + cols[l][1]) >> 1; d[i * 4 + 2] = (d[i * 4 + 2] + cols[l][2]) >> 1; }
   ctx.putImageData(img, 0, 0);
+  if (R.zones){ ctx.globalAlpha = 0.45;
+    ctx.fillStyle = '#ffd400'; R.zones.terrasses.forEach(function(z){ ctx.beginPath(); z.poly.forEach(function(p, i){ if (i) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); }); ctx.closePath(); ctx.fill(); });
+    ctx.fillStyle = '#2090ff'; R.zones.bassins.forEach(function(z){ ctx.beginPath(); z.poly.forEach(function(p, i){ if (i) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); }); ctx.closePath(); ctx.fill(); });
+    ctx.globalAlpha = 1; }
   ctx.fillStyle = 'rgba(230,30,30,0.85)';
   R.murs.forEach(function(w){ var t = w.t; if (w.dir === 'h') ctx.fillRect(w.s0, w.c - t / 2, w.s1 - w.s0, t); else ctx.fillRect(w.c - t / 2, w.s0, t, w.s1 - w.s0); });
   ctx.fillStyle = 'rgba(0,200,255,0.95)';
@@ -373,6 +415,16 @@ function importer(plan, opts){
       var d = Math.hypot(c[0] - (a[0] + s * dx), c[1] - (a[1] + s * dz)); if (!best || d < best.d) best = { d: d, s: s, pt: pt }; });
     if (!best || best.d > 0.6) return;
     best.pt.doors.push({ s: 0, t: best.s, w: Math.round(o.largeur * 100), hinge: 0, swing: 0, open: 80 }); nPortes++; });
+  /* TERRASSES = dalles (moteur terrasse capturé, lot 3) ; BASSINS = dalle bleue + pourtour en murs bas (AL, 08/09) */
+  var nT = 0, nB = 0;
+  PIM.bassins = [];
+  if (opts.zones !== false){
+    (plan.terrasses || []).forEach(function(z){ if (z.contour.length < 3) return;
+      PIM.terrasses.push({ floor: 0, verts: str(z.contour.map(X)), systeme: 'dalles', hgt: 12, rail: 0, railH: 100 }); nT++; });
+    (plan.bassins || []).forEach(function(z){ if (z.contour.length < 3) return;
+      var pts = z.contour.map(X); PIM.bassins.push({ verts: str(pts) });
+      PIM.partitions.push({ floor: 0, verts: str(pts.concat([pts[0]])), type: 'refend', thick: 20, height: 45, doors: [] }); nB++; });
+  }
   build();                                                                  /* IM_EDGES reconstruites */
   var cat = (typeof IM_MENUIS !== 'undefined') ? IM_MENUIS : [];
   var PF = cat.filter(function(m){ return m.id === 'm-pf'; })[0] || { kind: 'fenetre', l: 'Porte-fenêtre', w: 140, h: 215, sill: 0, pov: { type: 'battant', nv: 2 } };
@@ -423,7 +475,7 @@ function importer(plan, opts){
     PIM.imOpenings.push(op); nOuv++; });
   build();
   if (typeof refreshView === 'function'){ try { refreshView(); } catch (e) {} }
-  return { sommets: env.length, cloisons: PIM.partitions.length, portes: nPortes, menuiseries: nOuv, perdues: perdues, centre: [cx, cy], epaisseurFacade: epF, cfgMur: cfgMur ? cfgMur.name : null };
+  return { sommets: env.length, cloisons: PIM.partitions.length, portes: nPortes, menuiseries: nOuv, perdues: perdues, centre: [cx, cy], epaisseurFacade: epF, cfgMur: cfgMur ? cfgMur.name : null, terrasses: nT, bassins: nB };
 }
 
 
@@ -443,6 +495,13 @@ function poserFond(S, plan, rep, nom){
   return true;
 }
 
+/* ------------------------------------------------------------ 8b. bassins : dalle bleue au sol (le pourtour est une cloison basse) */
+function bassins(levelY){
+  if (typeof PIM === 'undefined' || !PIM.bassins || !PIM.bassins.length || typeof dallePrism !== 'function' || typeof partParse !== 'function') return;
+  var y0 = (levelY && levelY[0]) || 0;
+  PIM.bassins.forEach(function(b){ var pts = partParse(b.verts); if (!pts || pts.length < 3) return;
+    try { dallePrism(pts, y0 - 0.05, 0.20, [72, 140, 200]); } catch (e) {} });        /* eau : dessus à +15 cm, dans des murs bas de 45 */
+}
 /* ------------------------------------------------------------ 9. fenêtre « Importer un plan scanné » */
 var UI = null, ETAT = { S: null, nom: '', R: null, mmpx: 0 };
 function el(tag, css, txt){ var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
@@ -502,6 +561,8 @@ function ouvrir(){
   var selB = document.createElement('select'); selB.style.fontSize = '11px';
   [['pf', 'Porte-fenêtre'], ['f2', 'Fenêtre 2 vantaux'], ['haute', 'Fenêtre haute']].forEach(function(o){ var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; selB.appendChild(op); });
   selB.title = 'Le plan ne dit pas le type : toutes les baies reçoivent celui-ci, à la largeur mesurée ; change ensuite celles qui diffèrent'; r6.appendChild(selB); right.appendChild(r6);
+  var r8 = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
+  var ckZ = document.createElement('input'); ckZ.type = 'checkbox'; ckZ.checked = true; r8.appendChild(ckZ); r8.appendChild(el('span', '', 'Terrasses et bassins')); right.appendChild(r8);
   var r5 = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
   var ckF = document.createElement('input'); ckF.type = 'checkbox'; ckF.checked = true; r5.appendChild(ckF); r5.appendChild(el('span', '', 'Poser le scan en fond de plan')); right.appendChild(r5);
   var bAna = btn('Analyser le plan'); bAna.disabled = true; right.appendChild(bAna);
@@ -546,7 +607,7 @@ function ouvrir(){
     res.textContent = 'Analyse…'; bAna.disabled = true;
     setTimeout(function(){
       try {
-        var t0 = performance.now(), R = extraire(ETAT.S, ETAT.mmpx, { sdMax: parseInt(inS.value, 10), mode: selP.value }); ETAT.R = R;
+        var t0 = performance.now(), R = extraire(ETAT.S, ETAT.mmpx, { sdMax: parseInt(inS.value, 10), mode: selP.value, zones: ckZ.checked }); ETAT.R = R;
         montrer(controle(ETAT.S, R));
         var P = R.plan, A = 0; for (var i = 0; i < P.enveloppe.length; i++){ var a = P.enveloppe[i], b = P.enveloppe[(i + 1) % P.enveloppe.length]; A += a[0] * b[1] - b[0] * a[1]; }
         res.innerHTML = '';
@@ -554,7 +615,9 @@ function ouvrir(){
          ['Contour', P.enveloppe.length + ' sommets, ' + Math.round(Math.abs(A) / 2) + ' m²'],
          ['Murs intérieurs', String(P.murs.filter(function(m){ return !m.facade; }).length)],
          ['Ouvertures', P.ouvertures.filter(function(o){ return o.type === 'fenetre'; }).length + ' en façade, ' + P.ouvertures.filter(function(o){ return o.type === 'porte'; }).length + ' intérieures'],
-         ['Pièces', String(P.pieces.length)]].forEach(function(l){ var d = el('div'); d.appendChild(el('span', 'color:var(--dm,#8b92a0)', l[0])); d.appendChild(document.createTextNode(' : ')); d.appendChild(el('span', '', l[1])); res.appendChild(d); });
+         ['Pièces', String(P.pieces.length)],
+         ['Terrasses', String((P.terrasses || []).length)],
+         ['Bassins', String((P.bassins || []).length)]].forEach(function(l){ var d = el('div'); d.appendChild(el('span', 'color:var(--dm,#8b92a0)', l[0])); d.appendChild(document.createTextNode(' : ')); d.appendChild(el('span', '', l[1])); res.appendChild(d); });
         res.appendChild(el('div', 'color:var(--dm,#8b92a0);font-size:9px', Math.round(performance.now() - t0) + ' ms'));
         bGo.disabled = false;
       } catch (e){ res.textContent = 'Analyse impossible : ' + (e && e.message || e); }
@@ -563,7 +626,7 @@ function ouvrir(){
   };
   bGo.onclick = function(){
     if (!ETAT.R) return;
-    var rep = importer(ETAT.R.plan, { hauteur: parseInt(inH.value, 10) || 300, baies: selB.value });
+    var rep = importer(ETAT.R.plan, { hauteur: parseInt(inH.value, 10) || 300, baies: selB.value, zones: ckZ.checked });
     if (ckF.checked) poserFond(ETAT.S, ETAT.R.plan, rep, ETAT.nom);
     if (typeof buildCatList === 'function'){ try { buildCatList(); } catch (e) {} }
     try { if (typeof LAYOUT !== 'undefined' && LAYOUT !== 'quad' && typeof SINGLEVIEW !== 'undefined' && SINGLEVIEW !== 'top'){ SINGLEVIEW = 'top'; LAYOUT = 'single'; } } catch (e) {}
@@ -571,7 +634,7 @@ function ouvrir(){
     if (typeof DIRTY !== 'undefined') DIRTY = true;
     if (typeof imgUiRefresh === 'function'){ try { imgUiRefresh(); } catch (e) {} }
     fermer();
-    var msg = 'Plan importé : ' + rep.sommets + ' sommets, ' + rep.cloisons + ' cloisons, ' + rep.menuiseries + ' menuiseries de façade' + (rep.perdues ? ' (' + rep.perdues + ' non accrochée(s))' : '') + (rep.epaisseurFacade ? ', façades ' + rep.epaisseurFacade + ' cm' : '') + '.';
+    var msg = 'Plan importé : ' + rep.sommets + ' sommets, ' + rep.cloisons + ' cloisons, ' + rep.menuiseries + ' menuiseries de façade' + (rep.perdues ? ' (' + rep.perdues + ' non accrochée(s))' : '') + (rep.epaisseurFacade ? ', façades ' + rep.epaisseurFacade + ' cm' : '') + (rep.terrasses ? ', ' + rep.terrasses + ' terrasse(s)' : '') + (rep.bassins ? ', ' + rep.bassins + ' bassin(s)' : '') + '.';
     if (typeof toast === 'function'){ try { toast(msg); return; } catch (e) {} }
     console.log(msg);
   };
@@ -589,7 +652,7 @@ function entrer(){
   }
 }
 
-window.BPO_P2B = { FORMATS: FORMATS, charger: charger, extraire: extraire, controle: controle, importer: importer, poserFond: poserFond, ouvrir: ouvrir, fermer: fermer, entrer: entrer,
+window.BPO_P2B = { FORMATS: FORMATS, charger: charger, extraire: extraire, controle: controle, importer: importer, poserFond: poserFond, ouvrir: ouvrir, fermer: fermer, entrer: entrer, bassins: bassins, zonesColorees: zonesColorees,
   _: { masquePoche: masquePoche, mursEtOuvertures: mursEtOuvertures, piecesEtEnveloppe: piecesEtEnveloppe, composantes: composantes },
   mmpxDe: function(largeurMm, W, echelle){ return largeurMm / W * echelle; } };
 })();
