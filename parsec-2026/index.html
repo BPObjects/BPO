@@ -53,7 +53,7 @@ body{font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;position:fixed;
 .retour:hover,.retour:focus-visible{color:var(--alu);outline:none;border-color:var(--alu-sombre)}
 .reglages{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .b{appearance:none;font:inherit;font-size:11.5px;letter-spacing:.06em;color:var(--alu);
-  background:var(--verre);border:1px solid var(--verre-bord);border-radius:7px;padding:5px 9px;cursor:pointer;
+  background:var(--verre);border:1px solid var(--verre-bord);border-radius:7px;padding:7px 10px;cursor:pointer;min-height:34px;
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .b[aria-pressed="true"]{color:var(--nuit);background:var(--ambre);border-color:var(--ambre)}
 .b:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
@@ -81,13 +81,13 @@ html.tactile .stick,html.tactile .feu-zone,html.tactile .lifts{display:block}
 .feu{position:absolute;right:0;bottom:0;width:96px;height:96px;border-radius:50%;border:2px solid rgba(212,193,84,.7);
   background:rgba(212,193,84,.18);color:var(--ambre);font:700 15px "Silkscreen",monospace;letter-spacing:.1em;display:flex;align-items:center;justify-content:center}
 .feu.on{background:rgba(212,193,84,.55);color:var(--nuit)}
-.pousse{position:absolute;left:0;width:52px;height:52px;border-radius:50%;border:2px solid rgba(195,192,184,.5);background:rgba(0,0,0,.3);
+.pousse{position:absolute;left:0;width:58px;height:58px;border-radius:50%;border:2px solid rgba(195,192,184,.5);background:rgba(0,0,0,.3);
   color:var(--alu);font:700 20px "IBM Plex Sans",sans-serif;display:flex;align-items:center;justify-content:center}
 .pousse.on{background:rgba(195,192,184,.5);color:var(--nuit)}
 #bPlus{top:0}#bMoins{top:64px}
 .lifts{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:calc(19% + 174px);gap:6px}
-html.tactile .lifts{display:flex}
-.lifts .b{width:40px;text-align:center;padding:6px 0;font-weight:600}
+html.tactile .lifts{display:flex;gap:10px}
+.lifts .b{width:52px;min-height:46px;text-align:center;padding:12px 0;font-weight:600;font-size:14px}
 
 /* ---- petit écran : on serre ---- */
 @media (max-width:640px){
@@ -98,8 +98,8 @@ html.tactile .lifts{display:flex}
   .b{padding:4px 7px;font-size:11px}
   .feu{width:80px;height:80px;font-size:13px}
   .feu-zone{width:140px;height:130px}
-  .pousse{width:46px;height:46px}
-  #bMoins{top:56px}
+  .pousse{width:48px;height:48px}
+  #bMoins{top:58px}
   .lifts{bottom:calc(19% + 150px)}
 }
 </style>
@@ -1047,12 +1047,16 @@ const MOBILE = ARG.has('mobile') ? ARG.get('mobile') !== '0'
    descend tout seul quand les images par seconde tombent, on y remonte
    quand elles tiennent — pour qu'un iPhone reste jouable sans réglage.
    ------------------------------------------------------------------ */
+/* Les anneaux LOINTAINS ne coûtent presque rien : leurs sommets sont peu nombreux et ils
+   couvrent peu de pixels. En couper un ramène pourtant l'horizon de 4 096 m à 1 024 — un
+   faux bord du monde en plein jour, mesuré par la revue. On les garde donc partout, et on
+   allège sur la résolution, le détail du sable, la poussière et l'anti-crénelage. */
 const CRANS = [
-  { nom: 'haute',   dpr: 2.0, anneaux: 6, detail: 1.00, poussiere: 3500, msaa: 4, ombres: true,  post: true },
-  { nom: 'bonne',   dpr: 1.5, anneaux: 6, detail: 0.85, poussiere: 2000, msaa: 2, ombres: true,  post: true },
-  { nom: 'moyenne', dpr: 1.5, anneaux: 5, detail: 0.60, poussiere: 1200, msaa: 2, ombres: false, post: true },
-  { nom: 'basse',   dpr: 1.25, anneaux: 5, detail: 0.35, poussiere: 600,  msaa: 0, ombres: false, post: true },
-  { nom: 'minime',  dpr: 1.0, anneaux: 4, detail: 0.00, poussiere: 0,    msaa: 0, ombres: false, post: true },
+  { nom: 'haute',   dpr: 2.0,  anneaux: 6, detail: 1.00, poussiere: 3500, msaa: 4, ombres: true,  post: true },
+  { nom: 'bonne',   dpr: 1.5,  anneaux: 6, detail: 0.85, poussiere: 2000, msaa: 2, ombres: true,  post: true },
+  { nom: 'moyenne', dpr: 1.5,  anneaux: 6, detail: 0.55, poussiere: 1000, msaa: 2, ombres: false, post: true },
+  { nom: 'basse',   dpr: 1.25, anneaux: 6, detail: 0.30, poussiere: 400,  msaa: 0, ombres: false, post: true },
+  { nom: 'minime',  dpr: 1.0,  anneaux: 5, detail: 0.00, poussiere: 0,    msaa: 0, ombres: false, post: true },
 ];
 const QUAL = { cran: MOBILE ? 2 : 0, fige: ARG.has('q') ? Math.max(0, Math.min(4, +ARG.get('q'))) : -1 };
 if (QUAL.fige >= 0) QUAL.cran = QUAL.fige;
@@ -1137,7 +1141,7 @@ vec2 canyonInfo(vec2 pc){
   float s = clamp(dot(pc - uCanyonA, ab) / l2, 0.0, 1.0);
   vec2 pied = uCanyonA + ab * s;
   float d = length(pc - pied) + 1.5 * bruit(vec2(s * sqrt(l2), 0.0), 8.0, 61u);
-  float bouts = lisse(0.0, 0.12, s) * (1.0 - lisse(0.88, 1.0, s));
+  float bouts = lisse(0.0, 0.12, s) * (1.0 - lisse(0.80, 1.0, s));   /* la rampe de sortie commence à 80 % : de quoi remonter */
   float dedans = (1.0 - lisse(uCanyonLarg * 0.5 - 4.0, uCanyonLarg * 0.5 + 3.0, d)) * bouts;
   return vec2(dedans, s);
 }
@@ -1222,7 +1226,7 @@ const RELIEF = (() => {
     const s = Math.min(1, Math.max(0, ((pcx - CANYON.ax) * abx + (pcy - CANYON.az) * aby) / l2));
     const piedx = CANYON.ax + abx * s, piedy = CANYON.az + aby * s;
     const d = Math.hypot(pcx - piedx, pcy - piedy) + 1.5 * bruit(s * Math.sqrt(l2), 0, 8, 61);
-    const bouts = lisse(0, 0.12, s) * (1 - lisse(0.88, 1, s));
+    const bouts = lisse(0, 0.12, s) * (1 - lisse(0.80, 1, s));
     const dedans = (1 - lisse(CANYON.larg * 0.5 - 4, CANYON.larg * 0.5 + 3, d)) * bouts;
     return { dedans, s, d: Math.hypot(pcx - piedx, pcy - piedy) };
   }
@@ -1712,7 +1716,14 @@ function placerSoleils(azDeg, elADeg, elBDeg, ecartDeg){
   const az = azDeg * Math.PI / 180, elA = elADeg * Math.PI / 180, elB = elBDeg * Math.PI / 180, az2 = (azDeg - (ecartDeg === undefined ? 9 : ecartDeg)) * Math.PI / 180;
   MONDE.DIR_A.set(Math.sin(az) * Math.cos(elA), Math.sin(elA), Math.cos(az) * Math.cos(elA)).normalize();
   MONDE.DIR_B.set(Math.sin(az2) * Math.cos(elB), Math.sin(elB), Math.cos(az2) * Math.cos(elB)).normalize();
-  lumA.position.copy(MONDE.DIR_A).multiplyScalar(900); lumB.position.copy(MONDE.DIR_B).multiplyScalar(900);
+  /* La POSITION se reconstruit depuis la CIBLE, jamais depuis l'origine du monde.
+     avancerAtmosphere() rappelle cette fonction à chaque image, APRÈS suivreSoleil() :
+     écrire une position absolue ici laissait la caméra d'ombre accrochée à l'origine
+     pendant que sa cible suivait le vaisseau — 135 degrés d'écart à 1,4 km, et une carte
+     d'ombre intégralement blanche. Sans ombres portées la cible vaut (0,0,0) : on retrouve
+     exactement l'ancien comportement. */
+  lumA.position.copy(lumA.target.position).addScaledVector(MONDE.DIR_A, 900);
+  lumB.position.copy(lumB.target.position).addScaledVector(MONDE.DIR_B, 900);
 }
 
 /* ---- la brume greffée sur les matériaux des objets ------------------
@@ -3915,7 +3926,11 @@ function ombresPoser(liste){
    l'entrée. Toucher la dalle, une stalactite, l'étiquette ou les parois
    détruit le vaisseau, comme les bits du relief en 1982.
    ================================================================== */
-const TUN = { S0: 0.18, S1: 0.84, HAUT: MONDE.TUNNEL.HAUT, DALLE: MONDE.TUNNEL.DALLE, LABEL_S: 0.30, LABEL_L: 20, LABEL_H: 6, DENTS: 3.5 };
+/* S0 et S1 bornent la partie COUVERTE. Au-delà de S1 le canyon est à ciel ouvert : c'est là
+   qu'on remonte pour sortir. La fenêtre était de 16 % (144 m à 100 m/s), trop courte pour
+   remonter les 48 m du fond au lift 1 — mesuré, aucune sortie possible sous le lift 3. À 24 %
+   (216 m), le lift 2 passe, et le lift 3 largement. */
+const TUN = { S0: 0.18, S1: 0.76, HAUT: MONDE.TUNNEL.HAUT, DALLE: MONDE.TUNNEL.DALLE, LABEL_S: 0.28, LABEL_L: 20, LABEL_H: 6, DENTS: 3.5 };
 const MAT_ROCHE = new THREE.MeshStandardMaterial({ color: 0x8C6249, roughness: .96, metalness: 0, flatShading: true });
 BRUME.greffer(MAT_ROCHE, true);
 function creuserCanyon(type){
@@ -3935,9 +3950,10 @@ function creuserCanyon(type){
     if (y < yMin + 0.01){ const d = 0.5 + 0.5 * RELIEF.bruit(z * 0.7 + 300, x * 0.9, 8, 71) * 1 + RELIEF.bruit(z, x * 2 + 50, 3, 72) * 0.5; pa.setY(i, yMin + TUN.DENTS * (1 - clamp(d, 0, 1))); }   /* le dessous : dents de 0 à 3,5 m */
     else if (y > yMax - 0.01){ pa.setY(i, yMax + 2.5 * RELIEF.fbm(x + 40, z, 32, 3, 73) + 1.5); }                                       /* le dessus : de la roche bosselée */
   }
-  geo.computeVertexNormals();
+  geo.computeVertexNormals(); geo.computeBoundingBox();
   const dalle = new THREE.Mesh(geo, MAT_ROCHE); dalle.castShadow = dalle.receiveShadow = OMBRES_PORTEES;
   dalle.position.set(ax + f.x * long * sMil, yDessous + (TUN.DALLE + TUN.DENTS) / 2, az + f.z * long * sMil); dalle.rotation.y = n.lacet;
+  c.dalleHaut = yDessous + (TUN.DALLE + TUN.DENTS) / 2 + geo.boundingBox.max.y;   /* le dessus bosselé, mesuré */
   c.grp.add(dalle);
   /* stalactites : 3 / 5 / 8, dont une ou deux sur l'axe même, à éviter */
   const nSt = [0, 3, 5, 8][type], stGeo = new THREE.ConeGeometry(1.4, 1, 7).rotateX(Math.PI), stal = new THREE.InstancedMesh(stGeo, MAT_ROCHE, nSt);
@@ -3989,8 +4005,18 @@ function situerTunnel(p){
 }
 /* les obstacles du tunnel : dalle, dents, stalactites, étiquette */
 function toucheTunnel(){
+  const n = G.nav;
+  /* La roche est solide même quand on n'est plus « dedans » : G.dedans devient faux dès
+     qu'on dépasse le toit, or la dalle occupe justement les dix mètres au-dessus. On
+     traversait donc six cents mètres de pierre pleine sans mourir. On teste d'abord la
+     tranche de dalle, avec la position réelle dans le canyon. */
+  const situ = situerTunnel(n.p);
+  if (situ && situ.couvert && Math.abs(situ.lat) < situ.c.larg / 2 + 7){
+    const toitD = situ.c.niveau + TUN.HAUT;
+    if (n.p.y + 1.6 > toitD && n.p.y - 1.6 < (situ.c.dalleHaut || toitD + TUN.DALLE + TUN.DENTS)) return true;
+  }
   const d = G.dedans; if (!d || !d.couvert) return false;
-  const c = d.c, n = G.nav, haut = n.p.y + 1.6, toit = c.niveau + TUN.HAUT;
+  const c = d.c, haut = n.p.y + 1.6, toit = c.niveau + TUN.HAUT;
   if (haut > toit - 1.2) return true;
   const sm = d.s * c.long;
   for (const st of c.stalactites) if (Math.abs(st.s * c.long - sm) < st.r + 2 && Math.abs(d.lat - st.lat) < st.r + 1.5 && haut > toit - st.lg) return true;
@@ -4017,6 +4043,14 @@ function pilotage(){
   n.p.x += f.x * n.v * DT; n.p.z += f.z * n.v * DT; n.p.y += n.vz * DT;
   if (n.p.y > VOL.plafond){ n.p.y = VOL.plafond; if (n.vz > 0) n.vz = 0; }
   n.solY = hauteur(n.p.x, n.p.z);
+}
+/* Le vaisseau touche-t-il le RELIEF NU, canyon rebouché ? On s'en sert avant de combler
+   un tunnel : sortir par le toit se fait 21 m sous le creux du désert, et remettre le
+   sable dans la même image faisait exploser le vaisseau à tous les coups. */
+function toucheSolNu(){
+  const a = RELIEF.CANYON.actif; RELIEF.CANYON.actif = 0;
+  const r = toucheSol();
+  RELIEF.CANYON.actif = a; return r;
 }
 /* Le vaisseau touche-t-il le sable ? Cinq points : centre, nez, queue, deux bouts d'aile. */
 function toucheSol(){
@@ -4180,7 +4214,21 @@ function ennemis(){
       }
       case 'satellite': {
         if (e.t % 20 === 0) e.gigue.set(Math.random() - .5, Math.random() - .5, Math.random() - .5).multiplyScalar(80);
-        e.vit = 70; tournerVers(e, n.p.x, n.p.z, 90 * DEG); avancerCap(e);
+        /* 70 m/s contre 100 de croisière : c'était la seule espèce sans maintien de poste
+           NI remise en jeu. Mesuré : 2 165 m derrière au bout d'une minute, hors de portée
+           du laser — et la vague, close sur le nombre d'abattus, ne finissait jamais.
+           Il vole donc un peu plus vite que nous, et revient s'il a trop décroché. */
+        e.vit = Math.max(70, n.v + 25);
+        tournerVers(e, n.p.x, n.p.z, 90 * DEG); avancerCap(e);
+        /* Ce qui compte n'est pas d'être derrière, c'est d'être HORS DE PORTÉE : un satellite
+           au-delà des 900 m du laser ne peut plus être abattu, et la vague — close sur le
+           nombre d'abattus — ne finirait jamais. Mesuré sans cette garde : 5 000 m en une
+           minute. Il revient donc dès qu'il dépasse la portée. */
+        if (r.d > VOL.laserPortee){
+          const a = Math.random() * Math.PI * 2;
+          e.p.set(n.p.x + Math.sin(a) * 480, altSure(n.p.y + (Math.random() - .5) * 120, n.p.x, n.p.z), n.p.z + Math.cos(a) * 480);
+          e.p0.copy(e.p); e.cap = Math.atan2(-(n.p.x - e.p.x), -(n.p.z - e.p.z)); e.t = 0;
+        }
         e.p.x += e.gigue.x * DT; e.p.z += e.gigue.z * DT; e.p.y += clamp(n.p.y - e.p.y, -28 * DT, 28 * DT) + e.gigue.y * DT;
         if (++e.tir > 55 && r.d < 600 && G.mort === 0 && !G.dedans){ e.tir = 0; missile(e); }
         break;
@@ -4268,7 +4316,7 @@ function collisions(){
 function carburant(){
   if (G.dedans) return;
   G.carburant -= 1 / 7200;
-  if (G.carburant < .25 && !G.ravitoDemande) demanderTunnel();
+  if (G.carburant < .25 && !G.ravitoDemande && !G.canyon) demanderTunnel();   /* un seul trou à la fois : RELIEF.CANYON est unique */
   if (G.carburant <= 0){ G.carburant = 0; message('OUT OF FUEL', 120); parler('Sorry, you are out of fuel.', { prio:true }); perdreVaisseau(); }
 }
 function demanderTunnel(){ G.ravitoDemande = true; creuserCanyon(G.tunnelIdx); message('WARNING! TIME TO REFUEL', 160); parler('Warning! Time to refuel.', { prio:true }); }
@@ -4281,14 +4329,20 @@ function tunnels(){
   G.dedans = dedans;
   c.t++;
   if (dedans && !c.entre) c.entre = true;
+  if (dedans) c.images = (c.images || 0) + 1;      /* le temps passé dedans : la prime n'est pas due à un plongeon d'une image */
   if (c.entre && dedans && !c.plein){ G.carburant = Math.min(1, G.carburant + 1 / 150); if (G.carburant >= 1){ c.plein = true; parler('Congratulations.'); SON2026.ravitaillement.plein(); SON.droide(); } }
-  if (c.entre && !dedans){
+  if (c.entre && !dedans && !c.fini && (c.images || 0) > 45){
     c.fini = true; G.ravitoDemande = false; gagner(c.type * 1000); parler('Nice flying.', { prio:true }); message('NICE FLYING', 90); G.tunnelIdx = c.type % 3 + 1;
+  } else if (c.entre && !dedans && !c.fini){
+    c.fini = true; G.ravitoDemande = false;        /* ressorti trop vite : pas de prime */
   } else if (!c.entre){
     const s = d ? d.s : ((n.p.x - c.ax) * c.dir.x + (n.p.z - c.az) * c.dir.z) / c.long;
     if (s > 1.08 || c.t > 3600){ c.fini = true; if (c.type !== 3) G.ravitoDemande = false; }
   }
-  if (c.fini) reboucherCanyon(c);
+  /* On ne rebouche que lorsque le relief nu ne touche plus le vaisseau : sinon le sable
+     revient PAR-DESSUS lui dans la même image, et toucheSol() le tue deux lignes plus bas
+     (270 trajectoires de sortie essayées, zéro survivant avant cette garde). */
+  if (c.fini && !toucheSolNu()) reboucherCanyon(c);
 }
 
 /* ---- la ceinture d'astéroïdes ------------------------------------ */
@@ -4473,10 +4527,24 @@ function dessinerBandeau(){
 /* ---- la surcouche plein écran ---- */
 const hud = document.getElementById('hud'), hcx = hud.getContext('2d');
 let HUD_W = 1, HUD_H = 1, HUD_DPR = 1;
+/* Les marges sûres de l'iPhone : la barre d'accueil mange le bas de l'écran, l'encoche le
+   haut. On les lit sur un témoin invisible plutôt que de les deviner. */
+const SURE = { haut: 0, bas: 0, gauche: 0, droite: 0 };
+const temoinSure = document.createElement('div');
+temoinSure.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;'
+  + 'padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);'
+  + 'padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)';
+document.body.appendChild(temoinSure);
+function lireMargesSures(){
+  const c = getComputedStyle(temoinSure);
+  SURE.haut = parseFloat(c.paddingTop) || 0; SURE.bas = parseFloat(c.paddingBottom) || 0;
+  SURE.gauche = parseFloat(c.paddingLeft) || 0; SURE.droite = parseFloat(c.paddingRight) || 0;
+}
 function redimensionnerHUD(){
   HUD_DPR = Math.min(2, devicePixelRatio || 1);
   HUD_W = hud.clientWidth; HUD_H = hud.clientHeight;
   hud.width = Math.round(HUD_W * HUD_DPR); hud.height = Math.round(HUD_H * HUD_DPR);
+  lireMargesSures();
 }
 /* glyphes en trait net, à l'échelle s (px CSS) */
 function tracer(police, txt, x, y, s, coul){
@@ -4500,9 +4568,15 @@ function dessinerRadar(x, y, r){
   /* balayage */
   const a = (G.t / 90) * Math.PI * 2;
   hcx.beginPath(); hcx.moveTo(x, y); hcx.lineTo(x + Math.sin(a) * r, y - Math.cos(a) * r); hcx.strokeStyle = 'rgba(66,235,245,.35)'; hcx.stroke();
+  /* Le cap du vaisseau s'appelle `lacet`, pas `cap` : la version précédente lisait une
+     propriété inexistante, l'angle valait NaN, et Canvas2D jette sans rien dire les
+     coordonnées non finies — le radar n'a jamais rien montré. On projette dans le repère
+     du vaisseau, avant et droite, ce qui évite d'avoir à s'entendre sur un sens d'angle. */
+  const fR = avantDe(n.lacet), rR = droiteDe(n.lacet);
   const point = (p, coul, taille, bord) => {
     const dx = p.x - n.p.x, dz = p.z - n.p.z, d = Math.hypot(dx, dz);
-    let ang = Math.atan2(dx, dz) - n.cap, k = Math.min(1, d / RADAR_PORTEE) * r * .94;
+    const ang = Math.atan2(dx * rR.x + dz * rR.z, dx * fR.x + dz * fR.z);
+    const k = Math.min(1, d / RADAR_PORTEE) * r * .94;
     const px = x + Math.sin(ang) * k, py = y - Math.cos(ang) * k;
     hcx.fillStyle = coul;
     if (bord && d > RADAR_PORTEE){ hcx.beginPath(); hcx.arc(px, py, taille, 0, Math.PI * 2); hcx.fill(); hcx.strokeStyle = '#000'; hcx.stroke(); }
@@ -4611,22 +4685,23 @@ function dessinerHUD(){
      et les deux se disputeraient la même bande. */
   const cockpit = G.vue === 'cockpit' && G.mode !== 'titre';
   let s = Math.max(1, Math.min(4, H * (cockpit ? 0.105 : 0.20) / BANDEAU_H, W * (cockpit ? 0.55 : 0.92) / BANDEAU_L));
-  const bw = BANDEAU_L * s, bh = BANDEAU_H * s, bx = Math.round((W - bw) / 2), by = Math.round(H - bh);
+  const bw = BANDEAU_L * s, bh = BANDEAU_H * s, bx = Math.round((W - bw) / 2), by = Math.round(H - bh - SURE.bas);
   hcx.drawImage(bandeau, 0, 0, BANDEAU_L, BANDEAU_H, bx, by, bw, bh);
 
   const petit = Math.max(1, Math.min(3, Math.round(s * .6)));
   if (G.mode === 'jeu' || G.mode === 'scene'){
     /* radar en haut à droite, chaleur à côté, altitude/vitesse à gauche */
     const r = Math.max(34, Math.min(70, H * .1));
-    dessinerRadar(W - r - 14, r + 44, r);
-    const cx0 = W - 2 * r - 30, cy0 = 44, ch = 2 * r;
+    const yBarre = 44 + SURE.haut;
+    dessinerRadar(W - r - 14 - SURE.droite, r + yBarre, r);
+    const cx0 = W - 2 * r - 30 - SURE.droite, cy0 = yBarre, ch = 2 * r;
     hcx.fillStyle = 'rgba(0,0,0,.42)'; hcx.fillRect(cx0 - 6, cy0, 6, ch);
     const chaud = Math.max(0, Math.min(1, G.chaleur));
     hcx.fillStyle = chaud > .5 && ((G.t >> 2) & 1) ? '#FC5554' : (chaud > .5 ? '#FF7978' : '#42EBF5');
     hcx.fillRect(cx0 - 6, cy0 + ch * (1 - chaud), 6, ch * chaud);
     tracer(POLICES.etat, 'HEAT', cx0 - 6 - 8 * 4 * petit - 4, cy0 + ch - 8 * petit, petit, '#42EBF5');
     const n = G.nav, alt = Math.max(0, n.p.y - (n.solY || 0));
-    const yL = W < 640 ? 74 : 46;
+    const yL = (W < 640 ? 74 : 46) + SURE.haut;
     tracer(POLICES.etat, 'ALT ' + String(Math.round(alt)).padStart(3, ' ') + ' M', 14, yL, petit, '#42EBF5');
     tracer(POLICES.etat, 'VIT ' + String(Math.round(n.v * 3.6)).padStart(3, ' ') + ' KM/H', 14, yL + 10 * petit, petit, '#42EBF5');
     tracer(POLICES.etat, 'NIV ' + G.niveau, 14, yL + 20 * petit, petit, '#42EBF5');
@@ -4797,7 +4872,7 @@ function poserObjets(dt){
 }
 
 /* ---- la boucle ---- */
-let tPrec = 0, acc = 0;
+let tPrec = 0, acc = 0, precuit = 0;
 const PERF = { images: 0, ms: 0, t0: 0, fps: 0, sim: 0, cran: CRANS[QUAL.cran].nom, bas: 0, haut: 0 };
 const AFFICHER_PERF = ARG.has('perf');
 /* Le régulateur : deux secondes sous 45 i/s → un cran plus bas ; huit secondes au-dessus
@@ -4822,6 +4897,7 @@ function image(t){
   const t1 = performance.now();
   rendre();
   dessinerHUD();
+  if (precuit < 2 && ++precuit === 2) prechauffer();     /* après la deuxième image : l'écran-titre est déjà là */
   PERF.ms += performance.now() - t1; PERF.images++;
   if (t - PERF.t0 > 1000){
     PERF.fps = PERF.images;
@@ -4829,6 +4905,47 @@ function image(t){
     if (PERF.t0) reglerQualite(PERF.fps);      /* pas sur la toute première seconde : compilation des shaders */
     PERF.images = 0; PERF.ms = 0; PERF.sim = 0; PERF.t0 = t;
   }
+}
+/* ---- précuisson des programmes GLSL ---------------------------------
+   three ne compile un programme qu'au premier DESSIN. Mesuré par la revue :
+   l'image qui suit l'apparition du canyon coûte 409 ms (jusqu'à 3 s sur cache
+   froid), la première explosion 215 ms — soit, à 100 m/s, cent mètres parcourus
+   à l'aveugle juste avant l'entrée du tunnel. Sur iPhone, où WebKit retraduit le
+   GLSL en Metal, comptez plusieurs fois cela.
+   La cause principale n'est pas la géométrie neuve : ce sont les QUATRE lampes du
+   tunnel. numPointLights entre dans la clé de cache, donc les allumer refait tous
+   les programmes de la scène. On compile donc les DEUX états d'éclairage.
+   Trois précautions :
+   · renderer.compile() et non un render() : sa passe ignore le frustum, et les
+     Saucers naissent quatre cents mètres DERRIÈRE la caméra ;
+   · cible de rendu liée : l'espace colorimétrique et le tone mapping font partie
+     de la clé, et la vraie passe rend dans rt, pas à l'écran ;
+   · jamais de dispose() sur un matériau : three détruit le programme avec son
+     dernier matériau. Les maillages de chauffe sont donc gardés hors scène,
+     géométries libérées, matériaux intacts. */
+const GARDE_PRECUISSON = [];
+function prechauffer(){
+  try{
+    const rtAvant = renderer.getRenderTarget(), n0 = G.ennemis.length, canyonAvant = G.canyon;
+    const c = canyonAvant || creuserCanyon(1);
+    for (const t of ['swooper', 'ltf', 'urbite', 'dramite', 'bynite', 'saucer', 'satellite']) lancer(t);
+    for (const e of EXPLOSIONS) e.visible = true;
+    renderer.setRenderTarget(rt);
+    renderer.compile(scene, camera);                 /* variante « quatre lampes » : dans le tunnel */
+    if (!canyonAvant) poserLampes([]);
+    renderer.compile(scene, camera);                 /* variante « aucune lampe » : en vol libre */
+    renderer.setRenderTarget(rtAvant);
+    for (const e of EXPLOSIONS) if (!e.userData.actif()) e.visible = false;
+    for (let i = G.ennemis.length - 1; i >= n0; i--){
+      const e = G.ennemis.pop();
+      scene.remove(e.mesh);
+      if (e.son) e.son.arreter();
+      e.mesh.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      GARDE_PRECUISSON.push(e.mesh);
+    }
+    if (!canyonAvant){ GARDE_PRECUISSON.push(c.grp); reboucherCanyon(c); }
+    PERF.programmes = renderer.info.programs.length;
+  }catch(e){ if (window.console) console.warn('précuisson :', e); }
 }
 renderer.setAnimationLoop(image);
 document.addEventListener('visibilitychange', () => { if (document.hidden && G.mode === 'jeu' && !G.pause) basculerPause(); tPrec = 0; });
