@@ -310,10 +310,10 @@ function exporter(W, H, mmpx, murs, ouv, pieces, env, zn){
   var M = function(x, y){ return [Math.round((x - ox) * mmpx) / 1000, Math.round((oy - y) * mmpx) / 1000]; };
   var seg = function(w){ return w.dir === 'h' ? [M(w.s0, w.c), M(w.s1, w.c)] : [M(w.c, w.s0), M(w.c, w.s1)]; };
   var aretes = env.map(function(p, i){ return [p, env[(i + 1) % env.length]]; });
-  function surEnv(w){ var rec = 800 / mmpx;
+  function surEnv(w, tol){ var rec = 800 / mmpx, tl = Math.max(w.t, tol || 0);
     for (var i = 0; i < aretes.length; i++){ var a = aretes[i][0], b = aretes[i][1];
-      if (w.dir === 'h' && Math.abs(a[1] - b[1]) < 2 && Math.abs(a[1] - w.c) < w.t && Math.min(w.s1, Math.max(a[0], b[0])) - Math.max(w.s0, Math.min(a[0], b[0])) > rec) return true;
-      if (w.dir === 'v' && Math.abs(a[0] - b[0]) < 2 && Math.abs(a[0] - w.c) < w.t && Math.min(w.s1, Math.max(a[1], b[1])) - Math.max(w.s0, Math.min(a[1], b[1])) > rec) return true; }
+      if (w.dir === 'h' && Math.abs(a[1] - b[1]) < 2 && Math.abs(a[1] - w.c) < tl && Math.min(w.s1, Math.max(a[0], b[0])) - Math.max(w.s0, Math.min(a[0], b[0])) > rec) return true;
+      if (w.dir === 'v' && Math.abs(a[0] - b[0]) < 2 && Math.abs(a[0] - w.c) < tl && Math.min(w.s1, Math.max(a[1], b[1])) - Math.max(w.s0, Math.min(a[1], b[1])) > rec) return true; }
     return false; }
   function partsInt(w){ var iv = [], libre = [[w.s0, w.s1]];
     aretes.forEach(function(ar){ var a = ar[0], b = ar[1];
@@ -328,13 +328,23 @@ function exporter(W, H, mmpx, murs, ouv, pieces, env, zn){
     source: { largeur_px: W, hauteur_px: H, mm_par_px: mmpx, origine_px: [ox, oy] },
     enveloppe: env.map(function(p){ return M(p[0], p[1]); }),
     murs: out,
-    ouvertures: ouv.map(function(o){ var s = seg(o); return { a: s[0], b: s[1], largeur: Math.round((o.s1 - o.s0) * mmpx / 10) / 100, type: surEnv(o) ? 'fenetre' : 'porte' }; }),
+    ouvertures: dedoublonner(ouv.map(function(o){ var s = seg(o); return { a: s[0], b: s[1], largeur: Math.round((o.s1 - o.s0) * mmpx / 10) / 100, type: surEnv(o, 700 / mmpx) ? 'fenetre' : 'porte' }; })),
     pieces: pieces.map(function(p){ return { id: p.id, aire_m2: p.aire_m2, sol_rgb: p.rgb, centre: M(p.bbox[0] + p.bbox[2] / 2, p.bbox[1] + p.bbox[3] / 2) }; }),
     bassins: (zn ? zn.bassins : []).map(function(z){ return { aire_m2: z.aire, contour: z.poly.map(function(p){ return M(p[0], p[1]); }) }; }),
     terrasses: (zn ? zn.terrasses : []).map(function(z){ return { aire_m2: z.aire, contour: z.poly.map(function(p){ return M(p[0], p[1]); }) }; })
   };
 }
 
+/* une façade dessinée en deux traits parallèles donne la même baie deux fois : on garde la plus large */
+function dedoublonner(ouv){
+  var out = [];
+  ouv.forEach(function(o){ var cx = (o.a[0] + o.b[0]) / 2, cy = (o.a[1] + o.b[1]) / 2;
+    for (var i = 0; i < out.length; i++){ var p = out[i]; if (p.type !== o.type) continue;
+      var px = (p.a[0] + p.b[0]) / 2, py = (p.a[1] + p.b[1]) / 2;
+      if (Math.hypot(px - cx, py - cy) < 0.8){ if (o.largeur > p.largeur) out[i] = o; return; } }
+    out.push(o); });
+  return out;
+}
 /* ------------------------------------------------------------ 6. tout enchaîner */
 function extraire(src, mmpx, opts){
   if (src && src.getContext) src = source(src);
@@ -479,6 +489,115 @@ function importer(plan, opts){
 }
 
 
+
+/* ------------------------------------------------------------ 7b. un ÉTAGE de plus, sur le bâtiment déjà importé */
+/* Le contour reste celui du RDC (BPO n'a qu'un contour par bâtiment) ; les cloisons vont au niveau
+   `niveau` (0 = RDC), les baies de façade à l'étage `niveau+1` du moteur. Calage : même échelle et
+   même feuille, on centre en x sur la boîte du plan et on aligne le bord NORD sur celui du RDC
+   (le RDC a des décrochés au sud que l'étage n'a pas). */
+function importerNiveau(plan, niveau, opts){
+  opts = opts || {}; niveau = Math.max(1, niveau | 0);
+  if (typeof PIM === 'undefined' || !PIM.p2bOk) throw new Error('importe d’abord le rez-de-chaussée');
+  var xs = plan.enveloppe.map(function(p){ return p[0]; }), ys = plan.enveloppe.map(function(p){ return p[1]; });
+  var cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, yN = Math.max.apply(null, ys);
+  var zminRDC = Infinity; PIM.verts.split(' ').forEach(function(s){ var q = s.split(','); var z = q[1] / 100; if (z < zminRDC) zminRDC = z; });
+  var cy = yN + zminRDC;                                                   /* -(yN - cy) = zminRDC */
+  var X = function(p){ return [p[0] - cx, -(p[1] - cy)]; };
+  var cm = function(v){ return Math.round(v * 100); };
+  var str = function(pts){ return pts.map(function(p){ return cm(p[0]) + ',' + cm(p[1]); }).join(' '); };
+  var mid = function(o){ return X([(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2]); };
+  if ((PIM.nFloors | 0) < niveau + 1) PIM.nFloors = niveau + 1;
+  if (!PIM.heights) PIM.heights = [];
+  while (PIM.heights.length < PIM.nFloors) PIM.heights.push(300);
+  if (opts.hauteur) PIM.heights[niveau] = opts.hauteur;
+  PIM.partitions = (PIM.partitions || []).filter(function(pt){ return (pt.floor | 0) !== niveau; });
+  plan.murs.forEach(function(m){ if (m.facade) return; var t = Math.round(m.epaisseur * 100);
+    PIM.partitions.push({ floor: niveau, verts: str([X(m.a), X(m.b)]), type: t >= 20 ? 'refend' : (t >= 10 ? 'brique' : 'placo'), thick: t, height: 0, doors: [] }); });
+  var nPortes = 0;
+  plan.ouvertures.forEach(function(o){ if (o.type !== 'porte') return; var c = mid(o), best = null;
+    PIM.partitions.forEach(function(pt){ if ((pt.floor | 0) !== niveau) return;
+      var v = pt.verts.split(' ').map(function(s){ var q = s.split(','); return [q[0] / 100, q[1] / 100]; });
+      var a = v[0], b = v[1], dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz; if (!L2) return;
+      var s = ((c[0] - a[0]) * dx + (c[1] - a[1]) * dz) / L2; if (s < 0 || s > 1) return;
+      var d = Math.hypot(c[0] - (a[0] + s * dx), c[1] - (a[1] + s * dz)); if (!best || d < best.d) best = { d: d, s: s, pt: pt }; });
+    if (!best || best.d > 0.6) return;
+    best.pt.doors.push({ s: 0, t: best.s, w: Math.round(o.largeur * 100), hinge: 0, swing: 0, open: 80 }); nPortes++; });
+  /* la config mur des façades s'étend au nouvel étage : les clés IM_EDGES de cet étage */
+  build();
+  var cfgId = null; for (var k in (PIM.wallCfg || {})){ cfgId = PIM.wallCfg[k]; break; }
+  if (cfgId){ IM_EDGES.forEach(function(ed){ if ((ed.floor | 0) !== niveau + 1) return; PIM.wallCfg[ed.o + '|' + (ed.floor | 0) + '|' + (ed.seg || 0)] = cfgId; });
+    if (typeof _IMW_CACHE !== 'undefined') _IMW_CACHE = {}; build(); }
+  var cat = (typeof IM_MENUIS !== 'undefined') ? IM_MENUIS : [];
+  var PF = cat.filter(function(m){ return m.id === 'm-f2'; })[0] || { kind: 'fenetre', l: 'Fenêtre 2 vantaux', w: 120, h: 125, sill: 100, pov: { type: 'battant', nv: 2 } };
+  if (opts.baies === 'pf') PF = cat.filter(function(m){ return m.id === 'm-pf'; })[0] || PF;
+  else if (opts.baies === 'haute') PF = { kind: 'fenetre', l: 'Fenêtre haute', w: 120, h: 60, sill: 180, pov: { type: 'fixe', nv: 1 } };
+  PIM.imOpenings = (PIM.imOpenings || []).filter(function(op){ return (op.floor | 0) !== niveau + 1; });
+  var nOuv = 0, perdues = 0;
+  plan.ouvertures.forEach(function(o){ if (o.type !== 'fenetre') return; var c = mid(o), best = null;
+    IM_EDGES.forEach(function(ed){ if ((ed.floor | 0) !== niveau + 1) return;
+      var ax = ed.a[0], az = ed.a[1], dx = ed.b[0] - ax, dz = ed.b[1] - az, L2 = dx * dx + dz * dz; if (!L2) return;
+      var s = ((c[0] - ax) * dx + (c[1] - az) * dz) / L2; if (s < 0 || s > 1) return;
+      var d = Math.hypot(c[0] - (ax + s * dx), c[1] - (az + s * dz)); if (!best || d < best.d) best = { d: d, s: s, ed: ed }; });
+    if (!best || best.d > 1.0){ perdues++; return; }
+    var cfg = (typeof imMenuisCfg === 'function') ? imMenuisCfg(PF) : { id: '', mode: 'fenetre', name: PF.l, preset: PF, params: null };
+    var op = { kind: 'fenetre', cfgId: '', fac: best.ed.o, floor: best.ed.floor | 0, seg: best.ed.seg || 0, pos: Math.round(best.s * 1000) / 10, sill: PF.sill || 0, off: 0, flip: 0 };
+    if (typeof imOpPreset === 'function') imOpPreset(op, cfg); else { op.bayW = PF.w; op.bayH = PF.h; op.pov = PF.pov; }
+    op.bayW = Math.round(o.largeur * 100);
+    PIM.imOpenings.push(op); nOuv++; });
+  build();
+  if (typeof refreshView === 'function'){ try { refreshView(); } catch (e) {} }
+  return { niveau: niveau, cloisons: PIM.partitions.filter(function(p){ return (p.floor | 0) === niveau; }).length, portes: nPortes, menuiseries: nOuv, perdues: perdues };
+}
+
+/* ------------------------------------------------------------ 7c. ÉLÉVATION : hauteurs par bandes de couleur */
+/* Sur une élévation aquarellée, le mur (beige + brique) occupe le bas, l'ardoise le haut. Ligne par
+   ligne, dans l'étendue du bâtiment (colonnes riches en brique ou en ardoise), la fraction de mur
+   donne le sol (dernière ligne ≥ 25 %) et l'égout (première) ; l'ardoise donne le faîtage. Le faîte
+   « courant » = plus haute ligne d'une bande d'ardoise soutenue (≥ 30 %), le faîte max = première
+   ligne d'ardoise ≥ 20 % (pavillon, cheminées exclues par la largeur). */
+function lireElevation(src, mmpx){
+  if (src && src.getContext) src = source(src);
+  var W = src.W, H = src.H, d = src.img.data, Hc = Math.round(H * 0.88), N = W * H;
+  var brique = new Uint8Array(N), ard = new Uint8Array(N), mur = new Uint8Array(N), i, p, x, y;
+  for (i = 0, p = 0; i < N; i++, p += 4){
+    if (((i / W) | 0) >= Hc) break;
+    var r = d[p], g = d[p + 1], b = d[p + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b), s = mx ? (mx - mn) * 255 / mx : 0, h = 0;
+    if (mx !== mn){ if (mx === r) h = 60 * ((g - b) / (mx - mn)); else if (mx === g) h = 120 + 60 * ((b - r) / (mx - mn)); else h = 240 + 60 * ((r - g) / (mx - mn)); if (h < 0) h += 360; h /= 2; }
+    var bq = (h >= 3 && h <= 22 && s >= 90 && mx >= 120) ? 1 : 0;
+    brique[i] = bq; ard[i] = (s < 45 && mx >= 80 && mx <= 175) ? 1 : 0;
+    mur[i] = (bq || (h >= 8 && h <= 35 && s >= 25 && s <= 110 && mx >= 150)) ? 1 : 0;
+  }
+  var col = new Float32Array(W);
+  for (y = 0; y < Hc; y++) for (x = 0; x < W; x++) col[x] += brique[y * W + x] + ard[y * W + x];
+  var sm = new Float32Array(W), K = 15, mxc = 0;
+  for (x = 0; x < W; x++){ var sum = 0, n = 0; for (var k = -K; k <= K; k++){ if (x + k >= 0 && x + k < W){ sum += col[x + k]; n++; } } sm[x] = sum / n; if (sm[x] > mxc) mxc = sm[x]; }
+  var thr = mxc * 0.12, best = [0, 0]; x = 0;
+  while (x < W){ if (sm[x] > thr){ var j = x; while (j < W && sm[j] > thr) j++; if (j - x > best[1] - best[0]) best = [x, j]; x = j; } else x++; }
+  var x0 = best[0], x1 = best[1], Lx = x1 - x0;
+  var rm = new Float32Array(Hc), ra = new Float32Array(Hc);
+  for (y = 0; y < Hc; y++){ var a1 = 0, a2 = 0; for (x = x0; x < x1; x++){ a1 += mur[y * W + x]; a2 += ard[y * W + x]; } rm[y] = a1 / Lx; ra[y] = a2 / Lx; }
+  var sol = -1, egout = -1, faiteMax = -1, faite = -1;
+  for (y = Hc - 1; y >= 0; y--){ if (rm[y] > 0.25){ sol = y; break; } }
+  for (y = 0; y < Hc; y++){ if (rm[y] > 0.25){ egout = y; break; } }
+  for (y = 0; y < Hc; y++){ if (ra[y] > 0.2){ faiteMax = y; break; } }
+  /* faîte courant : plus haute ligne sous laquelle l'ardoise fait en moyenne ≥ 30 % sur 40 lignes
+     (les lucarnes trouent la bande, une moyenne les tolère ; le pavillon central, plus haut et étroit, non) */
+  for (y = 0; y < Hc - 40; y++){ var acc = 0; for (var q = 0; q < 40; q++) acc += ra[y + q]; if (acc / 40 >= 0.3){ faite = y; break; } }
+  var m = function(yy){ return (yy < 0 || sol < 0) ? null : Math.round((sol - yy) * mmpx) / 1000; };
+  return { largeur: Math.round(Lx * mmpx) / 1000, sol: sol, egout: m(egout), faite: m(faite), faiteMax: m(faiteMax), x0: x0, x1: x1, y: { egout: egout, faite: faite, faiteMax: faiteMax } };
+}
+/* applique les hauteurs lues : RDC = égout ; s'il y a un étage, il occupe le comble (faîte − égout) */
+function appliquerHauteurs(E){
+  if (typeof PIM === 'undefined' || !E || E.egout == null) return null;
+  var h0 = Math.round(E.egout * 100), ht = (E.faite != null ? E.faite : E.faiteMax);
+  if (!PIM.heights) PIM.heights = [300];
+  PIM.heights[0] = Math.max(220, h0);
+  if ((PIM.nFloors | 0) >= 2 && ht != null){ PIM.heights[1] = Math.max(200, Math.round((ht - E.egout) * 100)); }
+  try { build(); } catch (e) {}
+  if (typeof refreshView === 'function'){ try { refreshView(); } catch (e) {} }
+  return { rdc: PIM.heights[0], etage: (PIM.nFloors | 0) >= 2 ? PIM.heights[1] : null };
+}
+
 /* ------------------------------------------------------------ 8. fond de plan calibré */
 /* pose le scan sous le plan, à l'échelle, centré comme le bâtiment importé (IMG_UL = m/px, repère monde) */
 function poserFond(S, plan, rep, nom){
@@ -529,6 +648,13 @@ function ouvrir(){
   var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,.pdf'; inp.style.display = 'none'; right.appendChild(inp);
   bFile.onclick = function(){ inp.click(); }; inp.onchange = function(){ if (inp.files && inp.files[0]) chargerFichier(inp.files[0]); };
   var nomF = el('div', 'font-size:10px;color:var(--dm,#8b92a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;', ''); right.appendChild(nomF);
+  right.appendChild(lab('Planche'));
+  var r9 = el('div', 'display:flex;align-items:center;gap:5px;');
+  var selT = document.createElement('select'); selT.style.cssText = 'font-size:11px;flex:1';
+  [['rdc', 'Plan du rez-de-chaussée'], ['etage', "Plan d'un étage"], ['elev', 'Élévation']].forEach(function(o){ var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; selT.appendChild(op); });
+  r9.appendChild(selT);
+  var inN = document.createElement('input'); inN.type = 'number'; inN.min = '1'; inN.max = '9'; inN.step = '1'; inN.value = '1'; inN.style.cssText = 'width:44px;font-size:11px;'; inN.title = "Numéro de l'étage (1 = R+1)"; r9.appendChild(inN);
+  var nLab = el('span', 'color:var(--dm,#8b92a0)', 'R+'); r9.insertBefore(nLab, inN); right.appendChild(r9);
   right.appendChild(lab('Feuille et échelle'));
   var r1 = el('div', 'display:flex;align-items:center;gap:5px;');
   var selF = document.createElement('select'); selF.style.fontSize = '11px';
@@ -571,6 +697,10 @@ function ouvrir(){
   note.textContent = "Rouge = murs, cyan = ouvertures, noir = contour du bâtiment, couleurs = pièces. Deux murs parallèles proches peuvent fusionner ; une marche ou un meuble gris peut passer pour un mur court : retouche ensuite dans le plan d'étage."; right.appendChild(note);
   var sp = el('div', 'flex:1'); right.appendChild(sp);
   var bGo = btn('Créer le bâtiment', true); bGo.disabled = true; right.appendChild(bGo);
+  function majPlanche(){ var t = selT.value; inN.style.display = nLab.style.display = (t === 'etage') ? '' : 'none';
+    bGo.textContent = (t === 'etage') ? "Ajouter l'étage" : (t === 'elev' ? 'Appliquer les hauteurs' : 'Créer le bâtiment');
+    r8.style.display = r5.style.display = (t === 'rdc') ? '' : 'none'; r3.style.display = r7.style.display = (t === 'elev') ? 'none' : ''; }
+  selT.onchange = majPlanche; majPlanche();
   body.appendChild(right); box.appendChild(body); ov.appendChild(box); document.body.appendChild(ov); UI = ov;
   /* glisser-déposer */
   ['dragenter', 'dragover'].forEach(function(evn){ left.addEventListener(evn, function(e){ e.preventDefault(); left.style.outline = '2px dashed var(--am,#ff8a3d)'; }); });
@@ -606,8 +736,22 @@ function ouvrir(){
     if (!(ETAT.mmpx > 0)){ res.textContent = "Indique la largeur de la feuille et l'échelle."; return; }
     res.textContent = 'Analyse…'; bAna.disabled = true;
     setTimeout(function(){
+      if (selT.value === 'elev'){
+        try {
+          var E = lireElevation(ETAT.S, ETAT.mmpx); ETAT.E = E; ETAT.R = null;
+          var c2 = document.createElement('canvas'); c2.width = ETAT.S.W; c2.height = ETAT.S.H; var cx2 = c2.getContext('2d'); cx2.putImageData(ETAT.S.img, 0, 0);
+          cx2.lineWidth = Math.max(3, ETAT.S.W / 600); cx2.strokeStyle = '#e41e1e';
+          [E.sol, E.y.egout, E.y.faite, E.y.faiteMax].forEach(function(yy){ if (yy == null || yy < 0) return; cx2.beginPath(); cx2.moveTo(E.x0, yy); cx2.lineTo(E.x1, yy); cx2.stroke(); });
+          cx2.strokeStyle = '#20a020'; cx2.beginPath(); cx2.moveTo(E.x0, 0); cx2.lineTo(E.x0, E.sol); cx2.moveTo(E.x1, 0); cx2.lineTo(E.x1, E.sol); cx2.stroke();
+          montrer(c2);
+          res.innerHTML = '';
+          [['Largeur', E.largeur + ' m'], ['Égout', E.egout != null ? E.egout + ' m' : '?'], ['Faîtage', (E.faite != null ? E.faite + ' m' : '?') + (E.faiteMax != null ? ' (max ' + E.faiteMax + ' m)' : '')]].forEach(function(l){ var d = el('div'); d.appendChild(el('span', 'color:var(--dm,#8b92a0)', l[0])); d.appendChild(document.createTextNode(' : ')); d.appendChild(el('span', '', l[1])); res.appendChild(d); });
+          bGo.disabled = !(E.egout != null && typeof PIM !== 'undefined' && PIM.p2bOk);
+        } catch (e){ res.textContent = 'Lecture impossible : ' + (e && e.message || e); }
+        bAna.disabled = false; return;
+      }
       try {
-        var t0 = performance.now(), R = extraire(ETAT.S, ETAT.mmpx, { sdMax: parseInt(inS.value, 10), mode: selP.value, zones: ckZ.checked }); ETAT.R = R;
+        var t0 = performance.now(), R = extraire(ETAT.S, ETAT.mmpx, { sdMax: parseInt(inS.value, 10), mode: selP.value, zones: ckZ.checked && selT.value === 'rdc' }); ETAT.R = R;
         montrer(controle(ETAT.S, R));
         var P = R.plan, A = 0; for (var i = 0; i < P.enveloppe.length; i++){ var a = P.enveloppe[i], b = P.enveloppe[(i + 1) % P.enveloppe.length]; A += a[0] * b[1] - b[0] * a[1]; }
         res.innerHTML = '';
@@ -625,7 +769,18 @@ function ouvrir(){
     }, 30);
   };
   bGo.onclick = function(){
+    if (selT.value === 'elev'){ if (!ETAT.E) return; var hh = appliquerHauteurs(ETAT.E); fermer();
+      var m2 = hh ? ('Hauteurs appliquées : RDC ' + hh.rdc + ' cm' + (hh.etage ? ', étage ' + hh.etage + ' cm' : '') + '.') : "Rien à appliquer : importe d'abord un plan.";
+      if (typeof toast === 'function'){ try { toast(m2); return; } catch (e) {} } console.log(m2); return; }
     if (!ETAT.R) return;
+    if (selT.value === 'etage'){
+      var repN;
+      try { repN = importerNiveau(ETAT.R.plan, parseInt(inN.value, 10) || 1, { hauteur: parseInt(inH.value, 10) || 300, baies: selB.value }); }
+      catch (e){ res.textContent = (e && e.message) || String(e); return; }
+      fermer();
+      var m3 = 'Étage R+' + repN.niveau + ' ajouté : ' + repN.cloisons + ' cloisons, ' + repN.menuiseries + ' menuiseries' + (repN.perdues ? ' (' + repN.perdues + ' non accrochée(s))' : '') + '.';
+      if (typeof toast === 'function'){ try { toast(m3); return; } catch (e) {} } console.log(m3); return;
+    }
     var rep = importer(ETAT.R.plan, { hauteur: parseInt(inH.value, 10) || 300, baies: selB.value, zones: ckZ.checked });
     if (ckF.checked) poserFond(ETAT.S, ETAT.R.plan, rep, ETAT.nom);
     if (typeof buildCatList === 'function'){ try { buildCatList(); } catch (e) {} }
@@ -652,7 +807,7 @@ function entrer(){
   }
 }
 
-window.BPO_P2B = { FORMATS: FORMATS, charger: charger, extraire: extraire, controle: controle, importer: importer, poserFond: poserFond, ouvrir: ouvrir, fermer: fermer, entrer: entrer, bassins: bassins, zonesColorees: zonesColorees,
+window.BPO_P2B = { FORMATS: FORMATS, charger: charger, extraire: extraire, controle: controle, importer: importer, poserFond: poserFond, ouvrir: ouvrir, fermer: fermer, entrer: entrer, bassins: bassins, zonesColorees: zonesColorees, importerNiveau: importerNiveau, lireElevation: lireElevation, appliquerHauteurs: appliquerHauteurs,
   _: { masquePoche: masquePoche, mursEtOuvertures: mursEtOuvertures, piecesEtEnveloppe: piecesEtEnveloppe, composantes: composantes },
   mmpxDe: function(largeurMm, W, echelle){ return largeurMm / W * echelle; } };
 })();
