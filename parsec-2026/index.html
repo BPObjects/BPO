@@ -2293,7 +2293,11 @@ const COCKPIT = (() => {
     dossier.position.set(px, (SOL + BORD) / 2 + 0.15 * ech, pz + AR); g.add(dossier);
 
     /* --- LA DALLE : l'écran unique, incurvé, incliné vers le pilote --- */
-    const R = 0.72 * ech, yH = py - 0.13 * ech, yB = py - 0.50 * ech;
+    /* La hauteur de la dalle se raisonne en ANGLES sous la ligne des yeux. À 13 cm et 66 cm
+       devant, sa lèvre était à 11 degrés : elle commençait juste sous le centre de l'écran
+       et occupait toute la moitié basse — impossible de viser. À 24 cm elle démarre à 20
+       degrés, c'est-à-dire au dernier quart de l'image, et laisse le ciel libre. */
+    const R = 0.72 * ech, yH = py - 0.24 * ech, yB = py - 0.60 * ech;
     const geoD = geometrieDalle(R, 0.62, yH, yB, 0.80, 24);
     const cD = document.createElement('canvas'); cD.width = 1024; cD.height = 384;
     const texD = new T.CanvasTexture(cD); texD.colorSpace = T.SRGBColorSpace; texD.anisotropy = 4;
@@ -2305,13 +2309,13 @@ const COCKPIT = (() => {
     dalle.position.set(px, 0, pz - 0.66 * ech);
     g.add(dalle);
     /* la visière qui protège la dalle du soleil, et la retombée sous elle */
-    const visiere = new T.Mesh(geometrieDalle(R, 0.66, yH + 0.085 * ech, yH - 0.005 * ech, 0.94, 24), noir);
+    const visiere = new T.Mesh(geometrieDalle(R, 0.66, yH + 0.055 * ech, yH - 0.005 * ech, 0.94, 24), noir);
     visiere.position.copy(dalle.position); g.add(visiere);
-    const retombee = new T.Mesh(geometrieDalle(R * 0.80, 0.62, yB, yB - 0.30 * ech, 1.0, 24), coque);
+    const retombee = new T.Mesh(geometrieDalle(R * 0.80, 0.62, yB, yB - 0.34 * ech, 1.0, 24), coque);
     retombee.position.copy(dalle.position); g.add(retombee);
 
     /* --- le collimateur : lame inclinée, cadre fin, boîtier --- */
-    const zC = pz - 0.60 * ech, yC = py - 0.005 * ech, LC = 0.125 * ech, HC = 0.095 * ech, SC = 0.006 * ech, incl = -0.34;
+    const zC = pz - 0.60 * ech, yC = py - 0.035 * ech, LC = 0.125 * ech, HC = 0.095 * ech, SC = 0.006 * ech, incl = -0.34;
     const lame = new T.Mesh(new T.PlaneGeometry(LC * 2, HC * 2),
       new T.MeshBasicMaterial({ color: 0x9FE8D0, transparent: true, opacity: 0.07, side: T.DoubleSide, depthWrite: false }));
     lame.position.set(px, yC, zC); lame.rotation.x = incl; lame.renderOrder = 4; g.add(lame);
@@ -4610,16 +4614,23 @@ function dessinerMire(W, H, s){
   const p1 = pointEcran(_pv.set(n.p.x + fx * (nez + 250), n.p.y + fy * (nez + 250), n.p.z + fz * (nez + 250)), W, H, _e1p);
   const p2 = pointEcran(_pv.set(n.p.x + fx * (nez + 700), n.p.y + fy * (nez + 700), n.p.z + fz * (nez + 700)), W, H, _e2p);
   const cible = G.laserCible;
-  const chaud = G.chaleur > .8, coul = chaud ? '#FC5554' : cible ? '#D4C154' : 'rgba(66,235,245,.75)';
+  /* Rouge par défaut : sur le sable clair comme sur un ciel pâle, le cyan se perdait.
+     Ambre quand une cible est prise, blanc clignotant quand le laser surchauffe. */
+  const chaud = G.chaleur > .8 && ((G.t >> 2) & 1);
+  const coul = chaud ? '#FFFFFF' : cible ? '#FFC400' : '#FF2A18';
   hcx.save();
-  hcx.strokeStyle = coul; hcx.fillStyle = coul; hcx.lineWidth = Math.max(1, s * .55);
+  /* un liseré noir sous chaque trait : c'est lui qui rend la mire lisible sur un fond clair */
+  hcx.lineJoin = hcx.lineCap = 'round';
+  hcx.strokeStyle = 'rgba(0,0,0,.55)'; hcx.lineWidth = Math.max(2.5, s * 1.5);
+  hcx.shadowColor = 'rgba(0,0,0,.6)'; hcx.shadowBlur = Math.max(2, s);
+  hcx.strokeStyle = coul; hcx.fillStyle = coul; hcx.lineWidth = Math.max(1.6, s * .8);
   if (p2){                                                     /* le cercle lointain : un simple repère */
     hcx.globalAlpha = .35;
     hcx.beginPath(); hcx.arc(p2.x, p2.y, 3.5 * s, 0, Math.PI * 2); hcx.stroke();
     hcx.globalAlpha = 1;
   }
   if (p1){
-    const r = 9 * s;
+    const r = 11 * s;
     hcx.beginPath();
     for (let k = 0; k < 4; k++){                                /* quatre arcs, ouverts aux axes */
       const a0 = k * Math.PI / 2 + 0.22, a1 = (k + 1) * Math.PI / 2 - 0.22;
