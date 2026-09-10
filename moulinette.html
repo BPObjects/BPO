@@ -2857,48 +2857,7 @@ var CRC_T=(function(){ var t=new Uint32Array(256);
 function crc32(u8){ var c=0xFFFFFFFF;
   for(var i=0;i<u8.length;i++)c=CRC_T[(c^u8[i])&0xFF]^(c>>>8);
   return (c^0xFFFFFFFF)>>>0; }
-function deflateRaw(u8){
-  if(typeof CompressionStream==='undefined')return Promise.resolve(null);
-  try{ var st=new Blob([u8]).stream().pipeThrough(new CompressionStream('deflate-raw'));
-    return new Response(st).arrayBuffer().then(function(ab){ return new Uint8Array(ab); })
-      .catch(function(){ return null; }); }
-  catch(e){ return Promise.resolve(null); }
-}
-function makeZip(entries){
-  var enc=new TextEncoder(), parts=[], central=[], off=0;
-  var chain=Promise.resolve();
-  entries.forEach(function(e){
-    chain=chain.then(function(){ return deflateRaw(e.data).then(function(comp){
-      var method=8;
-      if(!comp||comp.length>=e.data.length){ comp=e.data; method=0; }
-      var nb=enc.encode(e.name), crc=crc32(e.data);
-      var lh=new DataView(new ArrayBuffer(30));
-      lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true);
-      lh.setUint16(8,method,true);
-      lh.setUint32(14,crc,true); lh.setUint32(18,comp.length,true); lh.setUint32(22,e.data.length,true);
-      lh.setUint16(26,nb.length,true);
-      parts.push(lh.buffer,nb,comp);
-      central.push({nb:nb,crc:crc,cs:comp.length,us:e.data.length,method:method,off:off});
-      off+=30+nb.length+comp.length;
-    }); });
-  });
-  return chain.then(function(){
-    var cdStart=off, cdLen=0;
-    central.forEach(function(c){
-      var ch=new DataView(new ArrayBuffer(46));
-      ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true);
-      ch.setUint16(8,0x0800,true); ch.setUint16(10,c.method,true);
-      ch.setUint32(16,c.crc,true); ch.setUint32(20,c.cs,true); ch.setUint32(24,c.us,true);
-      ch.setUint16(28,c.nb.length,true);
-      ch.setUint32(42,c.off,true);
-      parts.push(ch.buffer,c.nb); cdLen+=46+c.nb.length; });
-    var eo=new DataView(new ArrayBuffer(22));
-    eo.setUint32(0,0x06054b50,true); eo.setUint16(8,central.length,true); eo.setUint16(10,central.length,true);
-    eo.setUint32(12,cdLen,true); eo.setUint32(16,cdStart,true);
-    parts.push(eo.buffer);
-    return new Blob(parts,{type:'application/zip'});
-  });
-}
+function makeZip(entries){ return _gsm().makeZip(entries); }
 function dataURLtoBlob(u){
   var p=u.split(','), mime=(p[0].match(/data:([^;]+)/)||[])[1]||'application/octet-stream';
   var s=atob(p[1]), a=new Uint8Array(s.length);
@@ -2927,121 +2886,29 @@ function dl(blob,name){ var a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download=name; a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); },4000); }
 
-/* ================= exports ArchiCAD (.gsm via HSF) & SketchUp (.dae) =================
-   Dialecte GDL = celui de l'importateur SKP d'ArchiCAD (specimen 72_HWX_INSERT, 28/07) :
-   TEVE x,y,z,u,v ; EDGE -1,-1,3 (lisse, loi <=2) ; SET MATERIAL ; PGON 3,0,-1 ;
-   trailer BASE + 4 TEVE + COOR 1024,-1,-2,-3,-4 ; BODY -1 ; matiere 21 = texturee.
-   Valide dans AC28 le 28/07 (chaise texturee lissee + tapis). */
-var SUBKIND_B64='V1cBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
+/* CES AUXILIAIRES VIVENT DANS bpo-gsm.js (10/09/2026), avec le generateur
+   ArchiCAD qu'ils servaient. L'export SketchUp s'en sert AUSSI : en garder
+   une copie ici reproduirait la divergence qu'on voulait supprimer — le
+   premier correctif de lecture OBJ ou de reaxage n'en toucherait qu'un.
+   Verifie avant bascule : corps IDENTIQUES ligne pour ligne, sauf _prepGeo
+   dont la seule difference est le parametre `up` (le module ne connait pas
+   VIEW). Et l'export SketchUp d'un cube temoin rend le MEME zip qu'avant,
+   1 277 octets. */
+function _gsm(){
+  if(!window.BPO_GSM || !BPO_GSM.zip){
+    alert('Le module bpo-gsm.js n’est pas charge : les exports ArchiCAD et SketchUp sont indisponibles.');
+    throw new Error('bpo-gsm.js absent');
+  }
+  return BPO_GSM;
+}
+/* garde un appelant dans la page : _previewPNG */
 function _b64bytes(b){ var s=atob(b), a=new Uint8Array(s.length);
   for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i); return a; }
-function _bom(t){ return new TextEncoder().encode('\ufeff'+t); }
 function _gsafe(s){ return s.replace(/[^A-Za-z0-9._ -]/g,'_'); }
 function _f6(x){ return x.toFixed(6); }
-/* parse l'OBJ/MTL regeneres par buildExport (memes donnees que la reference python) */
-function _parseObjText(txt){
-  var V=[],VT=[],mats=[],cur=null, lines=txt.split('\n');
-  for(var i=0;i<lines.length;i++){ var l=lines[i];
-    if(l.startsWith('v ')){ var p=l.split(/\s+/); V.push([+p[1],+p[2],+p[3]]); }
-    else if(l.startsWith('vt ')){ var q=l.split(/\s+/); VT.push([+q[1],+q[2]]); }
-    else if(l.startsWith('usemtl')){ cur={name:l.slice(6).trim(),tris:[]}; mats.push(cur); }
-    else if(l.startsWith('f ')){ var cs=[],tk=l.split(/\s+/);
-      for(var k=1;k<tk.length;k++){ if(!tk[k])continue; var a=tk[k].split('/');
-        cs.push([parseInt(a[0],10)-1, (a.length>1&&a[1]!=='')?parseInt(a[1],10)-1:-1]); }
-      for(var k2=1;k2<cs.length-1;k2++)cur.tris.push([cs[0],cs[k2],cs[k2+1]]); } }
-  return {V:V,VT:VT,mats:mats};
-}
-function _parseMtlText(txt){
-  var out={},cur=null, lines=txt.split('\n');
-  for(var i=0;i<lines.length;i++){ var s=lines[i].trim();
-    if(s.startsWith('newmtl')){ cur={kd:[0.72,0.72,0.72],map:null,alpha:1}; out[s.slice(6).trim()]=cur; }
-    else if(cur&&s.startsWith('Kd ')){ var p=s.split(/\s+/); cur.kd=[+p[1],+p[2],+p[3]]; }
-    else if(cur&&/^map_kd/i.test(s)){ cur.map=s.slice(6).trim().replace(/\\/g,'/').split('/').pop(); }
-    else if(cur&&s.startsWith('d ')){ var v=parseFloat(s.slice(2)); if(!isNaN(v))cur.alpha=Math.max(0,Math.min(1,v)); } }
-  return out;
-}
-/* geometrie commune : Z-up, centre XY, sol Z=0 (reaxage si la vue est Y-up) */
-function _prepGeo(ex){
-  var od=_parseObjText(ex.obj), MTL=_parseMtlText(ex.mtl);
-  var P=od.V.map(function(v){ return (VIEW.up==='Y')?[v[0],-v[2],v[1]]:[v[0],v[1],v[2]]; });
-  var mn=[1e30,1e30,1e30],mx=[-1e30,-1e30,-1e30];
-  P.forEach(function(p){ for(var a=0;a<3;a++){ if(p[a]<mn[a])mn[a]=p[a]; if(p[a]>mx[a])mx[a]=p[a]; } });
-  var cx=(mn[0]+mx[0])/2, cy=(mn[1]+mx[1])/2, z0=mn[2];
-  P=P.map(function(p){ return [p[0]-cx,p[1]-cy,p[2]-z0]; });
-  return {P:P, VT:od.VT, mats:od.mats, MTL:MTL,
-          dim:[Math.max(mx[0]-mn[0],1e-6),Math.max(mx[1]-mn[1],1e-6),Math.max(mx[2]-mn[2],1e-6)]};
-}
-/* silhouette vue de dessus : grille d'occupation + bords + Douglas-Peucker.
-   Retourne des boucles de points [[x,y],...] en coordonnees objet (XY, origine centre). */
-function _silhouette2D(g){
-  var mn=[1e30,1e30],mx=[-1e30,-1e30];
-  g.P.forEach(function(p){ if(p[0]<mn[0])mn[0]=p[0]; if(p[0]>mx[0])mx[0]=p[0];
-    if(p[1]<mn[1])mn[1]=p[1]; if(p[1]>mx[1])mx[1]=p[1]; });
-  var w=Math.max(mx[0]-mn[0],1e-6), h=Math.max(mx[1]-mn[1],1e-6);
-  var cell=Math.max(w,h)/220, nx=Math.ceil(w/cell)+4, ny=Math.ceil(h/cell)+4;
-  var ox=mn[0]-2*cell, oy=mn[1]-2*cell;
-  var occ=new Uint8Array(nx*ny);
-  g.mats.forEach(function(m){ m.tris.forEach(function(tri){
-    var ax=g.P[tri[0][0]][0],ay=g.P[tri[0][0]][1],
-        bx=g.P[tri[1][0]][0],by=g.P[tri[1][0]][1],
-        cx=g.P[tri[2][0]][0],cy=g.P[tri[2][0]][1];
-    var x0=Math.max(0,Math.floor((Math.min(ax,bx,cx)-ox)/cell)),
-        x1=Math.min(nx-1,Math.ceil((Math.max(ax,bx,cx)-ox)/cell)),
-        y0=Math.max(0,Math.floor((Math.min(ay,by,cy)-oy)/cell)),
-        y1=Math.min(ny-1,Math.ceil((Math.max(ay,by,cy)-oy)/cell));
-    var d=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy); if(Math.abs(d)<1e-12)return;
-    for(var gy=y0;gy<=y1;gy++)for(var gx=x0;gx<=x1;gx++){
-      var px=ox+(gx+0.5)*cell, py=oy+(gy+0.5)*cell;
-      var l1=((by-cy)*(px-cx)+(cx-bx)*(py-cy))/d,
-          l2=((cy-ay)*(px-cx)+(ax-cx)*(py-cy))/d, l3=1-l1-l2;
-      if(l1>=-0.001&&l2>=-0.001&&l3>=-0.001)occ[gy*nx+gx]=1; }
-  }); });
-  var out=[];
-  function addSeg(x1,y1,x2,y2){ out.push([x1,y1,x2,y2]); }
-  for(var y=0;y<ny;y++)for(var x=0;x<nx;x++){ if(!occ[y*nx+x])continue;
-    if(x===0||!occ[y*nx+x-1])addSeg(x,y,x,y+1);
-    if(x===nx-1||!occ[y*nx+x+1])addSeg(x+1,y,x+1,y+1);
-    if(y===0||!occ[(y-1)*nx+x])addSeg(x,y,x+1,y);
-    if(y===ny-1||!occ[(y+1)*nx+x])addSeg(x,y+1,x+1,y+1); }
-  var byPt=new Map();
-  function pk(x,y){ return x+'_'+y; }
-  out.forEach(function(s,i){ [pk(s[0],s[1]),pk(s[2],s[3])].forEach(function(kk){
-    if(!byPt.has(kk))byPt.set(kk,[]); byPt.get(kk).push(i); }); });
-  var used=new Uint8Array(out.length), loops=[];
-  for(var i0=0;i0<out.length;i0++){ if(used[i0])continue;
-    var s0=out[i0]; used[i0]=1;
-    var loop=[[s0[0],s0[1]],[s0[2],s0[3]]];
-    for(;;){ var last=loop[loop.length-1];
-      var cands=(byPt.get(pk(last[0],last[1]))||[]).filter(function(j){ return !used[j]; });
-      if(!cands.length)break;
-      var j=cands[0], t=out[j]; used[j]=1;
-      if(t[0]===last[0]&&t[1]===last[1])loop.push([t[2],t[3]]);
-      else loop.push([t[0],t[1]]);
-      var f=loop[0], l9=loop[loop.length-1];
-      if(f[0]===l9[0]&&f[1]===l9[1])break; }
-    if(loop.length>3)loops.push(loop); }
-  function dp(pts,eps){
-    if(pts.length<3)return pts;
-    var dmax=0,idx=0, a=pts[0], b=pts[pts.length-1];
-    for(var i=1;i<pts.length-1;i++){ var p=pts[i];
-      var dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1e-9;
-      var d=Math.abs(dy*p[0]-dx*p[1]+b[0]*a[1]-b[1]*a[0])/L;
-      if(d>dmax){ dmax=d; idx=i; } }
-    if(dmax>eps){ var r1=dp(pts.slice(0,idx+1),eps), r2=dp(pts.slice(idx),eps);
-      return r1.slice(0,-1).concat(r2); }
-    return [a,b];
-  }
-  return loops.map(function(lp){
-    /* boucle fermee : DP degenere (a==b) -> simplifier en deux moities */
-    var closed=lp[0][0]===lp[lp.length-1][0]&&lp[0][1]===lp[lp.length-1][1];
-    var simp;
-    if(closed&&lp.length>4){ var m=Math.floor(lp.length/2);
-      var h1=dp(lp.slice(0,m+1),1.3), h2=dp(lp.slice(m),1.3);
-      simp=h1.slice(0,-1).concat(h2); }
-    else simp=dp(lp,1.3);
-    return simp.map(function(p){ return [ox+p[0]*cell, oy+p[1]*cell]; });
-  });
-}
+/* geometrie commune aux exports : Z-haut, centre XY, sol Z=0. VIEW.up est
+   la seule chose que le module ne peut pas savoir — on la lui passe. */
+function _prepGeo(ex){ return _gsm().prepGeo(ex, VIEW.up); }
 /* capture du canvas WebGL en PNG (rendu synchrone puis lecture immediate) */
 function _previewPNG(){
   try{
