@@ -1132,7 +1132,8 @@
     }).catch(function (e) { console.warn('BPO import: lecture du stock', e); });
   }
 
-  glob.BPO_import = { _core: core, parseIFC: parseIFC, openDialog: openDialog, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, _boot: boot, _installHooks: installHooks };   /* parseIFC exposé pour la moulinette (14/08) */
+  /* `handleFile` est expose (10/09) pour que l'application puisse aiguiller UN selecteur de fichier vers l'importeur 3D. Sans lui il aurait fallu appeler openDialog, donc rouvrir un second selecteur, donc faire choisir deux fois. */
+  glob.BPO_import = { _core: core, parseIFC: parseIFC, openDialog: openDialog, handleFile: handleFile, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, _boot: boot, _installHooks: installHooks };   /* parseIFC exposé pour la moulinette (14/08) */
 
   if (doc && doc.readyState !== 'loading') setTimeout(boot, 0);
   else if (doc) doc.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 0); });
