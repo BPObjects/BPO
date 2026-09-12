@@ -670,6 +670,11 @@
            centaines de Mo envoyes au GPU, latence de plusieurs secondes au
            demarrage du rendu (vecu 24/08). */
         var _S = 512;
+        /* 1024 quand la scene est LEGERE en tuiles (<= 6 couches) et qu'une tuile le vaut
+           (carte du site drapee sur le relief, 12/09) : a 512, une carte de 530 m tombe a
+           1 m par texel et rend flou ce que WebGL montre net. Les scenes a humains (2048,
+           souvent > 6 couches) gardent 512 — c'est leur memoire qui avait fait plafonner. */
+        try { var _mx = 0; _tl.forEach(function (T) { if (T && T.w > _mx) _mx = T.w; }); if (_tl.length <= 6 && _mx >= 1024) _S = 1024; } catch (e) {}
         if (_S) {
           window.__RT_TRS = window.__RT_TRS || {};
           _tl = _tl.map(function (T, _j) {

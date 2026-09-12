@@ -224,7 +224,13 @@ fn lodAt(tri : u32, p : vec3f, n : vec3f, rd : vec3f, taille : f32) -> f32 {
   let dist = length(p - U.camPos.xyz);
   let pxMonde = dist * (2.0 * U.camPos.w / max(1.0, U.dims.y));
   let cosi = max(0.15, abs(dot(normalize(n), rd)));    // incidence rasante -> empreinte etiree
-  let texels = max(1.0, pxMonde * dens / cosi);
+  /* TEXTURE NON REPETEE (carte du site drapee sur le relief, < 8 texels/m) : l'empreinte
+     n'est etiree que dans UNE direction par l'incidence — la diviser par cos dans les
+     deux revient a flouter ; on prend la moyenne geometrique des deux axes (sqrt).
+     Les tuiles repetees (carrelage, bardage : ~230 texels/m) gardent 1/cos, la regle
+     anti-moire mesuree au banc. (12/09/2026, AL : « plus flou » que WebGL) */
+  let aniso = select(cosi, sqrt(cosi), dens < 8.0);
+  let texels = max(1.0, pxMonde * dens / aniso);
   return clamp(log2(texels), 0.0, 12.0);
 }
 /* Normale LISSEE au point d'impact. Renvoie le vecteur nul quand le triangle

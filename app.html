@@ -742,8 +742,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
 <script type="text/bpo-worker" id="bpo-decode-src">self.onmessage=function(e){var d=e.data,mt=d.meta,id=d.id;try{var i,s=atob(d.geo),n=s.length,oct=new Uint8Array(n);for(i=0;i<n;i++)oct[i]=s.charCodeAt(i);var flux=new Blob([oct]).stream().pipeThrough(new DecompressionStream("gzip"));new Response(flux).arrayBuffer().then(function(ab){var raw=new Uint8Array(ab),off=0,posQ=new Uint16Array(raw.slice(off,off+mt.plen).buffer);off+=mt.plen;var nrm=new Int8Array(raw.slice(off,off+mt.nlen).buffer);off+=mt.nlen;var uv=new Float32Array(raw.slice(off,off+mt.uvlen).buffer);off+=mt.uvlen;var k,idx=new Uint32Array(raw.slice(off,off+mt.ilen).buffer),bb=mt.bb,nv=mt.nv,pos=new Float32Array(3*nv);for(k=0;k<nv;k++)pos[3*k]=bb[0]+posQ[3*k]/65535*(bb[3]-bb[0]),pos[3*k+1]=bb[1]+posQ[3*k+1]/65535*(bb[4]-bb[1]),pos[3*k+2]=bb[2]+posQ[3*k+2]/65535*(bb[5]-bb[2]);var nrmf=new Float32Array(3*nv);for(k=0;k<3*nv;k++)nrmf[k]=nrm[k]/127;self.postMessage({id:id,ok:!0,pos:pos,nrm:nrmf,uv:uv,idx:idx},[pos.buffer,nrmf.buffer,uv.buffer,idx.buffer])}).catch(function(err){self.postMessage({id:id,ok:!1,err:String(err)})})}catch(err){self.postMessage({id:id,ok:!1,err:String(err)})}};</script>
 
 <script src="data/textured-objects.js?v=20260710b"></script>
-<script src="bpo-raytrace.js?v=20260828e"></script>
-<script src="bpo-render-hook.js?v=20260906b"></script>
+<script src="bpo-raytrace.js?v=20260912t"></script>
+<script src="bpo-render-hook.js?v=20260912t"></script>
 <script src="bpo-gsm.js?v=20260910a"></script>
 <script src="bpo-import.js?v=20260912s"></script>
 <script src="bpo-terrain.js?v=20260912t"></script>
