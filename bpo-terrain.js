@@ -51,6 +51,7 @@
   var LAYERS = null;    // couches présentes [{layer,n}] triées
   var MESH = null;      // maillage en cache {V:[[x,y,z]], F:[[a,b,c],col], grid, dims, sig}
   var _name = '';
+  var REG = false;      // grille régulière (relief IGN / SRTM) : ni filtre de creux ni bande d'altitude DXF
 
   /* ---- Parse DXF : points d'insertion MTEXT + valeur numérique (mm -> m) ---- */
   function parseDXFall(text) {
@@ -78,13 +79,23 @@
   }
 
   function setDXF(text, name) {
-    var r = parseDXFall(text); RAW = r.points; POLYS = r.polys; _name = name || ''; MESH = null;
+    var r = parseDXFall(text); RAW = r.points; POLYS = r.polys; _name = name || ''; MESH = null; REG = false;
     var lc = {}; for (var i = 0; i < POLYS.length; i++) { var l = POLYS[i].layer; lc[l] = (lc[l] || 0) + 1; }
     LAYERS = Object.keys(lc).map(function (l) { return { layer: l, n: lc[l] }; }).sort(function (a, b) { return b.n - a.n; });
     if (LAYERS.length && !PTERR.drapeLayers) { PTERR.drapeLayers = {}; PTERR.drapeLayers[LAYERS[0].layer] = 1; }
     return RAW.length;
   }
   function hasData() { return !!(RAW && RAW.length); }
+  /* ---- Grille régulière d'altitudes (relief IGN / SRTM importé par Site / Géolocalisation, 12/09/2026) ----
+     pts : [{x: m vers l'est, y: m vers le nord, z: m NGF}] ; step : pas de la grille (m). */
+  function setGrid(pts, name, step) {
+    RAW = pts; POLYS = []; LAYERS = []; _name = name || 'Relief'; MESH = null; REG = true; PTERR.src = 'dxf';
+    var zmin = Infinity, zmax = -Infinity; for (var i = 0; i < pts.length; i++) { var z = pts[i].z; if (z < zmin) zmin = z; if (z > zmax) zmax = z; }
+    PTERR.bandMin = Math.floor(zmin) - 1; PTERR.bandMax = Math.ceil(zmax) + 1;   /* la bande DXF (18–45 m par défaut) viderait un relief de montagne */
+    if (step) { PTERR.step = Math.max(0.5, Math.round(step * 10) / 10); PTERR.cut = Math.max(PTERR.step * 3, 6); }
+    PTERR.smooth = 0; PTERR.drapeLayers = null;
+    return RAW.length;
+  }
 
   /* ---- Rampe d'altitude (vert bas -> jaune -> brun haut), comme une carte topo ---- */
   function altColor(t) { // t 0..1
@@ -120,7 +131,7 @@
       res.sort(function(a,b){return a[0]-b[0];}); return res.slice(0,K); }
     // 4) retrait des creux locaux (fils d'eau / regards) : z < médiane voisins - 1.2 m
     var kept=[];
-    for(i=0;i<P.length;i++){ var nb=nearK(P[i].x,P[i].y,9), zz=nb.map(function(e){return P[e[1]].z;}).sort(function(a,b){return a-b;}); var med=zz.length?zz[zz.length>>1]:P[i].z; if(P[i].z > med-1.2) kept.push(P[i]); }
+    if(!REG) for(i=0;i<P.length;i++){ var nb=nearK(P[i].x,P[i].y,9), zz=nb.map(function(e){return P[e[1]].z;}).sort(function(a,b){return a-b;}); var med=zz.length?zz[zz.length>>1]:P[i].z; if(P[i].z > med-1.2) kept.push(P[i]); }
     P = kept.length>=3 ? kept : P;
     // recompute bounds + hash sur P nettoyé
     minX=1e18;minY=1e18;maxX=-1e18;maxY=-1e18; for(i=0;i<P.length;i++){var q2=P[i]; if(q2.x<minX)minX=q2.x; if(q2.y<minY)minY=q2.y; if(q2.x>maxX)maxX=q2.x; if(q2.y>maxY)maxY=q2.y;}
@@ -541,6 +552,27 @@
       rd.readAsText(file, 'windows-1252'); };   /* DXF AutoCAD = ANSI_1252 : accents des calques OK */
     host.appendChild(bLoad); host.appendChild(fin);
     var info = doc.createElement('div'); info.className = 'exp-note'; info.textContent = hasData() ? (RAW.length + ' points cotés en mémoire.') : 'Aucun terrain chargé.'; host.appendChild(info);
+    /* RELIEF IGN / SRTM autour d'une adresse (12/09/2026) — même chaîne que Site / Géolocalisation (loadSiteMap → loadSiteDEM → setGrid) */
+    var gcard = doc.createElement('div'); gcard.className = 'fld'; gcard.style.marginTop = '8px';
+    gcard.innerHTML = '<div class="fh"><label>Adresse du site</label></div>';
+    var gin = doc.createElement('input'); gin.type = 'text'; gin.value = (glob.SITE && glob.SITE.addr) || ''; gin.placeholder = 'ex. 12 rue de la Paix, Lyon';
+    gin.style.cssText = 'width:100%;font-size:11px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:5px;box-sizing:border-box;outline:none;';
+    gcard.appendChild(gin); host.appendChild(gcard);
+    var rsel = doc.createElement('div'); rsel.className = 'finish-tabs';   /* emprise ≈ 3 tuiles : le zoom de la carte fait le rayon */
+    [[18, '≈ 300 m'], [17, '≈ 600 m'], [16, '≈ 1,2 km']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if (((glob.SITE && glob.SITE.zoom) || 18) === o[0]) b.className = 'on'; b.onclick = function () { if (glob.SITE) glob.SITE.zoom = o[0]; buildUI(host); }; rsel.appendChild(b); });
+    host.appendChild(rsel);
+    var bign = doc.createElement('button'); bign.className = 'save-add'; bign.textContent = '⛰ Relief IGN à cette adresse'; bign.style.margin = '2px 0 6px';
+    bign.onclick = function () {
+      if (!(glob.SITE && typeof glob.loadSiteMap === 'function' && typeof glob.siteDemToTerrain === 'function' && typeof glob.geocodeAddr === 'function')) { glob.alert('Module Site / Géolocalisation indisponible.'); return; }
+      var S = glob.SITE, addr = gin.value.trim();
+      function go() { bign.textContent = 'Chargement du relief…'; S._demWant = 1;
+        S._mapCb = function () { if (!S.dem) { bign.textContent = 'Relief indisponible ici.'; return; } glob.siteDemToTerrain(); };
+        glob.loadSiteMap(); }
+      if (addr && (addr !== S.addr || !S.on)) { bign.textContent = 'Géocodage…'; S.addr = addr; glob.geocodeAddr(addr, function (r) { if (!r) { bign.textContent = 'Adresse introuvable'; return; } S.lat = r.lat; S.lon = r.lon; go(); }); }
+      else if (S.on) go(); else glob.alert('Indiquez une adresse.');
+    };
+    host.appendChild(bign);
+    var gnote = doc.createElement('div'); gnote.className = 'exp-note'; gnote.textContent = 'Relief autour de l\'adresse : IGN RGE ALTI (1 m) en France, sinon SRTM (~30 m). Remplace les points cotés du DXF.'; host.appendChild(gnote);
     if (!hasData()) return;
     // stats
     if (MESH && !MESH.tooBig) { var st = doc.createElement('div'); st.className = 'exp-note'; st.style.color = 'var(--am)';
@@ -671,5 +703,5 @@
     var bf=doc.createElement('button'); bf.className='save-add'; bf.textContent='❄ Figer le terrain (→ objet réutilisable)'; bf.style.marginTop='8px'; bf.onclick=freeze; host.appendChild(bf);
   }
 
-  glob.BPO_terrain = { PTERR: PTERR, setDXF: setDXF, buildFC: buildFC, buildUI: buildUI, hasData: hasData, ctrlHandles: ctrlHandles, setCtrlCm: setCtrlCm, footHandles: footHandles, setFoot: setFoot, insertFoot: insertFoot, removeFoot: removeFoot, _parse: parseDXFall };
+  glob.BPO_terrain = { PTERR: PTERR, setDXF: setDXF, setGrid: setGrid, buildFC: buildFC, buildUI: buildUI, hasData: hasData, ctrlHandles: ctrlHandles, setCtrlCm: setCtrlCm, footHandles: footHandles, setFoot: setFoot, insertFoot: insertFoot, removeFoot: removeFoot, _parse: parseDXFall };
 })();
