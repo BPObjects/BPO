@@ -52,6 +52,7 @@
   var MESH = null;      // maillage en cache {V:[[x,y,z]], F:[[a,b,c],col], grid, dims, sig}
   var _name = '';
   var REG = false;      // grille régulière (relief IGN / SRTM) : ni filtre de creux ni bande d'altitude DXF
+  var MINSTEP = 0.5;    // plancher de maille (grille régulière) : au-delà de 900 000 mailles le MNT disparaît sans un mot (tooBig)
   var MAP = null;       // carte drapée {key, ext, cxFrac, cyFrac, dataURL, style} — repère du site, voir siteDemToTerrain
 
   /* ---- Parse DXF : points d'insertion MTEXT + valeur numérique (mm -> m) ---- */
@@ -95,6 +96,9 @@
     var zmin = Infinity, zmax = -Infinity; for (var i = 0; i < pts.length; i++) { var z = pts[i].z; if (z < zmin) zmin = z; if (z > zmax) zmax = z; }
     PTERR.bandMin = Math.floor(zmin) - 1; PTERR.bandMax = Math.ceil(zmax) + 1;   /* la bande DXF (18–45 m par défaut) viderait un relief de montagne */
     if (step) { PTERR.step = Math.max(0.5, Math.round(step * 10) / 10); PTERR.cut = Math.max(PTERR.step * 3, 6); }
+    var xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+    for (var q = 0; q < pts.length; q++) { var p = pts[q]; if (p.x < xmin) xmin = p.x; if (p.x > xmax) xmax = p.x; if (p.y < ymin) ymin = p.y; if (p.y > ymax) ymax = p.y; }
+    MINSTEP = Math.max(0.5, Math.ceil(Math.max(xmax - xmin, ymax - ymin) / 940 * 10) / 10);   /* 940² < 900 000 mailles */
     PTERR.smooth = 0; PTERR.drapeLayers = null;
     return RAW.length;
   }
@@ -116,6 +120,7 @@
   function buildMesh() {
     if (!hasData()) return null;
     var step = Math.max(0.5, +PTERR.step || 3), cut = Math.max(step, +PTERR.cut || 12);
+    if (REG && step < MINSTEP) step = MINSTEP;   /* le curseur descend à 1 m, l'emprise peut ne pas le permettre */
     var bmin = +PTERR.bandMin, bmax = +PTERR.bandMax;
     // 1) filtre bande d'altitude
     var P = [];
@@ -579,7 +584,7 @@
     gin.style.cssText = 'width:100%;font-size:11px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:5px;box-sizing:border-box;outline:none;';
     gcard.appendChild(gin); host.appendChild(gcard);
     var rsel = doc.createElement('div'); rsel.className = 'finish-tabs';   /* emprise ≈ 3 tuiles : le zoom de la carte fait le rayon */
-    [[18, '≈ 300 m'], [17, '≈ 600 m'], [16, '≈ 1,2 km']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if (((glob.SITE && glob.SITE.zoom) || 18) === o[0]) b.className = 'on'; b.onclick = function () { if (glob.SITE) glob.SITE.zoom = o[0]; buildUI(host); }; rsel.appendChild(b); });
+    [[18, '≈ 300 m'], [17, '≈ 600 m'], [16, '≈ 1,2 km'], [15, '≈ 2,4 km']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if (((glob.SITE && glob.SITE.zoom) || 18) === o[0]) b.className = 'on'; b.onclick = function () { if (glob.SITE) glob.SITE.zoom = o[0]; buildUI(host); }; rsel.appendChild(b); });
     host.appendChild(rsel);
     var msel = doc.createElement('div'); msel.className = 'finish-tabs';   /* fond drapé sur le relief (et conservé dans l'objet figé) */
     [['satellite', 'Satellite'], ['plan', 'Plan OSM']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if ((PTERR.mapStyle || 'satellite') === o[0]) b.className = 'on'; b.onclick = function () { PTERR.mapStyle = o[0]; buildUI(host); }; msel.appendChild(b); });
