@@ -52,6 +52,7 @@
   var MESH = null;      // maillage en cache {V:[[x,y,z]], F:[[a,b,c],col], grid, dims, sig}
   var _name = '';
   var REG = false;      // grille régulière (relief IGN / SRTM) : ni filtre de creux ni bande d'altitude DXF
+  var MAP = null;       // carte drapée {key, ext, cxFrac, cyFrac, dataURL, style} — repère du site, voir siteDemToTerrain
 
   /* ---- Parse DXF : points d'insertion MTEXT + valeur numérique (mm -> m) ---- */
   function parseDXFall(text) {
@@ -79,7 +80,7 @@
   }
 
   function setDXF(text, name) {
-    var r = parseDXFall(text); RAW = r.points; POLYS = r.polys; _name = name || ''; MESH = null; REG = false;
+    var r = parseDXFall(text); RAW = r.points; POLYS = r.polys; _name = name || ''; MESH = null; REG = false; MAP = null; if (+PTERR.colorByAlt === 2) PTERR.colorByAlt = 1;
     var lc = {}; for (var i = 0; i < POLYS.length; i++) { var l = POLYS[i].layer; lc[l] = (lc[l] || 0) + 1; }
     LAYERS = Object.keys(lc).map(function (l) { return { layer: l, n: lc[l] }; }).sort(function (a, b) { return b.n - a.n; });
     if (LAYERS.length && !PTERR.drapeLayers) { PTERR.drapeLayers = {}; PTERR.drapeLayers[LAYERS[0].layer] = 1; }
@@ -88,8 +89,9 @@
   function hasData() { return !!(RAW && RAW.length); }
   /* ---- Grille régulière d'altitudes (relief IGN / SRTM importé par Site / Géolocalisation, 12/09/2026) ----
      pts : [{x: m vers l'est, y: m vers le nord, z: m NGF}] ; step : pas de la grille (m). */
-  function setGrid(pts, name, step) {
+  function setGrid(pts, name, step, map) {
     RAW = pts; POLYS = []; LAYERS = []; _name = name || 'Relief'; MESH = null; REG = true; PTERR.src = 'dxf';
+    MAP = (map && map.key) ? map : null; if (MAP) PTERR.colorByAlt = 2; else if (+PTERR.colorByAlt === 2) PTERR.colorByAlt = 1;   /* 2 = carte drapée */
     var zmin = Infinity, zmax = -Infinity; for (var i = 0; i < pts.length; i++) { var z = pts[i].z; if (z < zmin) zmin = z; if (z > zmax) zmax = z; }
     PTERR.bandMin = Math.floor(zmin) - 1; PTERR.bandMax = Math.ceil(zmax) + 1;   /* la bande DXF (18–45 m par défaut) viderait un relief de montagne */
     if (step) { PTERR.step = Math.max(0.5, Math.round(step * 10) / 10); PTERR.cut = Math.max(PTERR.step * 3, 6); }
@@ -105,6 +107,11 @@
     return [Math.round(a[0] + (b[0]-a[0])*u), Math.round(a[1] + (b[1]-a[1])*u), Math.round(a[2] + (b[2]-a[2])*u)];
   }
 
+  /* UV d'un sommet [x, y, z] du maillage (repère centré sur (cx,cy) de la grille) dans le
+     canevas de la carte : u ouest→est, v nord→sud (ligne 0 de l'image = nord). */
+  function mapUV(v) { var g = MESH && MESH.grid; if (!(MAP && g)) return [0, 0];
+    return [ (v[0] + (g.cx || 0)) / MAP.ext + MAP.cxFrac, (v[2] - (g.cy || 0)) / MAP.ext + MAP.cyFrac ]; }
+  function mapOn() { return !!(+PTERR.colorByAlt === 2 && MAP && glob.TEX_IMAGES && glob.TEX_IMAGES[MAP.key]); }
   /* ---- Construction du MNT (grille) depuis les points, selon PTERR ---- */
   function buildMesh() {
     if (!hasData()) return null;
@@ -299,7 +306,7 @@
     if (!shapeMode && !hasData()) { glob.DIMS = { w:1, h:0.1, d:1 }; return glob.DIMS; }
     if (!MESH || MESH.sig !== sig()) { var m = shapeMode ? buildShapeMesh() : buildMesh(); if (m) m.sig = sig(); MESH = m; }
     if (!MESH || MESH.tooBig) { glob.DIMS = { w:1, h:0.1, d:1 }; return glob.DIMS; }
-    var FC = glob.FC, V = MESH.V, VZ = MESH.VZ, uni = !(+PTERR.colorByAlt);
+    var FC = glob.FC, V = MESH.V, VZ = MESH.VZ, mapped = mapOn(), uni = !mapped && !(+PTERR.colorByAlt);
     var texKey = (glob.FINISH_TEX && glob.FINISH_TEX.terrain) || null;
     var uCol = (glob.FINISH && glob.FINISH.terrain) || MESH.col;
     for (var f = 0; f < MESH.F.length; f++) {
@@ -307,8 +314,10 @@
       // normale
       var ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2], vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
       var nx2=uy*vz-uz*vy, ny2=uz*vx-ux*vz, nz2=ux*vy-uy*vx, nl=Math.hypot(nx2,ny2,nz2)||1;
-      var col = uni ? uCol : altColor((VZ[tri[0]]+VZ[tri[1]]+VZ[tri[2]])/3);
-      FC.push({ verts:[a,b,c], n:[nx2/nl,ny2/nl,nz2/nl], col:col, al:1, tex: uni?texKey:null });
+      var col = mapped ? [190,190,182] : (uni ? uCol : altColor((VZ[tri[0]]+VZ[tri[1]]+VZ[tri[2]])/3));
+      var fc = { verts:[a,b,c], n:[nx2/nl,ny2/nl,nz2/nl], col:col, al:1, tex: mapped ? MAP.key : (uni?texKey:null) };
+      if (mapped) fc.uv = [mapUV(a), mapUV(b), mapUV(c)];   /* carte drapée : UV par sommet, comme les objets importés */
+      FC.push(fc);
     }
     if (+PTERR.thick > 0) solidFC(FC, MESH);
     if (+PTERR.drape && MESH.grid) drapeFC(FC, MESH.grid);
@@ -431,8 +440,12 @@
     var V = MESH.V, F = MESH.F, VZ = MESH.VZ, i;
     var pos = new Float32Array(V.length * 3);
     for (i = 0; i < V.length; i++) { pos[i*3]=V[i][0]; pos[i*3+1]=V[i][1]; pos[i*3+2]=V[i][2]; }
-    var idx, groups;
-    if (+PTERR.colorByAlt) {
+    var idx, groups, mapped = mapOn();
+    if (mapped) {
+      var flatM = []; for (var fm = 0; fm < F.length; fm++) flatM.push(F[fm][0], F[fm][1], F[fm][2]);
+      idx = Uint32Array.from(flatM);
+      groups = [{ start: 0, count: idx.length, col: [190,190,182], tex: MAP.key + 'b', name: 'Terrain (' + (MAP.style === 'satellite' ? 'satellite' : 'plan') + ')' }];
+    } else if (+PTERR.colorByAlt) {
       var N = 10, bands = []; for (var k = 0; k < N; k++) bands.push([]);
       for (var f = 0; f < F.length; f++) { var tri = F[f], av = (VZ[tri[0]]+VZ[tri[1]]+VZ[tri[2]])/3, bi = Math.max(0, Math.min(N-1, Math.floor(av*N))); bands[bi].push(tri); }
       var flat = []; groups = []; var start = 0;
@@ -501,7 +514,14 @@
       }
       _tg = { nx: _g.nx, ny: _g.ny, step: _g.step, minX: _g.minX - (_g.cx || 0), minY: _g.minY - (_g.cy || 0), z: _z };
     }
-    glob.BPO_import.bake(nm, pos, idx, groups, _tg ? { tgrid: _tg } : null).then(function (pid) {
+    var _extra = _tg ? { tgrid: _tg } : {};
+    if (mapped) {   /* UV sur les sommets du MNT (les groupes ajoutés — socle, courbes — restent à 0,0 : couleur unie) ;
+                       V inversé : WGL.makeTex charge les data-URL avec UNPACK_FLIP_Y, contrairement aux pixels bruts du mode Terrain */
+      var _uv = new Float32Array((pos.length / 3) * 2);
+      for (var _ui = 0; _ui < V.length; _ui++) { var _q = mapUV(V[_ui]); _uv[_ui*2] = _q[0]; _uv[_ui*2+1] = 1 - _q[1]; }
+      _extra.uv = _uv; _extra.tex = {}; _extra.tex[MAP.key + 'b'] = MAP.dataURL;   /* clé « b » : convention des objets importés (V=0 en bas), distincte de la texture vivante du mode Terrain */
+    }
+    glob.BPO_import.bake(nm, pos, idx, groups, _extra).then(function (pid) {
       if (_tg && pid) { glob.BPO_TERRAIN_GRIDS = glob.BPO_TERRAIN_GRIDS || {}; glob.BPO_TERRAIN_GRIDS[pid] = _tg; }
       glob.alert('Terrain figé — disponible dans « Ma bibliothèque › Objets importés ». Posable en scène, sauvegardable, exportable (OBJ/DAE/IFC' + (_tg ? ' ; maillage natif ArchiCAD via le plugin' : '') + ').');
     }).catch(function (e) { glob.alert('Échec du figeage : ' + (e && e.message || e)); });
@@ -561,11 +581,14 @@
     var rsel = doc.createElement('div'); rsel.className = 'finish-tabs';   /* emprise ≈ 3 tuiles : le zoom de la carte fait le rayon */
     [[18, '≈ 300 m'], [17, '≈ 600 m'], [16, '≈ 1,2 km']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if (((glob.SITE && glob.SITE.zoom) || 18) === o[0]) b.className = 'on'; b.onclick = function () { if (glob.SITE) glob.SITE.zoom = o[0]; buildUI(host); }; rsel.appendChild(b); });
     host.appendChild(rsel);
+    var msel = doc.createElement('div'); msel.className = 'finish-tabs';   /* fond drapé sur le relief (et conservé dans l'objet figé) */
+    [['satellite', 'Satellite'], ['plan', 'Plan OSM']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if ((PTERR.mapStyle || 'satellite') === o[0]) b.className = 'on'; b.onclick = function () { PTERR.mapStyle = o[0]; buildUI(host); }; msel.appendChild(b); });
+    host.appendChild(msel);
     var bign = doc.createElement('button'); bign.className = 'save-add'; bign.textContent = '⛰ Relief IGN à cette adresse'; bign.style.margin = '2px 0 6px';
     bign.onclick = function () {
       if (!(glob.SITE && typeof glob.loadSiteMap === 'function' && typeof glob.siteDemToTerrain === 'function' && typeof glob.geocodeAddr === 'function')) { glob.alert('Module Site / Géolocalisation indisponible.'); return; }
       var S = glob.SITE, addr = gin.value.trim();
-      function go() { bign.textContent = 'Chargement du relief…'; S._demWant = 1;
+      function go() { bign.textContent = 'Chargement du relief…'; S._demWant = 1; S.mapStyle = PTERR.mapStyle || 'satellite';
         S._mapCb = function () { if (!S.dem) { bign.textContent = 'Relief indisponible ici.'; return; } glob.siteDemToTerrain(); };
         glob.loadSiteMap(); }
       if (addr && (addr !== S.addr || !S.on)) { bign.textContent = 'Géocodage…'; S.addr = addr; glob.geocodeAddr(addr, function (r) { if (!r) { bign.textContent = 'Adresse introuvable'; return; } S.lat = r.lat; S.lon = r.lon; go(); }); }
@@ -598,7 +621,7 @@
     slider('Altitude maxi retenue', 'm', 'bandMax', 0, 200, 1);
     // couleur : dégradé altitude / matière unie
     var tg = doc.createElement('div'); tg.className = 'finish-tabs'; tg.style.marginTop = '6px';
-    [['1', 'Dégradé altitude'], ['0', 'Matière unie']].forEach(function (o) {
+    [['1', 'Dégradé altitude'], ['0', 'Matière unie']].concat(MAP ? [['2', 'Carte / satellite']] : []).forEach(function (o) {
       var b = doc.createElement('button'); b.textContent = o[1]; if (String(PTERR.colorByAlt) === o[0]) b.className = 'on';
       b.onclick = function () { PTERR.colorByAlt = +o[0]; MESH = null; if (typeof glob.build === 'function') { try { glob.build(); } catch (e) {} } glob.DIRTY = true; buildUI(host); }; tg.appendChild(b);
     });

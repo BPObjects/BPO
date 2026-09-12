@@ -584,6 +584,12 @@
   function registerMesh(pid, D) {
     if (typeof glob.TEX_OBJECTS === 'undefined') glob.TEX_OBJECTS = {};
     glob.TEX_OBJECTS[pid] = D;
+    /* textures EMBARQUÉES (terrain figé avec sa carte, 12/09/2026) : data-URL -> TEX_POOL
+       (WebGL, teinte moyenne) ET pixels -> TEX_IMAGES (rasteriseur logiciel, rendu photo),
+       pour que l'objet reste texturé dans une session ultérieure. */
+    if (D && D.tex) { if (typeof glob.TEX_POOL === 'undefined') glob.TEX_POOL = {};
+      Object.keys(D.tex).forEach(function (k) { if (glob.TEX_POOL[k]) return; glob.TEX_POOL[k] = D.tex[k];
+        if (glob.TEX_IMAGES && !glob.TEX_IMAGES[k]) { var im = new Image(); im.onload = function () { try { var cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height; var g = cv.getContext('2d'); g.translate(0, cv.height); g.scale(1, -1); g.drawImage(im, 0, 0); var d = g.getImageData(0, 0, cv.width, cv.height);   /* image RETOURNÉE : les UV des objets importés ont V=0 en bas (WGL.makeTex charge avec UNPACK_FLIP_Y) alors que le rasteriseur logiciel lit V=0 en ligne 0 */ glob.TEX_IMAGES[k] = { data: d.data, w: cv.width, h: cv.height, photo: true }; glob.DIRTY = true; } catch (e) {} }; im.src = D.tex[k]; } }); }
     if (glob.FAB_CACHE) delete glob.FAB_CACHE[pid];
   }
 
@@ -619,7 +625,7 @@
       core.normalizeGeometry(geo, { upAxis: 'Y', scale: 1 });
       core.ensureNormals(geo);
       var q = core.quantize(geo);
-      return gzipB64(q.raw).then(function (b64) { return { geo: b64, meta: q.meta, groups: R.groups }; });
+      return gzipB64(q.raw).then(function (b64) { return { geo: b64, meta: q.meta, groups: R.groups, tex: R.tex || undefined }; });
     });
   }
 
@@ -634,7 +640,8 @@
       var orig = { geo: geoB64, meta: q.meta };
       var xform = { rx: 0, ry: 0, rz: 0, sc: 100 };
       var D = { geo: geoB64, meta: q.meta, groups: geo.groups };
-      IMP_REC[pid] = { orig: orig, groups: geo.groups, xform: xform };
+      if (extra && extra.tex) D.tex = extra.tex;   /* textures embarquées : persistées avec rec.D (IndexedDB) */
+      IMP_REC[pid] = { orig: orig, groups: geo.groups, tex: D.tex, xform: xform };
       registerMesh(pid, D); IMP_NAMES[pid] = name;
       var rec = { pid: pid, name: name, date: new Date().toISOString(), groups: geo.groups, xform: xform, orig: orig, D: D };
       var idbP = idbPut(rec).catch(function (e) { console.warn('BPO import: IndexedDB', e); });
@@ -661,6 +668,7 @@
       idx: (idx instanceof Uint32Array) ? idx : Uint32Array.from(idx),
       groups: (groups && groups.length) ? groups : [{ start: 0, count: (idx.length), col: null, tex: null, name: 'Terrain' }]
     };
+    if (extra && extra.uv && extra.uv.length === geo.pos.length / 3 * 2) geo.uv = extra.uv;   /* UV fournies (carte drapée) */
     core.ensureNormals(geo);
     return addImport(name || 'Terrain', geo, extra);
   }
@@ -668,7 +676,7 @@
   /* transfo absolue depuis les champs numeriques */
   function setTransform(cfg, xf) {
     var pid = cfg && cfg.prod, R = IMP_REC[pid];
-    if (!R) { var D0 = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid]; if (!D0) return; R = { orig: { geo: D0.geo, meta: D0.meta }, groups: D0.groups, xform: { rx: 0, ry: 0, rz: 0, sc: 100 } }; IMP_REC[pid] = R; }
+    if (!R) { var D0 = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid]; if (!D0) return; R = { orig: { geo: D0.geo, meta: D0.meta }, groups: D0.groups, tex: D0.tex, xform: { rx: 0, ry: 0, rz: 0, sc: 100 } }; IMP_REC[pid] = R; }
     applyXform(R, xf).then(function (nD) {
       registerMesh(pid, nD); R.xform = xf; try { delete IMP_PICK[pid]; } catch (e) {} try { delete IMP_UVOK[pid]; } catch (e) {}
       idbGetAll().then(function (all) { var rec = all.filter(function (r) { return r.pid === pid; })[0]; if (rec) { rec.D = nD; rec.xform = xf; rec.orig = rec.orig || R.orig; rec.groups = rec.groups || R.groups; idbPut(rec); } });
@@ -736,7 +744,7 @@
       core.planarUV(geo);
       var q = core.quantize(geo);
       return gzipB64(q.raw).then(function (b64) {
-        var nD = { geo: b64, meta: q.meta, groups: D.groups };
+        var nD = { geo: b64, meta: q.meta, groups: D.groups, tex: D.tex };
         registerMesh(pid, nD); IMP_UVOK[pid] = true; try { delete IMP_PICK[pid]; } catch (e) {}
         var pack = { geo: b64, meta: q.meta }, xf = IMP_REC[pid] && IMP_REC[pid].xform;
         var ident = !xf || ((xf.rx || 0) === 0 && (xf.ry || 0) === 0 && (xf.rz || 0) === 0 && (xf.sc == null || xf.sc === 100));
@@ -1124,7 +1132,7 @@
       all.forEach(function (rec) {
         if (!rec || !rec.pid) return;
         IMP_NAMES[rec.pid] = rec.name || rec.pid;
-        IMP_REC[rec.pid] = { orig: rec.orig || (rec.D ? { geo: rec.D.geo, meta: rec.D.meta } : null), groups: rec.groups || (rec.D && rec.D.groups) || [], xform: rec.xform || { rx: 0, ry: 0, rz: 0, sc: 100 } };
+        IMP_REC[rec.pid] = { orig: rec.orig || (rec.D ? { geo: rec.D.geo, meta: rec.D.meta } : null), groups: rec.groups || (rec.D && rec.D.groups) || [], tex: rec.D && rec.D.tex, xform: rec.xform || { rx: 0, ry: 0, rz: 0, sc: 100 } };
         if (rec.D) registerMesh(rec.pid, rec.D);
       });
       if (all.length) { try { if (typeof glob.build === 'function' && glob.MODE === 'scene') glob.build(); glob.DIRTY = true; if (glob.WGL && glob.WGL.gActive && glob.WGL.render) glob.WGL.render(); } catch (e) {} }
