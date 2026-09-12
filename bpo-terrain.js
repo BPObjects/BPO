@@ -316,7 +316,7 @@
       var nx2=uy*vz-uz*vy, ny2=uz*vx-ux*vz, nz2=ux*vy-uy*vx, nl=Math.hypot(nx2,ny2,nz2)||1;
       var col = mapped ? [190,190,182] : (uni ? uCol : altColor((VZ[tri[0]]+VZ[tri[1]]+VZ[tri[2]])/3));
       var fc = { verts:[a,b,c], n:[nx2/nl,ny2/nl,nz2/nl], col:col, al:1, tex: mapped ? MAP.key : (uni?texKey:null) };
-      if (mapped) fc.uv = [mapUV(a), mapUV(b), mapUV(c)];   /* carte drapée : UV par sommet, comme les objets importés */
+      if (mapped) { fc.uv = [mapUV(a), mapUV(b), mapUV(c)]; fc.txm = 1; fc.rgh = 0.95; fc.met = 0; }   /* carte drapée : UV par sommet ; txm = le rendu photo lit l'albédo au texel (canal des carrosseries) */
       FC.push(fc);
     }
     if (+PTERR.thick > 0) solidFC(FC, MESH);
