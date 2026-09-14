@@ -42,7 +42,8 @@
     sverts: '-40,-30 40,-30 40,30 -40,30',  // polygone libre (m) "x,y x,y ..."
     ctrlN: 3,                    // points de contrôle du relief par côté (grille ctrlN×ctrlN)
     ctrlZ: null,                 // altitudes des points de contrôle (cm), longueur ctrlN²
-    name: 'Terrain'
+    name: 'Terrain',
+    plats: []                    // plateformes plat / creux (14/09) : voir PLATEFORMES
   };
   glob.PTERR = PTERR;
 
@@ -53,6 +54,8 @@
   var _name = '';
   var REG = false;      // grille régulière (relief IGN / SRTM) : ni filtre de creux ni bande d'altitude DXF
   var MINSTEP = 0.5;    // plancher de maille (grille régulière) : au-delà de 900 000 mailles le MNT disparaît sans un mot (tooBig)
+  var SITE_LOCAL = null; // point d'implantation (adresse) en coordonnées du maillage {x est, y nord} — null pour un DXF
+  var FZ = {};           // tampons d'édition des terrains figés en scène : pid -> paramètres (appliqués par rebakeFrozen)
   var MAP = null;       // carte drapée {key, ext, cxFrac, cyFrac, dataURL, style} — repère du site, voir siteDemToTerrain
 
   /* ---- Parse DXF : points d'insertion MTEXT + valeur numérique (mm -> m) ---- */
@@ -81,7 +84,7 @@
   }
 
   function setDXF(text, name) {
-    var r = parseDXFall(text); RAW = r.points; POLYS = r.polys; _name = name || ''; MESH = null; REG = false; MAP = null; if (+PTERR.colorByAlt === 2) PTERR.colorByAlt = 1;
+    var r = parseDXFall(text); RAW = r.points; POLYS = r.polys; _name = name || ''; MESH = null; REG = false; MAP = null; SITE_LOCAL = null; if (+PTERR.colorByAlt === 2) PTERR.colorByAlt = 1;
     var lc = {}; for (var i = 0; i < POLYS.length; i++) { var l = POLYS[i].layer; lc[l] = (lc[l] || 0) + 1; }
     LAYERS = Object.keys(lc).map(function (l) { return { layer: l, n: lc[l] }; }).sort(function (a, b) { return b.n - a.n; });
     if (LAYERS.length && !PTERR.drapeLayers) { PTERR.drapeLayers = {}; PTERR.drapeLayers[LAYERS[0].layer] = 1; }
@@ -99,6 +102,7 @@
     var xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
     for (var q = 0; q < pts.length; q++) { var p = pts[q]; if (p.x < xmin) xmin = p.x; if (p.x > xmax) xmax = p.x; if (p.y < ymin) ymin = p.y; if (p.y > ymax) ymax = p.y; }
     MINSTEP = Math.max(0.5, Math.ceil(Math.max(xmax - xmin, ymax - ymin) / 940 * 10) / 10);   /* 940² < 900 000 mailles */
+    SITE_LOCAL = { x: -(xmin + xmax) / 2, y: -(ymin + ymax) / 2 };   /* l'adresse est en (0,0) des points ; le maillage est centré sur la grille */
     PTERR.smooth = 0; PTERR.drapeLayers = null;
     return RAW.length;
   }
@@ -116,6 +120,58 @@
   function mapUV(v) { var g = MESH && MESH.grid; if (!(MAP && g)) return [0, 0];
     return [ (v[0] + (g.cx || 0)) / MAP.ext + MAP.cxFrac, (v[2] - (g.cy || 0)) / MAP.ext + MAP.cyFrac ]; }
   function mapOn() { return !!(+PTERR.colorByAlt === 2 && MAP && glob.TEX_IMAGES && glob.TEX_IMAGES[MAP.key]); }
+  /* ============================================================================
+     PLATEFORMES (14/09/2026, AL : « créer un plat ou un creux pour y mettre un projet,
+     évaluer et conserver une trace des modifications et du volume de terrain modifié »).
+     Une plateforme = {shape:'rect'|'cercle', x, y, w, d, r, rot, z, talus, on, name}
+       x, y   : m dans le repère du maillage (x vers l'est, y vers le nord, origine = centre
+                de la grille = origine de l'objet figé) ;
+       z      : altitude visée, dans l'unité de la grille (NGF pour un relief IGN) ;
+       talus  : H/V — 1,5 = pente 3/2 ; le sol rejoint le terrain naturel à cette pente ;
+       rot    : degrés, positif dans le sens trigonométrique vu de dessus.
+     Appliquée sur la grille NATURELLE (g.GZN), dans l'ordre de la liste : la liste EST la
+     trace. Volumes : déblai = terrain enlevé, remblai = terrain apporté, par maille
+     (pas²) ; net = remblai − déblai (positif = apport).
+     ============================================================================ */
+  function platDist(p, u, v) {   /* distance signée au bord de la plateforme, dans son repère (≤ 0 = dedans) */
+    if (p.shape === 'cercle') return Math.hypot(u, v) - Math.max(0.1, +p.r || 5);
+    var hx = Math.max(0.1, +p.w || 10) / 2, hy = Math.max(0.1, +p.d || 10) / 2, ex = Math.abs(u) - hx, ey = Math.abs(v) - hy;
+    if (ex <= 0 && ey <= 0) return Math.max(ex, ey);
+    return Math.hypot(Math.max(ex, 0), Math.max(ey, 0));
+  }
+  function platApply(g, plats) {
+    if (!g.GZN) g.GZN = new Float32Array(g.GZ); else g.GZ.set(g.GZN);
+    var GZ = g.GZ, mask = g.mask, nx = g.nx, ny = g.ny, step = g.step, A = step * step, out = [], cut = 0, fill = 0;
+    (plats || []).forEach(function (p) {
+      var res = { cut: 0, fill: 0, area: 0 };
+      if (!p || p.on === 0) { out.push(res); return; }
+      var a = (+p.rot || 0) * Math.PI / 180, cr = Math.cos(a), sr = Math.sin(a), tal = Math.max(0.1, +p.talus || 1.5), zt = +p.z || 0;
+      var reach = tal * 5000;   /* portée maxi du talus, sécurité */
+      for (var y = 0; y < ny; y++) for (var x = 0; x < nx; x++) {
+        var id = y * nx + x; if (!mask[id]) continue;
+        var wx = g.minX + x * step - (g.cx || 0) - (+p.x || 0), wy = g.minY + y * step - (g.cy || 0) - (+p.y || 0);
+        var u = wx * cr + wy * sr, v = -wx * sr + wy * cr;
+        var sd = platDist(p, u, v); if (sd > reach) continue;
+        var zn = GZ[id], z;
+        if (sd <= 0) { z = zt; res.area += A; }
+        else { var dz = sd / tal; z = (zn > zt) ? Math.min(zn, zt + dz) : Math.max(zn, zt - dz); }
+        var d = z - zn; if (d < 0) res.cut -= d * A; else res.fill += d * A;
+        GZ[id] = z;
+      }
+      out.push(res); cut += res.cut; fill += res.fill;
+    });
+    return { plats: out, cut: cut, fill: fill, net: fill - cut };
+  }
+  /* altitude NATURELLE de la grille au point (x est, y nord) du maillage — bilinéaire, null hors masque */
+  function gridZAt(g, x, y, nat) {
+    if (!g) return null;
+    var Z = (nat && g.GZN) ? g.GZN : g.GZ, fx = (x + (g.cx || 0) - g.minX) / g.step, fy = (y + (g.cy || 0) - g.minY) / g.step;
+    var ix = Math.floor(fx), iy = Math.floor(fy); if (ix < 0 || iy < 0 || ix >= g.nx - 1 || iy >= g.ny - 1) return null;
+    var id = iy * g.nx + ix; if (!(g.mask[id] && g.mask[id + 1] && g.mask[id + g.nx] && g.mask[id + g.nx + 1])) return null;
+    var tx = fx - ix, ty = fy - iy;
+    return Z[id] * (1 - tx) * (1 - ty) + Z[id + 1] * tx * (1 - ty) + Z[id + g.nx] * (1 - tx) * ty + Z[id + g.nx + 1] * tx * ty;
+  }
+  function fmtVol(v) { v = Math.round(v || 0); return v.toLocaleString('fr-FR') + ' m³'; }
   /* ---- Construction du MNT (grille) depuis les points, selon PTERR ---- */
   function buildMesh() {
     if (!hasData()) return null;
@@ -177,10 +233,13 @@
     }
     // 7) lissage (moyenne pondérée gaussienne séparable) sur le masque
     var sig=+PTERR.smooth||0; if(sig>0.01) GZ=smooth(GZ,mask,nx,ny,sig);
-    // 8) recentrage + altitude relative
-    var z0=1e18; for(i=0;i<NC;i++) if(mask[i]&&GZ[i]<z0) z0=GZ[i];
+    // 7b) plateformes (plat / creux) sur la grille NATURELLE, conservée dans GZN ; volumes dans VOL
+    var GZN=new Float32Array(GZ), VOL=null;
+    if(PTERR.plats&&PTERR.plats.length){ VOL=platApply({GZ:GZ,GZN:GZN,mask:mask,nx:nx,ny:ny,minX:minX,minY:minY,step:step,cx:(minX+maxX)/2,cy:(minY+maxY)/2}, PTERR.plats); }
+    // 8) recentrage + altitude relative — bornes prises sur le terrain NATUREL : un creux ne fait pas remonter la base
+    var z0=1e18; for(i=0;i<NC;i++) if(mask[i]&&GZN[i]<z0) z0=GZN[i];
     var cx=(minX+maxX)/2, cy=(minY+maxY)/2, exag=+PTERR.exag||1;
-    var zmax=-1e18; for(i=0;i<NC;i++) if(mask[i]&&GZ[i]>zmax) zmax=GZ[i]; var zr=Math.max(0.01,zmax-z0);
+    var zmax=-1e18; for(i=0;i<NC;i++) if(mask[i]&&GZN[i]>zmax) zmax=GZN[i]; var zr=Math.max(0.01,zmax-z0);
     // 9) sommets (Y-up : x, altitude, -y) + indices
     var vid=new Int32Array(NC); for(i=0;i<NC;i++) vid[i]=-1;
     var V=[], VZ=[], kv=0, zbase=(+PTERR.absolute)?z0:0;
@@ -189,7 +248,7 @@
     var col=(glob.FINISH&&glob.FINISH.terrain)||[150,160,120], F=[];
     for(y=0;y<ny-1;y++)for(x=0;x<nx-1;x++){ var a=vid[y*nx+x], b=vid[y*nx+x+1], c2=vid[(y+1)*nx+x+1], e=vid[(y+1)*nx+x];
       if(a>=0&&b>=0&&c2>=0&&e>=0){ F.push([a,b,c2]); F.push([a,c2,e]); } }
-    return { V:V, VZ:VZ, F:F, z0:z0, grid:{ GZ:GZ, mask:mask, nx:nx, ny:ny, minX:minX, minY:minY, step:step, z0:z0, cx:cx, cy:cy, zbase:zbase, exag:exag }, dims:{ w:(maxX-minX), h:(zmax-z0)*exag, d:(maxY-minY), cy:zbase+((zmax-z0)*exag)/2 }, np:P.length, col:col };
+    return { V:V, VZ:VZ, F:F, z0:z0, vol:VOL, grid:{ GZ:GZ, GZN:GZN, mask:mask, nx:nx, ny:ny, minX:minX, minY:minY, step:step, z0:z0, cx:cx, cy:cy, zbase:zbase, exag:exag }, dims:{ w:(maxX-minX), h:(zmax-z0)*exag, d:(maxY-minY), cy:zbase+((zmax-z0)*exag)/2 }, np:P.length, col:col };
   }
 
   /* ---- morpho binaire (kernel carré séparable) ---- */
@@ -220,7 +279,7 @@
     return out; }
 
   /* ---- signature de cache : rebuild seulement si un param change ---- */
-  function sig(){ return [PTERR.src,PTERR.shape,PTERR.sw,PTERR.sd,PTERR.uArm,PTERR.tArm,PTERR.sBase,PTERR.sverts,PTERR.ctrlN,JSON.stringify(PTERR.ctrlZ||[]), PTERR.step,PTERR.smooth,PTERR.cut,PTERR.bandMin,PTERR.bandMax,PTERR.exag, RAW?RAW.length:0].join('|'); }
+  function sig(){ return [PTERR.src,PTERR.shape,PTERR.sw,PTERR.sd,PTERR.uArm,PTERR.tArm,PTERR.sBase,PTERR.sverts,PTERR.ctrlN,JSON.stringify(PTERR.ctrlZ||[]), PTERR.step,PTERR.smooth,PTERR.cut,PTERR.bandMin,PTERR.bandMax,PTERR.exag, RAW?RAW.length:0, JSON.stringify(PTERR.plats||[])].join('|'); }
   /* grille de contrôle du relief : (ré)alloue si taille change */
   function ctrlGrid(){ var cn=Math.max(2,PTERR.ctrlN|0), cz=PTERR.ctrlZ; if(!cz||cz.length!==cn*cn){ cz=new Array(cn*cn); for(var q=0;q<cz.length;q++)cz[q]=0; PTERR.ctrlZ=cz; } return {cn:cn,cz:cz}; }
 
@@ -248,6 +307,8 @@
       return g(ix,iy)*(1-tx)*(1-ty)+g(ix+1,iy)*tx*(1-ty)+g(ix,iy+1)*(1-tx)*ty+g(ix+1,iy+1)*tx*ty; }
     for(y=0;y<ny;y++)for(x=0;x<nx;x++){ var wx=minX+x*step, wy=minY+y*step; if(inPoly(wx,wy,poly)){ var id=y*nx+x; mask[id]=1; GZ[id]=base+ctrlAt((wx-minX)/spanX,(wy-minY)/spanY); } }
     var sg=+PTERR.smooth||0; if(sg>0.01) GZ=smooth(GZ,mask,nx,ny,sg);
+    var GZN=new Float32Array(GZ), VOL=null;   /* plateformes (plat / creux), voir PLATEFORMES */
+    if(PTERR.plats&&PTERR.plats.length){ VOL=platApply({GZ:GZ,GZN:GZN,mask:mask,nx:nx,ny:ny,minX:minX,minY:minY,step:step,cx:cx,cy:cy}, PTERR.plats); }
     var z0=1e18,zmax=-1e18; for(i=0;i<NC;i++) if(mask[i]){ if(GZ[i]<z0)z0=GZ[i]; if(GZ[i]>zmax)zmax=GZ[i]; } if(z0>zmax){z0=base;zmax=base;} var zr=Math.max(0.01,zmax-z0);
     var V=[], VZ=[], F=[];
     if(!lib){
@@ -274,7 +335,7 @@
       }
     }
     var col=(glob.FINISH&&glob.FINISH.terrain)||[150,160,120];
-    return { V:V, VZ:VZ, F:F, z0:z0, grid:{ GZ:GZ,mask:mask,nx:nx,ny:ny,minX:minX,minY:minY,step:step,z0:z0,cx:cx,cy:cy,zbase:z0*exag,exag:exag }, dims:{ w:(maxX-minX), h:Math.max(0.2,(zmax-z0)*exag), d:(maxY-minY), cy:(z0*exag+(zmax-z0)*exag/2) }, np:0, col:col };
+    return { V:V, VZ:VZ, F:F, z0:z0, vol:VOL, grid:{ GZ:GZ,GZN:GZN,mask:mask,nx:nx,ny:ny,minX:minX,minY:minY,step:step,z0:z0,cx:cx,cy:cy,zbase:z0*exag,exag:exag }, dims:{ w:(maxX-minX), h:Math.max(0.2,(zmax-z0)*exag), d:(maxY-minY), cy:(z0*exag+(zmax-z0)*exag/2) }, np:0, col:col };
   }
 
   /* Positions (repère de rendu = coords de MESH.V) des points de contrôle du relief,
@@ -438,19 +499,20 @@
 
   /* ---- Fige le terrain courant en OBJET IMPORTÉ (bake) : posable/sauvegardable/exportable.
      Groupé par bandes d'altitude pour conserver le dégradé topo une fois figé. ---- */
-  function freeze() {
-    if (!MESH || MESH.sig !== sig()) { var m = buildMesh(); if (m) m.sig = sig(); MESH = m; }
-    if (!MESH || MESH.tooBig || !MESH.V.length) { glob.alert('Aucun terrain à figer (charge un DXF d\'abord).'); return; }
-    if (!(glob.BPO_import && glob.BPO_import.bake)) { glob.alert('Module d\'import indisponible.'); return; }
-    var V = MESH.V, F = MESH.F, VZ = MESH.VZ, i;
+  /* ---- Assemblage pos / idx / groupes / UV d'un terrain à figer (14/09 : partagé par
+     freeze() et rebakeFrozen()). o : {colorByAlt (0/1/2), col, tex, map:{key,ext,cxFrac,cyFrac,cx,cy}|null,
+     drape, contours, contourInt, mesh, thick (cm), thickFlat, exag}. Les groupes ajoutés
+     (drapé, courbes, maille, socle) restent à UV (0,0) : couleur unie. */
+  function bakeParts(M, o) {
+    var V = M.V, F = M.F, VZ = M.VZ, i;
     var pos = new Float32Array(V.length * 3);
     for (i = 0; i < V.length; i++) { pos[i*3]=V[i][0]; pos[i*3+1]=V[i][1]; pos[i*3+2]=V[i][2]; }
-    var idx, groups, mapped = mapOn();
+    var idx, groups, mapped = !!(o.map && o.map.key && +o.colorByAlt === 2);
     if (mapped) {
       var flatM = []; for (var fm = 0; fm < F.length; fm++) flatM.push(F[fm][0], F[fm][1], F[fm][2]);
       idx = Uint32Array.from(flatM);
-      groups = [{ start: 0, count: idx.length, col: [190,190,182], tex: MAP.key + 'b', name: 'Terrain (' + (MAP.style === 'satellite' ? 'satellite' : 'plan') + ')' }];
-    } else if (+PTERR.colorByAlt) {
+      groups = [{ start: 0, count: idx.length, col: [190,190,182], tex: o.map.key, name: 'Terrain (' + (o.map.style === 'satellite' ? 'satellite' : 'plan') + ')' }];
+    } else if (+o.colorByAlt) {
       var N = 10, bands = []; for (var k = 0; k < N; k++) bands.push([]);
       for (var f = 0; f < F.length; f++) { var tri = F[f], av = (VZ[tri[0]]+VZ[tri[1]]+VZ[tri[2]])/3, bi = Math.max(0, Math.min(N-1, Math.floor(av*N))); bands[bi].push(tri); }
       var flat = []; groups = []; var start = 0;
@@ -459,51 +521,54 @@
     } else {
       var flat2 = []; for (var f2 = 0; f2 < F.length; f2++) flat2.push(F[f2][0], F[f2][1], F[f2][2]);
       idx = Uint32Array.from(flat2);
-      groups = [{ start: 0, count: idx.length, col: (glob.FINISH && glob.FINISH.terrain) || MESH.col, tex: (glob.FINISH_TEX && glob.FINISH_TEX.terrain) || null, name: 'Terrain' }];
+      groups = [{ start: 0, count: idx.length, col: o.col || M.col || [150,160,120], tex: o.tex || null, name: 'Terrain' }];
     }
-    // inclure le DRAPÉ dans l'objet figé (groupe séparé "Plan (drapé)")
-    if (+PTERR.drape && MESH.grid) {
-      var dg = drapeGeo(MESH.grid);
-      if (dg && dg.F.length) {
-        var baseV = V.length;
-        var pos2 = new Float32Array((V.length + dg.V.length) * 3); pos2.set(pos);
-        for (var di = 0; di < dg.V.length; di++) { pos2[(baseV+di)*3]=dg.V[di][0]; pos2[(baseV+di)*3+1]=dg.V[di][1]; pos2[(baseV+di)*3+2]=dg.V[di][2]; }
-        pos = pos2;
-        var dstart = idx.length, dflat = [];
-        for (var dfi = 0; dfi < dg.F.length; dfi++) dflat.push(dg.F[dfi][0]+baseV, dg.F[dfi][1]+baseV, dg.F[dfi][2]+baseV);
-        var idx2 = new Uint32Array(idx.length + dflat.length); idx2.set(idx); idx2.set(dflat, idx.length); idx = idx2;
-        groups.push({ start: dstart, count: dflat.length, col: [64,66,72], tex: null, name: 'Plan (drapé)' });
-      }
+    function addGeo(gd, col, name) {
+      if (!gd || !gd.F.length) return;
+      var baseV = pos.length / 3, pos2 = new Float32Array(pos.length + gd.V.length * 3); pos2.set(pos);
+      for (var di = 0; di < gd.V.length; di++) { pos2[(baseV+di)*3]=gd.V[di][0]; pos2[(baseV+di)*3+1]=gd.V[di][1]; pos2[(baseV+di)*3+2]=gd.V[di][2]; }
+      pos = pos2;
+      var dstart = idx.length, dflat = [];
+      for (var dfi = 0; dfi < gd.F.length; dfi++) dflat.push(gd.F[dfi][0]+baseV, gd.F[dfi][1]+baseV, gd.F[dfi][2]+baseV);
+      var idx2 = new Uint32Array(idx.length + dflat.length); idx2.set(idx); idx2.set(dflat, idx.length); idx = idx2;
+      groups.push({ start: dstart, count: dflat.length, col: col, tex: null, name: name });
     }
-    // inclure les COURBES DE NIVEAU dans l'objet figé (groupe séparé)
-    if (+PTERR.contours && MESH.grid) {
-      var cg = contourGeo(MESH.grid, +PTERR.contourInt);
-      if (cg && cg.F.length) {
-        var cbaseV = pos.length / 3;
-        var cpos = new Float32Array(pos.length + cg.V.length*3); cpos.set(pos);
-        for (var ci = 0; ci < cg.V.length; ci++) { cpos[(cbaseV+ci)*3]=cg.V[ci][0]; cpos[(cbaseV+ci)*3+1]=cg.V[ci][1]; cpos[(cbaseV+ci)*3+2]=cg.V[ci][2]; }
-        pos = cpos;
-        var cstart = idx.length, cflat = [];
-        for (var cfi = 0; cfi < cg.F.length; cfi++) cflat.push(cg.F[cfi][0]+cbaseV, cg.F[cfi][1]+cbaseV, cg.F[cfi][2]+cbaseV);
-        var cidx = new Uint32Array(idx.length + cflat.length); cidx.set(idx); cidx.set(cflat, idx.length); idx = cidx;
-        groups.push({ start: cstart, count: cflat.length, col: [96,64,42], tex: null, name: 'Courbes de niveau' });
-      }
+    if (o.drape && M.grid) addGeo(drapeGeo(M.grid), [64,66,72], 'Plan (drapé)');
+    if (+o.contours && M.grid) addGeo(contourGeo(M.grid, +o.contourInt), [96,64,42], 'Courbes de niveau');
+    if (+o.mesh && M.grid) addGeo(gridGeo(M.grid), [95,98,105], 'Maille');
+    if (+o.thick > 0) addGeo(solidGeo(M, (+o.thick||0)/100 * (+o.exag||1), +o.thickFlat), o.col || M.col || [150,160,120], 'Socle');
+    var uv = null;
+    if (mapped) {
+      uv = new Float32Array((pos.length / 3) * 2);
+      for (var ui = 0; ui < V.length; ui++) { var u = (V[ui][0] + (o.map.cx||0)) / o.map.ext + o.map.cxFrac, v = (V[ui][2] - (o.map.cy||0)) / o.map.ext + o.map.cyFrac; uv[ui*2] = u; uv[ui*2+1] = 1 - v; }
     }
-    // inclure le SOCLE (épaisseur) dans l'objet figé (groupe séparé)
-    if (+PTERR.thick > 0) {
-      var st = (+PTERR.thick||0)/100 * (+PTERR.exag||1);
-      var sg = solidGeo(MESH, st, +PTERR.thickFlat);
-      if (sg && sg.F.length) {
-        var sbaseV = pos.length / 3;
-        var spos = new Float32Array(pos.length + sg.V.length*3); spos.set(pos);
-        for (var si = 0; si < sg.V.length; si++) { spos[(sbaseV+si)*3]=sg.V[si][0]; spos[(sbaseV+si)*3+1]=sg.V[si][1]; spos[(sbaseV+si)*3+2]=sg.V[si][2]; }
-        pos = spos;
-        var sstart = idx.length, sflat = [];
-        for (var sfi = 0; sfi < sg.F.length; sfi++) sflat.push(sg.F[sfi][0]+sbaseV, sg.F[sfi][1]+sbaseV, sg.F[sfi][2]+sbaseV);
-        var sidx = new Uint32Array(idx.length + sflat.length); sidx.set(idx); sidx.set(sflat, idx.length); idx = sidx;
-        groups.push({ start: sstart, count: sflat.length, col: (glob.FINISH && glob.FINISH.terrain) || MESH.col, tex: (glob.FINISH_TEX && glob.FINISH_TEX.terrain) || null, name: 'Socle' });
-      }
-    }
+    return { pos: pos, idx: idx, groups: groups, uv: uv };
+  }
+  /* grille figée (cm entiers, -100000 = hors masque, origines PRÉ-CENTRÉES) — même formule que les sommets figés */
+  function gridPack(g, Z) {
+    var ex = (+g.exag || 1), z = [];
+    for (var gi = 0; gi < Z.length; gi++) { var on = (!g.mask || g.mask[gi]) && (Z[gi] === Z[gi]); z.push(on ? Math.round((g.zbase + (Z[gi] - g.z0) * ex) * 100) : -100000); }
+    return { nx: g.nx, ny: g.ny, step: g.step, minX: g.minX - (g.cx || 0), minY: g.minY - (g.cy || 0), z: z };
+  }
+  /* paramètres d'affichage qui voyagent avec l'objet figé */
+  function packParams(vol, g) {
+    /* les altitudes visées des plateformes passent dans le repère de l'OBJET (base, exagération), comme la grille figée */
+    var ex = (g && +g.exag) || 1, plats = JSON.parse(JSON.stringify(PTERR.plats || []));
+    if (g) plats.forEach(function (p) { p.z = Math.round((g.zbase + ((+p.z || 0) - g.z0) * ex) * 100) / 100; });
+    return { colorByAlt: mapOn() ? 2 : (+PTERR.colorByAlt ? 1 : 0), col: (glob.FINISH && glob.FINISH.terrain) || (MESH && MESH.col) || null,
+      contours: +PTERR.contours || 0, contourInt: +PTERR.contourInt || 0.5, contourW: +PTERR.contourW || 20, contourMaster: +PTERR.contourMaster || 0,
+      mesh: +PTERR.mesh || 0, thick: +PTERR.thick || 0, thickFlat: (PTERR.thickFlat == null ? 1 : +PTERR.thickFlat),
+      plats: plats, vol: vol || null, site: SITE_LOCAL ? { x: SITE_LOCAL.x, y: SITE_LOCAL.y } : null };
+  }
+  function freeze() {
+    if (!MESH || MESH.sig !== sig()) { var m = buildMesh(); if (m) m.sig = sig(); MESH = m; }
+    if (!MESH || MESH.tooBig || !MESH.V.length) { glob.alert('Aucun terrain à figer (charge un DXF d\'abord).'); return; }
+    if (!(glob.BPO_import && glob.BPO_import.bake)) { glob.alert('Module d\'import indisponible.'); return; }
+    var _mappedF = mapOn();
+    var _parts = bakeParts(MESH, { colorByAlt: _mappedF ? 2 : (+PTERR.colorByAlt ? 1 : 0), col: (glob.FINISH && glob.FINISH.terrain) || MESH.col, tex: (glob.FINISH_TEX && glob.FINISH_TEX.terrain) || null,
+      map: _mappedF ? { key: MAP.key + 'b', ext: MAP.ext, cxFrac: MAP.cxFrac, cyFrac: MAP.cyFrac, cx: MESH.grid.cx, cy: MESH.grid.cy, style: MAP.style } : null,
+      drape: +PTERR.drape, contours: +PTERR.contours, contourInt: +PTERR.contourInt, mesh: +PTERR.mesh, thick: +PTERR.thick, thickFlat: +PTERR.thickFlat, exag: +PTERR.exag });
+    var pos = _parts.pos, idx = _parts.idx, groups = _parts.groups;
     var def = _name ? ('Terrain ' + _name.replace(/\.dxf$/i, '')) : 'Terrain';
     var nm = glob.prompt('Nom du terrain figé :', def); if (nm === null) return; nm = nm.trim() || def;
     /* v2.7 : la GRILLE accompagne l'objet figé (registre runtime, cle = pid).
@@ -511,20 +576,15 @@
        un OUTIL MAILLAGE natif. Alt. finale par noeud (cm), -100000 = hors masque.
        Meme formule que les sommets figes : y = zbase + (GZ - z0) * exag,
        origines PRE-CENTREES (minX-cx / minY-cy) comme la geometrie. */
-    var _tg = null;
-    if (MESH.grid && MESH.grid.GZ) { var _g = MESH.grid, _ex = (+_g.exag || 1), _z = [];
-      for (var _gi = 0; _gi < _g.GZ.length; _gi++) {
-        var _on = (!_g.mask || _g.mask[_gi]) && (_g.GZ[_gi] === _g.GZ[_gi]);
-        _z.push(_on ? Math.round((_g.zbase + (_g.GZ[_gi] - _g.z0) * _ex) * 100) : -100000);
-      }
-      _tg = { nx: _g.nx, ny: _g.ny, step: _g.step, minX: _g.minX - (_g.cx || 0), minY: _g.minY - (_g.cy || 0), z: _z };
-    }
+    var _tg = null, _tgN = null;
+    if (MESH.grid && MESH.grid.GZ) { _tg = gridPack(MESH.grid, MESH.grid.GZ); if (MESH.grid.GZN && PTERR.plats && PTERR.plats.length) _tgN = gridPack(MESH.grid, MESH.grid.GZN); }
     var _extra = _tg ? { tgrid: _tg } : {};
-    if (mapped) {   /* UV sur les sommets du MNT (les groupes ajoutés — socle, courbes — restent à 0,0 : couleur unie) ;
-                       V inversé : WGL.makeTex charge les data-URL avec UNPACK_FLIP_Y, contrairement aux pixels bruts du mode Terrain */
-      var _uv = new Float32Array((pos.length / 3) * 2);
-      for (var _ui = 0; _ui < V.length; _ui++) { var _q = mapUV(V[_ui]); _uv[_ui*2] = _q[0]; _uv[_ui*2+1] = 1 - _q[1]; }
-      _extra.uv = _uv; _extra.tex = {}; _extra.tex[MAP.key + 'b'] = MAP.dataURL;   /* clé « b » : convention des objets importés (V=0 en bas), distincte de la texture vivante du mode Terrain */
+    if (_tgN) _extra.tgridNat = _tgN;                 /* grille NATURELLE : la trace des plateformes reste éditable sur l'objet figé */
+    _extra.tparams = packParams(MESH.vol, MESH.grid);           /* couleur, courbes, maille, socle, plateformes, volumes : le panneau de scène les relit */
+    if (_mappedF) {   /* UV inversées en V : WGL.makeTex charge les data-URL avec UNPACK_FLIP_Y, contrairement aux pixels bruts du mode Terrain ;
+                         clé « b » distincte de la texture vivante (deux conventions, deux entrées TEX_IMAGES) */
+      _extra.uv = _parts.uv; _extra.tex = {}; _extra.tex[MAP.key + 'b'] = MAP.dataURL;
+      _extra.tmap = { key: MAP.key + 'b', ext: MAP.ext, cxFrac: MAP.cxFrac, cyFrac: MAP.cyFrac, cx: MESH.grid.cx, cy: MESH.grid.cy, style: MAP.style };
     }
     glob.BPO_import.bake(nm, pos, idx, groups, _extra).then(function (pid) {
       if (_tg && pid) { glob.BPO_TERRAIN_GRIDS = glob.BPO_TERRAIN_GRIDS || {}; glob.BPO_TERRAIN_GRIDS[pid] = _tg; }
@@ -550,6 +610,140 @@
     }
   }
 
+
+  /* ---- Liste des plateformes : mode Terrain (plats = PTERR.plats, live) et terrain figé (tampon FZ[pid]) ----
+     ctx : { zAt(x,y) altitude naturelle | null, volumes() -> {plats:[{cut,fill,area}], cut, fill, net} | null,
+            addAt() -> {x,y}, change() rappelé après toute édition, unit 'NGF' | 'objet' } */
+  function platsUI(host, plats, ctx) {
+    var wrap = doc.createElement('div'); wrap.style.cssText = 'border-top:1px dashed var(--ln);margin-top:8px;padding-top:6px;';
+    wrap.innerHTML = '<div class="slbl" style="font-size:10px;margin:2px 0 3px;">Plateformes (plat / creux)</div>';
+    var vol = null; try { vol = ctx.volumes ? ctx.volumes() : null; } catch (e) {}
+    function num(parent, lbl, obj, key, step, unit) {
+      var f = doc.createElement('div'); f.style.cssText = 'display:flex;align-items:center;gap:4px;margin:1px 0;font-size:10px;';
+      var l = doc.createElement('span'); l.textContent = lbl; l.style.cssText = 'flex:1;color:var(--dm);';
+      var inp = doc.createElement('input'); inp.type = 'number'; inp.step = step; inp.value = (obj[key] == null ? '' : Math.round(obj[key] * 100) / 100);
+      inp.style.cssText = 'width:74px;font-size:10px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:2px 3px;text-align:right;';
+      inp.onchange = function () { var v = parseFloat(inp.value); if (!isNaN(v)) { obj[key] = v; ctx.change(); } };
+      var u = doc.createElement('span'); u.textContent = unit || ''; u.style.cssText = 'width:22px;color:var(--dm);';
+      f.appendChild(l); f.appendChild(inp); f.appendChild(u); parent.appendChild(f);
+    }
+    plats.forEach(function (p, i) {
+      var card = doc.createElement('div'); card.style.cssText = 'border:1px solid var(--ln);border-radius:6px;padding:5px 6px;margin:4px 0;' + (p.on === 0 ? 'opacity:.55;' : '');
+      var hd = doc.createElement('div'); hd.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:3px;';
+      var nm = doc.createElement('input'); nm.type = 'text'; nm.value = p.name || ('Plateforme ' + (i + 1)); nm.style.cssText = 'flex:1;font-size:10.5px;font-weight:600;background:transparent;color:var(--tx);border:0;border-bottom:1px solid var(--ln);padding:1px 2px;outline:none;';
+      nm.onchange = function () { p.name = nm.value.trim(); };
+      var bOn = doc.createElement('button'); bOn.textContent = (p.on === 0) ? 'Inactive' : 'Active'; bOn.className = (p.on === 0) ? '' : 'on'; bOn.style.cssText = 'font-size:9.5px;padding:1px 6px;';
+      bOn.onclick = function () { p.on = (p.on === 0) ? 1 : 0; ctx.change(); };
+      var bDel = doc.createElement('button'); bDel.textContent = '✕'; bDel.title = 'Supprimer'; bDel.style.cssText = 'font-size:10px;padding:1px 5px;';
+      bDel.onclick = function () { plats.splice(i, 1); ctx.change(); };
+      hd.appendChild(nm); hd.appendChild(bOn); hd.appendChild(bDel); card.appendChild(hd);
+      var sh = doc.createElement('div'); sh.className = 'finish-tabs';
+      [['rect', 'Rectangle'], ['cercle', 'Cercle']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if ((p.shape || 'rect') === o[0]) b.className = 'on'; b.onclick = function () { p.shape = o[0]; ctx.change(); }; sh.appendChild(b); });
+      card.appendChild(sh);
+      num(card, 'X (est)', p, 'x', 0.5, 'm'); num(card, 'Y (nord)', p, 'y', 0.5, 'm');
+      if ((p.shape || 'rect') === 'cercle') num(card, 'Rayon', p, 'r', 0.5, 'm'); else { num(card, 'Largeur', p, 'w', 0.5, 'm'); num(card, 'Profondeur', p, 'd', 0.5, 'm'); num(card, 'Rotation', p, 'rot', 1, '°'); }
+      num(card, 'Altitude visée', p, 'z', 0.1, 'm'); num(card, 'Talus (H/V)', p, 'talus', 0.1, '');
+      var zn = (ctx.zAt ? ctx.zAt(+p.x || 0, +p.y || 0) : null);
+      var inf = doc.createElement('div'); inf.className = 'exp-note'; inf.style.margin = '3px 0 0';
+      var vp = vol && vol.plats && vol.plats[i];
+      inf.innerHTML = (zn != null ? ('<span>Terrain naturel au centre</span> : ' + (Math.round(zn * 100) / 100).toString().replace('.', ',') + ' m — <span>' + ((+p.z || 0) < zn - 0.05 ? 'creux' : ((+p.z || 0) > zn + 0.05 ? 'remblai' : 'au niveau')) + '</span><br>') : '')
+        + (vp ? ('<span>Déblai</span> ' + fmtVol(vp.cut) + ' · <span>remblai</span> ' + fmtVol(vp.fill) + ' · <span>emprise</span> ' + Math.round(vp.area).toLocaleString('fr-FR') + ' m²') : '');
+      card.appendChild(inf); wrap.appendChild(card);
+    });
+    var bAdd = doc.createElement('button'); bAdd.className = 'tex-none'; bAdd.style.cssText = 'width:100%;font-size:10.5px;padding:4px;margin-top:2px;';
+    bAdd.textContent = plats.length ? '+ Ajouter une plateforme' : '+ Plateforme au point d\'implantation';
+    bAdd.onclick = function () { var at = ctx.addAt ? ctx.addAt() : { x: 0, y: 0 }; var zn = ctx.zAt ? ctx.zAt(at.x, at.y) : null;
+      plats.push({ name: 'Plateforme ' + (plats.length + 1), shape: 'rect', x: Math.round(at.x * 10) / 10, y: Math.round(at.y * 10) / 10, w: 20, d: 15, r: 10, rot: 0, z: (zn != null ? Math.round(zn * 10) / 10 : 0), talus: 1.5, on: 1 }); ctx.change(); };
+    wrap.appendChild(bAdd);
+    if (vol && plats.length) { var tot = doc.createElement('div'); tot.className = 'exp-note'; tot.style.cssText = 'color:var(--am);margin-top:4px;';
+      tot.innerHTML = '<span>Total</span> — <span>déblai</span> ' + fmtVol(vol.cut) + ' · <span>remblai</span> ' + fmtVol(vol.fill) + ' · <span>net</span> ' + (vol.net >= 0 ? '+' : '−') + fmtVol(Math.abs(vol.net)) + (Math.abs(vol.net) < 1 ? ' (<span>équilibre</span>)' : (vol.net > 0 ? ' (<span>apport</span>)' : ' (<span>évacuation</span>)'));
+      wrap.appendChild(tot); }
+    var note = doc.createElement('div'); note.className = 'exp-note'; note.textContent = 'Le sol rejoint le terrain naturel en talus à la pente H/V indiquée. Les volumes sont comptés sur la grille, maille par maille ; la liste est la trace des modifications, elle voyage avec le terrain figé et dans l\'IFC.'; wrap.appendChild(note);
+    host.appendChild(wrap);
+  }
+  /* mode Terrain : contexte live */
+  function platsUILive(host) {
+    platsUI(host, (PTERR.plats = PTERR.plats || []), {
+      zAt: function (x, y) { return (MESH && MESH.grid) ? gridZAt(MESH.grid, x, y, true) : null; },
+      volumes: function () { return MESH ? MESH.vol : null; },
+      addAt: function () { return SITE_LOCAL ? { x: SITE_LOCAL.x, y: SITE_LOCAL.y } : { x: 0, y: 0 }; },
+      change: function () { MESH = null; if (typeof glob.build === 'function') { try { glob.build(); } catch (e) {} } glob.DIRTY = true; setTimeout(function () { if (glob.MODE === 'terrain') buildUI(host); }, 30); }
+    });
+  }
+
+  /* ============================================================================
+     TERRAIN FIGÉ EN SCÈNE (14/09/2026) — le panneau relit meta.tparams de l'objet, édite un
+     tampon FZ[pid], et « Appliquer » REFABRIQUE l'objet depuis sa grille figée (meta.tgridNat
+     si des plateformes existent, sinon meta.tgrid) sans changer son pid : instances, scènes
+     et bibliothèque le suivent. L'exagération verticale est cuite dans la grille : pas rééditable.
+     ============================================================================ */
+  function frozenGrid(D, nat) {
+    var tg = (nat && D.meta.tgridNat) || D.meta.tgrid; if (!tg) return null;
+    var n = tg.nx * tg.ny, GZ = new Float32Array(n), mask = new Uint8Array(n);
+    for (var i = 0; i < n; i++) { var z = tg.z[i]; if (z != null && z > -99999) { GZ[i] = z / 100; mask[i] = 1; } else { GZ[i] = NaN; } }
+    var g = { GZ: GZ, mask: mask, nx: tg.nx, ny: tg.ny, minX: tg.minX, minY: tg.minY, step: tg.step, cx: 0, cy: 0, z0: 0, zbase: 0, exag: 1 };
+    if (nat && D.meta.tgridNat && D.meta.tgrid) { var GF = new Float32Array(n); for (var k = 0; k < n; k++) { var zf = D.meta.tgrid.z[k]; GF[k] = (zf != null && zf > -99999) ? zf / 100 : NaN; } g.GZN = GZ; g.GZ = GF; }
+    return g;
+  }
+  function meshFromGrid(g) {
+    var nx = g.nx, ny = g.ny, GZ = g.GZ, mask = g.mask, NC = nx * ny, i, y, x;
+    var z0 = 1e18, zmax = -1e18, Z = g.GZN || GZ; for (i = 0; i < NC; i++) if (mask[i] && Z[i] === Z[i]) { if (Z[i] < z0) z0 = Z[i]; if (Z[i] > zmax) zmax = Z[i]; }
+    var zr = Math.max(0.01, zmax - z0), vid = new Int32Array(NC), V = [], VZ = [], kv = 0;
+    for (i = 0; i < NC; i++) vid[i] = -1;
+    for (y = 0; y < ny; y++) for (x = 0; x < nx; x++) { var iv = y * nx + x; if (!mask[iv] || GZ[iv] !== GZ[iv]) continue; vid[iv] = kv++; V.push([g.minX + x * g.step, GZ[iv], -(g.minY + y * g.step)]); VZ.push((GZ[iv] - z0) / zr); }
+    var F = []; for (y = 0; y < ny - 1; y++) for (x = 0; x < nx - 1; x++) { var a = vid[y*nx+x], b = vid[y*nx+x+1], c2 = vid[(y+1)*nx+x+1], e = vid[(y+1)*nx+x]; if (a >= 0 && b >= 0 && c2 >= 0 && e >= 0) { F.push([a, b, c2]); F.push([a, c2, e]); } }
+    return { V: V, VZ: VZ, F: F, z0: z0, grid: g, col: [150,160,120] };
+  }
+  function frozenParams(D) {
+    var p = D.meta.tparams ? JSON.parse(JSON.stringify(D.meta.tparams)) : { colorByAlt: 1, col: null, contours: 0, contourInt: 0.5, contourW: 20, contourMaster: 5, mesh: 0, thick: 0, thickFlat: 1, plats: [], vol: null, site: null };
+    if (!p.plats) p.plats = []; return p;
+  }
+  function rebakeFrozen(pid, P) {
+    var D = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
+    if (!(D && D.meta && D.meta.tgrid)) return Promise.reject(new Error('grille figée absente'));
+    if (!(glob.BPO_import && glob.BPO_import.rebake)) return Promise.reject(new Error('module d\'import sans rebake'));
+    var g = frozenGrid(D, true); if (!g) return Promise.reject(new Error('grille illisible'));
+    if (!g.GZN) g.GZN = new Float32Array(g.GZ);
+    var vol = platApply(g, P.plats);
+    var M = meshFromGrid(g);
+    var map = (P.colorByAlt === 2 && D.meta.tmap && D.tex && D.tex[D.meta.tmap.key]) ? D.meta.tmap : null;
+    var parts = bakeParts(M, { colorByAlt: map ? 2 : (+P.colorByAlt ? 1 : 0), col: P.col || null, tex: null, map: map, drape: 0, contours: +P.contours, contourInt: +P.contourInt, mesh: +P.mesh, thick: +P.thick, thickFlat: +P.thickFlat, exag: 1 });
+    P.vol = vol;
+    var extra = { tgrid: gridPack(g, g.GZ), tparams: JSON.parse(JSON.stringify(P)) };
+    if (P.plats.length) extra.tgridNat = gridPack(g, g.GZN);
+    if (parts.uv) extra.uv = parts.uv;
+    return glob.BPO_import.rebake(pid, parts.pos, parts.idx, parts.groups, extra).then(function () { FZ[pid] = null; return vol; });
+  }
+  function buildFrozenUI(host, inst, idx) {
+    var pid = inst && inst.prod, D = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
+    if (!(D && D.meta && D.meta.tgrid)) return;
+    var P = FZ[pid] || (FZ[pid] = frozenParams(D));
+    var box = doc.createElement('div'); box.style.cssText = 'border-top:1px solid var(--ln);margin-top:6px;padding-top:5px;';
+    box.innerHTML = '<div class="slbl" style="font-size:10px;margin:2px 0 3px;">⛰ Terrain figé — affichage et plateformes</div>';
+    function rer() { if (typeof glob.buildSceneUI === 'function') glob.buildSceneUI(); }
+    function tabs(opts, get, set) { var tg = doc.createElement('div'); tg.className = 'finish-tabs'; tg.style.marginTop = '4px'; opts.forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if (String(get()) === String(o[0])) b.className = 'on'; b.onclick = function () { set(o[0]); rer(); }; tg.appendChild(b); }); box.appendChild(tg); }
+    function num(lbl, key, step, unit) { var f = doc.createElement('div'); f.style.cssText = 'display:flex;align-items:center;gap:4px;margin:1px 0;font-size:10px;'; var l = doc.createElement('span'); l.textContent = lbl; l.style.cssText = 'flex:1;color:var(--dm);'; var inp = doc.createElement('input'); inp.type = 'number'; inp.step = step; inp.value = P[key]; inp.style.cssText = 'width:64px;font-size:10px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:2px 3px;text-align:right;'; inp.onchange = function () { var v = parseFloat(inp.value); if (!isNaN(v)) { P[key] = v; rer(); } }; var u = doc.createElement('span'); u.textContent = unit; u.style.cssText = 'width:22px;color:var(--dm);'; f.appendChild(l); f.appendChild(inp); f.appendChild(u); box.appendChild(f); }
+    var cols = [['1', 'Dégradé altitude'], ['0', 'Matière unie']]; if (D.meta.tmap && D.tex && D.tex[D.meta.tmap.key]) cols.push(['2', 'Carte / satellite']);
+    tabs(cols, function () { return P.colorByAlt; }, function (v) { P.colorByAlt = +v; });
+    tabs([['0', 'Courbes off'], ['1', 'Courbes de niveau']], function () { return +P.contours; }, function (v) { P.contours = +v; });
+    if (+P.contours) num('Équidistance', 'contourInt', 0.1, 'm');
+    tabs([['0', 'Maille off'], ['1', 'Maille apparente']], function () { return +P.mesh; }, function (v) { P.mesh = +v; });
+    num('Épaisseur du socle', 'thick', 5, 'cm');
+    if (+P.thick > 0) tabs([['1', 'Fond plat'], ['0', 'Fond parallèle']], function () { return +P.thickFlat; }, function (v) { P.thickFlat = +v; });
+    var gN = null; try { gN = frozenGrid(D, true); if (gN && !gN.GZN) gN.GZN = new Float32Array(gN.GZ); } catch (e) {}
+    platsUI(box, P.plats, {
+      zAt: function (x, y) { return gN ? gridZAt(gN, x, y, true) : null; },
+      volumes: function () { if (!gN) return null; var gg = { GZ: new Float32Array(gN.GZN), GZN: gN.GZN, mask: gN.mask, nx: gN.nx, ny: gN.ny, minX: gN.minX, minY: gN.minY, step: gN.step, cx: 0, cy: 0 }; return platApply(gg, P.plats); },
+      addAt: function () { return (P.site && P.site.x != null) ? { x: P.site.x, y: P.site.y } : { x: 0, y: 0 }; },
+      change: rer
+    });
+    var bA = doc.createElement('button'); bA.className = 'save-add'; bA.style.marginTop = '6px'; bA.textContent = '↻ Appliquer au terrain figé';
+    bA.onclick = function () { bA.textContent = 'Refabrication…'; bA.disabled = true;
+      rebakeFrozen(pid, P).then(function () { rer(); }).catch(function (e) { glob.alert('Refabrication impossible : ' + (e && e.message || e)); rer(); }); };
+    box.appendChild(bA);
+    var n2 = doc.createElement('div'); n2.className = 'exp-note'; n2.textContent = 'L\'objet est refabriqué en place : ses instances en scène, les scènes enregistrées et la bibliothèque le suivent. L\'exagération verticale et le lissage sont figés.'; box.appendChild(n2);
+    host.appendChild(box);
+  }
   function buildUI(host) {
     host.innerHTML = '';
     /* SOURCE : DXF (points cotés) ou forme paramétrique créée */
@@ -668,6 +862,7 @@
     // Maille apparente + épaisseur (socle)
     meshThickUI(host, slider);
     // Figer -> objet
+    platsUILive(host);   /* plateformes plat / creux + volumes (14/09) */
     var bf = doc.createElement('button'); bf.className = 'save-add'; bf.textContent = '❄ Figer le terrain (→ objet réutilisable)'; bf.style.marginTop = '8px'; bf.onclick = freeze; host.appendChild(bf);
     var nf = doc.createElement('div'); nf.className = 'exp-note'; nf.textContent = 'Fige le maillage comme objet importé : posable en scène, sauvegardable, exportable OBJ/DAE/IFC. Re-fige après un réglage pour actualiser.'; host.appendChild(nf);
   }
@@ -728,8 +923,9 @@
     meshThickUI(host, sl);
     if(MESH && !MESH.tooBig){ var st=doc.createElement('div'); st.className='exp-note'; st.style.color='var(--am)'; st.textContent='Emprise '+Math.round(MESH.dims.w)+' × '+Math.round(MESH.dims.d)+' m · '+MESH.F.length+' faces'; host.appendChild(st); }
     var note=doc.createElement('div'); note.className='exp-note'; note.textContent='Couleur/texture dans Finitions (élément Terrain). Plateforme plate — l\'édition du relief par points viendra ensuite.'; host.appendChild(note);
+    platsUILive(host);   /* plateformes plat / creux + volumes (14/09) */
     var bf=doc.createElement('button'); bf.className='save-add'; bf.textContent='❄ Figer le terrain (→ objet réutilisable)'; bf.style.marginTop='8px'; bf.onclick=freeze; host.appendChild(bf);
   }
 
-  glob.BPO_terrain = { PTERR: PTERR, setDXF: setDXF, setGrid: setGrid, buildFC: buildFC, buildUI: buildUI, hasData: hasData, ctrlHandles: ctrlHandles, setCtrlCm: setCtrlCm, footHandles: footHandles, setFoot: setFoot, insertFoot: insertFoot, removeFoot: removeFoot, _parse: parseDXFall };
+  glob.BPO_terrain = { PTERR: PTERR, setDXF: setDXF, setGrid: setGrid, buildFrozenUI: buildFrozenUI, rebakeFrozen: rebakeFrozen, platApply: platApply, buildFC: buildFC, buildUI: buildUI, hasData: hasData, ctrlHandles: ctrlHandles, setCtrlCm: setCtrlCm, footHandles: footHandles, setFoot: setFoot, insertFoot: insertFoot, removeFoot: removeFoot, _parse: parseDXFall };
 })();

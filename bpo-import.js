@@ -635,6 +635,7 @@
        terrain fige — meta voyage avec le rec IndexedDB et TEX_OBJECTS, donc
        l'export retrouve la grille dans TOUTE session future). */
     if (extra && extra.tgrid) q.meta.tgrid = extra.tgrid;
+    if (extra) ['tgridNat', 'tparams', 'tmap'].forEach(function (k) { if (extra[k]) q.meta[k] = extra[k]; });   /* terrain figé éditable (14/09) : grille naturelle, paramètres d'affichage et plateformes, carte drapée */
     return gzipB64(q.raw).then(function (geoB64) {
       var pid = 'imp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       var orig = { geo: geoB64, meta: q.meta };
@@ -671,6 +672,34 @@
     if (extra && extra.uv && extra.uv.length === geo.pos.length / 3 * 2) geo.uv = extra.uv;   /* UV fournies (carte drapée) */
     core.ensureNormals(geo);
     return addImport(name || 'Terrain', geo, extra);
+  }
+
+  /* REFABRIQUE un objet importé EN PLACE (14/09/2026, terrain figé éditable) : même pid,
+     donc les instances en scène, les scènes enregistrées et la bibliothèque le suivent.
+     meta : celle de l'objet, complétée / remplacée par extra (tgrid, tgridNat, tparams, tmap) ;
+     tex : conservées, complétées par extra.tex ; transformation remise à zéro (la géométrie
+     est déjà dans le repère de l'objet, comme au premier figeage). */
+  function rebake(pid, pos, idx, groups, extra) {
+    var D0 = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
+    if (!D0) return Promise.reject(new Error('objet inconnu : ' + pid));
+    var geo = { pos: (pos instanceof Float32Array) ? pos : Float32Array.from(pos), idx: (idx instanceof Uint32Array) ? idx : Uint32Array.from(idx), groups: groups };
+    if (extra && extra.uv && extra.uv.length === geo.pos.length / 3 * 2) geo.uv = extra.uv;
+    core.ensureNormals(geo);
+    var q = core.quantize(geo), meta = q.meta, k;
+    if (D0.meta) for (k in D0.meta) if (!(k in meta)) meta[k] = D0.meta[k];
+    if (extra) ['tgrid', 'tgridNat', 'tparams', 'tmap', 'tplats', 'tvol'].forEach(function (kk) { if (kk in extra) meta[kk] = extra[kk]; });
+    if (extra && !('tgridNat' in extra) && meta.tgridNat) delete meta.tgridNat;   /* plus de plateformes : plus de grille naturelle à part */
+    return gzipB64(q.raw).then(function (b64) {
+      var tex = null; if (D0.tex || (extra && extra.tex)) { tex = {}; if (D0.tex) for (k in D0.tex) tex[k] = D0.tex[k]; if (extra && extra.tex) for (k in extra.tex) tex[k] = extra.tex[k]; }
+      var D = { geo: b64, meta: meta, groups: groups }; if (tex) D.tex = tex;
+      var xform = { rx: 0, ry: 0, rz: 0, sc: 100 }, orig = { geo: b64, meta: meta };
+      registerMesh(pid, D);
+      IMP_REC[pid] = { orig: orig, groups: groups, tex: tex, xform: xform };
+      try { delete IMP_PICK[pid]; } catch (e) {} try { delete IMP_UVOK[pid]; } catch (e) {}
+      idbGetAll().then(function (all) { var rec = all.filter(function (r) { return r.pid === pid; })[0]; if (rec) { rec.D = D; rec.orig = orig; rec.groups = groups; rec.xform = xform; idbPut(rec); } }).catch(function () {});
+      refreshImported(pid);
+      return pid;
+    });
   }
 
   /* transfo absolue depuis les champs numeriques */
@@ -1141,7 +1170,7 @@
   }
 
   /* `handleFile` est expose (10/09) pour que l'application puisse aiguiller UN selecteur de fichier vers l'importeur 3D. Sans lui il aurait fallu appeler openDialog, donc rouvrir un second selecteur, donc faire choisir deux fois. */
-  glob.BPO_import = { _core: core, parseIFC: parseIFC, openDialog: openDialog, handleFile: handleFile, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, _boot: boot, _installHooks: installHooks };   /* parseIFC exposé pour la moulinette (14/08) */
+  glob.BPO_import = { _core: core, parseIFC: parseIFC, openDialog: openDialog, handleFile: handleFile, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, rebake: rebake, _boot: boot, _installHooks: installHooks };   /* parseIFC exposé pour la moulinette (14/08) */
 
   if (doc && doc.readyState !== 'loading') setTimeout(boot, 0);
   else if (doc) doc.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 0); });
