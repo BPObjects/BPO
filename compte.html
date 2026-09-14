@@ -29,10 +29,25 @@
  .msg{font-size:12px;margin-top:10px;text-align:center;min-height:16px;}
  .msg.err{color:var(--rd);} .msg.ok{color:var(--gr);}
  .hidden{display:none;}
- /* connecté : la carte plugin passe à droite sur écran large */
+ /* 14/09 — bouton-œil « afficher le mot de passe ». Pas de flex sur un <button>
+    (Chromium 64 de SketchUp 2021) ; le bouton centre son contenu de lui-même. */
+ .pwd-wrap{position:relative;}
+ .pwd-wrap input{padding-right:44px;}
+ [dir=rtl] .pwd-wrap input{padding-right:11px;padding-left:44px;}
+ .pwd-eye{position:absolute;top:50%;right:3px;width:36px;height:34px;margin:-17px 0 0;padding:0;background:transparent;border:none;border-radius:6px;color:var(--dm);cursor:pointer;line-height:0;}
+ [dir=rtl] .pwd-eye{right:auto;left:3px;}
+ .pwd-eye:hover{color:var(--tx);filter:none;}
+ .pwd-eye:focus{outline:2px solid var(--cy);outline-offset:-2px;}
+ .pwd-eye:focus:not(:focus-visible){outline:none;}
+ .pwd-eye svg{display:block;margin:0 auto;pointer-events:none;}
+ .pwd-eye .eye-off,.pwd-eye[aria-pressed="true"] .eye-on{display:none;}
+ .pwd-eye[aria-pressed="true"] .eye-off{display:block;}
+ /* connecté : la carte plugin passe à droite sur écran large
+    14/09 — :not(.hidden) : l'ID l'emportait sur .hidden, et un visiteur déconnecté
+    voyait une carte « Mon compte » vide sous le formulaire. */
  @media(min-width:920px){
    body:has(#account:not(.hidden)) .wrap{max-width:900px;}
-   #account{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+   #account:not(.hidden){display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
  }
  .skp-head{display:flex;gap:12px;align-items:center;margin-bottom:10px;}
  .skp-head svg{flex:none;display:block;border-radius:9px;}
@@ -65,7 +80,7 @@ catch (e) {
     <p class="sub" id="authSub">Accédez à votre compte.</p>
     <div id="nameFld" class="hidden"><label>Nom complet</label><input id="fname" type="text" autocomplete="name"></div>
     <label>E-mail</label><input id="email" type="email" autocomplete="email">
-    <label>Mot de passe</label><input id="pwd" type="password" autocomplete="current-password">
+    <label for="pwd">Mot de passe</label><div class="pwd-wrap"><input id="pwd" type="password" autocomplete="current-password"><button type="button" class="pwd-eye" aria-controls="pwd" aria-pressed="false" aria-label="Afficher le mot de passe" title="Afficher le mot de passe"><svg class="eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1"/><path d="M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.9 9.9 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
     <label class="check hidden" id="nlFld"><input id="nl" type="checkbox" checked><span>Recevoir la newsletter (nouveautés, mises à jour).</span></label>
     <button id="doAuth">Se connecter</button>
     <div class="reassure hidden" id="noCb"><span class="tick">&#10003;</span><span><b>Aucune carte bancaire demandée.</b> L'essai de 15&nbsp;jours est entièrement gratuit — vous ne renseignez un moyen de paiement que le jour où vous choisissez de vous abonner. Sans carte enregistrée, aucun prélèvement n'est possible.</span></div>
@@ -91,7 +106,7 @@ catch (e) {
       <div class="card">
         <h2>Préférences</h2>
         <label class="check"><input id="nlToggle" type="checkbox"><span>Abonné à la newsletter</span></label>
-        <label>Nouveau mot de passe</label><input id="npwd" type="password" autocomplete="new-password">
+        <label for="npwd">Nouveau mot de passe</label><div class="pwd-wrap"><input id="npwd" type="password" autocomplete="new-password"><button type="button" class="pwd-eye" aria-controls="npwd" aria-pressed="false" aria-label="Afficher le mot de passe" title="Afficher le mot de passe"><svg class="eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1"/><path d="M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.9 9.9 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
         <button id="setPwd" class="alt">Définir mon mot de passe</button>
         <button id="logout" class="alt">Se déconnecter</button>
       </div>
@@ -119,6 +134,49 @@ catch (e) {
 
 </div>
 
+<script>
+/* 14/09 — bouton-œil des champs mot de passe. SCRIPT CLASSIQUE en ES5 strict,
+   et pas dans le module : la fenêtre SketchUp 2021 (Chromium 64) n'exécute
+   jamais le module, et on s'y connecte aussi par mot de passe (bpo-es5.js). */
+(function () {
+  var btns = document.querySelectorAll('.pwd-eye');
+  function poser(b, champ, voir) {
+    champ.type = voir ? 'text' : 'password';
+    b.setAttribute('aria-pressed', voir ? 'true' : 'false');
+    b.title = voir ? (b.getAttribute('data-masquer') || 'Masquer le mot de passe')
+                   : (b.getAttribute('data-afficher') || 'Afficher le mot de passe');
+  }
+  function toutMasquer() {
+    for (var j = 0; j < btns.length; j++) {
+      var c = document.getElementById(btns[j].getAttribute('aria-controls'));
+      if (c && c.type !== 'password') { poser(btns[j], c, false); }
+    }
+  }
+  for (var i = 0; i < btns.length; i++) { (function (b) {
+    var champ = document.getElementById(b.getAttribute('aria-controls'));
+    if (!champ) { return; }
+    /* mousedown empêché : le champ garde le focus, on continue de taper. */
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    b.addEventListener('click', function () {
+      var avait = document.activeElement === champ;
+      var debut = champ.selectionStart, fin = champ.selectionEnd;
+      poser(b, champ, champ.type === 'password');
+      if (!avait || debut === null) { return; }
+      /* Changer le type remet la sélection à 0 dans Chrome, et une
+         restauration synchrone ne tient pas (mesuré) : on la refait au tour suivant. */
+      var remettre = function () { try { champ.setSelectionRange(debut, fin); } catch (e) {} };
+      remettre(); setTimeout(remettre, 0);
+    });
+  })(btns[i]); }
+  /* À l'envoi, on remasque : rien ne reste affiché après « Se connecter ».
+     Écouteurs posés AVANT les onclick du module : ils passent en premier. */
+  var envois = ['doAuth', 'setPwd'];
+  for (var k = 0; k < envois.length; k++) {
+    var e = document.getElementById(envois[k]);
+    if (e) { e.addEventListener('click', toutMasquer); }
+  }
+})();
+</script>
 <script type="module">
 import { createClient } from "./vendor/supabase-js-2.110.7.js";  /* vendorisé — plus de CDN externe */
 import { SUPABASE_URL, SUPABASE_ANON, SITE_URL, TRIAL_DAYS, PRICE_LABEL } from "./bpo-config.js";
@@ -496,6 +554,8 @@ const I18N_AUTH2 = {
   "Créer mon compte et conserver mon travail":{en:"Create my account and keep my work",es:"Crear mi cuenta y conservar mi trabajo",it:"Crea il mio account e conserva il lavoro",de:"Mein Konto erstellen und meine Arbeit behalten",pt:"Criar a minha conta e conservar o meu trabalho",hu:"Fiók létrehozása és a munkám megőrzése",zh:"创建账户并保留我的工作",ja:"アカウントを作成して作業を保持する",hi:"मेरा खाता बनाएँ और काम सहेजें",ru:"Создать аккаунт и сохранить работу",uk:"Створити акаунт і зберегти роботу",ar:"إنشاء حسابي والاحتفاظ بعملي"},
   "Mot de passe oublié ?":{en:"Forgot your password?",es:"¿Olvidó su contraseña?",it:"Password dimenticata?",de:"Passwort vergessen?",pt:"Esqueceu a palavra-passe?",hu:"Elfelejtette a jelszavát?",zh:"忘记密码？",ja:"パスワードをお忘れですか？",hi:"पासवर्ड भूल गए?",ru:"Забыли пароль?",uk:"Забули пароль?",ar:"هل نسيت كلمة المرور؟"},
   "Lien de réinitialisation envoyé — vérifiez vos e-mails.":{en:"Reset link sent — check your email.",es:"Enlace de restablecimiento enviado — revise su correo.",it:"Link di reimpostazione inviato — controlla la tua email.",de:"Link zum Zurücksetzen gesendet — prüfen Sie Ihre E-Mails.",pt:"Link de reposição enviado — verifique o seu e-mail.",hu:"Visszaállító link elküldve — ellenőrizze e-mailjeit.",zh:"重置链接已发送——请查收邮件。",ja:"再設定リンクを送信しました — メールをご確認ください。",hi:"रीसेट लिंक भेजा गया — अपना ई-मेल देखें।",ru:"Ссылка для сброса отправлена — проверьте почту.",uk:"Посилання для скидання надіслано — перевірте пошту.",ar:"تم إرسال رابط إعادة التعيين — تحقق من بريدك."},
+  "Afficher le mot de passe":{en:"Show password",es:"Mostrar contraseña",it:"Mostra password",de:"Passwort anzeigen",pt:"Mostrar palavra-passe",hu:"Jelszó megjelenítése",zh:"显示密码",ja:"パスワードを表示",hi:"पासवर्ड दिखाएँ",ru:"Показать пароль",uk:"Показати пароль",ar:"إظهار كلمة المرور"},
+  "Masquer le mot de passe":{en:"Hide password",es:"Ocultar contraseña",it:"Nascondi password",de:"Passwort verbergen",pt:"Ocultar palavra-passe",hu:"Jelszó elrejtése",zh:"隐藏密码",ja:"パスワードを隠す",hi:"पासवर्ड छिपाएँ",ru:"Скрыть пароль",uk:"Приховати пароль",ar:"إخفاء كلمة المرور"},
   "Nouveau mot de passe":{en:"New password",es:"Nueva contraseña",it:"Nuova password",de:"Neues Passwort",pt:"Nova palavra-passe",hu:"Új jelszó",zh:"新密码",ja:"新しいパスワード",hi:"नया पासवर्ड",ru:"Новый пароль",uk:"Новий пароль",ar:"كلمة مرور جديدة"},
   "Définir mon mot de passe":{en:"Set my password",es:"Establecer mi contraseña",it:"Imposta la mia password",de:"Mein Passwort festlegen",pt:"Definir a minha palavra-passe",hu:"Jelszavam beállítása",zh:"设置我的密码",ja:"パスワードを設定する",hi:"मेरा पासवर्ड सेट करें",ru:"Задать пароль",uk:"Задати пароль",ar:"تعيين كلمة المرور"},
   "Mot de passe mis à jour.":{en:"Password updated.",es:"Contraseña actualizada.",it:"Password aggiornata.",de:"Passwort aktualisiert.",pt:"Palavra-passe atualizada.",hu:"A jelszó frissítve.",zh:"密码已更新。",ja:"パスワードを更新しました。",hi:"पासवर्ड अपडेट हो गया।",ru:"Пароль обновлён.",uk:"Пароль оновлено.",ar:"تم تحديث كلمة المرور."},
@@ -526,6 +586,14 @@ if(DICT){
   }
   const g = $("skpGuide"); if(g) g.href = "downloads/BPO-SketchUp-installation-en.pdf";
 }
+
+/* 14/09 — le bouton-œil porte ses libellés en ATTRIBUTS : la passe par nœuds
+   texte ci-dessus ne les voit pas. Le script ES5 relit data-afficher/-masquer. */
+{ const _a = T("Afficher le mot de passe"), _m = T("Masquer le mot de passe");
+  document.querySelectorAll(".pwd-eye").forEach(b => {
+    b.setAttribute("aria-label", _a); b.setAttribute("data-afficher", _a); b.setAttribute("data-masquer", _m);
+    b.title = b.getAttribute("aria-pressed") === "true" ? _m : _a;
+  }); }
 
 /* Attribution d'origine (campagnes : ?ref=dias, ?ref=linkedin…) — mémorisée
    pour survivre à la navigation et aux visites ultérieures sans le paramètre.
