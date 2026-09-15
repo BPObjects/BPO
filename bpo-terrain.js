@@ -181,6 +181,10 @@
   }
   function fmtVol(v) { v = Math.round(v || 0); return v.toLocaleString('fr-FR') + ' m³'; }
   function tr(s) { return (typeof glob.T === 'function') ? glob.T(s) : s; }
+  /* TEXTE COMPOSÉ traduisible (15/09) : gabarit français {0} {1}… + valeurs, rendu par tplText (app.html) et retraduit
+     par translateDOM. Sans valeurs : texte simple et gabarit RETIRÉ — sinon translateDOM remettrait l'ancien texte. */
+  function tplSet(el, k, v) { if (v && typeof glob.tplText === 'function') return glob.tplText(el, k, v); if (el.removeAttribute) el.removeAttribute('data-tpl');
+    el.textContent = v ? String(k).replace(/\{(\d+)\}/g, function (m, i) { return v[i] != null ? v[i] : m; }) : k; return el; }
   function platsVisible(plats) { return !!(plats && plats.some(function (p) { return p && p.on !== 0; })); }
   /* hauteur EXACTE de la surface maillée au point (wx, wy) [avant recentrage] : les deux triangles de
      chaque maille (a,b,c2 si fx ≥ fy, sinon a,c2,e) — même découpe que buildMesh / meshFromGrid.
@@ -200,6 +204,50 @@
       var wx = g.minX + ix * st - (g.cx || 0), wy = g.minY + iy * st - (g.cy || 0), d = (wx - x) * (wx - x) + (wy - y) * (wy - y);
       if (d < bd) { bd = d; best = { x: wx, y: wy, z: Z[id] }; } }
     return best;
+  }
+  /* RAYON × RELIEF (pointage, 15/09) — intersection EXACTE avec le maillage AFFICHÉ (g.GZ, mêmes deux triangles par maille
+     que buildMesh / meshFromGrid / surfY). Repère du maillage : o, d = [e, Y affiché, n], t ≥ t0. Les mailles sont parcourues
+     dans l'ordre du rayon (DDA) : le PREMIER triangle touché, donc jamais un point caché derrière une crête.
+     null = ciel, hors grille, trous du masque. */
+  function platRayGrid(g, o, d, t0) {
+    if (!g || !g.GZ || !o || !d) return null;
+    var nx = g.nx, ny = g.ny, st = g.step, M = g.mask, Z = g.GZ, zb = g.zbase || 0, z0 = g.z0 || 0, ex = +g.exag || 1;
+    if (nx < 2 || ny < 2) return null;
+    if (g._platYLo == null) { var lo = Infinity, hi = -Infinity; for (var q = 0; q < Z.length; q++) if ((!M || M[q]) && Z[q] === Z[q]) { var yq = zb + (Z[q] - z0) * ex; if (yq < lo) lo = yq; if (yq > hi) hi = yq; } g._platYLo = lo; g._platYHi = hi; }
+    if (!(g._platYLo <= g._platYHi)) return null;
+    var ax = (o[0] + (g.cx || 0) - g.minX) / st, ay = (o[2] + (g.cy || 0) - g.minY) / st, oy = o[1], ux = d[0] / st, uy = d[2] / st, uz = d[1];
+    var ta = (t0 == null) ? 0 : t0, tb = Infinity;
+    function slab(p, u, a, b) { if (Math.abs(u) < 1e-12) return p >= a && p <= b;
+      var t1 = (a - p) / u, t2 = (b - p) / u; if (t1 > t2) { var tt = t1; t1 = t2; t2 = tt; }
+      if (t1 > ta) ta = t1; if (t2 < tb) tb = t2; return ta <= tb; }
+    if (!slab(ax, ux, 0, nx - 1) || !slab(ay, uy, 0, ny - 1) || !slab(oy, uz, g._platYLo - 1e-3, g._platYHi + 1e-3) || !isFinite(tb)) return null;
+    function cell(ix, iy, tA, tB) {
+      var id = iy * nx + ix; if (M && !(M[id] && M[id + 1] && M[id + nx] && M[id + nx + 1])) return null;
+      var h00 = zb + (Z[id] - z0) * ex, h10 = zb + (Z[id + 1] - z0) * ex, h01 = zb + (Z[id + nx] - z0) * ex, h11 = zb + (Z[id + nx + 1] - z0) * ex;
+      if (!(h00 === h00 && h10 === h10 && h01 === h01 && h11 === h11)) return null;
+      var fx0 = ax - ix, fy0 = ay - iy, best = null, E = 1e-6;
+      for (var s = 0; s < 2; s++) {   /* s=0 : fx ≥ fy, triangle (a, b, c2) ; s=1 : fx < fy, triangle (a, c2, e) */
+        var A = s ? (h11 - h01) : (h10 - h00), Bc = s ? (h01 - h00) : (h11 - h10), den = uz - A * ux - Bc * uy;
+        if (den > -1e-12) continue;   /* la surface n'est visée que PAR-DESSUS : paroi du socle, caméra sous le relief = pas un point visé */
+        var th = (h00 + A * fx0 + Bc * fy0 - oy) / den; if (th < tA || th > tB) continue;
+        var fx = fx0 + ux * th, fy = fy0 + uy * th;
+        if (fx < -E || fy < -E || fx > 1 + E || fy > 1 + E || (s === 0 ? fx < fy - E : fx > fy + E)) continue;
+        if (best == null || th < best) best = th;
+      }
+      return best;
+    }
+    var tc0 = ta, ix = Math.max(0, Math.min(nx - 2, Math.floor(ax + ux * tc0))), iy = Math.max(0, Math.min(ny - 2, Math.floor(ay + uy * tc0)));
+    var sx = ux > 0 ? 1 : (ux < 0 ? -1 : 0), sy = uy > 0 ? 1 : (uy < 0 ? -1 : 0);
+    var tmx = sx ? ((sx > 0 ? ix + 1 : ix) - ax) / ux : Infinity, tmy = sy ? ((sy > 0 ? iy + 1 : iy) - ay) / uy : Infinity;
+    var tdx = sx ? Math.abs(1 / ux) : Infinity, tdy = sy ? Math.abs(1 / uy) : Infinity, tcur = ta;
+    for (var k = 0, kmax = nx + ny + 4; k < kmax; k++) {
+      var tc = Math.min(tmx, tmy, tb), h = cell(ix, iy, tcur - 1e-9, tc + 1e-9);
+      if (h != null) return { t: h, e: o[0] + d[0] * h, Y: oy + uz * h, n: o[2] + d[2] * h };
+      if (tc >= tb) break;
+      tcur = tc; if (tmx <= tmy) { ix += sx; tmx += tdx; } else { iy += sy; tmy += tdy; }
+      if (ix < 0 || iy < 0 || ix > nx - 2 || iy > ny - 2) break;
+    }
+    return null;
   }
   /* CONTOUR DES PLATEFORMES (14/09) : rubans drapés sur la surface MODIFIÉE —
      edge = bord de chaque plateforme active ; cut / fill = pied de talus, courbe |GZ − GZN| = 2 cm,
@@ -288,18 +336,27 @@
   /* NIVEAU ±0 du projet, pas son point le plus bas : fondations, sous-sols, bassin de piscine restent
      enterrés sous la plateforme (même règle que l'emprise au sol de scnFootprint). Import : sa base. */
   function projWorldBase(o) { try { if (o.mode === 'fabprod') return glob.scnYbounds(o).mn + (o.y || 0) / 100; if (o.group) return glob.scnYbounds(o).mn; var fp = glob.scnFootprint(o); return (o.y || 0) / 100 + Math.max(0, fp ? fp.y0 : 0); } catch (e) { return (o.y || 0) / 100; } }
-  function projectNear(inst, refX, refY) {
-    var S = glob.SCENE, list = (S && S.instances) || [], best = null, bd = Infinity;
+  /* PROJET LE PLUS PROCHE (15/09, AL : « la plateforme n'apparaît pas où j'ai cliqué ») — avant : n'importe quelle instance
+     (arbre, personnage…), à n'importe quelle distance, boîte ENTIÈRE ; hors terrain la plateforme finissait au bord.
+     Maintenant : jamais le décor ; le bâti (SCN_BATI_MODES, groupes) passe avant le reste ; onT(e, n) écarte ce qui n'est
+     pas SUR le terrain ; centre et taille sur l'emprise AU SOL (gx*), comme l'exclusion d'herbe. */
+  var PN_DECOR = { arbre: 1, personnage: 1, humain: 1, vegetation: 1 };
+  function projectNear(inst, refX, refY, onT) {
+    var S = glob.SCENE, list = (S && S.instances) || [], best = null, bd = Infinity, bati = glob.SCN_BATI_MODES || {};
     if (!inst || typeof glob.scnFootprint !== 'function') return null;
     var tx = (inst.x || 0) / 100, tz = (inst.z || 0) / 100, ta = (inst.rotY || 0) * Math.PI / 180, c = Math.cos(ta), s = Math.sin(ta);
     for (var i = 0; i < list.length; i++) { var o = list[i];
-      if (!o || o === inst) continue;
+      if (!o || o === inst || PN_DECOR[o.mode]) continue;
       if (o.mode === 'fabprod' && glob.TEX_OBJECTS && glob.TEX_OBJECTS[o.prod] && glob.TEX_OBJECTS[o.prod].meta && glob.TEX_OBJECTS[o.prod].meta.tgrid) continue;   /* un autre terrain */
       var fp = null; try { fp = glob.scnFootprint(o); } catch (e) {} if (!fp) continue;
-      var oa = (o.rotY || 0) * Math.PI / 180, oc = Math.cos(oa), os = Math.sin(oa), lcx = (fp.x0 + fp.x1) / 2, lcz = (fp.z0 + fp.z1) / 2;
+      var gx0 = (fp.gx0 != null) ? fp.gx0 : fp.x0, gx1 = (fp.gx1 != null) ? fp.gx1 : fp.x1, gz0 = (fp.gz0 != null) ? fp.gz0 : fp.z0, gz1 = (fp.gz1 != null) ? fp.gz1 : fp.z1;
+      var oa = (o.rotY || 0) * Math.PI / 180, oc = Math.cos(oa), os = Math.sin(oa), lcx = (gx0 + gx1) / 2, lcz = (gz0 + gz1) / 2;
       var wx = (o.x || 0) / 100 + lcx * oc - lcz * os, wz = (o.z || 0) / 100 + lcx * os + lcz * oc;
-      var dx = wx - tx, dz = wz - tz, e = c * dx + s * dz, n = -(-s * dx + c * dz), d2 = (e - refX) * (e - refX) + (n - refY) * (n - refY);
-      if (d2 < bd) { bd = d2; best = { x: e, y: n, w: Math.max(2, fp.x1 - fp.x0) + 4, d: Math.max(2, fp.z1 - fp.z0) + 4, rot: -((o.rotY || 0) - (inst.rotY || 0)), name: o.name || o.label || '', o: o }; }
+      var dx = wx - tx, dz = wz - tz, e = c * dx + s * dz, n = -(-s * dx + c * dz);
+      if (onT && !onT(e, n)) continue;
+      var isBati = !!(bati[o.mode] || o.group || (o.mode === 'fabprod' && /^imp_/.test(o.prod || '')));   /* imp_ : un bâtiment importé (KMZ, IFC…) est du bâti */
+      var d2 = (e - refX) * (e - refX) + (n - refY) * (n - refY) + (isBati ? 0 : 1e12);   /* bâti d'abord */
+      if (d2 < bd) { bd = d2; best = { x: e, y: n, w: Math.max(2, gx1 - gx0) + 4, d: Math.max(2, gz1 - gz0) + 4, rot: -((o.rotY || 0) - (inst.rotY || 0)), name: o.name || o.label || '', o: o }; }
     }
     return best;
   }
@@ -733,6 +790,10 @@
     for (var gi = 0; gi < Z.length; gi++) { var on = (!g.mask || g.mask[gi]) && (Z[gi] === Z[gi]); z.push(on ? Math.round((g.zbase + (Z[gi] - g.z0) * ex) * 100) : -100000); }
     return { nx: g.nx, ny: g.ny, step: g.step, minX: g.minX - (g.cx || 0), minY: g.minY - (g.cy || 0), z: z };
   }
+  /* ADRESSE dans le repère courant du maillage (15/09) : les points du relief ont l'adresse pour origine et le maillage est
+     centré sur (cx, cy) de la grille FILTRÉE — les curseurs d'altitude retenue déplacent ce centre ; SITE_LOCAL, figé dans
+     setGrid, restait en arrière. null pour un DXF (pas d'adresse). */
+  function siteNow(g) { if (!SITE_LOCAL) return null; g = g || (MESH && MESH.grid); return (g && g.cx != null) ? { x: -g.cx, y: -g.cy } : { x: SITE_LOCAL.x, y: SITE_LOCAL.y }; }
   /* paramètres d'affichage qui voyagent avec l'objet figé */
   function packParams(vol, g) {
     /* les altitudes visées des plateformes passent dans le repère de l'OBJET (base, exagération), comme la grille figée */
@@ -741,19 +802,19 @@
     return { colorByAlt: mapOn() ? 2 : (+PTERR.colorByAlt ? 1 : 0), col: (glob.FINISH && glob.FINISH.terrain) || (MESH && MESH.col) || null,
       contours: +PTERR.contours || 0, contourInt: +PTERR.contourInt || 0.5, contourW: +PTERR.contourW || 20, contourMaster: +PTERR.contourMaster || 0,
       mesh: +PTERR.mesh || 0, thick: +PTERR.thick || 0, thickFlat: (PTERR.thickFlat == null ? 1 : +PTERR.thickFlat),
-      plats: plats, platShow: (PTERR.platShow == null ? 1 : +PTERR.platShow), vexag: ex, vol: vol || null, site: SITE_LOCAL ? { x: SITE_LOCAL.x, y: SITE_LOCAL.y } : null };
+      plats: plats, platShow: (PTERR.platShow == null ? 1 : +PTERR.platShow), vexag: ex, vol: vol || null, site: siteNow(g) };
   }
   function freeze() {
     if (!MESH || MESH.sig !== sig()) { var m = buildMesh(); if (m) m.sig = sig(); MESH = m; }
-    if (!MESH || MESH.tooBig || !MESH.V.length) { glob.alert('Aucun terrain à figer (charge un DXF d\'abord).'); return; }
-    if (!(glob.BPO_import && glob.BPO_import.bake)) { glob.alert('Module d\'import indisponible.'); return; }
+    if (!MESH || MESH.tooBig || !MESH.V.length) { glob.alert(tr('Aucun terrain à figer (charge un DXF d\'abord).')); return; }
+    if (!(glob.BPO_import && glob.BPO_import.bake)) { glob.alert(tr('Module d\'import indisponible.')); return; }
     var _mappedF = mapOn();
     var _parts = bakeParts(MESH, { colorByAlt: _mappedF ? 2 : (+PTERR.colorByAlt ? 1 : 0), col: (glob.FINISH && glob.FINISH.terrain) || MESH.col, tex: (glob.FINISH_TEX && glob.FINISH_TEX.terrain) || null,
       map: _mappedF ? { key: MAP.key + 'b', ext: MAP.ext, cxFrac: MAP.cxFrac, cyFrac: MAP.cyFrac, cx: MESH.grid.cx, cy: MESH.grid.cy, style: MAP.style } : null,
       drape: +PTERR.drape, contours: +PTERR.contours, contourInt: +PTERR.contourInt, mesh: +PTERR.mesh, thick: +PTERR.thick, thickFlat: +PTERR.thickFlat, exag: +PTERR.exag, plats: PTERR.plats, platShow: (PTERR.platShow == null ? 1 : +PTERR.platShow) });
     var pos = _parts.pos, idx = _parts.idx, groups = _parts.groups;
     var def = _name ? ('Terrain ' + _name.replace(/\.dxf$/i, '')) : 'Terrain';
-    var nm = glob.prompt('Nom du terrain figé :', def); if (nm === null) return; nm = nm.trim() || def;
+    var nm = glob.prompt(tr('Nom du terrain figé :'), def); if (nm === null) return; nm = nm.trim() || def;
     /* v2.7 : la GRILLE accompagne l'objet figé (registre runtime, cle = pid).
        L'export IFC la propage en pset BPO_Terrain -> le plugin ArchiCAD rebatit
        un OUTIL MAILLAGE natif. Alt. finale par noeud (cm), -100000 = hors masque.
@@ -771,8 +832,8 @@
     }
     glob.BPO_import.bake(nm, pos, idx, groups, _extra).then(function (pid) {
       if (_tg && pid) { glob.BPO_TERRAIN_GRIDS = glob.BPO_TERRAIN_GRIDS || {}; glob.BPO_TERRAIN_GRIDS[pid] = _tg; }
-      glob.alert('Terrain figé — disponible dans « Ma bibliothèque › Objets importés ». Posable en scène, sauvegardable, exportable (OBJ/DAE/IFC' + (_tg ? ' ; maillage natif ArchiCAD via le plugin' : '') + ').');
-    }).catch(function (e) { glob.alert('Échec du figeage : ' + (e && e.message || e)); });
+      glob.alert(tr(_tg ? 'Terrain figé — disponible dans « Ma bibliothèque › Objets importés ». Posable en scène, sauvegardable, exportable (OBJ/DAE/IFC ; maillage natif ArchiCAD via le plugin).' : 'Terrain figé — disponible dans « Ma bibliothèque › Objets importés ». Posable en scène, sauvegardable, exportable (OBJ/DAE/IFC).'));   /* deux phrases entières : une clé chacune */
+    }).catch(function (e) { glob.alert(tr('Échec du figeage :') + ' ' + (e && e.message || e)); });
   }
 
   /* ---- Panneau du configurateur ---- */
@@ -797,6 +858,9 @@
   /* ---- Liste des plateformes : mode Terrain (plats = PTERR.plats, live) et terrain figé (tampon FZ[pid]) ----
      ctx : { zAt(x,y) altitude naturelle | null, volumes() -> {plats:[{cut,fill,area}], cut, fill, net} | null,
             addAt() -> {x,y}, change() rappelé après toute édition, unit 'NGF' | 'objet' } */
+  /* plateforme neuve : SOURCE UNIQUE (bouton « + … », pointage au clic, aperçu du pointage) */
+  function platDraft(at, zn, n) { return { name: 'Plateforme ' + (n + 1), shape: 'rect', x: Math.round(at.x * 10) / 10, y: Math.round(at.y * 10) / 10, w: at.w ? Math.round(at.w * 10) / 10 : 20, d: at.d ? Math.round(at.d * 10) / 10 : 15, r: 10, rot: at.rot ? Math.round(at.rot) : 0, z: Math.round(zn * 10) / 10, talus: 1.5, on: 1 }; }
+  function platNewPlat(plats, at, zn) { plats.push(platDraft(at, zn, plats.length)); return plats.length - 1; }
   function platsUI(host, plats, ctx) {
     var wrap = doc.createElement('div'); wrap.style.cssText = 'border-top:1px dashed var(--ln);margin-top:8px;padding-top:6px;';
     wrap.innerHTML = '<div class="slbl" style="font-size:10px;margin:2px 0 3px;">Plateformes (plat / creux)</div>';
@@ -847,6 +911,13 @@
         + (vp ? ('<span>Déblai</span> ' + fmtVol(vp.cut) + ' · <span>remblai</span> ' + fmtVol(vp.fill) + ' · <span>emprise</span> ' + Math.round(vp.area).toLocaleString('fr-FR') + ' m²') : '');
       card.appendChild(inf); wrap.appendChild(card);
     });
+    /* POINTAGE (15/09) : la plateforme se pose là où l'on clique sur le relief */
+    if (ctx.pick) { var pOn = !!(ctx.pickOn && ctx.pickOn());
+      var bPk = doc.createElement('button'); bPk.className = 'tex-none'; bPk.style.cssText = 'width:100%;font-size:10.5px;padding:4px;margin-top:4px;' + (pOn ? 'border-color:#5eb8ff;color:#5eb8ff;' : '');
+      bPk.textContent = pOn ? '✕ Annuler le pointage' : '⌖ Placer en cliquant sur le terrain';
+      bPk.onclick = function () { ctx.pick(); }; wrap.appendChild(bPk);
+      if (pOn) { var pht = doc.createElement('div'); pht.className = 'exp-note'; pht.style.cssText = 'color:#5eb8ff;margin:2px 0 3px;';
+        pht.textContent = 'Cliquez sur le relief dans la vue : la plateforme sera centrée sur le point visé, à l\'altitude du terrain naturel. Glisser = orbiter · Échap = annuler.'; wrap.appendChild(pht); } }
     var bAdd = doc.createElement('button'); bAdd.className = 'tex-none'; bAdd.style.cssText = 'width:100%;font-size:10.5px;padding:4px;margin-top:2px;';
     var addLbl = ctx.addLabel ? ctx.addLabel() : null;
     bAdd.textContent = addLbl || (plats.length ? '+ Ajouter une plateforme' : '+ Plateforme au point d\'implantation');
@@ -854,7 +925,7 @@
       /* hors du masque (bord, contour en U d'un DXF) : le nœud valide le plus proche — jamais z = 0, qui creusait tout le terrain */
       if (zn == null && ctx.snap) { var sn = ctx.snap(at.x, at.y); if (sn) { at = { x: sn.x, y: sn.y, w: at.w, d: at.d, rot: at.rot }; zn = sn.z; } }
       if (zn == null) { glob.alert(tr('Aucun terrain sous ce point.')); return; }
-      plats.push({ name: 'Plateforme ' + (plats.length + 1), shape: 'rect', x: Math.round(at.x * 10) / 10, y: Math.round(at.y * 10) / 10, w: at.w ? Math.round(at.w * 10) / 10 : 20, d: at.d ? Math.round(at.d * 10) / 10 : 15, r: 10, rot: at.rot ? Math.round(at.rot) : 0, z: Math.round(zn * 10) / 10, talus: 1.5, on: 1 }); ctx.change(); };
+      platNewPlat(plats, at, zn); ctx.change(); };
     wrap.appendChild(bAdd);
     if (vol && plats.length) { var tot = doc.createElement('div'); tot.className = 'exp-note'; tot.style.cssText = 'color:var(--am);margin-top:4px;';
       tot.innerHTML = '<span>Total</span> — <span>déblai</span> ' + fmtVol(vol.cut) + ' · <span>remblai</span> ' + fmtVol(vol.fill) + ' · <span>net</span> ' + (vol.net >= 0 ? '+' : '−') + fmtVol(Math.abs(vol.net)) + (Math.abs(vol.net) < 1 ? ' (<span>équilibre</span>)' : (vol.net > 0 ? ' (<span>apport</span>)' : ' (<span>évacuation</span>)'));
@@ -868,12 +939,14 @@
     platsUI(host, (PTERR.plats = PTERR.plats || []), {
       zAt: function (x, y) { return (MESH && MESH.grid) ? gridZAt(MESH.grid, x, y, true) : null; },
       volumes: function () { return MESH ? MESH.vol : null; },
-      addAt: function () { return SITE_LOCAL ? { x: SITE_LOCAL.x, y: SITE_LOCAL.y } : { x: 0, y: 0 }; },
+      addAt: function () { return siteNow() || { x: 0, y: 0 }; },
       snap: function (x, y) { return (MESH && MESH.grid) ? gridSnap(MESH.grid, x, y) : null; },
       getShow: function () { return (PTERR.platShow == null) ? 1 : +PTERR.platShow; },
       setShow: function (v) { PTERR.platShow = v; },
       gizmo: function (i) { if (typeof glob.platGizToggle === 'function') glob.platGizToggle({ ctx: 'terrain', i: i }); },
       gizmoOn: function (i) { return typeof glob.platGizOn === 'function' && glob.platGizOn('terrain', i); },
+      pick: function () { if (typeof glob.platPointageToggle === 'function') glob.platPointageToggle({ ctx: 'terrain' }); },
+      pickOn: function () { return typeof glob.platPointageOn === 'function' && glob.platPointageOn('terrain'); },
       change: function () { MESH = null; if (typeof glob.build === 'function') { try { glob.build(); } catch (e) {} } glob.DIRTY = true; setTimeout(function () { if (glob.MODE === 'terrain') buildUI(host); }, 30); }
     });
   }
@@ -928,6 +1001,9 @@
   function frozenApply(pid) { var P = frozenBuf(pid); if (!P) return Promise.reject(new Error('terrain figé indisponible')); if (BUSY[pid]) return Promise.reject(new Error('refabrication en cours'));
     BUSY[pid] = 1; return rebakeFrozen(pid, P).then(function (v) { BUSY[pid] = 0; return v; }, function (e) { BUSY[pid] = 0; throw e; }); }
   function meshGrid() { return (MESH && !MESH.tooBig && MESH.grid) ? MESH.grid : null; }
+  /* grille du terrain FIGÉ pour le pointage en scène (même lecture que le panneau : tgrid affiché, tgridNat naturel) */
+  function platPickGrid(pid) { var D = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid]; if (!(D && D.meta && D.meta.tgrid)) return null;
+    var g = null; try { g = frozenGrid(D, true); if (g && !g.GZN) g.GZN = new Float32Array(g.GZ); } catch (e) { g = null; } return g; }
   function buildFrozenUI(host, inst, idx) {
     var pid = inst && inst.prod, D = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
     if (!(D && D.meta && D.meta.tgrid)) return;
@@ -949,17 +1025,20 @@
     num('Épaisseur du socle', 'thick', 5, 'cm');
     if (+P.thick > 0) tabs([['1', 'Fond plat'], ['0', 'Fond parallèle']], function () { return +P.thickFlat; }, function (v) { P.thickFlat = +v; });
     var gN = null; try { gN = frozenGrid(D, true); if (gN && !gN.GZN) gN.GZN = new Float32Array(gN.GZ); } catch (e) {}
+    function onTer(x, y) { return !gN || gridZAt(gN, x, y, true) != null; }   /* un projet hors du terrain ne reçoit pas de plateforme (elle finissait au bord) */
     platsUI(box, P.plats, {
       zAt: function (x, y) { return gN ? gridZAt(gN, x, y, true) : null; },
       volumes: function () { if (!gN) return null; var gg = { GZ: new Float32Array(gN.GZN), GZN: gN.GZN, mask: gN.mask, nx: gN.nx, ny: gN.ny, minX: gN.minX, minY: gN.minY, step: gN.step, cx: 0, cy: 0, vex: +P.vexag || 1 }; return platApply(gg, P.plats); },
-      addAt: function () { var sx = P.site ? +P.site.x || 0 : 0, sy = P.site ? +P.site.y || 0 : 0, pr = projectNear(inst, sx, sy); return pr || { x: sx, y: sy }; },
-      addLabel: function () { var sx = P.site ? +P.site.x || 0 : 0, sy = P.site ? +P.site.y || 0 : 0; return projectNear(inst, sx, sy) ? '+ Plateforme sous le projet' : null; },
+      addAt: function () { var sx = P.site ? +P.site.x || 0 : 0, sy = P.site ? +P.site.y || 0 : 0, pr = projectNear(inst, sx, sy, onTer); return pr || { x: sx, y: sy }; },
+      addLabel: function () { var sx = P.site ? +P.site.x || 0 : 0, sy = P.site ? +P.site.y || 0 : 0; return projectNear(inst, sx, sy, onTer) ? '+ Plateforme sous le projet' : null; },
       snap: function (x, y) { return gN ? gridSnap(gN, x, y) : null; },
       getShow: function () { return (P.platShow == null) ? 1 : +P.platShow; },
       setShow: function (v) { P.platShow = v; },
       gizmo: function (i) { if (typeof glob.platGizToggle === 'function') glob.platGizToggle({ ctx: 'scene', ix: idx, pid: pid, i: i }); },
       gizmoOn: function (i) { return typeof glob.platGizOn === 'function' && glob.platGizOn('scene', i) && !!glob.PLAT_GIZ && glob.PLAT_GIZ.pid === pid; },
-      project: function (p) { return projectNear(inst, +p.x || 0, +p.y || 0); },
+      pick: function () { if (typeof glob.platPointageToggle === 'function') glob.platPointageToggle({ ctx: 'scene', ix: idx, pid: pid }); },
+      pickOn: function () { return typeof glob.platPointageOn === 'function' && glob.platPointageOn('scene') && !!glob.PLAT_POINTAGE && glob.PLAT_POINTAGE.pid === pid; },
+      project: function (p) { return projectNear(inst, +p.x || 0, +p.y || 0, onTer); },   /* un projet hors du terrain n'est ni mesuré ni posé */
       projectBase: function (pr) { return projWorldBase(pr.o) - (inst.y || 0) / 100; },   /* terrain sans inclinaison : y objet = y monde − y instance */
       placeProject: function (pr, p) { var o = pr.o; o.y = (o.y || 0) + Math.round(((inst.y || 0) / 100 + (+p.z || 0) - projWorldBase(o)) * 100); if (typeof glob.scnLive === 'function') { try { glob.scnLive(); } catch (e) {} } glob.DIRTY = true; },
       change: rer
@@ -984,7 +1063,7 @@
       b.onclick = function () { PTERR.src = o[0]; MESH = null; if (typeof glob.build === 'function') { try { glob.build(); } catch (e) {} } if (typeof glob.fitCamera === 'function') { try { glob.fitCamera(glob.DIMS); } catch (e) {} } glob.DIRTY = true; buildUI(host); }; srcTg.appendChild(b); });
     host.appendChild(srcTg);
     var bcad = doc.createElement('button'); bcad.className = 'save-add'; bcad.textContent = '⭳ Importer cadastre (fond de plan)'; bcad.style.margin = '2px 0 8px';
-    bcad.onclick = function () { if (glob.BPO_cadastre) glob.BPO_cadastre.open(); else glob.alert('Module cadastre non chargé (recharge la page).'); };
+    bcad.onclick = function () { if (glob.BPO_cadastre) glob.BPO_cadastre.open(); else glob.alert(tr('Module cadastre non chargé (recharge la page).')); };
     host.appendChild(bcad);
     if (PTERR.src === 'shape') { buildShapeUI(host); return; }
     var card = doc.createElement('div'); card.className = 'fld';
@@ -995,14 +1074,14 @@
     var fin = doc.createElement('input'); fin.type = 'file'; fin.accept = '.dxf'; fin.style.display = 'none';
     var bLoad = doc.createElement('button'); bLoad.className = 'save-add'; bLoad.textContent = '⭳Charger un DXF (points cotés)'; bLoad.style.margin = '2px 0 6px';
     bLoad.onclick = function () { fin.click(); };
-    fin.onchange = function () { var file = fin.files && fin.files[0]; if (!file) return; bLoad.textContent = '… lecture ' + file.name;
-      var rd = new FileReader(); rd.onload = function () { try { var nb = setDXF(rd.result, file.name); bLoad.textContent = '⭳' + file.name + ' — ' + nb + ' cotes';
-        info.textContent = nb ? (nb + ' points cotés lus.') : 'Aucun point coté trouvé (le DXF doit contenir des altitudes en texte).';
+    fin.onchange = function () { var file = fin.files && fin.files[0]; if (!file) return; tplSet(bLoad, '… lecture {0}', [file.name]);
+      var rd = new FileReader(); rd.onload = function () { try { var nb = setDXF(rd.result, file.name); tplSet(bLoad, '⭳{0} — {1} cotes', [file.name, nb]);
+        if (nb) tplSet(info, '{0} points cotés lus.', [nb]); else tplSet(info, 'Aucun point coté trouvé (le DXF doit contenir des altitudes en texte).');
         if (typeof glob.build === 'function') { try { glob.build(); } catch (e) {} } if (typeof glob.updateDims === 'function') glob.updateDims(); if (typeof glob.fitCamera === 'function') { try{ glob.fitCamera(glob.DIMS); }catch(e){} } glob.DIRTY = true; buildUI(host);
-      } catch (e) { info.textContent = 'Erreur de lecture : ' + (e && e.message || e); } };
+      } catch (e) { tplSet(info, 'Erreur de lecture : {0}', [String(e && e.message || e)]); } };
       rd.readAsText(file, 'windows-1252'); };   /* DXF AutoCAD = ANSI_1252 : accents des calques OK */
     host.appendChild(bLoad); host.appendChild(fin);
-    var info = doc.createElement('div'); info.className = 'exp-note'; info.textContent = hasData() ? (RAW.length + ' points cotés en mémoire.') : 'Aucun terrain chargé.'; host.appendChild(info);
+    var info = doc.createElement('div'); info.className = 'exp-note'; if (hasData()) tplSet(info, '{0} points cotés en mémoire.', [RAW.length]); else tplSet(info, 'Aucun terrain chargé.'); host.appendChild(info);
     /* RELIEF IGN / SRTM autour d'une adresse (12/09/2026) — même chaîne que Site / Géolocalisation (loadSiteMap → loadSiteDEM → setGrid) */
     var gcard = doc.createElement('div'); gcard.className = 'fld'; gcard.style.marginTop = '8px';
     gcard.innerHTML = '<div class="fh"><label>Adresse du site</label></div>';
@@ -1030,7 +1109,7 @@
     if (!hasData()) return;
     // stats
     if (MESH && !MESH.tooBig) { var st = doc.createElement('div'); st.className = 'exp-note'; st.style.color = 'var(--am)';
-      st.textContent = 'Emprise ' + Math.round(MESH.dims.w) + ' × ' + Math.round(MESH.dims.d) + ' m · relief ' + (MESH.dims.h/(+PTERR.exag||1)).toFixed(2) + ' m · ' + MESH.F.length + ' faces'; host.appendChild(st); }
+      tplSet(st, 'Emprise {0} × {1} m · relief {2} m · {3} faces', [Math.round(MESH.dims.w), Math.round(MESH.dims.d), (MESH.dims.h/(+PTERR.exag||1)).toFixed(2), MESH.F.length]); host.appendChild(st); }
     // sliders (rebuild à la validation pour éviter de recalculer à chaque pixel)
     function slider(label, unit, key, min, max, step, live) {
       var fld = doc.createElement('div'); fld.className = 'fld';
@@ -1064,7 +1143,7 @@
       b.onclick = function () { PTERR.absolute = +o[0]; MESH = null; if (typeof glob.build === 'function') { try { glob.build(); } catch (e) {} } glob.DIRTY = true; buildUI(host); }; ta.appendChild(b);
     });
     host.appendChild(ta);
-    if (MESH && MESH.z0 != null) { var za = doc.createElement('div'); za.className = 'exp-note'; za.textContent = 'Altitude de base : ' + MESH.z0.toFixed(2) + ' m' + (+PTERR.absolute ? ' (conservée — cale le bâti au bon niveau)' : ' (ramenée à 0)'); host.appendChild(za); }
+    if (MESH && MESH.z0 != null) { var za = doc.createElement('div'); za.className = 'exp-note'; tplSet(za, +PTERR.absolute ? 'Altitude de base : {0} m (conservée — cale le bâti au bon niveau)' : 'Altitude de base : {0} m (ramenée à 0)', [MESH.z0.toFixed(2)]); host.appendChild(za); }
     var note = doc.createElement('div'); note.className = 'exp-note'; note.textContent = 'En « Matière unie », la couleur/texture se règle dans Finitions (élément Terrain).'; host.appendChild(note);
     // Drapé du plan DXF sur le relief
     if (POLYS && POLYS.length && LAYERS && LAYERS.length) {
@@ -1153,11 +1232,11 @@
     if(+PTERR.contours){ sl('Équidistance','m','contourInt',0.1,5,0.1); sl('Épaisseur courbes','cm','contourW',3,80,1); sl('Courbe maîtresse tous les','','contourMaster',0,10,1); }
     // Maille apparente + épaisseur (socle)
     meshThickUI(host, sl);
-    if(MESH && !MESH.tooBig){ var st=doc.createElement('div'); st.className='exp-note'; st.style.color='var(--am)'; st.textContent='Emprise '+Math.round(MESH.dims.w)+' × '+Math.round(MESH.dims.d)+' m · '+MESH.F.length+' faces'; host.appendChild(st); }
+    if(MESH && !MESH.tooBig){ var st=doc.createElement('div'); st.className='exp-note'; st.style.color='var(--am)'; tplSet(st, 'Emprise {0} × {1} m · {2} faces', [Math.round(MESH.dims.w), Math.round(MESH.dims.d), MESH.F.length]); host.appendChild(st); }
     var note=doc.createElement('div'); note.className='exp-note'; note.textContent='Couleur/texture dans Finitions (élément Terrain). Plateforme plate — l\'édition du relief par points viendra ensuite.'; host.appendChild(note);
     platsUILive(host);   /* plateformes plat / creux + volumes (14/09) */
     var bf=doc.createElement('button'); bf.className='save-add'; bf.textContent='❄ Figer le terrain (→ objet réutilisable)'; bf.style.marginTop='8px'; bf.onclick=freeze; host.appendChild(bf);
   }
 
-  glob.BPO_terrain = { PTERR: PTERR, setDXF: setDXF, setGrid: setGrid, meshGrid: meshGrid, frozenBuf: frozenBuf, frozenApply: frozenApply, frozenBusy: function (pid) { return !!BUSY[pid]; }, buildFrozenUI: buildFrozenUI, rebakeFrozen: rebakeFrozen, platApply: platApply, platGeo: platGeo, surfY: surfY, recoverFrozen: recoverFrozen, projectNear: projectNear, buildFC: buildFC, buildUI: buildUI, hasData: hasData, ctrlHandles: ctrlHandles, setCtrlCm: setCtrlCm, footHandles: footHandles, setFoot: setFoot, insertFoot: insertFoot, removeFoot: removeFoot, _parse: parseDXFall };
+  glob.BPO_terrain = { PTERR: PTERR, setDXF: setDXF, setGrid: setGrid, meshGrid: meshGrid, frozenBuf: frozenBuf, frozenApply: frozenApply, frozenBusy: function (pid) { return !!BUSY[pid]; }, buildFrozenUI: buildFrozenUI, rebakeFrozen: rebakeFrozen, platApply: platApply, platGeo: platGeo, surfY: surfY, recoverFrozen: recoverFrozen, projectNear: projectNear, buildFC: buildFC, buildUI: buildUI, hasData: hasData, ctrlHandles: ctrlHandles, setCtrlCm: setCtrlCm, footHandles: footHandles, setFoot: setFoot, insertFoot: insertFoot, removeFoot: removeFoot, platRayGrid: platRayGrid, platDraft: platDraft, platNewPlat: platNewPlat, platPickGrid: platPickGrid, gridZAt: gridZAt, gridSnap: gridSnap, _parse: parseDXFall };
 })();
