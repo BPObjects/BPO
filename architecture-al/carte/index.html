@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture-AL — plan et maquette 3D du quartier</title>
+<meta name="robots" content="noindex">
+<!-- Page autonome pour intégration (iframe) dans le site Wix d'Architecture-AL. ?vue=plan ouvre le plan, sinon la 3D. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400&family=Nunito+Sans:opsz,wght@6..12,300;6..12,400;6..12,600;6..12,700&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --platre: #ffffff; --pierre: #f3f1ed; --ombre: #dcd7cf; --graphite: #6f6a62; --encre: #1d1c1a;
+    --orange: #e0662c; --orange-texte: #e0662c;
+    --f-titre: 'Nunito Sans', 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+    --f-data: 'DM Mono', ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--platre); color: var(--encre); font: 400 16px/1.5 var(--f-titre); -webkit-font-smoothing: antialiased; }
+  [hidden] { display: none !important; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+  .capitales { font-family: var(--f-titre); font-weight: 300; text-transform: uppercase; letter-spacing: .16em; }
+  .data { font-family: var(--f-data); font-weight: 300; }
+
+  #carte, .carte { height: 100%; display: flex; flex-direction: column; }
+  .bascule { display: flex; gap: 18px; }
+  .bascule button { background: none; border: 0; padding: 6px 0; cursor: pointer; font-size: .72rem; color: var(--graphite); border-bottom: 1px solid transparent; }
+  .bascule button:hover { color: var(--encre); }
+  .bascule button[aria-pressed="true"] { color: var(--encre); border-bottom-color: var(--orange); }
+
+  .carte__barre { display: flex; justify-content: space-between; align-items: center; gap: 10px 24px; flex-wrap: wrap; margin-bottom: 10px; }
+  .carte__zoom { display: flex; gap: 6px; }
+  .carte__zoom button { background: var(--platre); border: 1px solid var(--ombre); cursor: pointer; min-width: 34px; height: 30px; padding: 0 10px; font-size: 1rem; line-height: 1; }
+  .carte__zoom button.capitales { font-size: .72rem; }
+  .carte__zoom button:hover { border-color: var(--encre); }
+  .carte__scene { position: relative; flex: 1; min-height: 280px; border: 1px solid var(--encre); background: #ece9e2; overflow: hidden; }
+  .carte__plan, .carte__3d { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .carte__plan, .carte__3d canvas { display: block; touch-action: none; cursor: grab; }
+  .carte__3d canvas { width: 100%; height: 100%; }
+  .carte__plan.saisi, .carte__3d canvas.saisi { cursor: grabbing; }
+  .carte__info { position: absolute; pointer-events: none; white-space: nowrap; background: var(--encre); color: var(--platre); font-size: .7rem; padding: 4px 8px; }
+  .carte__aide { font-size: .7rem; color: var(--graphite); margin: 8px 0 0; text-align: justify; hyphens: auto; }
+  .carte__etiquettes { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .carte__etiq { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11px; color: var(--encre); text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
+  .carte__etiq--siege { font-weight: 700; letter-spacing: .12em; text-transform: uppercase; text-shadow: none; color: var(--platre); background: var(--orange-texte); padding: 3px 7px; }
+  .carte__etiq--lieu { font-style: italic; font-weight: 300; color: var(--graphite); }
+  .carte__etiq--metro { font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+  .carte__etiq--metro .metro-m, .carte__etiq--metro .ligne-metro { margin: 0; flex: none; text-shadow: none; }
+  .carte__etiq--metro .ligne-metro { margin-right: 3px; }
+  .carte__erreur { padding: 24px; color: var(--graphite); }
+
+  .metro-m, .ligne-metro { display: inline-grid; place-items: center; vertical-align: -4px; width: 18px; height: 18px; border-radius: 50%; color: var(--encre); box-shadow: 0 0 0 1px var(--encre); font: 700 11px/1 var(--f-titre); letter-spacing: 0; }
+  .metro-m { background: #ffcd00; }
+  .ligne-metro { color: #000; }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="carte"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="quartier.js"></script>
+<script src="carte.js"></script>
+<script>
+  CARTE.monter(document.getElementById('carte'), /[?&]vue=plan/.test(location.search) ? 'plan' : '3d');
+</script>
+</body>
+</html>
