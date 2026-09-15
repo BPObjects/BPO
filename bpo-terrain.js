@@ -49,6 +49,8 @@
   glob.PTERR = PTERR;
 
   var RAW = null;       // points bruts {x,y,z} en mètres (toutes cotes numériques)
+  var RAWV = 0;         // version de RAW (clé du cache de grille naturelle)
+  var NATC = null;      // grille naturelle en cache {key, res} — voir natGrid
   var POLYS = null;     // polylignes/lignes {layer, closed, pts:[[x,y]]} (drapé)
   var LAYERS = null;    // couches présentes [{layer,n}] triées
   var MESH = null;      // maillage en cache {V:[[x,y,z]], F:[[a,b,c],col], grid, dims, sig}
@@ -58,6 +60,7 @@
   var SITE_LOCAL = null; // point d'implantation (adresse) en coordonnées du maillage {x est, y nord} — null pour un DXF
   var FZ = {};           // tampons d'édition des terrains figés en scène : pid -> paramètres (appliqués par rebakeFrozen)
   var RECOV = {};        // terrains figés d'avant les plateformes : relecture de leurs paramètres déjà lancée
+  var BUSY = {};         // refabrication en cours par pid : le gizmo et « Appliquer » attendent (le tampon FZ est remplacé au retour)
   var MAP = null;       // carte drapée {key, ext, cxFrac, cyFrac, dataURL, style} — repère du site, voir siteDemToTerrain
 
   /* ---- Parse DXF : points d'insertion MTEXT + valeur numérique (mm -> m) ---- */
@@ -86,7 +89,7 @@
   }
 
   function setDXF(text, name) {
-    var r = parseDXFall(text); RAW = r.points; POLYS = r.polys; _name = name || ''; MESH = null; REG = false; MAP = null; SITE_LOCAL = null; if (+PTERR.colorByAlt === 2) PTERR.colorByAlt = 1;
+    var r = parseDXFall(text); RAW = r.points; RAWV++; POLYS = r.polys; _name = name || ''; MESH = null; REG = false; MAP = null; SITE_LOCAL = null; if (+PTERR.colorByAlt === 2) PTERR.colorByAlt = 1;
     var lc = {}; for (var i = 0; i < POLYS.length; i++) { var l = POLYS[i].layer; lc[l] = (lc[l] || 0) + 1; }
     LAYERS = Object.keys(lc).map(function (l) { return { layer: l, n: lc[l] }; }).sort(function (a, b) { return b.n - a.n; });
     if (LAYERS.length && !PTERR.drapeLayers) { PTERR.drapeLayers = {}; PTERR.drapeLayers[LAYERS[0].layer] = 1; }
@@ -96,7 +99,7 @@
   /* ---- Grille régulière d'altitudes (relief IGN / SRTM importé par Site / Géolocalisation, 12/09/2026) ----
      pts : [{x: m vers l'est, y: m vers le nord, z: m NGF}] ; step : pas de la grille (m). */
   function setGrid(pts, name, step, map) {
-    RAW = pts; POLYS = []; LAYERS = []; _name = name || 'Relief'; MESH = null; REG = true; PTERR.src = 'dxf';
+    RAW = pts; RAWV++; POLYS = []; LAYERS = []; _name = name || 'Relief'; MESH = null; REG = true; PTERR.src = 'dxf';
     MAP = (map && map.key) ? map : null; if (MAP) PTERR.colorByAlt = 2; else if (+PTERR.colorByAlt === 2) PTERR.colorByAlt = 1;   /* 2 = carte drapée */
     var zmin = Infinity, zmax = -Infinity; for (var i = 0; i < pts.length; i++) { var z = pts[i].z; if (z < zmin) zmin = z; if (z > zmax) zmax = z; }
     PTERR.bandMin = Math.floor(zmin) - 1; PTERR.bandMax = Math.ceil(zmax) + 1;   /* la bande DXF (18–45 m par défaut) viderait un relief de montagne */
@@ -336,9 +339,13 @@
       FZ[pid] = P; return P;
     });
   }
-  /* ---- Construction du MNT (grille) depuis les points, selon PTERR ---- */
-  function buildMesh() {
-    if (!hasData()) return null;
+  /* GRILLE NATURELLE EN CACHE (14/09/2026) : filtrage, interpolation IDW et lissage ne dépendent que des
+     points et de maille / découpe / bande / lissage — pas des plateformes. Déplacer une plateforme refaisait
+     tout : 3,3 s mesurées sur 283 000 points. La grille est réutilisée ; GZ est copiée, jamais modifiée. */
+  function natGrid() {
+    var key = [RAWV, RAW ? RAW.length : 0, PTERR.step, PTERR.cut, PTERR.bandMin, PTERR.bandMax, PTERR.smooth, REG ? 1 : 0, MINSTEP].join('|');
+    if (NATC && NATC.key === key) return NATC.res;
+    var res = (function () {
     var step = Math.max(0.5, +PTERR.step || 3), cut = Math.max(step, +PTERR.cut || 12);
     if (REG && step < MINSTEP) step = MINSTEP;   /* le curseur descend à 1 m, l'emprise peut ne pas le permettre */
     var bmin = +PTERR.bandMin, bmax = +PTERR.bandMax;
@@ -397,6 +404,16 @@
     }
     // 7) lissage (moyenne pondérée gaussienne séparable) sur le masque
     var sig=+PTERR.smooth||0; if(sig>0.01) GZ=smooth(GZ,mask,nx,ny,sig);
+    return { GZ: GZ, mask: mask, nx: nx, ny: ny, minX: minX, minY: minY, maxX: maxX, maxY: maxY, step: step, np: P.length };
+    })();
+    NATC = { key: key, res: res }; return res;
+  }
+  /* ---- Construction du MNT (grille) depuis les points, selon PTERR ---- */
+  function buildMesh() {
+    if (!hasData()) return null;
+    var NG = natGrid(); if (!NG || NG.tooBig) return NG;
+    var nx = NG.nx, ny = NG.ny, NC = nx * ny, minX = NG.minX, minY = NG.minY, maxX = NG.maxX, maxY = NG.maxY, step = NG.step, mask = NG.mask, i, x, y;
+    var GZ = new Float32Array(NG.GZ), P = { length: NG.np };
     // 7b) plateformes (plat / creux) sur la grille NATURELLE, conservée dans GZN ; volumes dans VOL
     var GZN=new Float32Array(GZ), VOL=null;
     if(PTERR.plats&&PTERR.plats.length){ VOL=platApply({GZ:GZ,GZN:GZN,mask:mask,nx:nx,ny:ny,minX:minX,minY:minY,step:step,cx:(minX+maxX)/2,cy:(minY+maxY)/2}, PTERR.plats); }
@@ -805,7 +822,11 @@
       bOn.onclick = function () { p.on = (p.on === 0) ? 1 : 0; ctx.change(); };
       var bDel = doc.createElement('button'); bDel.textContent = '✕'; bDel.title = 'Supprimer'; bDel.style.cssText = 'font-size:10px;padding:1px 5px;';
       bDel.onclick = function () { plats.splice(i, 1); ctx.change(); };
-      hd.appendChild(nm); hd.appendChild(bOn); hd.appendChild(bDel); card.appendChild(hd);
+      hd.appendChild(nm);
+      if (ctx.gizmo && p.on !== 0) { var bG = doc.createElement('button'), gOn = !!(ctx.gizmoOn && ctx.gizmoOn(i)); bG.textContent = '✥'; bG.title = tr('Manipuler dans la vue'); bG.className = gOn ? 'on' : ''; bG.style.cssText = 'font-size:12px;padding:0 6px;';
+        bG.onclick = function () { ctx.gizmo(i); }; hd.appendChild(bG); }
+      hd.appendChild(bOn); hd.appendChild(bDel); card.appendChild(hd);
+      if (ctx.gizmoOn && ctx.gizmoOn(i)) { var gh = doc.createElement('div'); gh.className = 'exp-note'; gh.style.cssText = 'color:#5eb8ff;margin:0 0 3px;'; gh.textContent = 'Glissez les poignées dans la vue : point = déplacer, flèches = le long des côtés, carrés = dimensions, rond = rotation, flèche verticale = altitude. Maj : sans pas. Échap pour quitter.'; card.appendChild(gh); }
       var sh = doc.createElement('div'); sh.className = 'finish-tabs';
       [['rect', 'Rectangle'], ['cercle', 'Cercle']].forEach(function (o) { var b = doc.createElement('button'); b.textContent = o[1]; if ((p.shape || 'rect') === o[0]) b.className = 'on'; b.onclick = function () { p.shape = o[0]; ctx.change(); }; sh.appendChild(b); });
       card.appendChild(sh);
@@ -851,6 +872,8 @@
       snap: function (x, y) { return (MESH && MESH.grid) ? gridSnap(MESH.grid, x, y) : null; },
       getShow: function () { return (PTERR.platShow == null) ? 1 : +PTERR.platShow; },
       setShow: function (v) { PTERR.platShow = v; },
+      gizmo: function (i) { if (typeof glob.platGizToggle === 'function') glob.platGizToggle({ ctx: 'terrain', i: i }); },
+      gizmoOn: function (i) { return typeof glob.platGizOn === 'function' && glob.platGizOn('terrain', i); },
       change: function () { MESH = null; if (typeof glob.build === 'function') { try { glob.build(); } catch (e) {} } glob.DIRTY = true; setTimeout(function () { if (glob.MODE === 'terrain') buildUI(host); }, 30); }
     });
   }
@@ -894,11 +917,17 @@
     var map = (P.colorByAlt === 2 && D.meta.tmap && D.tex && D.tex[D.meta.tmap.key]) ? D.meta.tmap : null;
     var parts = bakeParts(M, { colorByAlt: map ? 2 : (+P.colorByAlt ? 1 : 0), col: P.col || null, tex: null, map: map, drape: 0, contours: +P.contours, contourInt: +P.contourInt, mesh: +P.mesh, thick: +P.thick, thickFlat: +P.thickFlat, exag: 1, plats: P.plats, platShow: (P.platShow == null ? 1 : +P.platShow) });
     P.vol = vol;
-    var extra = { tgrid: gridPack(g, g.GZ), tparams: JSON.parse(JSON.stringify(P)) };
+    var snap = JSON.stringify(P);   /* instantané : les éditions faites PENDANT la refabrication survivent — le tampon n'est libéré que s'il n'a pas bougé */
+    var extra = { tgrid: gridPack(g, g.GZ), tparams: JSON.parse(snap) };
     if (P.plats.length) extra.tgridNat = gridPack(g, g.GZN);
     if (parts.uv) extra.uv = parts.uv;
-    return glob.BPO_import.rebake(pid, parts.pos, parts.idx, parts.groups, extra).then(function () { FZ[pid] = null; return vol; });
+    return glob.BPO_import.rebake(pid, parts.pos, parts.idx, parts.groups, extra).then(function () { if (FZ[pid] === P && JSON.stringify(P) === snap) FZ[pid] = null; return vol; });
   }
+  /* ACCÈS POUR LE GIZMO (15/09) — le tampon d'édition d'un terrain figé, sa refabrication gardée, le maillage vivant */
+  function frozenBuf(pid) { var D = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid]; if (!(D && D.meta && D.meta.tgrid)) return null; if (!D.meta.tparams && !FZ[pid]) return null; return FZ[pid] || (FZ[pid] = frozenParams(D)); }
+  function frozenApply(pid) { var P = frozenBuf(pid); if (!P) return Promise.reject(new Error('terrain figé indisponible')); if (BUSY[pid]) return Promise.reject(new Error('refabrication en cours'));
+    BUSY[pid] = 1; return rebakeFrozen(pid, P).then(function (v) { BUSY[pid] = 0; return v; }, function (e) { BUSY[pid] = 0; throw e; }); }
+  function meshGrid() { return (MESH && !MESH.tooBig && MESH.grid) ? MESH.grid : null; }
   function buildFrozenUI(host, inst, idx) {
     var pid = inst && inst.prod, D = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
     if (!(D && D.meta && D.meta.tgrid)) return;
@@ -928,14 +957,17 @@
       snap: function (x, y) { return gN ? gridSnap(gN, x, y) : null; },
       getShow: function () { return (P.platShow == null) ? 1 : +P.platShow; },
       setShow: function (v) { P.platShow = v; },
+      gizmo: function (i) { if (typeof glob.platGizToggle === 'function') glob.platGizToggle({ ctx: 'scene', ix: idx, pid: pid, i: i }); },
+      gizmoOn: function (i) { return typeof glob.platGizOn === 'function' && glob.platGizOn('scene', i) && !!glob.PLAT_GIZ && glob.PLAT_GIZ.pid === pid; },
       project: function (p) { return projectNear(inst, +p.x || 0, +p.y || 0); },
       projectBase: function (pr) { return projWorldBase(pr.o) - (inst.y || 0) / 100; },   /* terrain sans inclinaison : y objet = y monde − y instance */
       placeProject: function (pr, p) { var o = pr.o; o.y = (o.y || 0) + Math.round(((inst.y || 0) / 100 + (+p.z || 0) - projWorldBase(o)) * 100); if (typeof glob.scnLive === 'function') { try { glob.scnLive(); } catch (e) {} } glob.DIRTY = true; },
       change: rer
     });
     var bA = doc.createElement('button'); bA.className = 'save-add'; bA.style.marginTop = '6px'; bA.textContent = '↻ Appliquer au terrain figé';
+    if (BUSY[pid]) { bA.disabled = true; bA.textContent = 'Refabrication…'; }   /* refabrication lancée par le gizmo en cours */
     bA.onclick = function () { bA.textContent = 'Refabrication…'; bA.disabled = true;
-      rebakeFrozen(pid, P).then(function () { rer(); }).catch(function (e) {
+      frozenApply(pid).then(function () { rer(); }).catch(function (e) {
         /* écriture avortée (quota, disque plein) : l'objet EST refabriqué en mémoire mais reviendra au rechargement — le dire ; le tampon reste pour réessayer */
         if (e && e.saveFailed) glob.alert(tr('Terrain refabriqué mais non enregistré (espace de stockage ?) : il reviendra à son état précédent au rechargement.') + ' ' + (e.message || ''));
         else glob.alert(tr('Refabrication impossible :') + ' ' + (e && e.message || e));
@@ -1127,5 +1159,5 @@
     var bf=doc.createElement('button'); bf.className='save-add'; bf.textContent='❄ Figer le terrain (→ objet réutilisable)'; bf.style.marginTop='8px'; bf.onclick=freeze; host.appendChild(bf);
   }
 
-  glob.BPO_terrain = { PTERR: PTERR, setDXF: setDXF, setGrid: setGrid, buildFrozenUI: buildFrozenUI, rebakeFrozen: rebakeFrozen, platApply: platApply, platGeo: platGeo, surfY: surfY, recoverFrozen: recoverFrozen, projectNear: projectNear, buildFC: buildFC, buildUI: buildUI, hasData: hasData, ctrlHandles: ctrlHandles, setCtrlCm: setCtrlCm, footHandles: footHandles, setFoot: setFoot, insertFoot: insertFoot, removeFoot: removeFoot, _parse: parseDXFall };
+  glob.BPO_terrain = { PTERR: PTERR, setDXF: setDXF, setGrid: setGrid, meshGrid: meshGrid, frozenBuf: frozenBuf, frozenApply: frozenApply, frozenBusy: function (pid) { return !!BUSY[pid]; }, buildFrozenUI: buildFrozenUI, rebakeFrozen: rebakeFrozen, platApply: platApply, platGeo: platGeo, surfY: surfY, recoverFrozen: recoverFrozen, projectNear: projectNear, buildFC: buildFC, buildUI: buildUI, hasData: hasData, ctrlHandles: ctrlHandles, setCtrlCm: setCtrlCm, footHandles: footHandles, setFoot: setFoot, insertFoot: insertFoot, removeFoot: removeFoot, _parse: parseDXFall };
 })();
