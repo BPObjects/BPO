@@ -1,6 +1,6 @@
 {
   "_comment": "Source de vérité des textes de la page d'accueil. Le français fait foi. Régénérer les pages avec : python3 _i18n/build.py",
-  "_base": "https://bpobjects.github.io/BPO/",
+  "_base": "https://bpo.archi/",
   "_default": "fr",
   "_langs": {
     "fr": {"name": "Français",   "og": "fr_FR", "dir": "ltr"},
