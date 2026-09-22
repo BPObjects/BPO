@@ -211,8 +211,17 @@
     .logo-stage{order:-1;margin-bottom:8px;}
     .feat-grid{grid-template-columns:1fr 1fr;}
   }
-  @media(max-width:620px){
+  /* La barre du haut ne se replie pas (flex-wrap:nowrap, pose par le selecteur de
+     langue) : des que le menu ne tient plus a cote du logo et du selecteur, il
+     pousse la page hors de la fenetre et le site defile lateralement. Le menu
+     est donc masque comme sur telephone tant que la barre n'a pas la place.
+     Seuil MESURE le 22/09/2026, en iframe a la largeur exacte : la langue la
+     plus large est le russe, qui demande 1033 px (portugais 1008, francais 979).
+     1060 px laisse une marge ; le hero garde de toute facon ses deux boutons. */
+  @media(max-width:1060px){
     .nav-mini{display:none;}
+  }
+  @media(max-width:620px){
     .cards{grid-template-columns:1fr;}
     .feat-grid{grid-template-columns:1fr;}
     .value-grid{grid-template-columns:1fr;gap:28px;}
