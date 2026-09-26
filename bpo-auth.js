@@ -7,7 +7,7 @@
    du compte, le MÊME utilisateur est converti (travail conservé, essai 15 j).
    Essai en cours -> bandeau N jours ; essai terminé -> mode découverte
    (data-bpo-demo + bpo-demo-gate.js). Capture aussi ?ref= (attribution).
-   Bandeaux localisés (13 langues) et EN FLUX (v5 : plus de chevauchement).
+   Bandeaux localisés (19 langues) et EN FLUX (v5 : plus de chevauchement).
    v6 — la langue suit CELLE DU SITE : ?lang= sinon localStorage bpo_lang
    (posé par le sélecteur de langue de l'app) sinon navigateur ; et le bandeau
    se re-rend à chaud sur l'évènement `bpo-lang` émis par setLang() d'app.html.    v7 — le bandeau anonyme propose AUSSI « me connecter » : un ABONNÉ arrivant
