@@ -692,6 +692,10 @@ function ouvrir(){
   var r5 = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
   var ckF = document.createElement('input'); ckF.type = 'checkbox'; ckF.checked = true; r5.appendChild(ckF); r5.appendChild(el('span', '', 'Poser le scan en fond de plan')); right.appendChild(r5);
   var bAna = btn('Analyser le plan'); bAna.disabled = true; right.appendChild(bAna);
+  /* PDF -> DXF (26/09/2026, AL) : le plan extrait (enveloppe, murs, ouvertures, zones) en DXF, metres -> mm. bpo-pdf2dxf.js */
+  var bDxf = btn('Exporter le plan en DXF'); right.appendChild(bDxf);
+  bDxf.onclick = function(){ if (!window.BPO_pdf2dxf) return; if (!ETAT.R || !ETAT.R.plan){ res.textContent = 'Lance d\u2019abord \u00ab Analyser le plan \u00bb.'; return; }
+    window.BPO_pdf2dxf.telecharge((ETAT.nom || 'plan').replace(/\.[a-z0-9]+$/i, '') + '-plan.dxf', window.BPO_pdf2dxf.exporterPlan(ETAT.R.plan)); };
   var res = el('div', 'font-size:10.5px;line-height:1.5;color:var(--tx,#e8e9ec);min-height:60px;'); right.appendChild(res);
   var note = el('div', 'font-size:9px;color:var(--dm,#8b92a0);line-height:1.4;');
   note.textContent = "Rouge = murs, cyan = ouvertures, noir = contour du bâtiment, couleurs = pièces. Deux murs parallèles proches peuvent fusionner ; une marche ou un meuble gris peut passer pour un mur court : retouche ensuite dans le plan d'étage."; right.appendChild(note);

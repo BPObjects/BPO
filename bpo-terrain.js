@@ -1065,6 +1065,10 @@
     var bcad = doc.createElement('button'); bcad.className = 'save-add'; bcad.textContent = '⭳ Importer cadastre (fond de plan)'; bcad.style.margin = '2px 0 8px';
     bcad.onclick = function () { if (glob.BPO_cadastre) glob.BPO_cadastre.open(); else glob.alert(tr('Module cadastre non chargé (recharge la page).')); };
     host.appendChild(bcad);
+    /* PDF -> DXF (26/09/2026, AL) : le trace vectoriel d'un plan PDF, ecrit en DXF a l'echelle. bpo-pdf2dxf.js */
+    var bpdx = doc.createElement('button'); bpdx.className = 'save-add'; bpdx.textContent = '\u{1F4D0} ' + tr('Convertir un PDF en DXF'); bpdx.style.margin = '0 0 8px';
+    bpdx.onclick = function () { if (glob.BPO_pdf2dxf) glob.BPO_pdf2dxf.ouvrir(); else glob.alert(tr('Module cadastre non charg\u00e9 (recharge la page).')); };
+    host.appendChild(bpdx);
     if (PTERR.src === 'shape') { buildShapeUI(host); return; }
     var card = doc.createElement('div'); card.className = 'fld';
     card.innerHTML = '<div class="fh"><span>Terrain — MNT depuis DXF</span></div>' +
