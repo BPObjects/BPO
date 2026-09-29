@@ -12,7 +12,7 @@
    UCS, APPID, DIMSTYLE, BLOCKS $Model_Space/$Paper_Space, poignées —, validé
    par ezdxf.audit() et ouvert dans ArchiCAD le 26/09/2026.
 
-   Pièges connus (tous vus sur le CDC Safran AZUR, 26/09/2026) :
+   Pièges connus (tous vus sur un vrai cahier des charges scanné, 26/09/2026) :
    - les coordonnées des chemins sont dans le repère NON tourné de la page : on
      passe par viewport.transform, qui applique /Rotate et retourne y ;
    - un PDF peint souvent chaque contour deux fois (fond puis cerne) : 52 % de
