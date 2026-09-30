@@ -12,7 +12,12 @@
    (posé par le sélecteur de langue de l'app) sinon navigateur ; et le bandeau
    se re-rend à chaud sur l'évènement `bpo-lang` émis par setLang() d'app.html.    v7 — le bandeau anonyme propose AUSSI « me connecter » : un ABONNÉ arrivant
    sur un navigateur neuf recevait une session anonyme et n'avait aucune voie
-   de retour vers son compte payé (correctif jumeau dans compte.html). */
+   de retour vers son compte payé (correctif jumeau dans compte.html).
+   v8 — l'attribution suit AUSSI l'essai anonyme : le ?ref= mémorisé part
+   dans les métadonnées de la session anonyme (profiles.ref_source dès la
+   première visite, plus seulement à la création du compte). Un navigateur
+   PILOTÉ (navigator.webdriver : Chrome sans tête des bancs, robots) est
+   marqué 'robot' pour sortir des statistiques de visiteurs. */
 /* supabase-js VENDORISÉ (2.110.7, bundle esm.sh rapatrié dans ./vendor/) :
    plus aucun code d'authentification chargé depuis un CDN externe. */
 import { createClient } from "./vendor/supabase-js-2.110.7.js";
@@ -119,7 +124,12 @@ function marquerProprietaire(session){
   if(!session){
     /* ESSAI LIBRE : session anonyme (2 jours côté serveur). Repli : compte.html. */
     try{
-      const { data: d2, error } = await sb.auth.signInAnonymously();
+      /* v8 : origine de la visite (même clé que compte.html), ou 'robot'. */
+      let ref = "";
+      try{ ref = localStorage.getItem("bpoRef") || ""; }catch(e){}
+      if(!/^[a-z0-9_\-]{1,32}$/.test(ref)) ref = "";
+      if(navigator.webdriver) ref = "robot";
+      const { data: d2, error } = await sb.auth.signInAnonymously(ref ? { options:{ data:{ ref } } } : undefined);
       if(error || !d2?.session){ location.replace("compte.html"); return; }
       session = d2.session;
     }catch(e){ location.replace("compte.html"); return; }
