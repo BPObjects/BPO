@@ -76,12 +76,18 @@
 
   /* visuel logo BP[O] */
   .logo-stage{display:flex;flex-direction:column;align-items:center;justify-content:center;}
-  .logo-lockup{display:flex;align-items:center;justify-content:center;line-height:1;}
-  .bp{font-size:clamp(96px,13vw,180px);font-weight:200;letter-spacing:-0.03em;line-height:1;
+  .logo-lockup{display:flex;align-items:baseline;justify-content:center;line-height:1;direction:ltr;
+    font-size:clamp(96px,13vw,180px);}   /* corps du logo ; se lit BPO dans toutes les langues (arabe compris) */
+  .bp{font-size:1em;font-weight:200;letter-spacing:-0.03em;line-height:1;
     background:linear-gradient(180deg,#26313f 0%,#54637a 55%,#9aa6b5 100%);
     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
-  #sphere{width:clamp(74px,10vw,140px);height:clamp(74px,10vw,140px);display:block;
-    margin-left:clamp(-9px,-0.9vw,-5px);transform:translateY(9%);}
+  /* le « O » : la sphère tient la place exacte du O d'Inter 200 (06/10/2026, AL : « aligner le O qui tourne
+     avec les lettres BP »). Encre du O : 0,75 em de haut (0,739 au-dessus de la ligne de base, 0,011
+     dessous), approche gauche 0,061 em. Silhouette dessinée = 0,4604 × côté du canevas → côté 0,8145 em ;
+     bas du canevas sur la ligne de base, descendu de 0,0433 em pour centrer sur le O ; marge = approche
+     du O moins le vide du canevas autour de la silhouette. */
+  #sphere{width:0.8145em;height:0.8145em;display:block;
+    margin-left:0.0289em;transform:translateY(0.0433em);}
   .logo-word{margin-top:14px;font-size:clamp(10px,1.1vw,13px);letter-spacing:0.4em;
     color:var(--steel);font-weight:600;padding-left:0.4em;}
 
