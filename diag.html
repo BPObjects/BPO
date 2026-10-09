@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>BPO — diagnostic du stockage</title>
+<!-- PAGE DE SOUTIEN (09/10/2026). Autonome : AUCUN import (ni bpo-auth.js, ni
+     Supabase, ni reseau). Elle ne fait que LIRE le localStorage du visiteur, sur
+     l'origine de l'app, et n'affiche QUE des tailles - jamais une valeur, pour ne
+     pas exposer la cle d'IA ni le jeton de session. Une seule cle-sonde est
+     ecrite puis retiree, pour mesurer la place restante. Rien ne part d'ici. -->
+<style>
+:root{ --fd:#11151c; --pan:#20242c; --bord:#343a45; --txt:#e8e9ec; --gris:#8b92a0; --or:#ff8a3d; --vert:#4ec98a; --rouge:#ff5f56; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--fd);color:var(--txt);font:14px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;padding:24px 16px}
+.w{max-width:780px;margin:0 auto}
+h1{font-size:19px;margin:0 0 4px}
+.sub{color:var(--gris);font-size:13px;margin:0 0 22px}
+.pan{background:var(--pan);border:1px solid var(--bord);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+button{font:600 14px system-ui,sans-serif;background:var(--or);color:#1a1205;border:0;border-radius:9px;padding:11px 20px;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+button.sec{background:transparent;color:var(--or);border:1px solid var(--or)}
+pre{white-space:pre-wrap;word-break:break-word;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;margin:0;color:var(--txt)}
+.cons{font-size:12.5px;color:var(--gris);margin-top:14px;line-height:1.55}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+#etat{font-size:12.5px;color:var(--vert);min-height:18px;margin-top:10px}
+</style></head><body><div class="w">
+
+<h1>BPO — diagnostic du stockage</h1>
+<p class="sub">Pour comprendre une reconnexion qui revient, ou des objets qui ne se gardent pas.
+Cette page lit uniquement la mémoire que BPO utilise <b>dans votre navigateur</b> : rien n'est envoyé,
+et aucun de vos contenus n'est affiché — seulement des tailles.</p>
+
+<div class="pan">
+  <div class="row">
+    <button id="go">Lancer le diagnostic</button>
+    <button id="cp" class="sec" disabled>Copier le résultat</button>
+  </div>
+  <div id="etat"></div>
+</div>
+
+<div class="pan" id="bloc" style="display:none"><pre id="out"></pre></div>
+
+<p class="cons">Le résultat tient en un bloc de texte : copiez-le et renvoyez-le à votre contact BPO.
+Aucune action de cette page ne modifie ni ne supprime votre travail.</p>
+
+<script>
+(function(){
+  var JETON = 'sb-ockdepvqxjfwudthmusa-auth-token';   /* projet Supabase de BPO */
+  var QUOTA_SUPPOSE = 5242880, MARGE = 1000000;       /* constantes de bpo-sync.js */
+  var SONDE = '__bpo_diag_sonde__', PLAFOND_SONDE = 16 * 1024 * 1024;
+  var CLES_BPO = /^(BPO_|bpo_|bpoRef|bpoInterne|sb-)/;
+  var txt = '';
+
+  function mo(n){ return (n / 1048576).toFixed(2) + ' Mo'; }
+  function cal(s, n){ s = String(s); while(s.length < n) s = ' ' + s; return s; }
+
+  /* Place encore disponible, par dichotomie sur une cle-sonde, BORNEE a 16 Mo :
+     au-dela on repond "plus de 16 Mo", pour ne jamais faire gonfler la memoire
+     du navigateur de l'utilisateur. */
+  function placeLibre(){
+    var bas = 0, haut = PLAFOND_SONDE + 1, mil;
+    try{
+      while(haut - bas > 16384){
+        mil = Math.floor((bas + haut) / 2);
+        try{ localStorage.setItem(SONDE, new Array(mil + 1).join('x')); bas = mil; }
+        catch(e){ haut = mil; }
+      }
+    }catch(e){}
+    try{ localStorage.removeItem(SONDE); }catch(e){}
+    return bas;
+  }
+
+  function diag(){
+    var LS, occ = 0, tailles = [], i, k, v, nbBpo = 0;
+    try{ LS = localStorage; if(LS === null) throw new Error('nul'); }
+    catch(e){ return 'localStorage INACCESSIBLE (' + e.name + ')\n\n'
+      + 'Navigation privee, ou cookies et donnees de site bloques pour ce domaine.\n'
+      + 'C est la cause : BPO ne peut rien garder, pas meme votre session.'; }
+
+    for(i = 0; i < LS.length; i++){
+      k = LS.key(i); v = LS.getItem(k) || '';
+      occ += k.length + v.length;
+      tailles.push([k, k.length + v.length]);
+      if(CLES_BPO.test(k)) nbBpo++;
+    }
+    tailles.sort(function(a, b){ return b[1] - a[1]; });
+
+    var libre = placeLibre(), ecritPossible = libre > 0;
+    var borne = libre > PLAFOND_SONDE - 16384, quota = occ + libre;
+
+    /* Session : presence et echeance SEULEMENT, jamais le jeton. */
+    var brut = null, sess = 'ABSENTE', anon = null;
+    try{
+      brut = LS.getItem(JETON);
+      if(brut){
+        var s = JSON.parse(brut), ech = (s && s.expires_at) ? new Date(s.expires_at * 1000) : null;
+        sess = 'presente' + (ech ? ' - echeance ' + ech.toLocaleString('fr-FR') + (ech < new Date() ? ' (DEPASSEE)' : '') : '');
+        anon = !!(s && s.user && s.user.is_anonymous);
+      }
+    }catch(e2){ sess = 'presente mais illisible'; }
+
+    var nbObj = null, tObj = 0;
+    try{ var c = LS.getItem('BPO_CONFIGS_v1');
+         if(c !== null){ tObj = c.length; nbObj = (JSON.parse(c) || []).length; } }catch(e3){}
+
+    var safari = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
+    var garde = occ + MARGE <= QUOTA_SUPPOSE;
+
+    var r = [];
+    r.push('=== DIAGNOSTIC BPO - stockage du navigateur ===');
+    r.push('date            : ' + new Date().toLocaleString('fr-FR'));
+    r.push('origine         : ' + location.origin);
+    r.push('navigateur      : ' + navigator.userAgent);
+    r.push('');
+    r.push('occupe          : ' + cal(occ.toLocaleString('fr-FR'), 12) + ' car.  (' + mo(occ) + ')');
+    r.push('encore libre    : ' + cal(borne ? 'plus de ' + PLAFOND_SONDE.toLocaleString('fr-FR') : libre.toLocaleString('fr-FR'), 12) + ' car.  (' + (borne ? 'plus de ' + mo(PLAFOND_SONDE) : mo(libre)) + ')');
+    r.push('quota apparent  : ' + (borne ? 'plus de ' + mo(quota) : 'environ ' + mo(quota)));
+    r.push('ecriture        : ' + (ecritPossible ? 'POSSIBLE' : '>>> REFUSEE - localStorage PLEIN <<<'));
+    r.push('');
+    r.push('session BPO     : ' + sess);
+    r.push('compte anonyme  : ' + (anon === null ? '-' : (anon ? 'OUI (essai libre, sans compte)' : 'non')));
+    r.push('cles BPO        : ' + nbBpo + ' sur ' + LS.length + ' cles du domaine');
+    r.push('objets (biblio) : ' + (nbObj === null ? 'aucune bibliotheque dans ce navigateur' : nbObj + ' (' + mo(tObj) + ')'));
+    r.push('');
+    r.push('garde de synchro (bpo-sync.js, placePour) : une grosse cle ne redescend du');
+    r.push('compte que si  occupe + 1 Mo <= 5 Mo  ->  ' + mo(occ + MARGE) + ' <= ' + mo(QUOTA_SUPPOSE) + '  ->  ' + (garde ? 'PASSE' : 'REFUSE'));
+    if(!garde) r.push('  => la bibliotheque du compte ne peut PAS etre appliquee dans ce navigateur.');
+    if(safari){
+      r.push('');
+      r.push('NOTE : navigateur de la famille Safari - quota d environ 5 Mo, et les donnees');
+      r.push('       de site peuvent etre effacees apres 7 jours sans visite.');
+    }
+    if(!ecritPossible){
+      r.push('');
+      r.push('NOTE : stockage plein. La session ne peut plus etre ecrite : elle ne tient que');
+      r.push('       le temps de l onglet, d ou une reconnexion a chaque venue.');
+    }
+    r.push('');
+    r.push('--- les 15 plus grosses cles (noms et tailles seulement) ---');
+    if(!tailles.length) r.push('  (aucune)');
+    tailles.slice(0, 15).forEach(function(e){ r.push('  ' + cal(mo(e[1]), 10) + '   ' + e[0]); });
+    return r.join('\n');
+  }
+
+  var bGo = document.getElementById('go'), bCp = document.getElementById('cp');
+  var out = document.getElementById('out'), bloc = document.getElementById('bloc'), etat = document.getElementById('etat');
+
+  bGo.onclick = function(){
+    bGo.disabled = true; etat.textContent = 'mesure en cours...';
+    setTimeout(function(){
+      try{ txt = diag(); }catch(e){ txt = 'Diagnostic interrompu : ' + e.name + ' - ' + e.message; }
+      out.textContent = txt; bloc.style.display = 'block';
+      bCp.disabled = false; bGo.disabled = false;
+      etat.textContent = 'termine - rien n a ete modifie.';
+    }, 30);
+  };
+
+  bCp.onclick = function(){
+    function dit(m){ etat.textContent = m; }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(
+        function(){ dit('resultat copie.'); },
+        function(){ dit('copie refusee - selectionnez le texte a la main.'); });
+    } else {
+      try{ var s = window.getSelection(), g = document.createRange();
+           g.selectNodeContents(out); s.removeAllRanges(); s.addRange(g);
+           dit(document.execCommand('copy') ? 'resultat copie.' : 'selectionnez le texte a la main.');
+      }catch(e){ dit('selectionnez le texte a la main.'); }
+    }
+  };
+})();
+</script>
+</div></body></html>
