@@ -107,7 +107,7 @@
     var portee = (pose === "debout" ? S.debout : S.couchee) / 1000;
     var lameL = pose === "debout" ? H - 2 * EP : L - 2 * EP;          // longueur d'une lame
     var appuisMin = pose === "debout" ? 2 : Math.ceil(L / portee - 1e-9) + 1;
-    var nAppuis = +P.appuisAuto ? appuisMin : Math.max(2, Math.min(12, Math.round(+P.nAppuis || 2)));
+    var nAppuis = pose === "debout" ? 2 : +P.appuisAuto ? appuisMin : Math.max(2, Math.min(12, Math.round(+P.nAppuis || 2)));   // debout : deux flasques, toujours
     var sinI = Math.sin(incl * RAD), cosI = Math.cos(incl * RAD);
     var env = { h: c * sinI + t * cosI, p: c * cosI + t * sinI };    // enveloppe d'une lame couchée inclinée
     /* le support tient au moins une lame : débord ≥ enveloppe (casquette), hauteur ≥ enveloppe (écran couché) */
@@ -334,7 +334,7 @@
     if (!(+PBS.pasAuto) && D.pas < D.c * 0.7) w += '<div style="color:#e08a2e;margin-top:3px;">⚠ Entraxe serré : les lames se chevauchent fortement.</div>';
     return "<b>" + poseLabel(D.pose) + " — lame AZUR " + S.id + "</b> · " + S.l + " × " + S.e + " mm, aluminium 6060 T6 extrudé" + (S.deux ? " (deux parties)" : "") + "<br>"
       + D.nL + " lames de " + f2(D.lameL) + " m (" + f2(D.mlLames, 1) + " ml" + (S.poids ? ", ≈ " + f0(D.kgLames) + " kg" : "") + "), pas " + f0(D.pas * 1000) + " mm, " + f0(D.incl) + "°, "
-      + D.nAppuis + " appuis" + (D.pose === "debout" ? " + " + D.nConsoles + " consoles" : "") + ", " + f2(D.surface, 1) + " m² protégés<br>"
+      + (D.pose === "debout" ? "2 flasques + " + 2 * D.nConsoles + " consoles (" + D.nConsoles + " par flasque)" : D.nAppuis + " appuis") + ", " + f2(D.surface, 1) + " m² protégés<br>"
       + "<span style=\"opacity:.8\">Portée fiche " + (D.pose === "debout" ? "lame debout " : "lame couchée ") + f2(D.portee) + " m" + (S.est ? " (estimée)" : "") + (S.note ? " — " + S.note : "") + " ; "
       + (S.poids ? S.poids + " g/ml ; " : "") + "pas et flasques à confirmer avec le fabricant.</span>" + w;
   }
@@ -382,6 +382,15 @@
     for (var i = 0; i < F.length; i++) if (glob.AL_PRODUCT !== undefined && F[i].p.id === glob.AL_PRODUCT) return F[i];
     return null;
   }
+  function noteAppuis(D) {
+    var S = D.S;
+    return D.pose === "debout"
+      ? "Lames debout : deux flasques (haut et bas), consoles tous les 1,50 m au plus (" + D.nConsoles + " par flasque, à confirmer). Portée « lame debout » de la fiche : "
+        + f2(D.portee) + " m" + (S.est ? " (estimée)" : "") + " pour des lames de " + f2(D.lameL) + " m. Flasques et consoles rendues en plat de 10 mm — « dimensionnées selon étude » chez le fabricant."
+      : "Appuis déduits de la portée « lame couchée » de la fiche (" + f2(D.portee) + " m" + (S.est ? ", estimée" : "") + ") : " + D.appuisMin + " au moins pour "
+        + f2(D.L) + " m. Flasques et consoles rendues en plat de 10 mm — « dimensionnées selon étude » chez le fabricant.";
+  }
+  var host0 = function () { return document.getElementById("params") || document.createElement("div"); };
   function buildUI(again) {
     var P = PBS, self = typeof again === "function" ? again : buildUI;
     /* la fiche ouverte impose son set (la pose) : « Réinitialiser » restaure
@@ -392,7 +401,7 @@
     if (chg) { glob.build(); if (typeof glob.updateDims === "function") glob.updateDims(); }
     var D = derive(P), S = D.S, groups = [];
     var casq = D.pose === "casquette";
-    var secOpts = SECTIONS.map(function (s) { return { id: s.id, l: s.id.replace("AS", "") + (s.rect ? " R" : "") }; });
+    var secOpts = SECTIONS.map(function (s) { return { id: s.id, l: s.id.replace("AS", "") }; });
     groups.push({ title: "Lame AZUR", fields: [
       { type: "choice", label: "Section (largeur × épaisseur, mm)", key: "section", options: secOpts,
         pick: function (id) { if (+P.pasAuto) P.pas = Math.round(section(id).l / 10); } },
@@ -407,22 +416,32 @@
                : { type: "slider", label: "Hauteur du bas de l'écran", unit: "cm", key: "hBas", min: 0, max: 400, step: 5 });
     if (!casq) fD.push({ type: "slider", label: "Retrait du nu de façade", unit: "cm", key: "retrait", min: 0, max: 60, step: 1 });
     groups.push({ title: "Déploiement du brise-soleil", fields: fD });
-    var fL = [{ type: "choice", label: "Entraxe (pas) des lames", key: "pasAuto", options: [{ id: 1, l: "Auto : largeur de lame" }, { id: 0, l: "Réglé" }],
+    var fL = [{ type: "choice", label: "Entraxe (pas) des lames", key: "pasAuto", options: [{ id: 1, l: "Auto : largeur de lame (jour ≥ 1 cm)" }, { id: 0, l: "Réglé" }],
       pick: function (v) { if (+v) P.pas = Math.round(S.l / 10); } }];
-    if (!(+P.pasAuto)) fL.push({ type: "slider", label: "Entraxe", unit: "cm", key: "pas", min: Math.max(2, Math.ceil(S.e / 10) + 1), max: 100, step: 1,
+    if (!(+P.pasAuto)) fL.push({ type: "slider", label: "Pas réglé (entraxe)", unit: "cm", key: "pas", min: Math.max(2, Math.ceil(S.e / 10) + 1), max: 100, step: 1,
       suffix: function (v) { return v < S.l / 10 ? "chevauchement" : v > S.l / 10 * 1.6 ? "lames espacées" : ""; } });
     fL.push({ type: "slider", label: "Inclinaison des lames", unit: "°", key: "incl", min: 0, max: 90, step: 5,
       suffix: function (v) { return [0, 15, 30, 45].indexOf(+v) >= 0 ? "position SpeedFix" : "hors positions SpeedFix 0/15/30/45"; } });
     groups.push({ title: "Lames ailes d'avion", fields: fL });
-    var fA = [{ type: "choice", label: "Appuis (consoles / flasques)", key: "appuisAuto", options: [{ id: 1, l: "Auto : selon la portée" }, { id: 0, l: "Réglé" }],
-      pick: function (v) { if (+v) P.nAppuis = D.appuisMin; else P.nAppuis = Math.max(+P.nAppuis || 2, D.appuisMin); } }];
-    if (!(+P.appuisAuto)) fA.push({ type: "slider", label: "Nombre d'appuis", unit: "", key: "nAppuis", min: 2, max: 12, step: 1,
-      suffix: function (v) { return v < D.appuisMin ? "⚠ portée dépassée" : ""; } });
+    var fA = [];
+    if (D.pose !== "debout") {                                   // lames debout : deux flasques, toujours — rien à régler
+      fA.push({ type: "choice", label: "Appuis (consoles / flasques)", key: "appuisAuto", options: [{ id: 1, l: "Auto : selon la portée" }, { id: 0, l: "Réglé" }],
+        pick: function (v) { var m = derive(P).appuisMin; if (+v) P.nAppuis = m; else P.nAppuis = Math.max(+P.nAppuis || 2, m); } });
+      if (!(+P.appuisAuto)) fA.push({ type: "slider", label: "Nombre d'appuis", unit: "", key: "nAppuis", min: 2, max: 12, step: 1,
+        suffix: function (v) { return v < derive(P).appuisMin ? "⚠ portée dépassée" : ""; } });   // vivant : la longueur bouge sous les curseurs
+    }
     fA.push({ type: "choice", label: "Platines murales et visserie", key: "platines", options: [{ id: 1, l: "Dessinées" }, { id: 0, l: "Masquées" }] });
-    fA.push({ type: "note", text: "Appuis déduits de la portée « " + (D.pose === "debout" ? "lame debout" : "lame couchée") + " » de la fiche (" + f2(D.portee) + " m"
-      + (S.est ? ", estimée" : "") + ") : " + D.appuisMin + " au moins pour " + f2(D.pose === "debout" ? D.lameL : D.L) + " m. Flasques et consoles rendues en plat de 10 mm — « dimensionnées selon étude » chez le fabricant." });
+    fA.push({ type: "note", text: noteAppuis(D) });
     groups.push({ title: "Appuis", fields: fA });
     glob.buildObjUI(P, groups, self);
+    /* ce que les curseurs changent sans rebâtir le panneau : la note des appuis, la
+       carte produit (« Dimensions », écrite une fois par buildProcProductUI) */
+    var notes = host0().querySelectorAll(".exp-note"), nA = notes[notes.length - 1];
+    if (glob._sfxUpd) glob._sfxUpd.push(function () {
+      if (nA) nA.innerHTML = noteAppuis(derive(P));
+      var b = document.querySelector("#params .pc-spec b"), d = glob.DIMS;
+      if (b && d) b.textContent = Math.round(100 * d.w) + " × " + Math.round(100 * d.d) + " × " + Math.round(100 * d.h) + " cm";
+    });
     /* base d'annulation du mode courant (idempotent ; la branche proc de refreshView
        ne l'appelait pas : un Ctrl+Z versait les paramètres du mode précédent) */
     if (typeof glob.undoOnView === "function") glob.undoOnView();
@@ -436,9 +455,12 @@
     var dz = document.createElement("div"); dz.className = "fld"; dz.style.marginTop = "8px";
     dz.innerHTML = '<div class="fh"><label>Désignation (vide = automatique)</label></div>';
     var inp = document.createElement("input");
-    inp.type = "text"; inp.value = P.designation || ""; inp.placeholder = designation(P, true);
+    inp.type = "text"; inp.id = "bs-designation"; inp.value = P.designation || ""; inp.placeholder = designation(P, true);
     inp.style.cssText = "width:100%;box-sizing:border-box;font-size:11px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:4px;padding:4px;";
     inp.onchange = function () { P.designation = inp.value; glob.DIRTY = true; if (typeof glob.undoSchedule === "function") glob.undoSchedule(); };
+    /* vivant sous les curseurs ; translateDOM (autres langues) réécrit l'attribut depuis
+       son cache __fr_placeholder à chaque mutation : on tient le cache à jour aussi */
+    if (glob._sfxUpd) glob._sfxUpd.push(function () { inp.__fr_placeholder = inp.placeholder = designation(P, true); });
     dz.appendChild(inp); host.appendChild(dz);
     /* le récapitulatif, vivant */
     var rc = document.createElement("div"); rc.className = "exp-note"; rc.style.cssText = "margin:0 0 8px;line-height:1.45;";

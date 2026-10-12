@@ -12,7 +12,8 @@
  *                                              data/fabricants.js, les tailles dans data/tailles.js,
  *                                              et un .glb intermédiaire par objet dans tools/sortie/
  *   node objets-tellier.mjs --verifier      -> relit chaque data/tellier/<id>.js comme app.html
- *   node objets-tellier.mjs --vignettes     -> data/tellier/thumbs/<id>.png (Chromium sans tête)
+ *   node objets-tellier.mjs --vignettes     -> data/tellier/thumbs/<id>.png (Chromium sans tête), puis les
+ *                                              trois cartes du configurateur, copies d'une taille figée
  *
  * LA MARQUE EST PRIVÉE (prive:'compte') : visible du seul compte propriétaire
  * (bpo-config.js, OWNER_EMAILS), comme Anjou Tôlerie, Vitra ou Mecalux en
@@ -70,7 +71,7 @@
  * façade à l'arrière (−Z), extérieur vers +Z.
  */
 import * as THREE from "three";
-import { writeFileSync, mkdirSync, copyFileSync } from "fs";
+import { writeFileSync, mkdirSync, copyFileSync, existsSync } from "fs";
 import { join } from "path";
 import { atelier, fabriquerObjets, verifierMarque, peindreVignettes, poserEntreeFabricants, poserTailles, SORTIE, RACINE } from "./bpo-catalogue.mjs";
 
@@ -89,9 +90,11 @@ const URL_PAGE = "https://www.tellierbrisesoleil.com/protection-solaire/brise-so
  * ------------------------------------------------------------------ */
 import { createRequire } from "module";
 const BS = createRequire(import.meta.url)("../bpo-brisesoleil.js");
+const mm = (n) => String(n).replace(/\B(?=(\d{3})+$)/g, " ");          // 3260 → « 3 260 », sans dépendre de l'ICU de Node
 const SECTIONS = Object.fromEntries(BS.SECTIONS.map((s) => [s.id, { largeur: s.l, epaisseur: s.e, poids: s.poids, couchee: s.couchee, debout: s.debout,
-  portees: s.id === "AS300x52" ? "portée maximale 3 740 mm (fiche produit, calcul à 1 050 Pa ; brochure 2025 : 4 770 / 5 050 mm)"
-    : `portées ${s.couchee.toLocaleString("fr-FR")} mm lame couchée / ${s.debout.toLocaleString("fr-FR")} mm lame debout` }]));
+  portees: s.note ? `portée maximale ${mm(s.couchee)} mm (${s.note} mm)`
+    : `portées ${mm(s.couchee)} mm lame couchée / ${mm(s.debout)} mm lame debout` }]));
+const PORTEES_ESTIMEES = BS.SECTIONS.filter((s) => s.est).map((s) => s.id).join(", ");   // portée non publiée, interpolée
 
 /* Teintes : aluminium thermolaqué. Le site liste les finitions sans en
    imposer une ; rendu lames RAL 9006 aluminium blanc, flasques et consoles
@@ -143,8 +146,9 @@ function fabrique({ pose, section, longueur }) {
     g.setAttribute("uv", new THREE.Float32BufferAttribute(G.uv, 2));
     const m = new THREE.Mesh(g, materiau(cle)); m.name = MATIERES[cle].nom; racine.add(m);
   }
-  const bb = new THREE.Box3().setFromObject(racine), taille = bb.getSize(new THREE.Vector3());
-  const dims = { largeur: Math.round(taille.x * 1000), profondeur: Math.round(taille.z * 1000), hauteur: Math.round(taille.y * 1000),
+  /* les cotes annoncées par derive() — PAS la bbox three.js, que fabriquerObjets
+     confronte à la relecture du paquet : avec la bbox le contrôle serait tautologique */
+  const dims = { largeur: longueur, profondeur: Math.round(D.profondeur * 1000), hauteur: Math.round((D.hauteur - (D.yMin || 0)) * 1000),
     lames: D.nL, appuis: D.nAppuis, pas: Math.round(D.pas * 1000), inclinaison: D.incl, consoles: D.nConsoles };
   return { racine, dims };
 }
@@ -173,7 +177,7 @@ const POSES = {
   debout: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — vertical lames debout", code: "vd",
     titre: (sec, L) => `Brise-soleil vertical AZUR ${sec} — lames debout L ${L}`,
     texte: (d) => `Écran devant une baie : ${d.lames} lames verticales entre deux flasques horizontales (haut et bas) tenues à la façade `
-      + `par ${d.consoles} consoles, corde à ${d.inclinaison}° du plan de façade, hauteur ${d.hauteur}, longueur ${d.largeur}, à 100 mm du nu de façade (à confirmer).` },
+      + `par ${2 * d.consoles} consoles (${d.consoles} par flasque), corde à ${d.inclinaison}° du plan de façade, hauteur ${d.hauteur}, longueur ${d.largeur}, à 100 mm du nu de façade (à confirmer).` },
 };
 
 const CATALOGUE = [];
@@ -212,7 +216,8 @@ const CONFIGURATEURS = [
 const CAT_CONFIG = "Brise-soleil fixes — lames ailes d'avion AZUR — configurateur (longueur × hauteur)";
 const ficheConfigurateur = (c) => ({ id: c.id, label: c.label, proc: "brisesoleil", thumb: 1, set: c.set, cat: CAT_CONFIG,
   categorie: "Brise-soleil fixe sur mesure — gamme AZUR",
-  description: `${c.texte} Lames AZUR du site (13 sections de 70 à 600 mm, aluminium 6060 T6 extrudé, portées de la fiche par section) ; `
+  description: `${c.texte} Lames AZUR du site (13 sections de 70 à 600 mm, aluminium 6060 T6 extrudé, portées de la fiche par section`
+    + (PORTEES_ESTIMEES ? ` — ${PORTEES_ESTIMEES} : portée non publiée, estimée, à confirmer` : "") + ") ; "
     + "pas des lames, inclinaison et flasques à confirmer avec le fabricant. " + FINITION });
 
 const phraseDims = (d) => `L ${d.largeur} × P ${d.profondeur} × H ${d.hauteur} mm (${d.lames} lames au pas de ${d.pas}, ${d.inclinaison}°)`;
@@ -236,7 +241,6 @@ const entreeFabricants = (fiches) => `  /* TELLIER BRISE-SOLEIL (12/10/2026) : b
 async function fabriquer() {
   const fiches = await fabriquerObjets({ catalogue: CATALOGUE, dir: BPO_DIR, fabricant: "Tellier Brise-Soleil", matieres: MATIERES,
     cotes: (d) => [d.largeur, d.hauteur, d.profondeur], phraseDims });
-  for (const c of CONFIGURATEURS) copyFileSync(join(THUMBS, `${c.vignette}.png`), join(THUMBS, `${c.id}.png`));
   const marques = poserEntreeFabricants({ debut: MARQUE_DEBUT, entree: entreeFabricants(fiches), id: BPO_DIR, nb: fiches.length + CONFIGURATEURS.length });
   const tailles = poserTailles(BPO_DIR);
   mkdirSync(SORTIE, { recursive: true });
@@ -244,6 +248,19 @@ async function fabriquer() {
   console.log(`${fiches.length} objets dans data/${BPO_DIR}/ ; data/fabricants.js : ${marques} marques ; data/tailles.js : ${tailles} paquets`);
 }
 
+/* --vignettes : les 27 objets, puis les trois cartes du configurateur, copies
+   d'une taille figée de la même pose — APRÈS la peinture, sinon elles ont une
+   génération de retard. */
+async function vignettes() {
+  await peindreVignettes({ catalogue: CATALOGUE, dir: BPO_DIR });
+  for (const c of CONFIGURATEURS) {
+    const src = join(THUMBS, `${c.vignette}.png`);
+    if (!existsSync(src)) { console.error(`${c.vignette}.png absente : les vignettes figées d'abord`); process.exit(1); }
+    copyFileSync(src, join(THUMBS, `${c.id}.png`));
+    console.log(`ok  thumbs/${c.id}.png (copie de ${c.vignette}.png)`);
+  }
+}
+
 if (process.argv.includes("--verifier")) verifierMarque(BPO_DIR);
-else if (process.argv.includes("--vignettes")) await peindreVignettes({ catalogue: CATALOGUE, dir: BPO_DIR });
+else if (process.argv.includes("--vignettes")) await vignettes();
 else await fabriquer();
