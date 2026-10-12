@@ -47,6 +47,25 @@ Le menu « Fabricants » est piloté par `data/fabricants.js` (`FABRICANTS_DB`).
 Le back-office l'édite pour toi, mais tu peux aussi ajuster une entrée à la main
 (label, statut, catégorie…). `data/fabricants.json` en est une copie lisible.
 
+## Outillage Node (`tools/`)
+
+Hors ligne, jamais déployé : `app.html` reste sans dépendance ni étape de build.
+
+```bash
+cd tools && npm install                        # three, en devDependency
+node objets-anjou-tolerie.mjs                  # les produits Anjou Tôlerie : data/anjou_tolerie/<id>.js,
+                                               #   l'entrée de marque dans data/fabricants.js, data/tailles.js
+node objets-anjou-tolerie.mjs --verifier       # relit chaque produit comme app.html le ferait
+node objets-anjou-tolerie.mjs --vignettes      # data/anjou_tolerie/thumbs/ (playwright + chromium,
+                                               #   serveur python -m http.server 8857 à la racine)
+```
+
+`objets-anjou-tolerie.mjs` est un générateur **paramétrique** (armoires
+vestiaires d'après le plan 07-00046 du fabricant, bancs séparés) qui écrit
+directement le format de `admin.html` ; une déclinaison de plus, c'est une
+entrée de plus dans son `CATALOGUE`. `banc-objet-glb.html` peint un `.glb`
+intermédiaire de `tools/sortie/` pour les vignettes.
+
 ## Lancer
 
 Aucune installation. Ouvrir `index.html` dans un navigateur récent — fonctionne en
