@@ -59,235 +59,87 @@
  *   Les objets sont POSÉS AU SOL comme tout mesh BPO : la casquette se relève
  *   à la hauteur du linteau dans l'application.
  *
+ * LA GÉOMÉTRIE EST CELLE DU CONFIGURATEUR DE L'APPLICATION : bpo-brisesoleil.js
+ * (produit procédural proc:'brisesoleil' de la marque, qui déploie les mêmes
+ * brise-soleil en longueur et en hauteur par curseurs) expose `geometrie(P)`,
+ * pure ; ce générateur l'appelle sous Node pour les 27 tailles figées (trois
+ * sections × trois poses × trois longueurs) et ajoute à la marque les trois
+ * fiches du configurateur (une par pose, proc + set). Une seule source.
  * Le format BPO, l'empaquetage, la relecture, l'entrée de marque, les tailles
  * et les vignettes sont dans tools/bpo-catalogue.mjs. Mètres, Y vers le haut,
  * façade à l'arrière (−Z), extérieur vers +Z.
  */
 import * as THREE from "three";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, copyFileSync } from "fs";
 import { join } from "path";
-import { atelier, fabriquerObjets, verifierMarque, peindreVignettes, poserEntreeFabricants, poserTailles, SORTIE, MM } from "./bpo-catalogue.mjs";
+import { atelier, fabriquerObjets, verifierMarque, peindreVignettes, poserEntreeFabricants, poserTailles, SORTIE, RACINE } from "./bpo-catalogue.mjs";
 
 const BPO_DIR = "tellier";                              // FABRICANTS_DB[].dir et data/<dir>/
+const THUMBS = join(RACINE, "data", BPO_DIR, "thumbs");
 const URL_PAGE = "https://www.tellierbrisesoleil.com/protection-solaire/brise-soleil-fixes/lames-ailes-avion/";
 
 /* ------------------------------------------------------------------ *
- *  Les sections du site (mm, g/ml) — ce qu'on modèle
+ *  LA GÉOMÉTRIE VIENT DU CONFIGURATEUR DE L'APPLICATION (bpo-brisesoleil.js,
+ *  le produit procédural proc:'brisesoleil' de la marque) : sa fonction
+ *  `geometrie(P)` est pure — des faces {verts, n, vn, key} en mètres — et
+ *  sert ici sous Node pour fabriquer les tailles figées. UNE source : ce que
+ *  l'architecte déploie par curseurs et ce que le catalogue porte en objets
+ *  maillés sont la même construction. Les sections du site (largeur ×
+ *  épaisseur, poids, portées) sont dans BS.SECTIONS.
  * ------------------------------------------------------------------ */
-const SECTIONS = Object.freeze({
-  AS200x36: { largeur: 200, epaisseur: 36, perimetre: 413, poids: 2037, couchee: 3260, debout: 3400,
-    portees: "portées 3 260 mm lame couchée / 3 400 mm lame debout" },
-  AS300x52: { largeur: 300, epaisseur: 52, perimetre: 618, poids: 4316, couchee: 3740, debout: 3740,
-    portees: "portée maximale 3 740 mm (fiche produit, calcul à 1 050 Pa ; brochure 2025 : 4 770 / 5 050 mm)" },
-  AS400x68: { largeur: 400, epaisseur: 68, perimetre: 823, poids: 6590, couchee: 5910, debout: 6310,
-    portees: "portées 5 910 mm lame couchée / 6 310 mm lame debout" },
-});
+import { createRequire } from "module";
+const BS = createRequire(import.meta.url)("../bpo-brisesoleil.js");
+const SECTIONS = Object.fromEntries(BS.SECTIONS.map((s) => [s.id, { largeur: s.l, epaisseur: s.e, poids: s.poids, couchee: s.couchee, debout: s.debout,
+  portees: s.id === "AS300x52" ? "portée maximale 3 740 mm (fiche produit, calcul à 1 050 Pa ; brochure 2025 : 4 770 / 5 050 mm)"
+    : `portées ${s.couchee.toLocaleString("fr-FR")} mm lame couchée / ${s.debout.toLocaleString("fr-FR")} mm lame debout` }]));
 
 /* Teintes : aluminium thermolaqué. Le site liste les finitions sans en
    imposer une ; rendu lames RAL 9006 aluminium blanc, flasques et consoles
    RAL 9007 aluminium gris, fixations zinguées — À CONFIRMER, la fiche le dit.
-   Dans BPO chaque groupe se recolore au nuancier, d'où un nom par matière. */
+   Les clés (bsLame, bsFlasque, bsFix) sont celles des finitions par élément
+   du configurateur ; les teintes aussi (BS.TEINTES). */
+const hex = (rgb) => "#" + rgb.map((x) => x.toString(16).padStart(2, "0")).join("");
 const MATIERES = Object.freeze({
-  lame:     { nom: "Lames aluminium extrudé 6060 T6 thermolaqué", teinte: "#b9bcbe", metalness: 0.5, roughness: 0.45 },
-  flasque:  { nom: "Flasques et consoles aluminium",              teinte: "#8e9397", metalness: 0.5, roughness: 0.5 },
-  fixation: { nom: "Fixations (platines, visserie)",              teinte: "#9a9fa3", metalness: 0.4, roughness: 0.55 },
+  bsLame:    { nom: "Lames aluminium extrudé 6060 T6 thermolaqué", teinte: hex(BS.TEINTES.bsLame),    metalness: 0.5, roughness: 0.45 },
+  bsFlasque: { nom: "Flasques et consoles aluminium",              teinte: hex(BS.TEINTES.bsFlasque), metalness: 0.5, roughness: 0.5 },
+  bsFix:     { nom: "Fixations (platines, visserie)",              teinte: hex(BS.TEINTES.bsFix),     metalness: 0.4, roughness: 0.55 },
 });
-const { materiau, boite, cylindre } = atelier(MATIERES);
+const { materiau } = atelier(MATIERES);
+const INCLINAISON = BS.PBS.incl;   // 30° — position SpeedFix (à confirmer)
 
-const EP = 10;             // épaisseur rendue des flasques, consoles et platines (à confirmer)
-const INCLINAISON = 30;    // degrés — position SpeedFix 30° (à confirmer)
-const RAD = Math.PI / 180;
-
-/* ------------------------------------------------------------------ *
- *  La lame : un profil ovoïde « aile d'avion » de corde c et d'épaisseur t
- *  (deux demi-ellipses jointes au maître-couple, à 38 % de la corde), extrudé
- *  sur `L` le long de X, corde le long de Z (bord d'attaque vers −Z, côté
- *  façade), épaisseur le long de Y. Normales lisses sur le flanc, plates sur
- *  les bouts. Le maillage est centré sur l'axe de la lame.
- * ------------------------------------------------------------------ */
-const N_PROFIL = 36;
-function profil(c, t) {
-  const a = 0.38, pts = [];
-  for (let k = 0; k < N_PROFIL; k++) {
-    const ph = k / N_PROFIL * 2 * Math.PI;          // tour complet, en partant du bord de fuite (+Z), par le dessus
-    const cosv = Math.cos(ph), sinv = Math.sin(ph);
-    const u = cosv < 0 ? a + a * cosv : a + (1 - a) * cosv;   // abscisse 0..1 (−Z → +Z)
-    const h = (t / 2) * sinv;                                 // demi-épaisseur signée
-    pts.push([u * c - c / 2, h]);                             // (z, y) centrés sur l'axe
+/* Les faces du configurateur → une scène three.js (un maillage par matière),
+   triangles non indexés, normales lissées quand la face en porte (vn), UV
+   projetées sur le plan dominant de la face (en mètres). Les objets figés sont
+   posés au sol : hPose = 0, le reste aux valeurs par défaut du configurateur
+   (pas = largeur de lame, 30°, appuis selon la portée, retrait 100). */
+function fabrique({ pose, section, longueur }) {
+  const P = { ...BS.PBS, pose, section, L: longueur / 10, H: 220, P: 120, hPose: 0, hBas: 0, pasAuto: 1, incl: INCLINAISON, appuisAuto: 1, retrait: 10, platines: 1, designation: "" };
+  const { faces, D } = BS.geometrie(P);
+  const parCle = new Map();
+  for (const f of faces) {
+    if (!parCle.has(f.key)) parCle.set(f.key, { pos: [], nrm: [], uv: [] });
+    const G = parCle.get(f.key), n = f.n, ax = Math.abs(n[0]) >= Math.abs(n[1]) && Math.abs(n[0]) >= Math.abs(n[2]) ? 0 : Math.abs(n[1]) >= Math.abs(n[2]) ? 1 : 2;
+    const uv = (v) => ax === 0 ? [v[2], v[1]] : ax === 1 ? [v[0], v[2]] : [v[0], v[1]];
+    const tri = (a, b, c) => {
+      for (const i of [a, b, c]) {
+        const v = f.verts[i], vn = f.vn ? f.vn[i] : n;
+        G.pos.push(v[0], v[1], v[2]); G.nrm.push(vn[0], vn[1], vn[2]); G.uv.push(...uv(v));
+      }
+    };
+    tri(0, 1, 2); if (f.verts.length === 4) tri(0, 2, 3);
   }
-  return pts;
-}
-function geometrieLame(L, c, t) {
-  const P = profil(c, t), n = P.length;
-  const pos = [], nrm = [], uv = [], idx = [];
-  /* le flanc : deux anneaux de n sommets, normale 2D du profil (lissée sur
-     les deux voisins), quads entre anneaux */
-  for (let k = 0; k < n; k++) {
-    const [z0, y0] = P[(k + n - 1) % n], [z1, y1] = P[(k + 1) % n];
-    const tz = z1 - z0, ty = y1 - y0, l = Math.hypot(tz, ty) || 1;
-    const nz = ty / l, ny = -tz / l;                          // tangente tournée de −90° : vers l'extérieur
-    for (const x of [-L / 2, L / 2]) {
-      pos.push(x * MM, P[k][1] * MM, P[k][0] * MM); nrm.push(0, ny, nz); uv.push(x / L + 0.5, k / n);
-    }
+  const racine = new THREE.Group();
+  racine.name = { casquette: "Brise-soleil horizontal", couche: "Brise-soleil vertical lames couchées", debout: "Brise-soleil vertical lames debout" }[pose];
+  for (const [cle, G] of parCle) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(G.pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(G.nrm, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(G.uv, 2));
+    const m = new THREE.Mesh(g, materiau(cle)); m.name = MATIERES[cle].nom; racine.add(m);
   }
-  for (let k = 0; k < n; k++) {
-    const a = 2 * k, b = 2 * k + 1, c2 = 2 * ((k + 1) % n), d = 2 * ((k + 1) % n) + 1;
-    idx.push(a, b, c2, b, d, c2);                           // sens direct vu de l'extérieur
-  }
-  /* les bouts : un éventail depuis le centre, normale ±X */
-  for (const s of [-1, 1]) {
-    const base = pos.length / 3;
-    pos.push(s * L / 2 * MM, 0, 0); nrm.push(s, 0, 0); uv.push(0.5, 0.5);
-    for (let k = 0; k < n; k++) { pos.push(s * L / 2 * MM, P[k][1] * MM, P[k][0] * MM); nrm.push(s, 0, 0); uv.push(P[k][0] / c + 0.5, P[k][1] / t + 0.5); }
-    for (let k = 0; k < n; k++) {
-      const i = base + 1 + k, j = base + 1 + (k + 1) % n;
-      if (s > 0) idx.push(base, j, i); else idx.push(base, i, j);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  return g;
-}
-/* Pose une lame : longueur L le long de X, centrée en (x, y, z), inclinée de
-   `inclinaison` autour de X (lame couchée : la corde se relève de −Z vers +Y),
-   ou tournée de `rotY` autour de Y (lame debout). */
-function lame(racine, nom, L, sec, { x = 0, y = 0, z = 0, inclinaison = 0, rotX = 0, rotY = 0, rotZ = 0 } = {}) {
-  const m = new THREE.Mesh(geometrieLame(L, sec.largeur, sec.epaisseur), materiau("lame"));
-  m.position.set(x * MM, y * MM, z * MM);
-  m.rotation.set(rotX + inclinaison * RAD, rotY, rotZ, "YXZ");
-  m.name = nom;
-  racine.add(m);
-  return m;
-}
-
-/* Une plaque découpée dans le plan (Z, Y), d'épaisseur EP le long de X,
-   centrée en x : `points` = [[z, y], …] en mm, dans le sens direct vu de +X. */
-function plaqueZY(racine, nom, mat, points, x) {
-  const forme = new THREE.Shape(points.map(([z, y]) => new THREE.Vector2(z * MM, y * MM)));
-  const g = new THREE.ExtrudeGeometry(forme, { depth: EP * MM, bevelEnabled: false });
-  const m = new THREE.Mesh(g, materiau(mat));
-  m.rotation.y = -Math.PI / 2;                 // X local → Z monde, Z local → −X monde
-  m.position.x = (x + EP / 2) * MM;
-  m.name = nom;
-  racine.add(m);
-  return m;
-}
-/* Une platine murale avec ses quatre chevilles, plaquée au nu de façade
-   (face arrière en z = zMur), centrée en x, de yBas à yBas + h. */
-function platine(racine, nom, l, h, { x = 0, yBas = 0, zMur = 0 } = {}) {
-  boite(racine, nom, "fixation", l, h, EP, { x, yBas, z: zMur + EP / 2 });
-  for (const sx of [-1, 1]) for (const sy of [0.2, 0.8]) {
-    const v = cylindre(racine, `${nom} — cheville`, "fixation", 6, 6, { x: x + sx * (l / 2 - 18), z: zMur + EP + 3 });
-    v.rotation.x = Math.PI / 2; v.position.y = (yBas + h * sy) * MM;
-  }
-}
-
-/* Enveloppe d'une lame couchée inclinée : hauteur et profondeur occupées. */
-const enveloppe = (sec, inc) => ({
-  h: sec.largeur * Math.sin(inc * RAD) + sec.epaisseur * Math.cos(inc * RAD),
-  p: sec.largeur * Math.cos(inc * RAD) + sec.epaisseur * Math.sin(inc * RAD),
-});
-const nAppuis = (L, portee) => Math.ceil(L / portee - 1e-9) + 1;
-
-/* ------------------------------------------------------------------ *
- *  1. Brise-soleil horizontal, en casquette au-dessus d'une baie : des
- *     consoles (flasques en plat, en porte-à-faux depuis une platine murale)
- *     portent N lames couchées, parallèles à la façade, inclinées à 30° vers
- *     l'extérieur, au pas de leur largeur. Débord 1 200.
- * ------------------------------------------------------------------ */
-function casquette({ section, longueur, debord = 1200, inclinaison = INCLINAISON }) {
-  const sec = SECTIONS[section], L = longueur, P = debord;
-  const racine = new THREE.Group(); racine.name = "Brise-soleil horizontal";
-  const env = enveloppe(sec, inclinaison);
-  const hBarre = Math.round(env.h + 40);             // la barre horizontale de la console, qui enferme les lames
-  const hMur = hBarre + Math.round(P * 0.28);        // la console s'élargit vers la platine (gousset)
-  const zMur = -P / 2;                                // nu de façade
-  const nC = nAppuis(L, sec.couchee);
-  const nL = Math.max(1, Math.floor(P / sec.largeur));
-  const pas = sec.largeur;
-  const yLame = hMur - hBarre / 2;
-  for (let i = 0; i < nC; i++) {
-    const x = -L / 2 + EP / 2 + i * (L - EP) / (nC - 1);                 // consoles aux bouts et aux appuis intermédiaires
-    plaqueZY(racine, `Console ${i + 1}`, "flasque",
-      [[zMur + EP, 0], [zMur + P, hMur - hBarre], [zMur + P, hMur], [zMur + EP, hMur]], x);
-    platine(racine, `Platine ${i + 1}`, 120, hMur + 60, { x: Math.max(-L / 2 + 60, Math.min(L / 2 - 60, x)), yBas: -30, zMur });
-  }
-  const zc = zMur + EP + (P - EP) / 2;                                   // lames centrées sur la console
-  for (let k = 0; k < nL; k++) {
-    lame(racine, `Lame ${k + 1}`, L - 2 * EP, sec, { y: yLame, z: zc + (k - (nL - 1) / 2) * pas, inclinaison });
-  }
-  const dims = { largeur: L, profondeur: P, hauteur: hMur + 60, lames: nL, appuis: nC, pas, inclinaison };
-  return { racine, dims };
-}
-
-/* ------------------------------------------------------------------ *
- *  2. Brise-soleil vertical, lames couchées : un écran devant la baie, deux
- *     flasques verticales (plats) tenues à la façade par des consoles haut et
- *     bas, N lames horizontales inclinées à 30° au pas de leur largeur.
- *     Hauteur 2 200, écran à 100 du nu de façade.
- * ------------------------------------------------------------------ */
-function ecranCouche({ section, longueur, hauteur = 2200, retrait = 100, inclinaison = INCLINAISON }) {
-  const sec = SECTIONS[section], L = longueur, H = hauteur;
-  const racine = new THREE.Group(); racine.name = "Brise-soleil vertical lames couchées";
-  const env = enveloppe(sec, inclinaison);
-  const pF = Math.round(env.p + 40);                 // largeur du plat (profondeur de l'écran)
-  const zMur = -(retrait + pF) / 2, zF0 = zMur + EP + retrait;   // le plat, de zF0 à zF0 + pF
-  const nF = nAppuis(L, sec.couchee);
-  const pas = sec.largeur, marge = 100;
-  const nL = Math.max(1, Math.floor((H - 2 * marge) / pas));
-  const y0 = (H - (nL - 1) * pas) / 2;
-  for (let i = 0; i < nF; i++) {
-    const x = -L / 2 + EP / 2 + i * (L - EP) / (nF - 1);
-    const xp = Math.max(-L / 2 + 60, Math.min(L / 2 - 60, x));          // la platine reste dans la longueur
-    plaqueZY(racine, `Flasque ${i + 1}`, "flasque", [[zF0, 0], [zF0 + pF, 0], [zF0 + pF, H], [zF0, H]], x);
-    for (const [k, yB] of [["basse", 60], ["haute", H - 120]]) {
-      boite(racine, `Console ${k} ${i + 1}`, "flasque", EP, 60, retrait + EP, { x, yBas: yB, z: zMur + EP + (retrait + EP) / 2 });
-      platine(racine, `Platine ${k} ${i + 1}`, 120, 120, { x: xp, yBas: yB - 30, zMur });
-    }
-  }
-  const zL = zF0 + pF / 2;                           // l'axe des lames, au milieu du plat
-  for (let k = 0; k < nL; k++) {
-    lame(racine, `Lame ${k + 1}`, L - 2 * EP, sec, { y: y0 + k * pas, z: zL, inclinaison });
-  }
-  const dims = { largeur: L, profondeur: retrait + EP + pF, hauteur: H, lames: nL, appuis: nF, pas, inclinaison };
-  return { racine, dims };
-}
-
-/* ------------------------------------------------------------------ *
- *  3. Brise-soleil vertical, lames debout : deux flasques horizontales (plats
- *     haut et bas) tenues à la façade par des consoles, N lames verticales
- *     au pas de leur largeur, corde à 30° du plan de façade. Hauteur 2 200,
- *     écran à 100 du nu de façade.
- * ------------------------------------------------------------------ */
-function ecranDebout({ section, longueur, hauteur = 2200, retrait = 100, inclinaison = INCLINAISON }) {
-  const sec = SECTIONS[section], L = longueur, H = hauteur;
-  const racine = new THREE.Group(); racine.name = "Brise-soleil vertical lames debout";
-  /* corde à `inclinaison` du plan de façade : rotation autour de Y de 90° − inclinaison */
-  const rotY = (90 - inclinaison) * RAD;
-  const pF = Math.round(sec.largeur * Math.sin(inclinaison * RAD) + sec.epaisseur * Math.cos(inclinaison * RAD) + 40);
-  const zMur = -(retrait + pF) / 2, zF0 = zMur + EP + retrait;
-  const nC = Math.ceil(L / 1500 - 1e-9) + 1;         // consoles tous les 1 500 au plus (à confirmer)
-  const pas = sec.largeur, marge = sec.largeur / 2 + 20;
-  const nL = Math.max(1, Math.floor((L - 2 * marge) / pas) + 1);
-  const x0 = -((nL - 1) * pas) / 2;
-  for (const [k, yB] of [["basse", 0], ["haute", H - EP]]) {
-    boite(racine, `Flasque ${k}`, "flasque", L, EP, pF, { yBas: yB, z: zF0 + pF / 2 });
-    for (let i = 0; i < nC; i++) {
-      const x = -L / 2 + 60 + i * (L - 120) / (nC - 1);
-      boite(racine, `Console ${k} ${i + 1}`, "flasque", EP, 60, retrait + EP,
-        { x, yBas: k === "basse" ? 0 : H - 60, z: zMur + EP + (retrait + EP) / 2 });
-      platine(racine, `Platine ${k} ${i + 1}`, 120, 120, { x, yBas: k === "basse" ? 0 : H - 120, zMur });
-    }
-  }
-  for (let k = 0; k < nL; k++) {
-    /* la lame est extrudée le long de X : on la dresse (Z autour de 90°) puis
-       on tourne sa corde autour de Y */
-    lame(racine, `Lame ${k + 1}`, H - 2 * EP, sec, { x: x0 + k * pas, y: H / 2, z: zF0 + pF / 2, rotZ: Math.PI / 2, rotY });
-  }
-  const dims = { largeur: L, profondeur: retrait + EP + pF, hauteur: H, lames: nL, appuis: 2, pas, inclinaison, consoles: nC };
+  const bb = new THREE.Box3().setFromObject(racine), taille = bb.getSize(new THREE.Vector3());
+  const dims = { largeur: Math.round(taille.x * 1000), profondeur: Math.round(taille.z * 1000), hauteur: Math.round(taille.y * 1000),
+    lames: D.nL, appuis: D.nAppuis, pas: Math.round(D.pas * 1000), inclinaison: D.incl, consoles: D.nConsoles };
   return { racine, dims };
 }
 
@@ -295,6 +147,7 @@ function ecranDebout({ section, longueur, hauteur = 2200, retrait = 100, inclina
  *  Le catalogue : 3 sections × 3 poses × 3 longueurs
  * ------------------------------------------------------------------ */
 const LONGUEURS = [2000, 3000, 4000];
+const SECTIONS_FIGEES = ["AS200x36", "AS300x52", "AS400x68"];   // les tailles figées ; les dix autres sections, par le configurateur
 const FINITION = "Finitions du site : thermolaquage RAL 60-80 µm, aspect bois ou anodisation 20 µm (rendu : lames RAL 9006, "
   + "flasques RAL 9007 — à confirmer).";
 const SUPPOSE = `Pas des lames pris égal à leur largeur et inclinaison ${INCLINAISON}° (position SpeedFix) : à confirmer, le site ne `
@@ -303,15 +156,15 @@ const fiche = (sec) => `Lame AZUR ${sec} : section ${SECTIONS[sec].largeur} × $
   + `monobloc, forme ovoïde type aile d'avion, ${SECTIONS[sec].poids} g/ml, ${SECTIONS[sec].portees} (fiche fabricant, charges FT n°45).`;
 
 const POSES = {
-  casquette: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — horizontal (casquette)", fabrique: casquette, code: "h",
+  casquette: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — horizontal (casquette)", code: "h",
     titre: (sec, L) => `Brise-soleil horizontal AZUR ${sec} — casquette L ${L}`,
     texte: (d) => `Casquette au-dessus d'une baie : ${d.lames} lames couchées parallèles à la façade sur ${d.appuis} consoles en `
       + `porte-à-faux à platine murale, débord ${d.profondeur}, longueur ${d.largeur}. Posée au sol dans BPO : à relever à la hauteur du linteau.` },
-  couche: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — vertical lames couchées", fabrique: ecranCouche, code: "vc",
+  couche: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — vertical lames couchées", code: "vc",
     titre: (sec, L) => `Brise-soleil vertical AZUR ${sec} — lames couchées L ${L}`,
     texte: (d) => `Écran devant une baie : ${d.lames} lames horizontales entre ${d.appuis} flasques verticales tenues à la façade par des `
       + `consoles haut et bas, hauteur ${d.hauteur}, longueur ${d.largeur}, à 100 mm du nu de façade (à confirmer).` },
-  debout: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — vertical lames debout", fabrique: ecranDebout, code: "vd",
+  debout: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — vertical lames debout", code: "vd",
     titre: (sec, L) => `Brise-soleil vertical AZUR ${sec} — lames debout L ${L}`,
     texte: (d) => `Écran devant une baie : ${d.lames} lames verticales entre deux flasques horizontales (haut et bas) tenues à la façade `
       + `par ${d.consoles} consoles, corde à ${d.inclinaison}° du plan de façade, hauteur ${d.hauteur}, longueur ${d.largeur}, à 100 mm du nu de façade (à confirmer).` },
@@ -319,17 +172,42 @@ const POSES = {
 
 const CATALOGUE = [];
 for (const [pose, p] of Object.entries(POSES)) {
-  for (const sec of Object.keys(SECTIONS)) {
+  for (const sec of SECTIONS_FIGEES) {
     for (const L of LONGUEURS) {
       CATALOGUE.push({
         bpo: `tl_azur_${sec.toLowerCase()}_${p.code}_${L}`, glb: `TL-AZUR-${sec}-${p.code}-${L}`,
-        fabrique: p.fabrique, params: { section: sec, longueur: L }, pose,
+        fabrique, params: { pose, section: sec, longueur: L }, pose,
         cat: p.cat, reference: `AZUR ${sec}`, section: sec, longueur: L,
         titre: p.titre(sec, L), azimut: pose === "casquette" ? 35 : 25,
       });
     }
   }
 }
+
+/* LE CONFIGURATEUR (bpo-brisesoleil.js, mode procédural 'brisesoleil') : trois
+   fiches, une par pose, qui ouvrent le même configurateur avec `set` — comme
+   les ponts Verlinde. `set` ne porte QUE la pose : l'application le rejoue à
+   chaque retour dans la marque, il écraserait tout autre réglage. Pas de maillage : la géométrie se calcule dans
+   l'application. Vignettes : une taille figée de la même pose. */
+const CONFIGURATEURS = [
+  { id: "tl_azur_configurateur_casquette", pose: "casquette", set: { pose: "casquette" }, vignette: "tl_azur_as300x52_h_3000",
+    label: "Configurateur AZUR — brise-soleil horizontal (casquette)",
+    texte: "Casquette au-dessus d'une baie : consoles en porte-à-faux à platine murale portant des lames couchées inclinées vers l'extérieur. "
+      + "Réglez la section de lame, la longueur, le débord, la hauteur de pose, l'entraxe, l'inclinaison et les appuis." },
+  { id: "tl_azur_configurateur_couche", pose: "couche", set: { pose: "couche" }, vignette: "tl_azur_as200x36_vc_2000",
+    label: "Configurateur AZUR — brise-soleil vertical, lames couchées",
+    texte: "Écran devant une baie : lames horizontales inclinées entre flasques verticales tenues à la façade par des consoles. "
+      + "Réglez la section de lame, la longueur, la hauteur, le retrait, l'entraxe, l'inclinaison et les appuis." },
+  { id: "tl_azur_configurateur_debout", pose: "debout", set: { pose: "debout" }, vignette: "tl_azur_as400x68_vd_3000",
+    label: "Configurateur AZUR — brise-soleil vertical, lames debout",
+    texte: "Écran devant une baie : lames verticales entre deux flasques horizontales tenues à la façade par des consoles. "
+      + "Réglez la section de lame, la longueur, la hauteur, le retrait, l'entraxe et l'orientation des lames." },
+];
+const CAT_CONFIG = "Brise-soleil fixes — lames ailes d'avion AZUR — configurateur (longueur × hauteur)";
+const ficheConfigurateur = (c) => ({ id: c.id, label: c.label, proc: "brisesoleil", thumb: 1, set: c.set, cat: CAT_CONFIG,
+  categorie: "Brise-soleil fixe sur mesure — gamme AZUR",
+  description: `${c.texte} Lames AZUR du site (13 sections de 70 à 600 mm, aluminium 6060 T6 extrudé, portées de la fiche par section) ; `
+    + "pas des lames, inclinaison et flasques à confirmer avec le fabricant. " + FINITION });
 
 const phraseDims = (d) => `L ${d.largeur} × P ${d.profondeur} × H ${d.hauteur} mm (${d.lames} lames au pas de ${d.pas}, ${d.inclinaison}°)`;
 
@@ -345,13 +223,15 @@ const entreeFabricants = (fiches) => `  /* TELLIER BRISE-SOLEIL (12/10/2026) : b
   {id:'${BPO_DIR}', label:"Tellier Brise-Soleil", status:'ready', prive:'compte', dir:'${BPO_DIR}', logo:'', url:'${URL_PAGE}', subs:[${
   fiches.map((p) => JSON.stringify({ id: p.bpo, label: p.titre, mesh: true, cat: p.cat,
     categorie: `${POSES[p.pose].cat.split(" — ")[2].replace(/^./, (c) => c.toUpperCase())} — réf. ${p.reference}`,
-    description: `${POSES[p.pose].texte(p.dims)} ${fiche(p.section)} ${p.dimensions}. ${SUPPOSE} ${FINITION}` })).join(",")}]},
+    description: `${POSES[p.pose].texte(p.dims)} ${fiche(p.section)} ${p.dimensions}. ${SUPPOSE} ${FINITION}` }))
+    .concat(CONFIGURATEURS.map((c) => JSON.stringify(ficheConfigurateur(c)))).join(",")}]},
 `;
 
 async function fabriquer() {
   const fiches = await fabriquerObjets({ catalogue: CATALOGUE, dir: BPO_DIR, fabricant: "Tellier Brise-Soleil", matieres: MATIERES,
     cotes: (d) => [d.largeur, d.hauteur, d.profondeur], phraseDims });
-  const marques = poserEntreeFabricants({ debut: MARQUE_DEBUT, entree: entreeFabricants(fiches), id: BPO_DIR, nb: fiches.length });
+  for (const c of CONFIGURATEURS) copyFileSync(join(THUMBS, `${c.vignette}.png`), join(THUMBS, `${c.id}.png`));
+  const marques = poserEntreeFabricants({ debut: MARQUE_DEBUT, entree: entreeFabricants(fiches), id: BPO_DIR, nb: fiches.length + CONFIGURATEURS.length });
   const tailles = poserTailles(BPO_DIR);
   mkdirSync(SORTIE, { recursive: true });
   writeFileSync(join(SORTIE, "fabricants-entree-tellier.js"), entreeFabricants(fiches));

@@ -269,6 +269,12 @@ export function verifierMarque(dir) {
   let fautes = 0;
   for (const p of m.subs) {
     const chemin = join(DATA, `${p.id}.js`);
+    if (p.proc) {                                   // produit PROCÉDURAL : pas de maillage, une vignette si thumb:1
+      const vignette = !p.thumb || existsSync(join(THUMBS, `${p.id}.png`));
+      if (!vignette) fautes++;
+      console.log(`${vignette ? "ok " : "KO "} ${p.id}  procédural (${p.proc})${vignette ? "" : "  SANS VIGNETTE"}  « ${p.cat} »`);
+      continue;
+    }
     try {
       const D = lireProduit(chemin);
       if (D.id !== p.id) throw new Error(`BPO_prod(${D.id}) dans ${p.id}.js`);
