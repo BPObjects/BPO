@@ -120,8 +120,14 @@ function fabrique({ pose, section, longueur }) {
     if (!parCle.has(f.key)) parCle.set(f.key, { pos: [], nrm: [], uv: [] });
     const G = parCle.get(f.key), n = f.n, ax = Math.abs(n[0]) >= Math.abs(n[1]) && Math.abs(n[0]) >= Math.abs(n[2]) ? 0 : Math.abs(n[1]) >= Math.abs(n[2]) ? 1 : 2;
     const uv = (v) => ax === 0 ? [v[2], v[1]] : ax === 1 ? [v[0], v[2]] : [v[0], v[1]];
+    /* three.js veut le sens direct (antihoraire vu de l'extérieur) ; le moteur
+       BPO parcourt ses faces en sens horaire : on oriente chaque triangle par la
+       normale de la face (produit mixte), quel que soit le sens d'origine. */
     const tri = (a, b, c) => {
-      for (const i of [a, b, c]) {
+      const A = f.verts[a], B = f.verts[b], C = f.verts[c];
+      const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], wx = C[0] - A[0], wy = C[1] - A[1], wz = C[2] - A[2];
+      const direct = (uy * wz - uz * wy) * n[0] + (uz * wx - ux * wz) * n[1] + (ux * wy - uy * wx) * n[2] >= 0;
+      for (const i of direct ? [a, b, c] : [a, c, b]) {
         const v = f.verts[i], vn = f.vn ? f.vn[i] : n;
         G.pos.push(v[0], v[1], v[2]); G.nrm.push(vn[0], vn[1], vn[2]); G.uv.push(...uv(v));
       }

@@ -103,7 +103,7 @@
     var incl = Math.max(0, Math.min(90, +P.incl || 0));
     var pas = +P.pasAuto ? c : Math.max(t + 0.005, Math.min(1, (+P.pas || 30) / 100));
     var retrait = Math.max(0, Math.min(0.6, (+P.retrait || 0) / 100));
-    var hPose = Math.max(0, Math.min(4, (+(pose === "casquette" ? P.hPose : P.hBas) || 0) / 100));
+    var hPose = Math.max(pose === "casquette" ? 0.03 : 0, Math.min(4, (+(pose === "casquette" ? P.hPose : P.hBas) || 0) / 100));   // casquette : la platine descend 3 cm sous la console, jamais sous le sol
     var portee = (pose === "debout" ? S.debout : S.couchee) / 1000;
     var lameL = pose === "debout" ? H - 2 * EP : L - 2 * EP;          // longueur d'une lame
     var appuisMin = pose === "debout" ? 2 : Math.ceil(L / portee - 1e-9) + 1;
@@ -180,16 +180,19 @@
       var p0 = Pf[(k + n - 1) % n], p1 = Pf[(k + 1) % n], tz = p1[0] - p0[0], ty = p1[1] - p0[1], l = Math.hypot(tz, ty) || 1;
       nrm.push(rot([0, -tz / l, ty / l]));                       // tangente tournée de −90° : vers l'extérieur
     }
+    /* Sens de parcours : HORAIRE vu de l'extérieur, la convention du box() du
+       moteur (boite / plaqueZY la suivent aussi) — l'export IFC/OBJ écrit les
+       boucles telles quelles, une coque mixte éclairerait à l'envers. */
     for (k = 0; k < n; k++) {
       var j = (k + 1) % n, a = pt(-L / 2, k), b = pt(L / 2, k), c2 = pt(L / 2, j), d = pt(-L / 2, j);
       var nf = [(nrm[k][0] + nrm[j][0]) / 2, (nrm[k][1] + nrm[j][1]) / 2, (nrm[k][2] + nrm[j][2]) / 2], nl = Math.hypot(nf[0], nf[1], nf[2]) || 1;
-      out.push({ verts: [a, b, c2, d], n: [nf[0] / nl, nf[1] / nl, nf[2] / nl], vn: [nrm[k], nrm[k], nrm[j], nrm[j]], key: "bsLame" });
+      out.push({ verts: [a, d, c2, b], n: [nf[0] / nl, nf[1] / nl, nf[2] / nl], vn: [nrm[k], nrm[j], nrm[j], nrm[k]], key: "bsLame" });
     }
     for (var s = -1; s <= 1; s += 2) {                           // les bouts : un éventail depuis le centre
       var nx = rot([s, 0, 0]), ctr = rot([s * L / 2, 0, 0]); ctr = [ctr[0] + cx, ctr[1] + cy, ctr[2] + cz];
       for (k = 0; k < n; k++) {
         var i2 = (k + 1) % n, pk = pt(s * L / 2, k), pj = pt(s * L / 2, i2);
-        out.push({ verts: s > 0 ? [ctr, pj, pk] : [ctr, pk, pj], n: nx, vn: null, key: "bsLame" });
+        out.push({ verts: s > 0 ? [ctr, pk, pj] : [ctr, pj, pk], n: nx, vn: null, key: "bsLame" });
       }
     }
   }
@@ -343,7 +346,8 @@
     var n = function (v) { return (+v || 0).toFixed(4).replace(/0+$/, "").replace(/\.$/, ".0"); };
     return [["Fabricant", "IFCLABEL('Tellier Brise-Soleil')"], ["Gamme", "IFCLABEL('AZUR')"], ["Designation", "IFCTEXT('" + esc(designation(P)) + "')"],
       ["Pose", "IFCLABEL('" + esc(poseLabel(D.pose)) + "')"], ["SectionLame", "IFCLABEL('" + D.S.id + "')"],
-      ["LargeurLameMm", "IFCPOSITIVELENGTHMEASURE(" + n(D.S.l) + ")"], ["EpaisseurLameMm", "IFCPOSITIVELENGTHMEASURE(" + n(D.S.e) + ")"],
+      ["LargeurLame", "IFCPOSITIVELENGTHMEASURE(" + n(D.c) + ")"], ["EpaisseurLame", "IFCPOSITIVELENGTHMEASURE(" + n(D.t) + ")"],
+      ["LargeurLameMm", "IFCREAL(" + n(D.S.l) + ")"], ["EpaisseurLameMm", "IFCREAL(" + n(D.S.e) + ")"],
       ["NombreDeLames", "IFCCOUNTMEASURE(" + D.nL + ")"], ["EntraxeM", "IFCPOSITIVELENGTHMEASURE(" + n(D.pas) + ")"],
       ["Inclinaison", "IFCPLANEANGLEMEASURE(" + n(D.incl * RAD) + ")"], ["InclinaisonDeg", "IFCREAL(" + n(D.incl) + ")"], ["LongueurM", "IFCPOSITIVELENGTHMEASURE(" + n(D.L) + ")"],
       [D.pose === "casquette" ? "DebordM" : "HauteurM", "IFCPOSITIVELENGTHMEASURE(" + n(D.pose === "casquette" ? D.P : D.H) + ")"],
@@ -372,7 +376,14 @@
     return null;
   }
   function buildUI(again) {
-    var P = PBS, self = typeof again === "function" ? again : buildUI, D = derive(P), S = D.S, groups = [];
+    var P = PBS, self = typeof again === "function" ? again : buildUI;
+    /* la fiche ouverte impose son set (la pose) : « Réinitialiser » restaure
+       l'instantané du premier affichage du mode, pose comprise, et désaccorderait
+       la carte « lames debout » d'une géométrie de casquette */
+    var fc0 = ficheCourante(), chg = false;
+    if (fc0 && fc0.p.set) for (var k0 in fc0.p.set) if (Object.prototype.hasOwnProperty.call(fc0.p.set, k0) && P[k0] !== fc0.p.set[k0]) { P[k0] = fc0.p.set[k0]; chg = true; }
+    if (chg) { glob.build(); if (typeof glob.updateDims === "function") glob.updateDims(); }
+    var D = derive(P), S = D.S, groups = [];
     var casq = D.pose === "casquette";
     var secOpts = SECTIONS.map(function (s) { return { id: s.id, l: s.id.replace("AS", "") + (s.rect ? " R" : "") }; });
     groups.push({ title: "Lame AZUR", fields: [
@@ -405,9 +416,15 @@
       + (S.est ? ", estimée" : "") + ") : " + D.appuisMin + " au moins pour " + f2(D.pose === "debout" ? D.lameL : D.L) + " m. Flasques et consoles rendues en plat de 10 mm — « dimensionnées selon étude » chez le fabricant." });
     groups.push({ title: "Appuis", fields: fA });
     glob.buildObjUI(P, groups, self);
+    /* base d'annulation du mode courant (idempotent ; la branche proc de refreshView
+       ne l'appelait pas : un Ctrl+Z versait les paramètres du mode précédent) */
+    if (typeof glob.undoOnView === "function") glob.undoOnView();
 
     var host = document.getElementById("params");
     if (!host) return;
+    /* après un undo d'une bascule de pose, la liste du catalogue surligne encore l'ancienne fiche */
+    var fc = ficheCourante(), on = document.querySelector("#cat-list .subcat-item.on");
+    if (fc && on && on.textContent.trim() !== fc.p.label && typeof glob.buildCatList === "function") glob.buildCatList();
     /* la désignation libre */
     var dz = document.createElement("div"); dz.className = "fld"; dz.style.marginTop = "8px";
     dz.innerHTML = '<div class="fh"><label>Désignation (vide = automatique)</label></div>';
@@ -422,7 +439,7 @@
     if (glob._sfxUpd) glob._sfxUpd.push(function () { rc.innerHTML = recapHTML(); });
     host.insertBefore(rc, host.firstChild);
     /* la pose : trois boutons, qui basculent sur la fiche de la marque qui la porte */
-    var fc = ficheCourante(), wrap = document.createElement("div");
+    var wrap = document.createElement("div");
     wrap.className = "ral-fam"; wrap.style.marginBottom = "8px";
     POSES.forEach(function (o) {
       var b = document.createElement("button");
