@@ -6,7 +6,10 @@
   "scripts": {
     "anjou": "node objets-anjou-tolerie.mjs",
     "anjou:verifier": "node objets-anjou-tolerie.mjs --verifier",
-    "anjou:vignettes": "node objets-anjou-tolerie.mjs --vignettes"
+    "anjou:vignettes": "node objets-anjou-tolerie.mjs --vignettes",
+    "tellier": "node objets-tellier.mjs",
+    "tellier:verifier": "node objets-tellier.mjs --verifier",
+    "tellier:vignettes": "node objets-tellier.mjs --vignettes"
   },
   "devDependencies": {
     "three": "^0.185.1"

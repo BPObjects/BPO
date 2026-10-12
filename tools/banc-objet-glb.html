@@ -19,7 +19,7 @@
 <pre id="journal">…</pre>
 <script type="module">
 /* tools/banc-objet-glb.html — charge un .glb (sorti par objets-anjou-tolerie.mjs
-   dans tools/sortie/) avec three (tools/node_modules, d'où l'importmap) et le
+   ou objets-tellier.mjs dans tools/sortie/) avec three (tools/node_modules, d'où l'importmap) et le
    peint sous une lumière de trois quarts avant, avec son ombre au sol.
      /tools/banc-objet-glb.html?glb=/tools/sortie/07-00046-armoire-vestiaire-3-cases-caisson-haut.glb
      …&l=900&h=900      taille du canevas (défaut : la fenêtre)
@@ -27,7 +27,7 @@
      …&fond=0           fond TRANSPARENT (pour les vignettes du catalogue)
    Le serveur : python -m http.server 8857 à la racine du dépôt.
    `window.pret` passe à true quand l'image est peinte — c'est ce que
-   objets-anjou-tolerie.mjs --vignettes attend. */
+   bpo-catalogue.mjs (peindreVignettes, le mode --vignettes des générateurs) attend. */
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 const j = document.getElementById("journal");
