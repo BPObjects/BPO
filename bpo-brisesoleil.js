@@ -110,7 +110,13 @@
     var nAppuis = +P.appuisAuto ? appuisMin : Math.max(2, Math.min(12, Math.round(+P.nAppuis || 2)));
     var sinI = Math.sin(incl * RAD), cosI = Math.cos(incl * RAD);
     var env = { h: c * sinI + t * cosI, p: c * cosI + t * sinI };    // enveloppe d'une lame couchée inclinée
-    var nL, D = { S: S, pose: pose, L: L, H: H, P: Pd, c: c, t: t, incl: incl, pas: pas, retrait: retrait, hPose: hPose,
+    /* le support tient au moins une lame : débord ≥ enveloppe (casquette), hauteur ≥ enveloppe (écran couché) */
+    if (pose === "casquette") Pd = Math.max(Pd, env.p + EP + 0.004);
+    else if (pose === "couche") H = Math.max(H, env.h + 0.1);
+    /* pas automatique : la largeur de lame, mais jamais moins qu'un centimètre de jour
+       (à 0° en casquette ou debout, à 90° en écran couché, les lames seraient jointives) */
+    if (+P.pasAuto) pas = Math.max(c, (pose === "couche" ? env.h : pose === "debout" ? c * cosI + t * sinI : env.p) + 0.01);
+    var nL, D = { S: S, pose: pose, L: L, H: H, P: Pd, c: c, t: t, incl: incl, pas: pas, retrait: retrait, hPose: hPose,   // H et P éventuellement bornés ci-dessus
                   portee: portee, lameL: lameL, nAppuis: nAppuis, appuisMin: appuisMin, env: env, platines: +P.platines !== 0 };
     if (pose === "casquette") {
       D.hBarre = env.h + 0.04;                                  // la barre de la console, qui enferme les lames
@@ -206,7 +212,8 @@
     for (var i = 0; i < 6; i++) out.push({ verts: fi[i].map(function (j) { return vt[j]; }), n: nm[i], vn: null, key: key });
   }
   /* Une plaque découpée dans le plan (Z, Y) — polygone `pts` = [[z, y]…] convexe,
-     dans le sens direct vu de +X —, d'épaisseur EP le long de X, centrée en x. */
+     parcouru dans le sens trigonométrique du plan (z, y), soit HORAIRE vu de +X —,
+     d'épaisseur EP le long de X, centrée en x. Chant : normale sortante. */
   function plaqueZY(out, key, pts, x) {
     var n = pts.length, x0 = x - EP / 2, x1 = x + EP / 2, i;
     var A = pts.map(function (p) { return [x1, p[1], p[0]]; }), B = pts.map(function (p) { return [x0, p[1], p[0]]; });
@@ -216,7 +223,7 @@
     }
     for (i = 0; i < n; i++) {                                      // le chant
       var j = (i + 1) % n, dz = pts[j][0] - pts[i][0], dy = pts[j][1] - pts[i][1], l = Math.hypot(dz, dy) || 1;
-      out.push({ verts: [A[i], A[j], B[j], B[i]], n: [0, dz / l, -dy / l], vn: null, key: key });
+      out.push({ verts: [A[i], B[i], B[j], A[j]], n: [0, -dz / l, dy / l], vn: null, key: key });
     }
   }
   /* Une platine murale (face arrière au nu de façade zMur) et quatre têtes de vis. */
@@ -244,7 +251,7 @@
       var zc = zMur + EP + (Pd - EP) / 2, R = Rx(D.incl * RAD);
       for (k = 0; k < D.nL; k++) lame(out, D.lameL, S, R, 0, yLame, zc + (k - (D.nL - 1) / 2) * D.pas);
     } else if (D.pose === "couche") {
-      var H = D.H, pF = D.pF, zMur2 = -(D.retrait + pF) / 2, zF0 = zMur2 + EP + D.retrait, yL0 = y0 + (H - (D.nL - 1) * D.pas) / 2;
+      var H = D.H, pF = D.pF, zMur2 = -(D.retrait + EP + pF) / 2, zF0 = zMur2 + EP + D.retrait, yL0 = y0 + (H - (D.nL - 1) * D.pas) / 2;
       for (i = 0; i < D.nAppuis; i++) {
         x = -L / 2 + EP / 2 + i * (L - EP) / (D.nAppuis - 1);
         var xp = Math.max(-L / 2 + 0.06, Math.min(L / 2 - 0.06, x));
@@ -257,7 +264,7 @@
       var R2 = Rx(D.incl * RAD), zL = zF0 + pF / 2;
       for (k = 0; k < D.nL; k++) lame(out, D.lameL, S, R2, 0, yL0 + k * D.pas, zL);
     } else {
-      var H2 = D.H, pF2 = D.pF, zMur3 = -(D.retrait + pF2) / 2, zF02 = zMur3 + EP + D.retrait, x0 = -((D.nL - 1) * D.pas) / 2;
+      var H2 = D.H, pF2 = D.pF, zMur3 = -(D.retrait + EP + pF2) / 2, zF02 = zMur3 + EP + D.retrait, x0 = -((D.nL - 1) * D.pas) / 2;
       [[y0, "basse"], [y0 + H2 - EP, "haute"]].forEach(function (fl) {
         boite(out, "bsFlasque", 0, fl[0] + EP / 2, zF02 + pF2 / 2, L, EP, pF2);
         for (var j = 0; j < D.nConsoles; j++) {
@@ -352,8 +359,8 @@
       ["Inclinaison", "IFCPLANEANGLEMEASURE(" + n(D.incl * RAD) + ")"], ["InclinaisonDeg", "IFCREAL(" + n(D.incl) + ")"], ["LongueurM", "IFCPOSITIVELENGTHMEASURE(" + n(D.L) + ")"],
       [D.pose === "casquette" ? "DebordM" : "HauteurM", "IFCPOSITIVELENGTHMEASURE(" + n(D.pose === "casquette" ? D.P : D.H) + ")"],
       ["NombreAppuis", "IFCCOUNTMEASURE(" + D.nAppuis + ")"], ["PorteeFicheM", "IFCPOSITIVELENGTHMEASURE(" + n(D.portee) + ")"],
-      ["LamesMetresLineaires", "IFCREAL(" + n(D.mlLames) + ")"], ["MasseLamesKg", "IFCREAL(" + n(D.kgLames) + ")"],
-      ["Materiau", "IFCLABEL('Aluminium 6060 T6 extrude')"]];
+      ["LamesMetresLineaires", "IFCREAL(" + n(D.mlLames) + ")"], D.S.poids ? ["MasseLamesKg", "IFCREAL(" + n(D.kgLames) + ")"] : null,
+      ["Materiau", "IFCLABEL('Aluminium 6060 T6 extrude')"]].filter(Boolean);
   }
   function finishElems() { defautsFinitions(); return FINISH_ELEMS; }
 
