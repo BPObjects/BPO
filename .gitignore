@@ -17,3 +17,6 @@ desktop.ini
 
 # Cache du CLI Supabase (deploy)
 supabase/.temp/
+
+# Outillage Node (tools/) : dependances et sorties intermediaires
+tools/sortie/

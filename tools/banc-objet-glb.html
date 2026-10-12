@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Banc — un objet .glb intermédiaire, peint pour sa vignette</title>
+<style>
+  html,body{margin:0;height:100%;background:#e9edf1;color:#1b2430;font:14px/1.5 system-ui,sans-serif;overflow:hidden}
+  canvas{display:block}
+  #journal{position:absolute;left:0;bottom:0;right:0;padding:6px 10px;background:rgba(255,255,255,.85);
+    white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace}
+  .ko{color:#b3261e;font-weight:700}
+</style>
+<script type="importmap">
+{ "imports": { "three": "/tools/node_modules/three/build/three.module.js",
+               "three/addons/": "/tools/node_modules/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<pre id="journal">…</pre>
+<script type="module">
+/* tools/banc-objet-glb.html — charge un .glb (sorti par objets-anjou-tolerie.mjs
+   dans tools/sortie/) avec three (tools/node_modules, d'où l'importmap) et le
+   peint sous une lumière de trois quarts avant, avec son ombre au sol.
+     /tools/banc-objet-glb.html?glb=/tools/sortie/07-00046-armoire-vestiaire-3-cases-caisson-haut.glb
+     …&l=900&h=900      taille du canevas (défaut : la fenêtre)
+     …&azimut=35        angle de vue, en degrés, autour de l'objet (défaut 35)
+     …&fond=0           fond TRANSPARENT (pour les vignettes du catalogue)
+   Le serveur : python -m http.server 8857 à la racine du dépôt.
+   `window.pret` passe à true quand l'image est peinte — c'est ce que
+   objets-anjou-tolerie.mjs --vignettes attend. */
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+const j = document.getElementById("journal");
+const dire = (t, c = "") => { j.innerHTML += (c ? `<span class="${c}">${t}</span>` : t) + "\n"; };
+window.addEventListener("error", (e) => dire("ERREUR : " + e.message, "ko"));
+window.addEventListener("unhandledrejection", (e) => dire("REJET : " + (e.reason?.message || e.reason), "ko"));
+window.pret = false;
+
+const p = new URLSearchParams(location.search);
+const chemin = p.get("glb") || "/tools/sortie/07-00046-armoire-vestiaire-3-cases-caisson-haut.glb";
+const L = Number(p.get("l")) || innerWidth, H = Number(p.get("h")) || innerHeight;
+const azimut = (Number(p.get("azimut") ?? 35)) * Math.PI / 180;
+const transparent = p.get("fond") === "0";
+
+try {
+  const octets = await (await fetch(chemin)).arrayBuffer();
+  dire(`${chemin} — ${(octets.byteLength / 1024).toFixed(0)} Ko`);
+  const gltf = await new Promise((ok, ko) => new GLTFLoader().parse(octets, "", ok, ko));
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: transparent });
+  if (transparent) renderer.setClearColor(0x000000, 0);
+  renderer.setSize(L, H, false);
+  renderer.setPixelRatio(1);
+  renderer.shadowMap.enabled = true;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  document.body.prepend(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  if (!transparent) scene.background = new THREE.Color(0xe9edf1);
+  const modele = gltf.scene;
+  modele.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(modele);
+  const boite = new THREE.Box3().setFromObject(modele);
+  const taille = boite.getSize(new THREE.Vector3()), centre = boite.getCenter(new THREE.Vector3());
+  dire(`boîte ${taille.x.toFixed(2)} × ${taille.y.toFixed(2)} × ${taille.z.toFixed(2)} m — ${gltf.scene.userData?.titre || ""}`);
+
+  const sol = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.22 }));
+  sol.rotation.x = -Math.PI / 2; sol.position.y = boite.min.y; sol.receiveShadow = true;
+  scene.add(sol);
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a9099, 1.1));
+  const soleil = new THREE.DirectionalLight(0xffffff, 2.2);
+  soleil.position.set(centre.x + 3, boite.max.y + 4, centre.z + 4);
+  soleil.target.position.copy(centre);
+  soleil.castShadow = true;
+  soleil.shadow.mapSize.set(2048, 2048);
+  const r = taille.length();
+  Object.assign(soleil.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 0.1, far: 30 });
+  scene.add(soleil, soleil.target);
+
+  const camera = new THREE.PerspectiveCamera(32, L / H, 0.05, 100);
+  const dist = (taille.length() / 2) / Math.tan(camera.fov * Math.PI / 360) * 1.15;
+  camera.position.set(centre.x + Math.sin(azimut) * dist, centre.y + dist * 0.28, centre.z + Math.cos(azimut) * dist);
+  camera.lookAt(centre);
+  renderer.render(scene, camera);
+  dire("peint");
+  window.pret = true;
+} catch (e) {
+  dire("ÉCHEC : " + (e?.message || e), "ko");
+  window.pret = "ko";
+}
+</script>
+</body>
+</html>
