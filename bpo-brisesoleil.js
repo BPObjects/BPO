@@ -86,7 +86,7 @@
 
   var EP = 0.010;                 // plat des flasques, consoles, platines (m) — à confirmer
   var RAD = Math.PI / 180;
-  var TEINTES = { bsLame: [165, 168, 166], bsFlasque: [143, 143, 140], bsFix: [154, 159, 163] };   // RAL 9006, RAL 9007, zingué
+  var TEINTES = { bsLame: [165, 165, 165], bsFlasque: [143, 143, 143], bsFix: [154, 159, 163] };   // RAL 9006 #A5A5A5, RAL 9007 #8F8F8F (nuancier de l'application), zingué
   var FINISH_ELEMS = [
     { id: "bsLame",    l: "Lames aluminium" },
     { id: "bsFlasque", l: "Flasques et consoles" },
@@ -328,22 +328,30 @@
       + "<span style=\"opacity:.8\">Portée fiche " + (D.pose === "debout" ? "lame debout " : "lame couchée ") + f2(D.portee) + " m" + (S.est ? " (estimée)" : "") + (S.note ? " — " + S.note : "") + " ; "
       + (S.poids ? S.poids + " g/ml ; " : "") + "pas et flasques à confirmer avec le fabricant.</span>" + w;
   }
-  function ifcDesc() { return designation(PBS, true); }
-  /* [nom, valeur STEP] pour le pset BPO_BriseSoleil — app.html les enveloppe dans IFCPROPERTYSINGLEVALUE. */
+  /* Les paramètres que l'export décrit : ceux de la configuration partagée quand
+     app.html en exporte une (partExporte pose _PART_ACTIF / _PART_PARAMS), sinon PBS. */
+  function paramsExport() {
+    return glob._PART_ACTIF && glob._PART_PARAMS && typeof glob._PART_PARAMS === "object" ? Object.assign({}, PBS, glob._PART_PARAMS) : PBS;
+  }
+  /* Description de l'entité IFC : la désignation (saisie ou automatique), pliée en
+     ASCII comme celle du palan (_plAscii du moteur) — un lecteur IFC affiche mal les \X2\…\X0\. */
+  function ifcDesc() { var P = paramsExport(); return (typeof glob._plAscii === "function" ? glob._plAscii : String)(designation(P)); }
+  /* [nom, valeur STEP] pour le pset BPO_BriseSoleil — app.html les enveloppe dans IFCPROPERTYSINGLEVALUE.
+     L'unité d'angle du fichier est le radian : Inclinaison en radians, InclinaisonDeg en clair. */
   function ifcProps() {
-    var D = derive(PBS), esc = typeof glob.stepEsc === "function" ? glob.stepEsc : function (s) { return String(s).replace(/'/g, "''"); };
+    var P = paramsExport(), D = derive(P), esc = typeof glob.stepEsc === "function" ? glob.stepEsc : function (s) { return String(s).replace(/'/g, "''"); };
     var n = function (v) { return (+v || 0).toFixed(4).replace(/0+$/, "").replace(/\.$/, ".0"); };
-    return [["Fabricant", "IFCLABEL('Tellier Brise-Soleil')"], ["Gamme", "IFCLABEL('AZUR')"], ["Designation", "IFCTEXT('" + esc(designation(PBS)) + "')"],
+    return [["Fabricant", "IFCLABEL('Tellier Brise-Soleil')"], ["Gamme", "IFCLABEL('AZUR')"], ["Designation", "IFCTEXT('" + esc(designation(P)) + "')"],
       ["Pose", "IFCLABEL('" + esc(poseLabel(D.pose)) + "')"], ["SectionLame", "IFCLABEL('" + D.S.id + "')"],
       ["LargeurLameMm", "IFCPOSITIVELENGTHMEASURE(" + n(D.S.l) + ")"], ["EpaisseurLameMm", "IFCPOSITIVELENGTHMEASURE(" + n(D.S.e) + ")"],
       ["NombreDeLames", "IFCCOUNTMEASURE(" + D.nL + ")"], ["EntraxeM", "IFCPOSITIVELENGTHMEASURE(" + n(D.pas) + ")"],
-      ["InclinaisonDeg", "IFCPLANEANGLEMEASURE(" + n(D.incl) + ")"], ["LongueurM", "IFCPOSITIVELENGTHMEASURE(" + n(D.L) + ")"],
+      ["Inclinaison", "IFCPLANEANGLEMEASURE(" + n(D.incl * RAD) + ")"], ["InclinaisonDeg", "IFCREAL(" + n(D.incl) + ")"], ["LongueurM", "IFCPOSITIVELENGTHMEASURE(" + n(D.L) + ")"],
       [D.pose === "casquette" ? "DebordM" : "HauteurM", "IFCPOSITIVELENGTHMEASURE(" + n(D.pose === "casquette" ? D.P : D.H) + ")"],
       ["NombreAppuis", "IFCCOUNTMEASURE(" + D.nAppuis + ")"], ["PorteeFicheM", "IFCPOSITIVELENGTHMEASURE(" + n(D.portee) + ")"],
       ["LamesMetresLineaires", "IFCREAL(" + n(D.mlLames) + ")"], ["MasseLamesKg", "IFCREAL(" + n(D.kgLames) + ")"],
       ["Materiau", "IFCLABEL('Aluminium 6060 T6 extrude')"]];
   }
-  function finishElems() { return FINISH_ELEMS; }
+  function finishElems() { defautsFinitions(); return FINISH_ELEMS; }
 
   /* ------------------------------------------------------------------ *
    *  Le panneau de paramètres (PROC_UI.brisesoleil.ui = "buildBriseSoleilUI")
