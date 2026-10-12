@@ -12,12 +12,11 @@
  *
  * LA MARQUE EST PRIVÉE (prive:'compte') : visible du seul compte propriétaire
  * (bpo-config.js, OWNER_EMAILS), comme Vitra, Haworth ou Mecalux en attente
- * d'accord. Les rubriques sont préfixées « SAFRAN — », comme l'ont été les
- * produits Haworth du catalogue national SAFRAN 2026 (commits du 24/09) :
- * c'est le projet qui les a fait entrer, et c'est ainsi qu'on les retrouve.
- * ⚠ Le dépôt est public et Pages sert data/ : prive cache la marque dans
- * l'interface, il ne protège pas les fichiers. Les descriptions ne nomment
- * donc pas le client ; seule la rubrique porte « SAFRAN ».
+ * d'accord. Les rubriques sont celles du catalogue du fabricant (vestiaires
+ * avec caisson haut, industrie propre, industrie salissante, bancs) et RIEN
+ * N'Y NOMME UN PROJET NI UN CLIENT (AL, 12/10 : le nom du dossier n'a rien à
+ * faire ici) — ⚠ le dépôt est public et Pages sert data/ : prive cache la
+ * marque dans l'interface, il ne protège pas les fichiers.
  *
  * CE QUE LE PLAN DIT, et c'est tout ce qu'on a mesuré dessus :
  *   · largeur 1 200 (trois cases de 400), hauteur du corps 1 800, caisson haut
@@ -35,7 +34,13 @@
  *   font 7 à 9/10 mm) sont des choix de rendu, pas des cotes. Les BANCS
  *   SÉPARÉS (demande AL du 12/10) reprennent la construction du piètement du
  *   plan — tubes carrés de 30, lattes de hêtre de 70 × 25 — en 1 000, 1 500
- *   et 2 000 de long, 400 de profondeur, 400 de haut.
+ *   et 2 000 de long, 400 de profondeur, 400 de haut. Les VESTIAIRES INDUSTRIE
+ *   SALISSANTE (demande AL du 12/10) sont la gamme « 2 portes » du fabricant :
+ *   une case de 400 coupée en deux par une cloison — le propre d'un côté, le
+ *   sale de l'autre —, DEUX portes de 180, chacune à charnières côté extérieur
+ *   et serrure vers le milieu, une patère par compartiment ; 1, 2 et 3 cases
+ *   (400/800/1 200 × 500), sur pieds, corps 1 900 + pieds 150 = 2 050, les
+ *   cotes des tableaux anjoutolerie.fr (réfs S1/S2/S3 DC/S, à confirmer).
  *
  * LE FORMAT BPO, relu dans admin.html (packMesh / previewLoad) :
  *   · positions uint16 quantifiées dans meta.bb [minx, 0, minz, maxx, maxy,
@@ -164,7 +169,7 @@ function pietementBanc(racine, { L, hs, zArr, zAv, zLattes0, zLattes1, nLattes, 
  *  L'armoire vestiaire, paramétrée
  * ------------------------------------------------------------------ */
 function vestiaire({ cases, largeurCase = 400, profondeur = 500, hauteurCorps = 1800,
-                     caisson = 0, support = "banc" }) {
+                     caisson = 0, support = "banc", portesParCase = 1 }) {
   const racine = new THREE.Group();
   racine.name = "Armoire vestiaire";
   const L = cases * largeurCase, P = profondeur, H = hauteurCorps;
@@ -176,22 +181,30 @@ function vestiaire({ cases, largeurCase = 400, profondeur = 500, hauteurCorps = 
   boite(racine, "Corps", "corps", L, H, P, { yBas: hs });
 
   /* LES PORTES : charnières à droite, serrure à gauche, grille en bas — comme
-     sur la vue de face du plan. */
+     sur la vue de face du plan. En industrie salissante (portesParCase = 2),
+     chaque case porte DEUX vantaux étroits : charnières côté extérieur,
+     serrures vers le milieu, une grille chacun. */
   for (let i = 0; i < cases; i++) {
     const xc = -L / 2 + largeurCase * (i + 0.5);
     const zAv = P / 2;
-    const porte = new THREE.Group(); porte.name = `Porte ${i + 1}`; racine.add(porte);
-    boite(porte, `Porte ${i + 1} — vantail`, "porte", largeurCase - 24, H - 40, TOLE,
-      { x: xc, yBas: hs + 20, z: zAv + TOLE / 2 });
-    boite(porte, `Porte ${i + 1} — grille d'aération`, "sombre", 180, 220, 3,
-      { x: xc, yBas: hs + 70, z: zAv + TOLE + 1.5 });
-    boite(porte, `Porte ${i + 1} — serrure`, "zinc", 44, 18, 12,
-      { x: xc - largeurCase * 0.27, yBas: hs + H * 0.62, z: zAv + TOLE + 6 });
-    boite(porte, `Porte ${i + 1} — porte-étiquette`, "zinc", 60, 28, 2,
-      { x: xc, yBas: hs + H - 160, z: zAv + TOLE + 1 });
-    for (const [k, f] of [["haute", 0.78], ["basse", 0.22]]) {
-      boite(porte, `Porte ${i + 1} — charnière ${k}`, "zinc", 10, 70, 10,
-        { x: xc + largeurCase / 2 - 12 - 5, yBas: hs + H * f, z: zAv + TOLE / 2 });
+    const lv = largeurCase / portesParCase;           // largeur d'un vantail, jeux compris
+    for (let v = 0; v < portesParCase; v++) {
+      const xv = xc - largeurCase / 2 + lv * (v + 0.5);
+      /* côté charnières : +1 = à droite (une porte, ou le vantail droit), -1 = à gauche */
+      const cote = portesParCase === 1 || v === portesParCase - 1 ? 1 : -1;
+      const nom = portesParCase === 1 ? `Porte ${i + 1}` : `Porte ${i + 1}${v === 0 ? "a" : "b"}`;
+      const porte = new THREE.Group(); porte.name = nom; racine.add(porte);
+      boite(porte, `${nom} — vantail`, "porte", lv - 24, H - 40, TOLE, { x: xv, yBas: hs + 20, z: zAv + TOLE / 2 });
+      boite(porte, `${nom} — grille d'aération`, "sombre", Math.min(180, lv - 70), 220, 3,
+        { x: xv, yBas: hs + 70, z: zAv + TOLE + 1.5 });
+      boite(porte, `${nom} — serrure`, "zinc", Math.min(44, lv * 0.22), 18, 12,
+        { x: xv - cote * lv * 0.27, yBas: hs + H * 0.62, z: zAv + TOLE + 6 });
+      boite(porte, `${nom} — porte-étiquette`, "zinc", Math.min(60, lv * 0.35), 28, 2,
+        { x: xv, yBas: hs + H - 160, z: zAv + TOLE + 1 });
+      for (const [k, f] of [["haute", 0.78], ["basse", 0.22]]) {
+        boite(porte, `${nom} — charnière ${k}`, "zinc", 10, 70, 10,
+          { x: xv + cote * (lv / 2 - 12 - 5), yBas: hs + H * f, z: zAv + TOLE / 2 });
+      }
     }
   }
 
@@ -233,13 +246,20 @@ function vestiaire({ cases, largeurCase = 400, profondeur = 500, hauteurCorps = 
   }
 
   /* L'INTÉRIEUR, qu'on ne voit pas portes fermées : tablette haute et patère
-     par case (vue de gauche du plan). Léger, et fidèle. */
+     par case (vue de gauche du plan) ; en industrie salissante, une cloison
+     médiane et une patère par compartiment. Léger, et fidèle. */
   for (let i = 0; i < cases; i++) {
     const xc = -L / 2 + largeurCase * (i + 0.5);
     boite(racine, `Case ${i + 1} — tablette`, "corps", largeurCase - 2 * TOLE, 8, P - 60,
       { x: xc, yBas: hs + H - 300, z: -10 });
-    boite(racine, `Case ${i + 1} — patère`, "zinc", 10, 60, 40,
-      { x: xc, yBas: hs + H - 400, z: -P / 2 + 40 });
+    if (portesParCase === 2) {
+      boite(racine, `Case ${i + 1} — cloison propre/sale`, "corps", 8, H - 2 * TOLE, P - 2 * TOLE, { x: xc, yBas: hs + TOLE });
+    }
+    const lv = largeurCase / portesParCase;
+    for (let v = 0; v < portesParCase; v++) {
+      boite(racine, `Case ${i + 1} — patère${portesParCase > 1 ? " " + (v + 1) : ""}`, "zinc", 10, 60, 40,
+        { x: xc - largeurCase / 2 + lv * (v + 0.5), yBas: hs + H - 400, z: -P / 2 + 40 });
+    }
   }
 
   const dims = { largeur: L, profondeur: support === "banc" ? P + 350 : P, hauteur: hs + H + caisson,
@@ -269,7 +289,7 @@ const TEINTE_BANC = "Piètement acier peint (rendu gris anthracite), lattes hêt
 const CATALOGUE = [
   { bpo: "at_vestiaire_3c_caisson_haut_07_00046", glb: "07-00046-armoire-vestiaire-3-cases-caisson-haut",
     fabrique: vestiaire, params: { cases: 3, caisson: 450, support: "banc" },
-    cat: "SAFRAN — Vestiaires", reference: "07-00046",
+    cat: "Vestiaires avec caisson haut", reference: "07-00046",
     titre: "Armoire vestiaire 3 cases avec caisson haut",
     description: "Le modèle du plan 07-00046 (type Vestiaire, matière acier, 10-05-2007) : trois cases "
       + "de 400 avec tablette et patère, portes à charnières et grille d'aération, caisson haut de 450 "
@@ -277,41 +297,52 @@ const CATALOGUE = [
       + "dessus ; posé sur un piètement-banc à lattes.", teinte: TEINTE_PHRASE },
   { bpo: "at_vestiaire_1c_caisson_haut", glb: "AT-VCH1-armoire-vestiaire-1-case-caisson-haut",
     fabrique: vestiaire, params: { cases: 1, caisson: 450, support: "banc" },
-    cat: "SAFRAN — Vestiaires", reference: "AT-VCH1 (déclinaison)",
+    cat: "Vestiaires avec caisson haut", reference: "AT-VCH1 (déclinaison)",
     titre: "Armoire vestiaire 1 case avec caisson haut",
     description: "Déclinaison à une case du modèle 07-00046, mêmes cotes de case, même caisson, même "
       + "piètement-banc. Référence à faire établir par le fabricant.", teinte: TEINTE_PHRASE },
   { bpo: "at_vestiaire_2c_caisson_haut", glb: "AT-VCH2-armoire-vestiaire-2-cases-caisson-haut",
     fabrique: vestiaire, params: { cases: 2, caisson: 450, support: "banc" },
-    cat: "SAFRAN — Vestiaires", reference: "AT-VCH2 (déclinaison)",
+    cat: "Vestiaires avec caisson haut", reference: "AT-VCH2 (déclinaison)",
     titre: "Armoire vestiaire 2 cases avec caisson haut",
     description: "Déclinaison à deux cases du modèle 07-00046, mêmes cotes de case, même caisson, même "
       + "piètement-banc. Référence à faire établir par le fabricant.", teinte: TEINTE_PHRASE },
   { bpo: "at_vestiaire_4c_caisson_haut", glb: "AT-VCH4-armoire-vestiaire-4-cases-caisson-haut",
     fabrique: vestiaire, params: { cases: 4, caisson: 450, support: "banc" },
-    cat: "SAFRAN — Vestiaires", reference: "AT-VCH4 (déclinaison)",
+    cat: "Vestiaires avec caisson haut", reference: "AT-VCH4 (déclinaison)",
     titre: "Armoire vestiaire 4 cases avec caisson haut",
     description: "Déclinaison à quatre cases du modèle 07-00046, mêmes cotes de case, même caisson, "
       + "même piètement-banc. Référence à faire établir par le fabricant.", teinte: TEINTE_PHRASE },
   { bpo: "at_vestiaire_ip_2c_pieds_gip2", glb: "GIP2-armoire-vestiaire-2-cases-sur-pieds",
     fabrique: vestiaire, params: { cases: 2, hauteurCorps: 1900, caisson: 0, support: "pieds" },
-    cat: "SAFRAN — Vestiaires", reference: "GIP2 IC/S (catalogue, à confirmer)",
+    cat: "Vestiaires industrie propre", reference: "GIP2 IC/S (catalogue, à confirmer)",
     titre: "Armoire vestiaire industrie propre 2 cases sur pieds",
     description: "Vestiaire industrie propre du catalogue anjoutolerie.fr : 2 cases, 2 050 × 800 × 500 "
       + "sur pieds, sans caisson. Même porte et même intérieur que le modèle du plan.", teinte: TEINTE_PHRASE },
   { bpo: "at_vestiaire_ip_3c_pieds_gip3", glb: "GIP3-armoire-vestiaire-3-cases-sur-pieds",
     fabrique: vestiaire, params: { cases: 3, hauteurCorps: 1900, caisson: 0, support: "pieds" },
-    cat: "SAFRAN — Vestiaires", reference: "GIP3 IC/S (catalogue, à confirmer)",
+    cat: "Vestiaires industrie propre", reference: "GIP3 IC/S (catalogue, à confirmer)",
     titre: "Armoire vestiaire industrie propre 3 cases sur pieds",
     description: "Vestiaire industrie propre du catalogue anjoutolerie.fr : 3 cases, 2 050 × 1 200 × 500 "
       + "sur pieds, sans caisson. Même porte et même intérieur que le modèle du plan.", teinte: TEINTE_PHRASE },
+  /* INDUSTRIE SALISSANTE (AL, 12/10) : la gamme « 2 portes » — une case de 400
+     coupée en deux, deux vantaux, sur pieds, 2 050 × 400/800/1 200 × 500. */
+  ...[1, 2, 3].map((n) => ({
+    bpo: `at_vestiaire_is_${n}c_2portes_s${n}`, glb: `S${n}-armoire-vestiaire-industrie-salissante-${n}-case${n > 1 ? "s" : ""}-2-portes`,
+    fabrique: vestiaire, params: { cases: n, hauteurCorps: 1900, caisson: 0, support: "pieds", portesParCase: 2 },
+    cat: "Vestiaires industrie salissante", reference: `S${n} DC/S (catalogue, à confirmer)`,
+    titre: `Armoire vestiaire industrie salissante ${n} case${n > 1 ? "s" : ""} 2 portes`,
+    description: `Vestiaire industrie salissante du catalogue anjoutolerie.fr : ${n} case${n > 1 ? "s" : ""} de 400 à deux `
+      + "compartiments séparés par une cloison (vêtements de ville d'un côté, de travail de l'autre), deux portes de "
+      + "180 par case à charnières extérieures et serrures au milieu, grille d'aération sur chaque porte, tablette "
+      + `haute et une patère par compartiment ; 2 050 × ${n * 400} × 500 sur pieds.`, teinte: TEINTE_PHRASE })),
   /* LES BANCS SÉPARÉS (AL, 12/10) : le piètement du plan, seul — tubes carrés de
      30, quatre lattes de hêtre, 400 de haut, 400 de profondeur ; trois
      longueurs, pied médian à partir de 2 000. Références à faire établir. */
   ...[1000, 1500, 2000].map((Lg) => ({
     bpo: `at_banc_vestiaire_${Lg}`, glb: `AT-BV${Lg}-banc-vestiaire-${Lg}`,
     fabrique: banc, params: { longueur: Lg },
-    cat: "SAFRAN — Bancs", reference: `AT-BV${Lg} (déclinaison)`,
+    cat: "Bancs", reference: `AT-BV${Lg} (déclinaison)`,
     titre: `Banc vestiaire ${Lg}`,
     description: `Banc vestiaire séparé, ${Lg} × 400, hauteur d'assise 400 : la construction du piètement du `
       + "modèle 07-00046 — cadre et pieds en tube carré de 30, quatre lattes de hêtre de 70 × 25"
