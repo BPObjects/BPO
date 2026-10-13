@@ -172,12 +172,12 @@ const POSES = {
       + `porte-à-faux à platine murale, débord ${d.profondeur}, longueur ${d.largeur}. Posée au sol dans BPO : à relever à la hauteur du linteau.` },
   couche: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — vertical lames couchées", code: "vc",
     titre: (sec, L) => `Brise-soleil vertical AZUR ${sec} — lames couchées L ${L}`,
-    texte: (d) => `Écran devant une baie : ${d.lames} lames horizontales entre ${d.appuis} flasques verticales tenues à la façade par des `
-      + `consoles haut et bas, hauteur ${d.hauteur}, longueur ${d.largeur}, à 100 mm du nu de façade (à confirmer).` },
+    texte: (d) => `Écran devant une baie : ${d.lames} lames horizontales entre ${d.appuis} flasques verticales tenues à la façade par `
+      + `${d.consoles} consoles chacune (tous les 1,50 m au plus), hauteur ${d.hauteur}, longueur ${d.largeur}, à 100 mm du nu de façade (à confirmer).` },
   debout: { cat: "Brise-soleil fixes — lames ailes d'avion AZUR — vertical lames debout", code: "vd",
     titre: (sec, L) => `Brise-soleil vertical AZUR ${sec} — lames debout L ${L}`,
-    texte: (d) => `Écran devant une baie : ${d.lames} lames verticales entre deux flasques horizontales (haut et bas) tenues à la façade `
-      + `par ${2 * d.consoles} consoles (${d.consoles} par flasque), corde à ${d.inclinaison}° du plan de façade, hauteur ${d.hauteur}, longueur ${d.largeur}, à 100 mm du nu de façade (à confirmer).` },
+    texte: (d) => `Écran devant une baie : ${d.lames} lames verticales entre ${d.appuis} flasques horizontales (haut et bas) tenues à la façade `
+      + `par ${d.appuis * d.consoles} consoles (${d.consoles} par flasque), corde à ${d.inclinaison}° du plan de façade, hauteur ${d.hauteur}, longueur ${d.largeur}, à 100 mm du nu de façade (à confirmer).` },
 };
 
 const CATALOGUE = [];

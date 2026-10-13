@@ -18,7 +18,12 @@
    (aluminium 6060 T6 extrudé, profils monoblocs ovoïdes), les positions
    SpeedFix 0/15/30/45°, les finitions. Ce qu'on SUPPOSE (dit dans la fiche) :
    le pas égal à la largeur de lame, l'inclinaison 30°, les flasques en plat
-   de 10 mm, le nombre d'appuis déduit de la portée.
+   de 10 mm, le nombre d'appuis déduit de la portée (un appui par portée au
+   plus, intermédiaires compris : consoles d'une casquette, flasques
+   verticales d'un écran à lames couchées, flasques horizontales d'un écran
+   à lames debout), les consoles tous les 1,50 m le long des flasques.
+   Jusqu'à 100 m de long et 20 m de haut ; au-delà de quelques dizaines de
+   lames le profil perd des facettes pour que le maillage reste léger.
 
    100 % JS, sans dépendance. La géométrie est poussée dans FC (box / face du
    moteur), donc rendue, exportée (IFC, OBJ…) et posée en scène comme tout
@@ -98,16 +103,18 @@
    * ------------------------------------------------------------------ */
   function derive(P) {
     var S = section(P.section), pose = POSES.some(function (p) { return p.id === P.pose; }) ? P.pose : "casquette";
-    var L = Math.max(0.3, (+P.L || 300) / 100), H = Math.max(0.3, (+P.H || 220) / 100), Pd = Math.max(0.2, (+P.P || 120) / 100);
+    var L = Math.max(0.3, Math.min(100, (+P.L || 300) / 100)), H = Math.max(0.3, Math.min(20, (+P.H || 220) / 100)), Pd = Math.max(0.2, Math.min(5, (+P.P || 120) / 100));
     var c = S.l / 1000, t = S.e / 1000;
     var incl = Math.max(0, Math.min(90, +P.incl || 0));
     var pas = +P.pasAuto ? c : Math.max(t + 0.005, Math.min(1, (+P.pas || 30) / 100));
     var retrait = Math.max(0, Math.min(0.6, (+P.retrait || 0) / 100));
-    var hPose = Math.max(pose === "casquette" ? 0.03 : 0, Math.min(4, (+(pose === "casquette" ? P.hPose : P.hBas) || 0) / 100));   // casquette : la platine descend 3 cm sous la console, jamais sous le sol
+    var hPose = Math.max(pose === "casquette" ? 0.03 : 0, Math.min(20, (+(pose === "casquette" ? P.hPose : P.hBas) || 0) / 100));   // casquette : la platine descend 3 cm sous la console, jamais sous le sol
     var portee = (pose === "debout" ? S.debout : S.couchee) / 1000;
     var lameL = pose === "debout" ? H - 2 * EP : L - 2 * EP;          // longueur d'une lame
-    var appuisMin = pose === "debout" ? 2 : Math.ceil(L / portee - 1e-9) + 1;
-    var nAppuis = pose === "debout" ? 2 : +P.appuisAuto ? appuisMin : Math.max(2, Math.min(12, Math.round(+P.nAppuis || 2)));   // debout : deux flasques, toujours
+    /* les appuis : consoles (casquette), flasques verticales (lames couchées) ou
+       flasques horizontales (lames debout), un au plus par portée de la fiche */
+    var appuisMin = Math.ceil(lameL / portee - 1e-9) + 1;
+    var nAppuis = +P.appuisAuto ? appuisMin : Math.max(2, Math.min(60, Math.round(+P.nAppuis || 2)));
     var sinI = Math.sin(incl * RAD), cosI = Math.cos(incl * RAD);
     var env = { h: c * sinI + t * cosI, p: c * cosI + t * sinI };    // enveloppe d'une lame couchée inclinée
     /* le support tient au moins une lame : débord ≥ enveloppe (casquette), hauteur ≥ enveloppe (écran couché) */
@@ -131,6 +138,7 @@
       D.pF = env.p + 0.04;                                      // largeur du plat (profondeur de l'écran)
       nL = Math.max(1, Math.floor((H - 0.2) / pas + 1e-9));
       while (nL > 1 && (nL - 1) * pas + env.h > H - 0.1 + 1e-9) nL--;
+      D.nConsoles = Math.ceil(H / 1.5 - 1e-9) + 1;              // consoles tous les 1,50 m au plus sur chaque flasque (à confirmer)
       D.hauteur = hPose + H;
       D.profondeur = retrait + EP + D.pF;
     } else {
@@ -143,6 +151,8 @@
       D.profondeur = retrait + EP + D.pF;
     }
     D.nL = nL;
+    D.vis = (pose === "casquette" ? nAppuis : nAppuis * (D.nConsoles || 1)) <= 40;
+    D.nProfil = Math.max(12, Math.min(N_PROFIL, 4 * Math.floor(12000 / (3 * nL) / 4)));   // facettes par lame : 36, moins quand les lames se comptent par centaines
     D.largeur = L;
     D.mlLames = nL * lameL;                                     // mètres linéaires de lames
     D.kgLames = S.poids ? D.mlLames * S.poids / 1000 : 0;
@@ -158,17 +168,18 @@
    *  générateur Node y met sa teinte.
    * ------------------------------------------------------------------ */
   var N_PROFIL = 36;
-  function profil(c, t) {
+  function profil(c, t, n) {
     var a = 0.38, pts = [];
-    for (var k = 0; k < N_PROFIL; k++) {
-      var ph = k / N_PROFIL * 2 * Math.PI, cs = Math.cos(ph), sn = Math.sin(ph);
+    n = n || N_PROFIL;
+    for (var k = 0; k < n; k++) {
+      var ph = k / n * 2 * Math.PI, cs = Math.cos(ph), sn = Math.sin(ph);
       var u = cs < 0 ? a + a * cs : a + (1 - a) * cs;           // abscisse 0..1 : bord d'attaque (−Z) → bord de fuite (+Z)
       pts.push([u * c - c / 2, (t / 2) * sn]);                   // (z, y) centrés sur l'axe de la lame
     }
     return pts;
   }
-  function profilRect(c, t) {                                    // la variante rectangulaire (AS200x36-R)
-    var pts = [], n = N_PROFIL / 4;
+  function profilRect(c, t, np) {                                // la variante rectangulaire (AS200x36-R)
+    var pts = [], n = (np || N_PROFIL) / 4;
     for (var side = 0; side < 4; side++) for (var k = 0; k < n; k++) {
       var f = k / n;
       pts.push(side === 0 ? [c / 2, -t / 2 + t * f] : side === 1 ? [c / 2 - c * f, t / 2] : side === 2 ? [-c / 2, t / 2 - t * f] : [-c / 2 + c * f, -t / 2]);
@@ -177,8 +188,8 @@
   }
   /* Une lame : longueur `L` le long de X, profil (z, y) ; `R` = rotation 3×3
      (lignes) appliquée aux points et aux normales, puis translation (cx,cy,cz). */
-  function lame(out, L, S, R, cx, cy, cz) {
-    var c = S.l / 1000, t = S.e / 1000, Pf = S.rect ? profilRect(c, t) : profil(c, t), n = Pf.length;
+  function lame(out, L, S, R, cx, cy, cz, np) {
+    var c = S.l / 1000, t = S.e / 1000, Pf = S.rect ? profilRect(c, t, np) : profil(c, t, np), n = Pf.length;
     var rot = function (v) { return [R[0][0] * v[0] + R[0][1] * v[1] + R[0][2] * v[2], R[1][0] * v[0] + R[1][1] * v[1] + R[1][2] * v[2], R[2][0] * v[0] + R[2][1] * v[1] + R[2][2] * v[2]]; };
     var pt = function (x, k) { var p = rot([x, Pf[k][1], Pf[k][0]]); return [p[0] + cx, p[1] + cy, p[2] + cz]; };
     var nrm = [];
@@ -229,7 +240,7 @@
   /* Une platine murale (face arrière au nu de façade zMur) et quatre têtes de vis. */
   function platine(out, D, w, h, x, yBas, zMur) {
     boite(out, "bsFix", x, yBas + h / 2, zMur + EP / 2, w, h, EP);
-    if (!D.platines) return;
+    if (!D.platines || !D.vis) return;                          // les têtes de vis : pas au-delà d'une quarantaine de platines
     for (var sx = -1; sx <= 1; sx += 2) for (var sy = 0; sy < 2; sy++)
       boite(out, "bsFix", x + sx * (w / 2 - 0.018), yBas + h * (sy ? 0.8 : 0.2), zMur + EP + 0.003, 0.012, 0.012, 0.006);
   }
@@ -249,33 +260,38 @@
         platine(out, D, 0.12, hM + 0.06, Math.max(-L / 2 + 0.06, Math.min(L / 2 - 0.06, x)), y0 - 0.03, zMur);
       }
       var zc = zMur + EP + (Pd - EP) / 2, R = Rx(D.incl * RAD);
-      for (k = 0; k < D.nL; k++) lame(out, D.lameL, S, R, 0, yLame, zc + (k - (D.nL - 1) / 2) * D.pas);
+      for (k = 0; k < D.nL; k++) lame(out, D.lameL, S, R, 0, yLame, zc + (k - (D.nL - 1) / 2) * D.pas, D.nProfil);
     } else if (D.pose === "couche") {
       var H = D.H, pF = D.pF, zMur2 = -(D.retrait + EP + pF) / 2, zF0 = zMur2 + EP + D.retrait, yL0 = y0 + (H - (D.nL - 1) * D.pas) / 2;
       for (i = 0; i < D.nAppuis; i++) {
         x = -L / 2 + EP / 2 + i * (L - EP) / (D.nAppuis - 1);
         var xp = Math.max(-L / 2 + 0.06, Math.min(L / 2 - 0.06, x));
         plaqueZY(out, "bsFlasque", [[zF0, y0], [zF0 + pF, y0], [zF0 + pF, y0 + H], [zF0, y0 + H]], x);
-        [[0.06, "basse"], [H - 0.12, "haute"]].forEach(function (cy) {
-          boite(out, "bsFlasque", x, y0 + cy[0] + 0.03, zMur2 + EP + (D.retrait + EP) / 2, EP, 0.06, D.retrait + EP);
-          platine(out, D, 0.12, 0.12, xp, y0 + cy[0] - 0.03, zMur2);
-        });
+        for (var j = 0; j < D.nConsoles; j++) {                  // consoles du bas en haut, tous les 1,50 m au plus
+          var cy = 0.06 + j * (H - 0.18) / (D.nConsoles - 1);
+          boite(out, "bsFlasque", x, y0 + cy + 0.03, zMur2 + EP + (D.retrait + EP) / 2, EP, 0.06, D.retrait + EP);
+          platine(out, D, 0.12, 0.12, xp, y0 + cy - 0.03, zMur2);
+        }
       }
       var R2 = Rx(D.incl * RAD), zL = zF0 + pF / 2;
-      for (k = 0; k < D.nL; k++) lame(out, D.lameL, S, R2, 0, yL0 + k * D.pas, zL);
+      for (k = 0; k < D.nL; k++) lame(out, D.lameL, S, R2, 0, yL0 + k * D.pas, zL, D.nProfil);
     } else {
       var H2 = D.H, pF2 = D.pF, zMur3 = -(D.retrait + EP + pF2) / 2, zF02 = zMur3 + EP + D.retrait, x0 = -((D.nL - 1) * D.pas) / 2;
-      [[y0, "basse"], [y0 + H2 - EP, "haute"]].forEach(function (fl) {
-        boite(out, "bsFlasque", 0, fl[0] + EP / 2, zF02 + pF2 / 2, L, EP, pF2);
+      /* les flasques horizontales : en bas, en haut, et entre les deux un appui par
+         portée « lame debout » au plus ; chacune tenue par ses consoles */
+      for (i = 0; i < D.nAppuis; i++) {
+        var yF = y0 + i * (H2 - EP) / (D.nAppuis - 1);
+        boite(out, "bsFlasque", 0, yF + EP / 2, zF02 + pF2 / 2, L, EP, pF2);
         for (var j = 0; j < D.nConsoles; j++) {
-          var xc = -L / 2 + 0.06 + j * (L - 0.12) / (D.nConsoles - 1), haute = fl[1] === "haute";
-          boite(out, "bsFlasque", xc, (haute ? y0 + H2 - 0.06 : y0) + 0.03, zMur3 + EP + (D.retrait + EP) / 2, EP, 0.06, D.retrait + EP);
-          platine(out, D, 0.12, 0.12, xc, haute ? y0 + H2 - 0.12 : y0, zMur3);
+          var xc = -L / 2 + 0.06 + j * (L - 0.12) / (D.nConsoles - 1);
+          var ycc = Math.max(y0 + 0.03, Math.min(y0 + H2 - 0.03, yF + EP / 2)), ypl = Math.max(y0, Math.min(y0 + H2 - 0.12, yF + EP / 2 - 0.06));
+          boite(out, "bsFlasque", xc, ycc, zMur3 + EP + (D.retrait + EP) / 2, EP, 0.06, D.retrait + EP);
+          platine(out, D, 0.12, 0.12, xc, ypl, zMur3);
         }
-      });
+      }
       /* la lame est extrudée le long de X : on la dresse (Z, 90°) puis on tourne sa corde autour de Y */
       var R3 = mul(Ry((90 - D.incl) * RAD), Rz(Math.PI / 2));
-      for (k = 0; k < D.nL; k++) lame(out, D.lameL, S, R3, x0 + k * D.pas, y0 + H2 / 2, zF02 + pF2 / 2);
+      for (k = 0; k < D.nL; k++) lame(out, D.lameL, S, R3, x0 + k * D.pas, y0 + H2 / 2, zF02 + pF2 / 2, D.nProfil);
     }
     return { faces: out, D: D };
   }
@@ -305,7 +321,7 @@
     if (!bb || !(bb.mn[0] <= bb.mx[0])) bb = { mn: [-D.largeur / 2, 0, -D.profondeur / 2], mx: [D.largeur / 2, D.hauteur, D.profondeur / 2] };
     glob.BS_INFO = { nL: D.nL, nAppuis: D.nAppuis, appuisMin: D.appuisMin, pas: D.pas, incl: D.incl, lameL: D.lameL, mlLames: D.mlLames,
       kgLames: D.kgLames, surface: D.surface, portee: D.portee, section: D.S.id, pose: D.pose, faces: glob.FC.length - fs,
-      L: D.largeur, H: D.hauteur, P: D.profondeur, hPose: D.hPose, nConsoles: D.nConsoles || D.nAppuis };
+      L: D.largeur, H: D.hauteur, P: D.profondeur, hPose: D.hPose, nConsoles: D.pose === "casquette" ? D.nAppuis : D.nAppuis * D.nConsoles, nProfil: D.nProfil };
     glob.DIMS = { w: Math.max(0.1, bb.mx[0] - bb.mn[0]), h: Math.max(0.1, bb.mx[1] - bb.mn[1]), d: Math.max(0.1, bb.mx[2] - bb.mn[2]), cy: (bb.mn[1] + bb.mx[1]) / 2 };
     glob.DIMS_BB = bb;
     try { if (!glob.INST_FACEONLY) (glob._sfxUpd || []).forEach(function (u) { u(); }); } catch (e) {}
@@ -324,17 +340,16 @@
     var D = derive(P);
     return "Brise-soleil fixe Tellier AZUR " + D.S.id + ", " + poseLabel(D.pose).toLowerCase() + ", " + D.nL + " lames au pas de " + f0(D.pas * 1000) + " mm inclinées à " + f0(D.incl) + "°, "
       + (D.pose === "casquette" ? "longueur " + f2(D.L) + " m × débord " + f2(D.P) + " m" : "longueur " + f2(D.L) + " m × hauteur " + f2(D.H) + " m")
-      + ", " + D.nAppuis + " appuis";
+      + ", " + D.nAppuis + (D.pose === "casquette" ? " consoles" : D.pose === "couche" ? " flasques" : " flasques horizontales");
   }
   function recapHTML() {
     var D = derive(PBS), S = D.S, w = "";
     if (!(+PBS.appuisAuto) && D.nAppuis < D.appuisMin) w += '<div style="color:#e08a2e;margin-top:3px;">⚠ ' + D.nAppuis + " appuis pour une portée de " + f2(D.portee) + " m : la fiche en demande " + D.appuisMin + ".</div>";
-    if (D.pose !== "debout" && D.L / (D.nAppuis - 1) > D.portee + 1e-6) w += '<div style="color:#e08a2e;margin-top:3px;">⚠ Entre appuis ' + f2(D.L / (D.nAppuis - 1)) + " m &gt; portée " + f2(D.portee) + " m.</div>";
-    if (D.pose === "debout" && D.lameL > D.portee + 1e-6) w += '<div style="color:#e08a2e;margin-top:3px;">⚠ Lame de ' + f2(D.lameL) + " m &gt; portée debout " + f2(D.portee) + " m.</div>";
+    if (D.lameL / (D.nAppuis - 1) > D.portee + 1e-6) w += '<div style="color:#e08a2e;margin-top:3px;">⚠ Entre appuis ' + f2(D.lameL / (D.nAppuis - 1)) + " m &gt; portée " + (D.pose === "debout" ? "debout " : "") + f2(D.portee) + " m.</div>";
     if (!(+PBS.pasAuto) && D.pas < D.c * 0.7) w += '<div style="color:#e08a2e;margin-top:3px;">⚠ Entraxe serré : les lames se chevauchent fortement.</div>';
     return "<b>" + poseLabel(D.pose) + " — lame AZUR " + S.id + "</b> · " + S.l + " × " + S.e + " mm, aluminium 6060 T6 extrudé" + (S.deux ? " (deux parties)" : "") + "<br>"
       + D.nL + " lames de " + f2(D.lameL) + " m (" + f2(D.mlLames, 1) + " ml" + (S.poids ? ", ≈ " + f0(D.kgLames) + " kg" : "") + "), pas " + f0(D.pas * 1000) + " mm, " + f0(D.incl) + "°, "
-      + (D.pose === "debout" ? "2 flasques + " + 2 * D.nConsoles + " consoles (" + D.nConsoles + " par flasque)" : D.nAppuis + " appuis") + ", " + f2(D.surface, 1) + " m² protégés<br>"
+      + (D.pose === "casquette" ? D.nAppuis + " consoles" : D.nAppuis + " flasques " + (D.pose === "debout" ? "horizontales" : "verticales") + " + " + D.nAppuis * D.nConsoles + " consoles (" + D.nConsoles + " par flasque)") + ", " + f2(D.surface, 1) + " m² protégés<br>"
       + "<span style=\"opacity:.8\">Portée fiche " + (D.pose === "debout" ? "lame debout " : "lame couchée ") + f2(D.portee) + " m" + (S.est ? " (estimée)" : "") + (S.note ? " — " + S.note : "") + " ; "
       + (S.poids ? S.poids + " g/ml ; " : "") + "pas et flasques à confirmer avec le fabricant.</span>" + w;
   }
@@ -384,11 +399,11 @@
   }
   function noteAppuis(D) {
     var S = D.S;
-    return D.pose === "debout"
-      ? "Lames debout : deux flasques (haut et bas), consoles tous les 1,50 m au plus (" + D.nConsoles + " par flasque, à confirmer). Portée « lame debout » de la fiche : "
-        + f2(D.portee) + " m" + (S.est ? " (estimée)" : "") + " pour des lames de " + f2(D.lameL) + " m. Flasques et consoles rendues en plat de 10 mm — « dimensionnées selon étude » chez le fabricant."
-      : "Appuis déduits de la portée « lame couchée » de la fiche (" + f2(D.portee) + " m" + (S.est ? ", estimée" : "") + ") : " + D.appuisMin + " au moins pour "
-        + f2(D.L) + " m. Flasques et consoles rendues en plat de 10 mm — « dimensionnées selon étude » chez le fabricant.";
+    var quoi = D.pose === "casquette" ? "Consoles" : D.pose === "couche" ? "Flasques verticales" : "Flasques horizontales (bas, haut et intermédiaires)";
+    return quoi + " déduites de la portée « " + (D.pose === "debout" ? "lame debout" : "lame couchée") + " » de la fiche (" + f2(D.portee) + " m" + (S.est ? ", estimée" : "") + ") : "
+      + D.appuisMin + " au moins pour des lames de " + f2(D.lameL) + " m"
+      + (D.pose === "casquette" ? "" : " ; consoles tous les 1,50 m au plus sur chaque flasque (" + D.nConsoles + " par flasque, à confirmer)")
+      + ". Flasques et consoles rendues en plat de 10 mm — « dimensionnées selon étude » chez le fabricant.";
   }
   var host0 = function () { return document.getElementById("params") || document.createElement("div"); };
   function buildUI(again) {
@@ -409,11 +424,11 @@
         + f2(S.couchee / 1000) + " m couchée / " + f2(S.debout / 1000) + " m debout" + (S.est ? " (estimées)" : "") + (S.note ? " (" + S.note + ")" : "")
         + (S.deux ? ", profil en deux parties" : "") + ". Aluminium 6060 T6 extrudé, profil monobloc ovoïde « aile d'avion »." }
     ] });
-    var fD = [{ type: "slider", label: "Longueur (le long de la façade)", unit: "cm", key: "L", min: 60, max: 1200, step: 5 }];
-    if (casq) fD.push({ type: "slider", label: "Débord (profondeur de la casquette)", unit: "cm", key: "P", min: 30, max: 250, step: 5 });
-    else fD.push({ type: "slider", label: "Hauteur de l'écran", unit: "cm", key: "H", min: 50, max: 600, step: 5 });
-    fD.push(casq ? { type: "slider", label: "Hauteur de pose (dessous des consoles)", unit: "cm", key: "hPose", min: 0, max: 400, step: 5 }
-               : { type: "slider", label: "Hauteur du bas de l'écran", unit: "cm", key: "hBas", min: 0, max: 400, step: 5 });
+    var fD = [{ type: "slider", label: "Longueur (le long de la façade)", unit: "cm", key: "L", min: 60, max: 10000, step: 10 }];
+    if (casq) fD.push({ type: "slider", label: "Débord (profondeur de la casquette)", unit: "cm", key: "P", min: 30, max: 500, step: 5 });
+    else fD.push({ type: "slider", label: "Hauteur de l'écran", unit: "cm", key: "H", min: 50, max: 2000, step: 5 });
+    fD.push(casq ? { type: "slider", label: "Hauteur de pose (dessous des consoles)", unit: "cm", key: "hPose", min: 0, max: 2000, step: 5 }
+               : { type: "slider", label: "Hauteur du bas de l'écran", unit: "cm", key: "hBas", min: 0, max: 2000, step: 5 });
     if (!casq) fD.push({ type: "slider", label: "Retrait du nu de façade", unit: "cm", key: "retrait", min: 0, max: 60, step: 1 });
     groups.push({ title: "Déploiement du brise-soleil", fields: fD });
     var fL = [{ type: "choice", label: "Entraxe (pas) des lames", key: "pasAuto", options: [{ id: 1, l: "Auto : largeur de lame (jour ≥ 1 cm)" }, { id: 0, l: "Réglé" }],
@@ -424,12 +439,11 @@
       suffix: function (v) { return [0, 15, 30, 45].indexOf(+v) >= 0 ? "position SpeedFix" : "hors positions SpeedFix 0/15/30/45"; } });
     groups.push({ title: "Lames ailes d'avion", fields: fL });
     var fA = [];
-    if (D.pose !== "debout") {                                   // lames debout : deux flasques, toujours — rien à régler
-      fA.push({ type: "choice", label: "Appuis (consoles / flasques)", key: "appuisAuto", options: [{ id: 1, l: "Auto : selon la portée" }, { id: 0, l: "Réglé" }],
-        pick: function (v) { var m = derive(P).appuisMin; if (+v) P.nAppuis = m; else P.nAppuis = Math.max(+P.nAppuis || 2, m); } });
-      if (!(+P.appuisAuto)) fA.push({ type: "slider", label: "Nombre d'appuis", unit: "", key: "nAppuis", min: 2, max: 12, step: 1,
-        suffix: function (v) { return v < derive(P).appuisMin ? "⚠ portée dépassée" : ""; } });   // vivant : la longueur bouge sous les curseurs
-    }
+    fA.push({ type: "choice", label: casq ? "Appuis (consoles)" : D.pose === "couche" ? "Appuis (flasques verticales)" : "Appuis (flasques horizontales)", key: "appuisAuto",
+      options: [{ id: 1, l: "Auto : selon la portée" }, { id: 0, l: "Réglé" }],
+      pick: function (v) { var m = derive(P).appuisMin; if (+v) P.nAppuis = m; else P.nAppuis = Math.max(+P.nAppuis || 2, m); } });
+    if (!(+P.appuisAuto)) fA.push({ type: "slider", label: "Nombre d'appuis", unit: "", key: "nAppuis", min: 2, max: 60, step: 1,
+      suffix: function (v) { return v < derive(P).appuisMin ? "⚠ portée dépassée" : ""; } });   // vivant : la longueur bouge sous les curseurs
     fA.push({ type: "choice", label: "Platines murales et visserie", key: "platines", options: [{ id: 1, l: "Dessinées" }, { id: 0, l: "Masquées" }] });
     fA.push({ type: "note", text: noteAppuis(D) });
     groups.push({ title: "Appuis", fields: fA });
