@@ -1,0 +1,12 @@
+/* Nuancier Fermob — coloris releves dans le SELECTEUR pCon de la marque.
+   Ce ne sont pas des photos de produit mais des aplats d'interface : la valeur
+   affichee EST la valeur declaree, rendue sans ombrage. L'instrument a ete
+   valide sur deux temoins INDEPENDANTS, declares en clair dans les MTL pCon :
+   le coloris 14 (Kd 0.662745 0.596078 0.52549 = rgb 169 152 134, ecart 0) et
+   le coloris E1 (Kd 0.53 0.71 0.82 = rgb 135 181 209, ecart 1).
+   ATTENTION : seuls ces deux coloris ont un NOM DE CODE connu. Les autres
+   portent un libelle provisoire « Coloris NN » en attendant la liste de la
+   marque — on ne devine pas un nom commercial.
+   `pour` ne vise que l'acier laque : le verre des plateaux Bellevie en est
+   exclu. Genere par CODE/fabricants/fermob-nuancier.py. */
+BPO_FINITIONS("fermob",[{"fam": "fermob_laque", "label": "Laque epoxy — coloris Fermob", "pour": "frm_|^mat_", "items": [{"id": "fermob_laque_01", "n": "Coloris 01", "c": [0, 77, 59]}, {"id": "fermob_laque_02", "n": "Fermob 14", "c": [169, 152, 134]}, {"id": "fermob_laque_03", "n": "Coloris 03", "c": [127, 61, 49]}, {"id": "fermob_laque_04", "n": "Coloris 04", "c": [0, 61, 74]}, {"id": "fermob_laque_05", "n": "Coloris 05", "c": [2, 6, 5]}, {"id": "fermob_laque_06", "n": "Coloris 06", "c": [147, 3, 28]}, {"id": "fermob_laque_07", "n": "Coloris 07", "c": [38, 41, 50]}, {"id": "fermob_laque_08", "n": "Coloris 08", "c": [94, 104, 96]}, {"id": "fermob_laque_09", "n": "Coloris 09", "c": [163, 165, 126]}, {"id": "fermob_laque_10", "n": "Coloris 10", "c": [114, 129, 110]}, {"id": "fermob_laque_11", "n": "Coloris 11", "c": [0, 18, 50]}, {"id": "fermob_laque_12", "n": "Coloris 12", "c": [210, 204, 190]}, {"id": "fermob_laque_13", "n": "Coloris 13", "c": [255, 249, 199]}, {"id": "fermob_laque_14", "n": "Coloris 14", "c": [228, 241, 232]}, {"id": "fermob_laque_15", "n": "Coloris 15", "c": [85, 24, 39]}, {"id": "fermob_laque_16", "n": "Coloris 16", "c": [253, 179, 22]}, {"id": "fermob_laque_17", "n": "Coloris 17", "c": [145, 105, 52]}, {"id": "fermob_laque_18", "n": "Coloris 18", "c": [88, 90, 50]}, {"id": "fermob_laque_19", "n": "Fermob E1", "c": [136, 182, 208]}, {"id": "fermob_laque_20", "n": "Coloris 20", "c": [156, 75, 28]}, {"id": "fermob_laque_21", "n": "Coloris 21", "c": [75, 68, 60]}, {"id": "fermob_laque_22", "n": "Coloris 22", "c": [239, 227, 203]}, {"id": "fermob_laque_23", "n": "Coloris 23", "c": [214, 77, 95]}]}]);
