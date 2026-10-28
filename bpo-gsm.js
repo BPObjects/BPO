@@ -223,17 +223,25 @@ function gsmZip(ex, opts){
   /* dièdre par arête GÉOMÉTRIQUE (paire de positions, indépendante des coutures UV) :
      cos > 0.64 (~50°) => arête douce (statut 3, AC lisse) sinon dure (statut 1) —
      même seuil que l'ombrage de la visionneuse */
+  /* PLIS PAR POSITION (28/10, banc T1-T11 d'AL) : l'appariement par INDEX ratait
+     TOUS les plis — les sommets sont dupliques aux coutures (lecon vehicules,
+     « refusion par POSITION » : 0 arete dure trouvee sur un moteur entier par index,
+     7 144 par position). Multi-normales : dur des qu'UNE paire adjacente plie
+     (cos <= 0.64, ~50 deg) ; une seule face = bord vrai, visible aussi. */
   var edgeSoft=new Map();
+  function _pk(vi){ var p=g.P[vi]; return Math.round(p[0]*1e4)+'_'+Math.round(p[1]*1e4)+'_'+Math.round(p[2]*1e4); }
   g.mats.forEach(function(m){ m.tris.forEach(function(tri){
     var a=g.P[tri[0][0]], b=g.P[tri[1][0]], c=g.P[tri[2][0]];
     var ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2], wx=c[0]-a[0],wy=c[1]-a[1],wz=c[2]-a[2];
     var nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx;
     var l=Math.sqrt(nx*nx+ny*ny+nz*nz)||1; nx/=l;ny/=l;nz/=l;
-    for(var k=0;k<3;k++){ var v1=tri[k][0], v2=tri[(k+1)%3][0];
-      var ky=(v1<v2)?v1+'_'+v2:v2+'_'+v1, e=edgeSoft.get(ky);
-      if(e===undefined)edgeSoft.set(ky,[nx,ny,nz]);
-      else if(e!==true&&e!==false)
-        edgeSoft.set(ky,(nx*e[0]+ny*e[1]+nz*e[2])>0.64); }
+    for(var k=0;k<3;k++){ var p1=_pk(tri[k][0]), p2=_pk(tri[(k+1)%3][0]);
+      var ky=(p1<p2)?p1+'|'+p2:p2+'|'+p1, e=edgeSoft.get(ky);
+      if(e===undefined){ edgeSoft.set(ky,{n:[[nx,ny,nz]],dur:false}); }
+      else{ for(var q=0;q<e.n.length;q++)
+              if(nx*e.n[q][0]+ny*e.n[q][1]+nz*e.n[q][2]<=0.64){ e.dur=true; break; }
+            e.n.push([nx,ny,nz]); }
+    }
   }); });
   /* DEUX corps : matieres UNIES en VERT (dialecte exact du plugin meubles, lissage
      AC valide de longue date) ; matieres TEXTUREES en TEVE + COOR 1024 (UV). */
@@ -263,8 +271,14 @@ function gsmZip(ex, opts){
           var ky=(a<b)?a+'_'+b:b+'_'+a, e=emap.get(ky);
           if(e===undefined){ ne++;
             var v1=tri[k2][0], v2=tri[(k2+1)%3][0];
-            var gk=(v1<v2)?v1+'_'+v2:v2+'_'+v1;
-            var st=(edgeSoft.get(gk)===false)?1:3;	/* dure invisible / douce (lissee) */
+            var q1=_pk(v1), q2=_pk(v2), gk=(q1<q2)?q1+'|'+q2:q2+'|'+q1;
+            /* Statuts du banc T1-T11 (28/10) : DURES et bords VISIBLES (0) — c'est
+               tout ce que PROJECT2 trace — douces INVISIBLES-adoucies (3) ; la
+               silhouette lisse vient du FRAGMENT2 du script 2D hybride. (T3/T6 :
+               douces visibles = fouillis ; T5 : douces invisibles sans fragment =
+               carters perdus ; T7 hybride = le bon dessin.) */
+            var eg=edgeSoft.get(gk);
+            var st=(eg&&(eg.dur||eg.n.length<2))?0:3;
             L.push('EDGE '+a+', '+b+', -1, -1, '+st);
             emap.set(ky,{i:ne,a:a}); es.push(ne); }
           else{ es.push(a===e.a?e.i:-e.i); emap.delete(ky); } }	/* pleine (2 usages) : refermee */
@@ -323,7 +337,7 @@ function gsmZip(ex, opts){
     {name:H+'paramlist.xml',data:_bom(params)},
     {name:H+'binaries/subkind.bin',data:_b64bytes(SUBKIND_B64)},
     {name:H+'binaries/fragment2.xml',data:_bom(fragment2)},
-    {name:H+'scripts/2d.gdl',data:_bom('! symbole plan VIVANT : projection du modele (demande AL 28/10 - plus fidele,\n! et l objet parait en elevation/coupe). GDL : 3 = vue de dessus, 270 = azimut,\n! 2 = lignes cachees. Repli leger si un objet rame : FRAGMENT2 ALL, 1 (la\n! silhouette cuite reste dans binaries/fragment2.xml).\nPROJECT2 3, 270, 2\n')},
+    {name:H+'scripts/2d.gdl',data:_bom('! symbole plan HYBRIDE (banc T1-T11 AL, 28/10) : la silhouette cuite donne les\n! contours lisses exacts, la projection ajoute les plis durs du modele (et le\n! modele parait en elevation/coupe). GDL : 3 = vue de dessus, 2 = lignes cachees.\nFRAGMENT2 ALL, 1\nPROJECT2 3, 270, 2\n')},
     {name:H+'scripts/3d.gdl',data:_bom(gdl)},
     {name:'CONVERTIR EN GSM.bat',data:enc.encode(bat)},
     {name:'CONVERTIR EN GSM.command',data:enc.encode(cmd)},
