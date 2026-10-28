@@ -1,9 +1,9 @@
 /* ============================================================================
    BPO — GENERATEUR ArchiCAD (.gsm par HSF), PARTAGE ENTRE LES DEUX PAGES
    ----------------------------------------------------------------------------
-   Extrait de moulinette.html le 10/09/2026, par CODE/gsm/extraire-bpo-gsm.py.
-   NE PAS MODIFIER A LA MAIN : rejouer l'extracteur, sinon moulinette.html et ce
-   fichier divergeront — c'est precisement ce qu'on cherchait a eviter.
+   Extrait de moulinette.html le 10/09/2026 (CODE/gsm/extraire-bpo-gsm.py) ;
+   depuis, moulinette.html ne porte PLUS le generateur : CE FICHIER est le
+   canonique, il s'edite directement (avis d'extraction perime retire le 28/10).
 
    CE QUE CA PRODUIT, ET CE QUE CA NE PRODUIT PAS. Pas un .gsm : un ZIP contenant
    un dossier HSF (les XML de bibliotheque, les scripts GDL 2D/3D, l'apercu, les
@@ -323,7 +323,7 @@ function gsmZip(ex, opts){
     {name:H+'paramlist.xml',data:_bom(params)},
     {name:H+'binaries/subkind.bin',data:_b64bytes(SUBKIND_B64)},
     {name:H+'binaries/fragment2.xml',data:_bom(fragment2)},
-    {name:H+'scripts/2d.gdl',data:_bom('! silhouette cuite (Fragment2) ; repli : PROJECT2 3, 270, 2\nFRAGMENT2 ALL, 1\n')},
+    {name:H+'scripts/2d.gdl',data:_bom('! symbole plan VIVANT : projection du modele (demande AL 28/10 - plus fidele,\n! et l objet parait en elevation/coupe). GDL : 3 = vue de dessus, 270 = azimut,\n! 2 = lignes cachees. Repli leger si un objet rame : FRAGMENT2 ALL, 1 (la\n! silhouette cuite reste dans binaries/fragment2.xml).\nPROJECT2 3, 270, 2\n')},
     {name:H+'scripts/3d.gdl',data:_bom(gdl)},
     {name:'CONVERTIR EN GSM.bat',data:enc.encode(bat)},
     {name:'CONVERTIR EN GSM.command',data:enc.encode(cmd)},
