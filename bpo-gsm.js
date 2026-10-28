@@ -227,7 +227,7 @@ function gsmZip(ex, opts){
      TOUS les plis — les sommets sont dupliques aux coutures (lecon vehicules,
      « refusion par POSITION » : 0 arete dure trouvee sur un moteur entier par index,
      7 144 par position). Multi-normales : dur des qu'UNE paire adjacente plie
-     (cos <= 0.64, ~50 deg) ; une seule face = bord vrai, visible aussi. */
+     (cos <= 0.90, ~25 deg — le seuil T9 valide par AL, 50 deg laissait des manques) ; une seule face = bord vrai, visible aussi. */
   var edgeSoft=new Map();
   function _pk(vi){ var p=g.P[vi]; return Math.round(p[0]*1e4)+'_'+Math.round(p[1]*1e4)+'_'+Math.round(p[2]*1e4); }
   g.mats.forEach(function(m){ m.tris.forEach(function(tri){
@@ -239,7 +239,7 @@ function gsmZip(ex, opts){
       var ky=(p1<p2)?p1+'|'+p2:p2+'|'+p1, e=edgeSoft.get(ky);
       if(e===undefined){ edgeSoft.set(ky,{n:[[nx,ny,nz]],dur:false}); }
       else{ for(var q=0;q<e.n.length;q++)
-              if(nx*e.n[q][0]+ny*e.n[q][1]+nz*e.n[q][2]<=0.64){ e.dur=true; break; }
+              if(nx*e.n[q][0]+ny*e.n[q][1]+nz*e.n[q][2]<=0.90){ e.dur=true; break; }
             e.n.push([nx,ny,nz]); }
     }
   }); });
