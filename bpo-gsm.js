@@ -24,6 +24,11 @@
        opts.telecharger  false pour recuperer le Blob sans declencher le
                          telechargement (utile pour mesurer, ou pour envoyer)
        opts.nomZip       nom du fichier telecharge
+       opts.nomGsm       nom du .gsm (sans extension) que le script de conversion
+                         produira ; defaut : <nom> BPO (NOM-EXPORT, 30/10/2026)
+       opts.guid         MainGUID de l'element de bibliotheque ; defaut : un GUID
+                         NEUF a chaque paquet, pour qu'ArchiCAD voie des elements
+                         distincts et non des versions d'un meme element (30/10)
 
    Le dialecte GDL est celui de l'importateur SKP d'ArchiCAD (specimen
    72_HWX_INSERT), valide dans AC28 le 28/07. On n'y touche pas sans un temoin.
@@ -89,6 +94,15 @@ function _b64bytes(b){ var s=atob(b), a=new Uint8Array(s.length);
   for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i); return a; }
 function _bom(t){ return new TextEncoder().encode('\ufeff'+t); }
 function _gsafe(s){ return s.replace(/[^A-Za-z0-9._ -]/g,'_'); }
+/* NOM-EXPORT (30/10/2026) : un GUID v4 neuf par paquet (MainGUID de libpartdata.xml). Deux exports du meme objet
+   sont deux elements de bibliotheque, pas deux versions du meme : la taille 2 ne remplace plus la taille 1. */
+function _newGuid(){
+  var b=new Uint8Array(16), c=(typeof glob!=='undefined'&&glob.crypto)||null;
+  if(c&&c.getRandomValues) c.getRandomValues(b); else for(var i=0;i<16;i++) b[i]=(Math.random()*256)|0;
+  b[6]=(b[6]&0x0f)|0x40; b[8]=(b[8]&0x3f)|0x80;
+  var h=[]; for(var j=0;j<16;j++) h.push(('0'+b[j].toString(16)).slice(-2).toUpperCase());
+  return h.slice(0,4).join('')+'-'+h.slice(4,6).join('')+'-'+h.slice(6,8).join('')+'-'+h.slice(8,10).join('')+'-'+h.slice(10,16).join('');
+}
 function _f6(x){ return x.toFixed(6); }
 /* parse l'OBJ/MTL regeneres par buildExport (memes donnees que la reference python) */
 function _parseObjText(txt){
@@ -199,6 +213,7 @@ function _silhouette2D(g){
 function gsmZip(ex, opts){
   opts=opts||{};
   var g=_prepGeo(ex, opts.up), name=ex.base.replace(/\s+L$/,''), safe=_gsafe(name);
+  var gsmNom=_gsafe(String(opts.nomGsm||(name+' BPO'))), mainGuid=String(opts.guid||_newGuid());   /* NOM-EXPORT (30/10) */
   var texByFile={}; ex.texs.forEach(function(t){ texByFile[t.name]=t.blob; });
   var L=['! '+name+' \u2014 BPO Moulinette (QEM), objet GDL genere le '+new Date().toISOString().slice(0,10)];
   var texs=[];   /* {key, fn, blob} */
@@ -301,11 +316,11 @@ function gsmZip(ex, opts){
      moulinette. Absente, la balise <Picture> est simplement omise. */
   var preview=opts.preview||null;
   var H='_hsf/'+safe+'/';
-  var libpartdata='<?xml version="1.0" encoding="UTF-8"?>\n<LibpartData Owner="0" Signature="1196644685" Version="46">\n\t<Identification>\n\t\t<MainGUID>00000000-0000-0000-0000-000000000000</MainGUID>\n\t\t<IsPlaceable>true</IsPlaceable>\n\t\t<IsArchivable>false</IsArchivable>\n\t\t<MigrationValue>Normal</MigrationValue>\n\t\t<IsTemplate>false</IsTemplate>\n\t</Identification>\n\t<SubKind SectVersion="1" SectionFlags="0" SubIdent="0"/>\n\t<Fragment2 SectVersion="36" SectionFlags="0" SubIdent="0"/>\n\t<Script_2D SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<Script_3D SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<Comment SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<ParamSection SectVersion="16" SectionFlags="0" SubIdent="0"/>\n'+(preview?'\t<Picture MIME="image/png" Name="Preview_0.png" SectVersion="19" SectionFlags="0" SubIdent="0"/>\n':'')+'\t<Ancestry SectVersion="1" SectionFlags="0" SubIdent="0"/>\n</LibpartData>\n';
+  var libpartdata='<?xml version="1.0" encoding="UTF-8"?>\n<LibpartData Owner="0" Signature="1196644685" Version="46">\n\t<Identification>\n\t\t<MainGUID>'+mainGuid+'</MainGUID>\n\t\t<IsPlaceable>true</IsPlaceable>\n\t\t<IsArchivable>false</IsArchivable>\n\t\t<MigrationValue>Normal</MigrationValue>\n\t\t<IsTemplate>false</IsTemplate>\n\t</Identification>\n\t<SubKind SectVersion="1" SectionFlags="0" SubIdent="0"/>\n\t<Fragment2 SectVersion="36" SectionFlags="0" SubIdent="0"/>\n\t<Script_2D SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<Script_3D SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<Comment SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<ParamSection SectVersion="16" SectionFlags="0" SubIdent="0"/>\n'+(preview?'\t<Picture MIME="image/png" Name="Preview_0.png" SectVersion="19" SectionFlags="0" SubIdent="0"/>\n':'')+'\t<Ancestry SectVersion="1" SectionFlags="0" SubIdent="0"/>\n</LibpartData>\n';
   var ancestry='<?xml version="1.0" encoding="UTF-8"?>\n<Ancestry>\n\t<MainGUID>F938E33A-329D-4A36-BE3E-85E126820996</MainGUID>\n\t<MainGUID>103E8D2C-8230-42E1-9597-46F84CCE28C0</MainGUID>\n</Ancestry>\n';
   var docs='<?xml version="1.0" encoding="UTF-8"?>\n<libpartdocs>\n\t<CommentSection>\n\t\t<![CDATA[!'+name+' \u2014 allege par BPO Moulinette (QEM)]]>\n\t</CommentSection>\n\n</libpartdocs>\n';
   var params='<?xml version="1.0" encoding="UTF-8"?>\n<ParamSection>\n\t<ParamSectHeader>\n\t\t<AutoHotspots>true</AutoHotspots>\n\t\t<WDLeftFrame>0</WDLeftFrame>\n\t\t<WDRightFrame>0</WDRightFrame>\n\t\t<WDTopFrame>0</WDTopFrame>\n\t\t<WDBotFrame>0</WDBotFrame>\n\t\t<LayFlags>65535</LayFlags>\n\t\t<WDMirrorThickness>0</WDMirrorThickness>\n\t\t<WDWallInset>0</WDWallInset>\n\t</ParamSectHeader>\n\t<Parameters SectVersion="16" SectionFlags="0" SubIdent="0">\n\t\t<Length Name="A">\n\t\t\t<Description><![CDATA["Largeur"]]></Description>\n\t\t\t<Value>'+_f6(g.dim[0])+'</Value>\n\t\t</Length>\n\t\t<Length Name="B">\n\t\t\t<Description><![CDATA["Profondeur"]]></Description>\n\t\t\t<Value>'+_f6(g.dim[1])+'</Value>\n\t\t</Length>\n\t\t<Length Name="zzyzx">\n\t\t\t<Description><![CDATA["Hauteur"]]></Description>\n\t\t\t<Value>'+_f6(g.dim[2])+'</Value>\n\t\t</Length>\n\t</Parameters>\n</ParamSection>\n';
-  var bat='@echo off\r\nsetlocal\r\nset "CONV="\r\nfor %%V in (29 28 27 26) do if exist "C:\\Program Files\\Graphisoft\\Archicad %%V\\LP_XMLConverter.exe" if not defined CONV set "CONV=C:\\Program Files\\Graphisoft\\Archicad %%V\\LP_XMLConverter.exe"\r\nif not defined CONV (\r\n  echo LP_XMLConverter introuvable : Archicad 26 a 29 requis.\r\n  pause\r\n  exit /b 1\r\n)\r\n"%CONV%" hsf2libpart "%~dp0_hsf\\'+safe+'" "%~dp0'+safe+' BPO.gsm"\r\nif errorlevel 1 (\r\n  echo ECHEC de la conversion.\r\n  pause\r\n  exit /b 1\r\n)\r\necho.\r\necho OK : "'+safe+' BPO.gsm" cree a cote de ce script.\r\necho Ajoutez CE DOSSIER comme bibliotheque liee dans ArchiCAD\r\necho (Fichier ^> Bibliotheques et objets ^> Gestionnaire de Bibliotheque ^> Ajouter).\r\npause\r\n';
+  var bat='@echo off\r\nsetlocal\r\nset "CONV="\r\nfor %%V in (29 28 27 26) do if exist "C:\\Program Files\\Graphisoft\\Archicad %%V\\LP_XMLConverter.exe" if not defined CONV set "CONV=C:\\Program Files\\Graphisoft\\Archicad %%V\\LP_XMLConverter.exe"\r\nif not defined CONV (\r\n  echo LP_XMLConverter introuvable : Archicad 26 a 29 requis.\r\n  pause\r\n  exit /b 1\r\n)\r\n"%CONV%" hsf2libpart "%~dp0_hsf\\'+safe+'" "%~dp0'+gsmNom+'.gsm"\r\nif errorlevel 1 (\r\n  echo ECHEC de la conversion.\r\n  pause\r\n  exit /b 1\r\n)\r\necho.\r\necho OK : "'+gsmNom+'.gsm" cree a cote de ce script.\r\necho Ajoutez CE DOSSIER comme bibliotheque liee dans ArchiCAD\r\necho (Fichier ^> Bibliotheques et objets ^> Gestionnaire de Bibliotheque ^> Ajouter).\r\npause\r\n';
   /* PENDANT macOS du .bat (10/09/2026). Sans lui, le paquet se telechargeait
      sur un Mac et rien ne le convertissait. Le chemin de LP_XMLConverter varie
      selon les versions : on CHERCHE, et si on ne trouve pas on dit comment
@@ -322,11 +337,11 @@ function gsmZip(ex, opts){
     +'if [ -z \"$CONV\" ]; then\n'
     +'  echo \"LP_XMLConverter introuvable (il est livre avec Archicad 26 a 29).\"\n'
     +'  echo \"Pour le localiser :   mdfind -name LP_XMLConverter\"\n'
-    +'  echo \"Puis :   <chemin> hsf2libpart \\\"$PWD/_hsf/'+safe+'\\\" \\\"$PWD/'+safe+' BPO.gsm\\\"\"\n'
+    +'  echo \"Puis :   <chemin> hsf2libpart \\\"$PWD/_hsf/'+safe+'\\\" \\\"$PWD/'+gsmNom+'.gsm\\\"\"\n'
     +'  exit 1\n'
     +'fi\n'
-    +'\"$CONV\" hsf2libpart \"$PWD/_hsf/'+safe+'\" \"$PWD/'+safe+' BPO.gsm\" || { echo \"ECHEC de la conversion.\"; exit 1; }\n'
-    +'echo \"OK : '+safe+' BPO.gsm cree a cote de ce script.\"\n'
+    +'\"$CONV\" hsf2libpart \"$PWD/_hsf/'+safe+'\" \"$PWD/'+gsmNom+'.gsm\" || { echo \"ECHEC de la conversion.\"; exit 1; }\n'
+    +'echo \"OK : '+gsmNom+'.gsm cree a cote de ce script.\"\n'
     +'echo \"Ajoutez CE DOSSIER comme bibliotheque liee dans Archicad.\"\n';
   var lisez='Paquet ArchiCAD \u2014 '+name+'\r\n\r\n1) Windows : double-cliquez CONVERTIR EN GSM.bat\r\n   macOS   : dans le Terminal, chmod +x \\\"CONVERTIR EN GSM.command\\\" puis lancez-le\r\n   (Archicad 26 a 29 doit etre installe : la conversion est faite par LUI).\r\n2) Ajoutez le dossier dezippe comme bibliotheque liee dans ArchiCAD\r\n   (le .gsm et le dossier textures\\ doivent rester ensemble).\r\n3) L\u2019objet est etirable via ses parametres A / B / Hauteur.\r\n\r\nGenere par BPO Moulinette (QEM).\r\n';
   var enc=new TextEncoder();
@@ -357,6 +372,6 @@ glob.BPO_GSM = {
   /* exposes pour un banc de controle ou un futur reemploi ; ce sont les memes
      fonctions que celles qu'utilise gsmZip, jamais des copies. */
   prepGeo: _prepGeo, silhouette2D: _silhouette2D, makeZip: makeZip,
-  parseObjText: _parseObjText, parseMtlText: _parseMtlText
+  parseObjText: _parseObjText, parseMtlText: _parseMtlText, newGuid: _newGuid
 };
 })(typeof window!=='undefined'?window:this);
