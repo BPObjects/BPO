@@ -867,13 +867,19 @@
   function makeItemEl(cfg) {
     var d = doc.createElement('div'); d.className = 'save-item';
     d.innerHTML = '<span class="nm" title="' + esc(cfg.name) + '">[obj] ' + esc(cfg.name) + '</span>' +
-      '<span class="meta">objet importe - ' + esc(cfg.date || '') + '</span>';
+      '<span class="meta">' + (cfg.ia ? 'objet décrit' : 'objet importe') + ' - ' + esc(cfg.date || '') + '</span>';
     d.setAttribute('draggable', 'true');
     d.addEventListener('dragstart', function (e) { glob.SCN_DRAG_CFG = cfg; if (e.dataTransfer) { try { e.dataTransfer.setData('text/plain', cfg.id); } catch (_e) {} } });
     d.addEventListener('dragend', function () { setTimeout(function () { glob.SCN_DRAG_CFG = null; }, 60); });
     var row = doc.createElement('div'); row.className = 'row';
     function mk(txt, title, fn) { var b = doc.createElement('button'); b.textContent = txt; if (title) b.title = title; b.onclick = fn; return b; }
     row.appendChild(mk('Editer', 'Parametres a droite (orientation, finitions)', function () { openImportPanel(cfg); }));
+    /* « Décrire un objet » (02/11/2026) : un objet qui porte cfg.ia (description, code, réglages) se rouvre dans le panneau du
+       module bpo-objet-ia.js, chargé à la demande, pour être modifié en langage naturel ou re-réglé. */
+    if (cfg.ia) row.appendChild(mk('IA', 'Reprendre la description, modifier ou re-régler', function () {
+      import('./bpo-objet-ia.js?v=20261102a').then(function (m) { m.ouvrir({ cfg: cfg }); })
+        .catch(function (e) { glob.alert('Décrire un objet : module indisponible (' + (e && e.message) + ')'); });
+    }));
     row.appendChild(mk('+ Scene', 'Ajouter a la scene', function () { addToScene(cfg); }));
     row.appendChild(mk('R', 'Renommer', function () { renameImport(cfg); }));
     row.appendChild(mk('X', 'Supprimer', function () { deleteImport(cfg); }));
@@ -889,21 +895,59 @@
     idbGetAll().then(function (all) { var rec = all.filter(function (r) { return r.pid === cfg.prod; })[0]; if (rec) { rec.name = nn; idbPut(rec); } });
     if (typeof glob.cfgRender === 'function') glob.cfgRender();
   }
+  /* « Décrire un objet » (02/11/2026) : renommer(pid, nom) = le corps de renameImport sans invite ni fiche de bibliothèque (le
+     module a déjà écrit le nom sur la fiche) — libellé en scène et à l'export (IMP_NAMES, lu par fabLabel) et enregistrement
+     IndexedDB (rec.name). Rend une promesse : true si l'enregistrement a été réécrit. */
+  function renommer(pid, nom) {
+    if (!pid || !nom) return Promise.resolve(false);
+    IMP_NAMES[pid] = nom;
+    return idbGetAll().then(function (all) { var rec = all.filter(function (r) { return r.pid === pid; })[0]; if (!rec) return false; rec.name = nom; return idbPut(rec).then(function () { return true; }); });
+  }
   function deleteImport(cfg) {
     if (!glob.confirm('Supprimer l objet importe ' + cfg.name + ' ? (les instances posees en scene seront aussi retirees)')) return;
-    var pid = cfg.prod;
-    var list = glob.cfgLoad().filter(function (c) { return c.id !== cfg.id; }); glob.cfgStore(list);
+    retirer(cfg.prod);
+  }
+  /* « Décrire un objet » (02/11/2026) : retirer(pid) = la suppression sans confirmation, pour que le module défasse un objet qu'il
+     vient de fabriquer quand la fiche n'a pas pu être écrite (stockage plein) : toute fiche c.prod === pid, l'enregistrement
+     IndexedDB, le maillage et ses caches, les instances posées en scène. deleteImport (bouton X) l'appelle après sa confirmation. */
+  function retirer(pid) {
+    if (!pid) return;
+    var avant = glob.cfgLoad(); var list = avant.filter(function (c) { return !(c && c.prod === pid); }); if (list.length !== avant.length) glob.cfgStore(list);
     idbDel(pid); if (glob.TEX_OBJECTS) delete glob.TEX_OBJECTS[pid]; delete IMP_REC[pid]; try { delete IMP_PICK[pid]; } catch (e) {} try { delete IMP_UVOK[pid]; } catch (e) {}
     if (glob.FAB_CACHE) delete glob.FAB_CACHE[pid];
-    if (glob.SCENE && glob.SCENE.instances) {
-      glob.SCENE.instances = glob.SCENE.instances.filter(function (i) { return !(i && i.prod === pid); });
+    /* « Décrire un objet » (02/11/2026, I9) : la scène n'est filtrée, désélectionnée et reconstruite que si une instance du pid
+       a vraiment été retirée (longueurs avant et après, comme pour les fiches) : un « Garder » d'objet neuf qui échoue ne touche
+       plus à la sélection de scène de l'utilisateur. */
+    var instAvant = glob.SCENE && glob.SCENE.instances;
+    var instApres = instAvant ? instAvant.filter(function (i) { return !(i && i.prod === pid); }) : null;
+    if (instApres && instApres.length !== instAvant.length) {
+      glob.SCENE.instances = instApres;
       glob.SCENE.sel = -1; glob.SCENE.selSet = [];
       try {
         if (typeof glob.build === 'function' && glob.MODE === 'scene') glob.build();
         glob.DIRTY = true;
         if (glob.WGL && glob.WGL.gActive && glob.WGL.render) glob.WGL.render();
         if (typeof glob.buildSceneUI === 'function') glob.buildSceneUI();
-        if (typeof glob.refreshView === 'function') glob.refreshView();
+      } catch (e) {}
+    }
+    /* « Décrire un objet » (02/11/2026, J7) : la vue est rafraîchie après TOUT retrait (DIRTY, rendu, refreshView), qu'une
+       instance ait été retirée de la scène ou non, comme le faisait deleteImport : un objet affiché seul par « Editer » puis
+       supprimé par X disparaît de la vue. S'il est l'objet affiché (AL_PRODUCT dans le moteur des objets importés, MODE
+       'quadripod', celui de showImportedAlone), la catégorie courante est recliquée comme au catalogue (selectCat, buildCatList,
+       puis refreshView) : c'est ainsi qu'app.html quitte un objet affiché ; le moteur et le panneau de droite reviennent à cette
+       catégorie. Hors de ce moteur, AL_PRODUCT peut garder un ancien objet : pas de reclic, qui fermerait une config ouverte.
+       Seules la remise à zéro de la sélection et la reconstruction de la scène restent liées à une instance retirée (I9). */
+    try {
+      if (glob.AL_PRODUCT === pid && glob.MODE === 'quadripod' && typeof glob.curCat === 'function' && typeof glob.selectCat === 'function') {
+        var cat = glob.curCat();
+        if (cat && cat.id) { glob.selectCat(cat.id); if (typeof glob.buildCatList === 'function') glob.buildCatList(); }
+      }
+    } catch (e) {}
+    glob.DIRTY = true;
+    try { if (glob.WGL && glob.WGL.gActive && glob.WGL.render) glob.WGL.render(); } catch (e) {}
+    if (typeof glob.refreshView === 'function') {
+      try {
+        glob.refreshView();
       } catch (e) {}
     }
     if (typeof glob.cfgRender === 'function') glob.cfgRender();
@@ -1215,7 +1259,7 @@
   }
 
   /* `handleFile` est expose (10/09) pour que l'application puisse aiguiller UN selecteur de fichier vers l'importeur 3D. Sans lui il aurait fallu appeler openDialog, donc rouvrir un second selecteur, donc faire choisir deux fois. */
-  glob.BPO_import = { _core: core, _gunzip: gunzipBytes, parseIFC: parseIFC, openDialog: openDialog, handleFile: handleFile, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, rebake: rebake, _boot: boot, _installHooks: installHooks };   /* parseIFC exposé pour la moulinette (14/08) */
+  glob.BPO_import = { _core: core, _gunzip: gunzipBytes, parseIFC: parseIFC, openDialog: openDialog, handleFile: handleFile, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, rebake: rebake, retirer: retirer, renommer: renommer, _boot: boot, _installHooks: installHooks };   /* parseIFC exposé pour la moulinette (14/08) */
 
   if (doc && doc.readyState !== 'loading') setTimeout(boot, 0);
   else if (doc) doc.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 0); });
