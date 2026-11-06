@@ -54,7 +54,9 @@ import { PROMPT_SYSTEME } from "./prompt.ts";
 
 /* ---- Réglages (à ajuster par AL ; DEPLOIEMENT.md §5, dossier de travail, hors dépôt) ---- */
 const MODELE = "claude-opus-5-5";
-const EFFORT: "low" | "medium" | "high" | "xhigh" | "max" = "high";
+/** Essais réels du 06/11/2026, un objet : "high" coupé par la garde à 300 s, sans code ; "medium" 260 à 335 s et 26 000 à 32 000 jetons de sortie,
+ *  dont un appel arrêté à MAX_TOKENS, sans code ; "low" 137 s, 13 386 jetons, 0,35 $. */
+const EFFORT: "low" | "medium" | "high" | "xhigh" | "max" = "low";
 /** E10 : 16 000 coupait des réponses (la réflexion compte dans la limite) → erreur vide, comptée au quota. */
 const MAX_TOKENS = 32000;
 /** E9 : sessions anonymes (essai sans compte). false = 403 anonyme (« créez votre compte gratuit »), avant tout quota. */
@@ -79,7 +81,7 @@ const AVEC_REPLI = true;
  *  erreur/modele) ; après, l'appel reste compté, en erreur/delai (J9 : le SDK lève alors APIUserAbortError, nom lu sur le
  *  constructeur). L6 : les 400 s de la plateforme (offre payante) sont la vie du WORKER, partagée entre les requêtes qu'il sert :
  *  cette garde ne protège à coup sûr qu'un appel servi par un worker neuf (voir l'abonnement à beforeunload, plus bas). */
-const GARDE_MURALE_MS = 300_000;
+const GARDE_MURALE_MS = 370_000;
 
 const URL_SUPABASE = Deno.env.get("SUPABASE_URL") ?? "";
 const CLE_SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";

@@ -809,7 +809,7 @@ type AppelEnCours = {
 const APPELS_EN_COURS = new Set<AppelEnCours>();
 
 /** L6 : la plateforme annonce l'arrêt du worker (événement beforeunload, abonné une fois par worker par index.ts). La limite d'horloge
- *  murale de Supabase (400 s en offre payante) est la vie d'un WORKER, partagée entre les requêtes qu'il sert : la garde de 300 s ne
+ *  murale de Supabase (400 s en offre payante) est la vie d'un WORKER, partagée entre les requêtes qu'il sert : la garde (GARDE_MURALE_MS d'index.ts) ne
  *  protège à coup sûr qu'un appel servi par un worker neuf, et un appel servi par un worker chaud peut être coupé avant elle. Écrit
  *  UNE ligne de journal par appel en cours — « arrêt du worker annoncé (<raison>) pendant un appel <phase>, <n> s, ligne <id> », la
  *  raison ramenée à une ligne de 301 caractères au plus (L5), n en secondes depuis le début de la requête, id celui de la ligne

@@ -877,7 +877,7 @@
     /* « Décrire un objet » (02/11/2026) : un objet qui porte cfg.ia (description, code, réglages) se rouvre dans le panneau du
        module bpo-objet-ia.js, chargé à la demande, pour être modifié en langage naturel ou re-réglé. */
     if (cfg.ia) row.appendChild(mk('IA', 'Reprendre la description, modifier ou re-régler', function () {
-      import('./bpo-objet-ia.js?v=20261102a').then(function (m) { m.ouvrir({ cfg: cfg }); })
+      import('./bpo-objet-ia.js?v=20261106a').then(function (m) { m.ouvrir({ cfg: cfg }); })
         .catch(function (e) { glob.alert('Décrire un objet : module indisponible (' + (e && e.message) + ')'); });
     }));
     row.appendChild(mk('+ Scene', 'Ajouter a la scene', function () { addToScene(cfg); }));
