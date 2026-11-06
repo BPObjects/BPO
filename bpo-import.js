@@ -604,7 +604,11 @@
     try { var D = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid]; if (D && D.meta && D.meta.tgrid) { glob.BPO_TERRAIN_GRIDS = glob.BPO_TERRAIN_GRIDS || {}; glob.BPO_TERRAIN_GRIDS[pid] = D.meta.tgrid; } } catch (e) {}
   }
 
-  function refreshImported(pid) {
+  /* « Décrire un objet » (06/11/2026, P1) : enPlace = rien ne reconstruit #params ni ne change de vue. refreshView, lui, remet la catégorie courante :
+     la colonne qui vient de régler l'objet disparaissait, et avec elle l'objet affiché seul. En scène, comme scnLive, caméra gardée ; objet affiché seul
+     (MODE 'quadripod', showImportedAlone) : son modèle est rechargé, caméra gardée elle aussi (WGL.camGardee, lu par WGL.loadTextured à la fin du décodage ;
+     n compte les décodages en cours, le dernier efface la note). */
+  function refreshImported(pid, enPlace) {
     geoInvalidate(pid);
     /* instances de pid, GROUPES compris (enfants, scènes insérées) : leurs clés de cache ne portent pas
        de version de géométrie — on les rend fausses, les constructions libèrent leurs anciens tampons */
@@ -613,6 +617,23 @@
       if (hit) { i._xf = null; i._xk = null; i._fpk = null; i._glsig = null; i._sglsig = null; }
       return hit; }
     if (glob.SCENE && glob.SCENE.instances) glob.SCENE.instances.forEach(walk);
+    if (enPlace) {
+      try {
+        if (typeof glob.build === 'function' && glob.MODE === 'scene') {
+          if (glob.WGL) glob.WGL.garderCam = true;
+          try { glob.build(); } finally { if (glob.WGL) glob.WGL.garderCam = false; }
+        }
+        glob.DIRTY = true;
+        if (glob.WGL && glob.WGL.gActive && glob.WGL.render) glob.WGL.render();
+        if (glob.MODE === 'quadripod' && glob.AL_PRODUCT === pid && glob.WGL && glob.WGL.show) {
+          var c0 = glob.WGL.cam, cg = glob.WGL.camGardee;
+          if (cg && cg.id === pid) cg.n++;
+          else if (c0) glob.WGL.camGardee = { id: pid, n: 1, r: c0.r, tx: c0.tx, ty: c0.ty, tz: c0.tz, th: c0.th, ph: c0.ph };
+          glob.WGL.show(pid);
+        }
+      } catch (e) {}
+      return;
+    }
     try {
       if (typeof glob.build === 'function' && glob.MODE === 'scene') glob.build();
       glob.DIRTY = true;
@@ -699,6 +720,7 @@
   function rebake(pid, pos, idx, groups, extra) {
     var D0 = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
     if (!D0) return Promise.reject(new Error('objet inconnu : ' + pid));
+    if (extra && extra.enPlace) return rebakeEnPlace(pid, pos, idx, groups);
     var geo = { pos: (pos instanceof Float32Array) ? pos : Float32Array.from(pos), idx: (idx instanceof Uint32Array) ? idx : Uint32Array.from(idx), groups: groups };
     if (extra && extra.uv && extra.uv.length === geo.pos.length / 3 * 2) geo.uv = extra.uv;
     core.ensureNormals(geo);
@@ -722,6 +744,95 @@
     });
   }
 
+  /* « Décrire un objet » (06/11/2026, P1) : rebake(pid, pos, idx, groups, { enPlace: true }) = une nouvelle géométrie du même objet décrit (curseur, « Garder » d'une reprise).
+     À la différence du terrain figé : la transformation de l'utilisateur est GARDÉE (la géométrie reçue devient l'original, xform lui est réappliquée), de même que les textures et,
+     par le nom et le rang d'occurrence des pièces, les finitions (finitionsSuivent) ;
+     UV planaires posées tout de suite. L'enregistrement IndexedDB s'écrit AVANT le maillage en mémoire : s'il échoue (er.saveFailed), rien n'a bougé, ni maillage, ni scène.
+     Un objet supprimé pendant ces étapes n'est pas ressuscité (er.retire). */
+  function idbGet(pid) { return idbOpen().then(function (db) { return new Promise(function (res, rej) { var tx = db.transaction(IMP_DBSTORE, 'readonly'); var rq = tx.objectStore(IMP_DBSTORE).get(pid); rq.onsuccess = function () { res(rq.result || null); }; rq.onerror = function () { rej(rq.error); }; }); }); }
+  /* Q4 (06/11/2026) : PROD_FIN et PROD_MAT sont rangés par indice de groupe ; quand un curseur change la liste des pièces, ils suivent la pièce. Clé d'une pièce : son nom et son rang parmi les pièces
+     de ce nom : une finition reste sur SA tablette, sans se répandre sur les autres. Une finition dont la pièce passe à 0 est gardée à part, par pid (BPO_FIN_ORPH_v1, à côté de BPO_TEXADJ_v1), et rendue
+     au retour de la pièce. L'onglet actif de la colonne (PROD_MAT) suit la même clé, à défaut le nom, à défaut le premier onglet. Rend true si la liste a changé : le panneau est à redessiner, une
+     fois le maillage posé (renderFin relit D.groups). */
+  var CLE_ORPHELINES = 'BPO_FIN_ORPH_v1';
+  function orphelines() { try { return JSON.parse(glob.localStorage.getItem(CLE_ORPHELINES)) || {}; } catch (e) { return {}; } }
+  function orphelinesEcrire(o) { try { if (Object.keys(o).length) glob.localStorage.setItem(CLE_ORPHELINES, JSON.stringify(o)); else glob.localStorage.removeItem(CLE_ORPHELINES); } catch (e) {} }
+  function clesPieces(groups) { var vus = Object.create(null); return groups.map(function (g) { var n = String((g && g.name) || ''), r = vus[n] || 0; vus[n] = r + 1; return n + '|' + r; }); }
+  var FIN_COL = null;   /* la colonne ouverte : le pid dont finHost montre les finitions */
+  function colonneFinitions(pid) { return !!(FIN_COL && FIN_COL.pid === pid && doc.body.contains(FIN_COL.host)); }
+  function finitionsSuivent(pid, avant, apres) {
+    var i, memes = avant.length === apres.length;
+    for (i = 0; memes && i < apres.length; i++) if ((avant[i] && avant[i].name) !== (apres[i] && apres[i].name)) memes = false;
+    if (memes) return false;
+    var ca = clesPieces(avant), cb = clesPieces(apres);
+    if (colonneFinitions(pid) || glob.AL_PRODUCT === pid) {
+      var i0 = +glob.PROD_MAT || 0, j = cb.indexOf(ca[i0]);
+      if (j < 0 && avant[i0]) for (i = 0; j < 0 && i < apres.length; i++) if (apres[i] && apres[i].name === avant[i0].name) j = i;
+      glob.PROD_MAT = j < 0 ? 0 : j;
+    }
+    var F = (glob.PROD_FIN && glob.PROD_FIN[pid]) || null, tout = orphelines(), O = tout[pid] || null;
+    if (!F && !O) return true;
+    var par = Object.create(null), N = {}, vide = true, orph = {}, k;
+    if (F) Object.keys(F).forEach(function (gi) { if (ca[gi] != null) par[ca[gi]] = F[gi]; });
+    apres.forEach(function (g, gi) { var f = par[cb[gi]] || (O && O[cb[gi]]); if (f) { N[gi] = f; vide = false; } delete par[cb[gi]]; if (O) delete O[cb[gi]]; });
+    if (O) for (k in O) if (Object.prototype.hasOwnProperty.call(O, k)) orph[k] = O[k];
+    for (k in par) orph[k] = par[k];
+    if (Object.keys(orph).length) tout[pid] = orph; else delete tout[pid];
+    orphelinesEcrire(tout);
+    if (glob.PROD_FIN) { if (vide) delete glob.PROD_FIN[pid]; else glob.PROD_FIN[pid] = N; }
+    try { if (typeof glob.prodFinInvalidate === 'function') glob.prodFinInvalidate(pid); if (typeof glob.texAdjSave === 'function') glob.texAdjSave(); } catch (e) {}
+    return true;
+  }
+  /* Q9 (06/11/2026) : la fiche et IndexedDB sont communs aux fenêtres du navigateur, le maillage en mémoire non. Une fiche re-réglée depuis une autre fenêtre (ia.date changée, événement storage) laisse
+     ici un maillage périmé : c'est noté dès le chargement de la page, lu par la colonne (maillagePerime), effacé quand un rebake refait ce maillage. */
+  var IA_PERIMES = {};
+  function iaDates(t) { var m = {}; try { (JSON.parse(t || '[]') || []).forEach(function (c) { if (c && c.prod && c.ia && c.ia.date) m[c.prod] = c.ia.date; }); } catch (e) {} return m; }
+  if (typeof glob.addEventListener === 'function') glob.addEventListener('storage', function (e) {
+    if (!e || e.key !== glob.CFG_KEY) return;
+    var a = iaDates(e.oldValue), b = iaDates(e.newValue);
+    Object.keys(b).forEach(function (p) { if (a[p] && a[p] !== b[p]) IA_PERIMES[p] = true; });
+  });
+  function rebakeEnPlace(pid, pos, idx, groups) {
+    var geo = { pos: (pos instanceof Float32Array) ? pos : Float32Array.from(pos), idx: (idx instanceof Uint32Array) ? idx : Uint32Array.from(idx), groups: groups };
+    core.ensureNormals(geo); core.planarUV(geo);
+    var q = core.quantize(geo);
+    function retire() { var e = new Error('objet retire : ' + pid); e.retire = true; return e; }
+    return gzipB64(q.raw).then(function (b64) {
+      var orig = { geo: b64, meta: q.meta };
+      function poser() {
+        var R0 = IMP_REC[pid], D0 = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
+        if (!D0) throw retire();
+        var xf = (R0 && R0.xform) || { rx: 0, ry: 0, rz: 0, sc: 100 }, tex = (R0 && R0.tex) || D0.tex;
+        var ident = !(+xf.rx || +xf.ry || +xf.rz) && (xf.sc == null || +xf.sc === 100);
+        var R = { orig: orig, groups: groups, tex: tex, xform: xf };
+        var fait = ident ? Promise.resolve({ geo: b64, meta: q.meta, groups: groups, tex: tex || undefined }) : applyXform(R, xf);
+        return fait.then(function (D) {
+          if (IMP_REC[pid] && IMP_REC[pid].xform !== xf) return poser();   /* l'orientation a changé pendant le calcul */
+          return idbGet(pid).then(function (rec) {
+            if (!rec) return null;
+            rec.D = D; rec.orig = orig; rec.groups = groups; rec.xform = xf;
+            return idbPut(rec);
+          }).catch(function (e) { var er = new Error((e && e.message) || String(e)); er.saveFailed = true; throw er; }).then(function () {
+            var Dc = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
+            if (!Dc) { idbDel(pid); throw retire(); }
+            if (IMP_REC[pid] && IMP_REC[pid].xform !== xf) return poser();   /* ou pendant l'écriture : la nouvelle orientation, sur la nouvelle géométrie */
+            var listeChangee = finitionsSuivent(pid, Dc.groups || [], groups);
+            IMP_REC[pid] = R;
+            registerMesh(pid, D);
+            try { delete IMP_PICK[pid]; } catch (e) {}
+            IMP_UVOK[pid] = true;
+            delete IA_PERIMES[pid];   /* Q9 */
+            refreshImported(pid, true);
+            /* Q4 : les onglets de la colonne suivent la nouvelle liste */
+            if (listeChangee && colonneFinitions(pid) && typeof glob.buildFinishPanel === 'function') { try { glob.buildFinishPanel(); } catch (e) {} }
+            return pid;
+          });
+        });
+      }
+      return poser();
+    });
+  }
+
   /* transfo absolue depuis les champs numeriques */
   function setTransform(cfg, xf) {
     var pid = cfg && cfg.prod, R = IMP_REC[pid];
@@ -731,9 +842,11 @@
     var _Dt = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid];
     if ((R.orig && R.orig.meta && R.orig.meta.tgrid) || (_Dt && _Dt.meta && _Dt.meta.tgrid)) { var _m = 'Terrain figé : orientez-le et placez-le dans la scène (Rotation, Position). Le transformer ici décalerait sa grille et ses plateformes.'; glob.alert(typeof glob.T === 'function' ? glob.T(_m) : _m); return; }
     applyXform(R, xf).then(function (nD) {
+      if (IMP_REC[pid] !== R) { setTransform(cfg, xf); return; }   /* P1 : un curseur a refait l'original pendant ce calcul */
       registerMesh(pid, nD); R.xform = xf; try { delete IMP_PICK[pid]; } catch (e) {} try { delete IMP_UVOK[pid]; } catch (e) {}
-      idbGetAll().then(function (all) { var rec = all.filter(function (r) { return r.pid === pid; })[0]; if (rec) { rec.D = nD; rec.xform = xf; rec.orig = rec.orig || R.orig; rec.groups = rec.groups || R.groups; idbPut(rec); } });
-      refreshImported(pid);
+      idbGetAll().then(function (all) { if (IMP_REC[pid] !== R) return;   /* P1 : un curseur a refait l'objet entre-temps : sa géométrie n'est pas écrasée */
+        var rec = all.filter(function (r) { return r.pid === pid; })[0]; if (rec) { rec.D = nD; rec.xform = xf; rec.orig = rec.orig || R.orig; rec.groups = rec.groups || R.groups; idbPut(rec); } });
+      refreshImported(pid, !!cfg.ia);   /* P1 : un objet décrit garde sa colonne et ses curseurs */
     }).catch(function (e) { glob.alert('Ajustement echoue : ' + (e && e.message || e)); });
   }
 
@@ -825,15 +938,27 @@
     });
   }
 
-  /* panneau de droite (comme un configurateur) : orientation + finitions, pas d'ajout auto en scene */
-  function openImportPanel(cfg) {
+  var COL_TITRE = null;
+  /* panneau de droite (comme un configurateur) : orientation + finitions, pas d'ajout auto en scene.
+     « Décrire un objet » (06/11/2026, P1) : un objet qui porte cfg.ia reçoit EN TÊTE la section « Réglages » du module bpo-objet-ia.js, chargé à la demande
+     (curseurs de son code, sans aucun appel au modèle) ; un objet sans cfg.ia : colonne inchangée. opts.enScene (bouton « Réglages de l'objet » de la liste
+     de la scène) : la vue reste sur la scène, dont les poses suivent le curseur. */
+  function openImportPanel(cfg, opts) {
     var pid = cfg && cfg.prod; if (!pid) return;
-    showImportedAlone(pid);
+    var enScene = !!(opts && opts.enScene && glob.MODE === 'scene');
+    if (!enScene) showImportedAlone(pid);
     var host = doc.getElementById('params'); if (!host) return;
     if (typeof glob.setMEP === 'function') { try { glob.setMEP(false); } catch (e) {} }
     host.innerHTML = '';
     var wrap = doc.createElement('div'); wrap.className = 'fld';
-    var h = doc.createElement('div'); h.className = 'fh'; h.innerHTML = '<span>Objet importe - ' + esc(cfg.name) + '</span>'; wrap.appendChild(h);
+    var h = doc.createElement('div'); h.className = 'fh'; h.innerHTML = '<span>' + (cfg.ia ? 'Objet décrit - ' : 'Objet importe - ') + esc(cfg.name) + '</span>'; wrap.appendChild(h);
+    COL_TITRE = cfg.ia ? { pid: pid, n: h.firstChild } : null;   /* Q9 : le titre suit un renommage */
+    if (cfg.ia && typeof cfg.ia.code === 'string' && cfg.ia.code) {
+      var _pan = doc.getElementById('panel'); if (_pan) _pan.scrollTop = 0;   /* R4 : la section Réglages s'ouvre en haut de la colonne, même depuis une liste de la scène défilée */
+      var _reg = doc.createElement('div'); wrap.appendChild(_reg);
+      import('./bpo-objet-ia.js?v=20261106b').then(function (m) { if (doc.body.contains(_reg)) return m.reglagesDans(_reg, cfg, { enScene: enScene }); })
+        .catch(function (e) { _reg.textContent = 'Réglages indisponibles (' + (e && e.message) + ')'; });
+    }
     var add = doc.createElement('button'); add.className = 'save-add'; add.textContent = '+ Ajouter a la scene'; add.style.margin = '2px 0 8px'; add.onclick = function () { addToScene(cfg); }; wrap.appendChild(add);
     var _Dp = glob.TEX_OBJECTS && glob.TEX_OBJECTS[pid], _isTerr = !!((_Dp && _Dp.meta && _Dp.meta.tgrid) || (IMP_REC[pid] && IMP_REC[pid].orig && IMP_REC[pid].orig.meta && IMP_REC[pid].orig.meta.tgrid));
     if (_isTerr) { var _nt = doc.createElement('div'); _nt.className = 'exp-note'; _nt.textContent = 'Terrain figé : orientez-le et placez-le dans la scène (Rotation, Position) ; ses plateformes et son affichage se règlent sur l\'objet sélectionné en scène.'; wrap.appendChild(_nt);
@@ -861,6 +986,7 @@
       try { glob.buildProductMatPanel(finHost, pid, (D && D.groups) || []); } catch (e) { finHost.textContent = 'Erreur : ' + (e && e.message || e); }
     }
     glob.buildFinishPanel = renderFin;
+    FIN_COL = { pid: pid, host: finHost };   /* Q4 */
     renderFin();
   }
 
@@ -877,7 +1003,7 @@
     /* « Décrire un objet » (02/11/2026) : un objet qui porte cfg.ia (description, code, réglages) se rouvre dans le panneau du
        module bpo-objet-ia.js, chargé à la demande, pour être modifié en langage naturel ou re-réglé. */
     if (cfg.ia) row.appendChild(mk('IA', 'Reprendre la description, modifier ou re-régler', function () {
-      import('./bpo-objet-ia.js?v=20261106a').then(function (m) { m.ouvrir({ cfg: cfg }); })
+      import('./bpo-objet-ia.js?v=20261106b').then(function (m) { m.ouvrir({ cfg: cfg }); })
         .catch(function (e) { glob.alert('Décrire un objet : module indisponible (' + (e && e.message) + ')'); });
     }));
     row.appendChild(mk('+ Scene', 'Ajouter a la scene', function () { addToScene(cfg); }));
@@ -892,6 +1018,7 @@
     var nn = glob.prompt('Renommer l objet importe :', cfg.name); if (nn === null) return; nn = nn.trim() || cfg.name;
     var list = glob.cfgLoad(); var it = list.filter(function (c) { return c.id === cfg.id; })[0]; if (it) { it.name = nn; glob.cfgStore(list); }
     IMP_NAMES[cfg.prod] = nn;
+    if (COL_TITRE && COL_TITRE.pid === cfg.prod && doc.body.contains(COL_TITRE.n)) COL_TITRE.n.textContent = 'Objet décrit - ' + nn;   /* Q9 : un objet décrit, colonne ouverte */
     idbGetAll().then(function (all) { var rec = all.filter(function (r) { return r.pid === cfg.prod; })[0]; if (rec) { rec.name = nn; idbPut(rec); } });
     if (typeof glob.cfgRender === 'function') glob.cfgRender();
   }
@@ -902,6 +1029,12 @@
     if (!pid || !nom) return Promise.resolve(false);
     IMP_NAMES[pid] = nom;
     return idbGetAll().then(function (all) { var rec = all.filter(function (r) { return r.pid === pid; })[0]; if (!rec) return false; rec.name = nom; return idbPut(rec).then(function () { return true; }); });
+  }
+  /* « Décrire un objet » (06/11/2026, P1) : la fiche qui porte le code de cet objet, ou null (objet importé ordinaire, terrain figé, produit fabricant) */
+  function ficheIA(pid) {
+    var l = (pid && typeof glob.cfgLoad === 'function') ? (glob.cfgLoad() || []) : [];
+    for (var i = 0; i < l.length; i++) if (l[i] && l[i].prod === pid && l[i].ia && typeof l[i].ia.code === 'string' && l[i].ia.code) return l[i];
+    return null;
   }
   function deleteImport(cfg) {
     if (!glob.confirm('Supprimer l objet importe ' + cfg.name + ' ? (les instances posees en scene seront aussi retirees)')) return;
@@ -914,6 +1047,8 @@
     if (!pid) return;
     var avant = glob.cfgLoad(); var list = avant.filter(function (c) { return !(c && c.prod === pid); }); if (list.length !== avant.length) glob.cfgStore(list);
     idbDel(pid); if (glob.TEX_OBJECTS) delete glob.TEX_OBJECTS[pid]; delete IMP_REC[pid]; try { delete IMP_PICK[pid]; } catch (e) {} try { delete IMP_UVOK[pid]; } catch (e) {}
+    var _orph = orphelines(); if (_orph[pid]) { delete _orph[pid]; orphelinesEcrire(_orph); }   /* Q4 : ses finitions mises de côté partent avec lui */
+    delete IA_PERIMES[pid];
     if (glob.FAB_CACHE) delete glob.FAB_CACHE[pid];
     /* « Décrire un objet » (02/11/2026, I9) : la scène n'est filtrée, désélectionnée et reconstruite que si une instance du pid
        a vraiment été retirée (longueurs avant et après, comme pour les fiches) : un « Garder » d'objet neuf qui échoue ne touche
@@ -1259,7 +1394,7 @@
   }
 
   /* `handleFile` est expose (10/09) pour que l'application puisse aiguiller UN selecteur de fichier vers l'importeur 3D. Sans lui il aurait fallu appeler openDialog, donc rouvrir un second selecteur, donc faire choisir deux fois. */
-  glob.BPO_import = { _core: core, _gunzip: gunzipBytes, parseIFC: parseIFC, openDialog: openDialog, handleFile: handleFile, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, rebake: rebake, retirer: retirer, renommer: renommer, _boot: boot, _installHooks: installHooks };   /* parseIFC exposé pour la moulinette (14/08) */
+  glob.BPO_import = { _core: core, _gunzip: gunzipBytes, parseIFC: parseIFC, openDialog: openDialog, handleFile: handleFile, makeItemEl: makeItemEl, addToScene: addToScene, setTransform: setTransform, bake: bake, rebake: rebake, retirer: retirer, renommer: renommer, ouvrirColonne: openImportPanel, ficheIA: ficheIA, maillagePerime: function (pid) { return !!IA_PERIMES[pid]; }, _boot: boot, _installHooks: installHooks };   /* parseIFC exposé pour la moulinette (14/08) */
 
   if (doc && doc.readyState !== 'loading') setTimeout(boot, 0);
   else if (doc) doc.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 0); });

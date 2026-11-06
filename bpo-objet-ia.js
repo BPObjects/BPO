@@ -1,11 +1,11 @@
-/* bpo-objet-ia.js — « Décrire un objet » dans Ma bibliothèque (02/11/2026, v=20261106a).
+/* bpo-objet-ia.js — « Décrire un objet » dans Ma bibliothèque (02/11/2026, v=20261106b).
 
-   Module ES chargé À LA DEMANDE par app.html (import('./bpo-objet-ia.js?v=20261106a')) depuis le bouton
+   Module ES chargé À LA DEMANDE par app.html (import('./bpo-objet-ia.js?v=20261106b')) depuis le bouton
    « ✨ Décrire un objet » de la rangée d'import, et par bpo-import.js (bouton « IA » d'une carte qui porte cfg.ia).
 
    Chaîne : description → fonction Edge objet-ia (flux SSE : debut / delta / fin / erreur) → code OBJET (JavaScript)
    → Web Worker bac à sable dans un iframe sandbox (kit bpo-geo-kit.js + HARNAIS) → BPO_GEO.controler → au plus 2 corrections automatiques
-   → aperçu 3D (canvas 2D, rendu logiciel) + curseurs (OBJET.params) + « Modifier… » → « Garder » = BPO_import.bake,
+   → aperçu 3D (WebGL à vrai tampon de profondeur, canvas 2D en repli) + curseurs (OBJET.params) + « Modifier… » → « Garder » = BPO_import.bake,
    dossier « Objets décrits », cfg.ia (code, réglages, description) pour la reprise.
 
    Règles tenues ici : aucun accès à document/window au moment de l'import (tout est dans les fonctions) ; le client
@@ -88,9 +88,23 @@
    jamais dans un tour et n'arrive jamais au bout ; un tour de correction (I6) ou un rejeu F11 la fait repartir du début. Voir la section
    « barre de progression » plus bas, et le commentaire de CSS pour la mise en page. Le texte de la ligne s'écrit au plus une fois par
    seconde (D8) ; le chemin court de statut() pose aussi le mémo __fr du nœud de texte : hors du français, translateDOM d'app.html
-   remettait à chaque passage la PREMIÈRE valeur vue de ce nœud, et le compteur restait figé sur « Connexion au service… ». */
+   remettait à chaque passage la PREMIÈRE valeur vue de ce nœud, et le compteur restait figé sur « Connexion au service… ».
+   Décisions P1, P1bis, P2, P4 (06/11, après les essais réels). P1 : les réglages d'un objet décrit vivent aussi dans la colonne Paramètres
+   (reglagesDans, section « réglages dans la colonne ») ; bouger un curseur ne coûte aucun appel au modèle ; un seul écrivain à la fois sur un objet,
+   colonne ou panneau ; après « Garder », le panneau se ferme et la colonne s'ouvre. P1bis : l'aperçu dessine en WebGL à vrai tampon de profondeur ;
+   le tri du peintre sur la profondeur moyenne laissait de longs triangles sombres en travers d'un plateau (prouvé par outils/rendu-profondeur.mjs : la
+   géométrie n'a aucun triangle en trop) ; le canvas 2D reste en repli. P2 : ✕ masque le panneau sans couper un appel, qui le fait réapparaître à
+   sa fin ; Recommencer le confirme ; beforeunload est posé pour la durée de l'appel. P4 : pas de code, ou délai dépassé : un message utile.
+   Décisions Q1 à Q9 (06/11, relectures et épreuves du lot colonne). Q1 : séparation des sommets aux plis vifs avant bake et rebake (separerPlis) : plus de pans triangulaires dans la vue
+   principale. Q2 : l'aperçu WebGL dessine pièce par pièce, avec un décalage de profondeur croissant : des faces confondues ne strient plus, la dernière pièce gagne. Q3 : un résultat payé
+   qui n'est pas gardé ne se perd plus sans le dire (nonGarde). Q5 : « ne compte pas dans votre quota » seulement si le serveur le dit (ne_compte_pas). Q8 : pas de lien « S’abonner » pour
+   un abonné (quota.abonne). Q9 : textes justes de la colonne, panneau posé à côté d'elle, fermeture hors appel qui ne laisse ni faux délai ni fausse note, rebake raté qui ne remet que la
+   fiche de l'objet, ligne sur les curseurs, maillage périmé par une autre fenêtre signalé.
+   Décisions R1 à R4 (06/11, relectures du lot Q). R1 : le décalage de Q2 ne vise plus que les pièces que le contrôle cite (rapport.coplanaires), à l'objet entier si le rapport ne se lit pas ; tout
+   autre objet est rendu sans décalage ; pente divisée par 4. R2 : pendant un appel, Recommencer et le bouton IA d'une autre carte disent aussi la perte du résultat non gardé. R3 : nonGarde compare
+   E.code à E.codeGarde, retenu à « Garder » et à la reprise, et non à la fiche relue. R4 : corps du panneau remis en haut à chaque ouverture ; 8 px au-dessus des curseurs ; « 1 face confondue ». */
 
-const VERSION = '20261106a';
+const VERSION = '20261106b';
 const KIT_URL = './bpo-geo-kit.js?v=' + VERSION;
 const FONCTION = '/functions/v1/objet-ia';
 const DELAI_MS = 6000;            /* délai d'une construction dans le worker : au-delà, terminate + recréation (§4.3) */
@@ -129,6 +143,9 @@ const ID_BIBLIOTHEQUE = 'libPanel';   /* N1 : le conteneur de Ma bibliothèque d
                                      une classe de style */
 const ID_LISTE = 'saveList';      /* N1 : à défaut de #libPanel, la liste elle-même (cfgRender → _folderTree : la rangée « Importer ou
                                      recevoir un objet » avec #iaObjBtn, puis les cartes Editer, IA, + Scène, R, X) */
+const ANTIREBOND_COLONNE = 200;   /* P1 : un curseur de la colonne ne construit qu'à 200 ms du dernier mouvement */
+const ANGLE_PLI = 40;             /* Q1 : deux faces qui s'écartent de plus de 40° ne partagent plus leurs sommets : l'arête est vive ; en deçà, l'objet reste lisse à sa résolution */
+const PLAFOND_ARETE = 32;         /* Q1 : sur une arête portée par une foule de triangles, chacun n'est comparé qu'aux 32 derniers vus : coût borné, sans lien avec un objet réel */
 const PLAFOND_REGLAGES = 40;      /* J5 : au plus 40 réglages dans le champ reglages d'une demande « Modifier… », comme le serveur (§3.1) */
 const NOM_REGLAGE = /^[\p{L}_][\p{L}\p{M}\p{N}_]{0,39}$/u;   /* J5, K3 : nom d'un réglage que le serveur accepte (§3.1), EXACTEMENT
                                      l'expression de traitement.ts : une lettre Unicode ou _, puis lettres, marques, chiffres ou _,
@@ -146,11 +163,11 @@ const INTERDITS = /\b(require|process|fetch|XMLHttpRequest|eval|Function|globalT
    i18n — clé = chaîne française (convention de bpo-demo-gate.js) ; repli anglais hors dictionnaire.
    ---------------------------------------------------------------------------- */
 const I18N = {
-en:{"Décrire un objet":"Describe an object","Fermer":"Close","Glisser pour déplacer":"Drag to move","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Describe the object in one or two sentences: type, overall dimensions, materials, fittings.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Example: workshop bench 2.00 × 0.80 m, h 0.90, beech top, blue steel frame, sheet-metal lower shelf","Fabriquer":"Build","Annuler":"Cancel","Recommencer":"Start over","Écriture du code… {0} caractères":"Writing the code… {0} characters","Connexion au service…":"Connecting to the service…","Contrôle…":"Checking…","Correction {0}/{1}…":"Correction {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Ready: {0} triangles, {1} × {2} × {3} m","Construction…":"Building…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Build too long (over {0} s): the code was stopped.","Cotes hors tout":"Overall dimensions","Hypothèses":"Assumptions","Réglages":"Settings","Valeurs par défaut":"Default values","Modifier… (ex. : portes plus hautes, sans roulettes)":"Change… (e.g. taller doors, no casters)","Modifier":"Change","Garder dans Ma bibliothèque":"Keep in My library","Nom de l’objet":"Object name","Garder…":"Keeping…","Objet gardé dans Ma bibliothèque.":"Object kept in My library.","Objet mis à jour dans Ma bibliothèque.":"Object updated in My library.","contrôle : {0}":"check: {0}","{0} faces confondues":"{0} coincident faces","{0} triangles dégénérés":"{0} degenerate triangles","{0} pièces à normales rentrantes":"{0} parts with inward normals","Connectez-vous pour décrire un objet.":"Sign in to describe an object.","Session absente ou expirée — reconnectez-vous.":"No session or session expired — sign in again.","Créez votre compte gratuit pour décrire un objet.":"Create your free account to describe an object.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Describing an object is for subscribers and the free trial.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"This description is already being built: wait for it to finish or start over.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Quota reached: {0} of {1} objects in the last {2} days.","Réinitialisation le {0}.":"Resets on {0}.","Service pas encore ouvert.":"Service not open yet.","Service momentanément indisponible (clé absente côté serveur).":"Service temporarily unavailable (key missing on the server).","Service saturé : réessayez dans quelques heures.":"Service saturated: try again in a few hours.","Requête refusée par le serveur : {0}":"Request refused by the server: {0}","Erreur du serveur ({0}).":"Server error ({0}).","Client Supabase indisponible : {0}":"Supabase client unavailable: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Service unreachable: not open yet, or network unavailable.","Demande annulée.":"Request cancelled.","Le flux s’est interrompu avant la fin.":"The stream stopped before the end.","Le modèle n’a pas rendu de code.":"The model returned no code.","Le modèle n’a pas rendu de code ({0}).":"The model returned no code ({0}).","Le modèle a refusé la demande.":"The model declined the request.","Délai dépassé côté serveur.":"Server-side timeout.","Erreur du modèle : {0}":"Model error: {0}","Le code produit a été refusé ({0}) : correction demandée.":"The produced code was refused ({0}): correction requested.","Échec : aucun code ne se construit après {0} tours.":"Failed: no code builds after {0} rounds.","Le module d’import n’est pas chargé : impossible de garder.":"The import module is not loaded: cannot keep.","Impossible de garder : {0}":"Could not keep: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Could not keep: storage full or unavailable. Free up space (scenes, configurations), then try again.","S’abonner":"Subscribe","Créer un compte":"Create an account","Décrivez d’abord l’objet.":"Describe the object first.","Décrivez la modification souhaitée.":"Describe the change you want.","Impossible de charger le kit de géométrie ({0}).":"Could not load the geometry kit ({0}).","Erreur d’exécution : {0}":"Execution error: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Orbit: drag · zoom: wheel · reframe: double-click","Reprise de « {0} »":"Resuming “{0}”","Quota : {0}/{1} objets sur {2} jours":"Quota: {0}/{1} objects over {2} days","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Too many calls for this object: start again with a new description.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Too many calls in the last {0} days: try again later.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Too many calls in the last {0} days: try again after {1}.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"This object has used up its calls: the change counts as a new object.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"File too long ({0} characters, {1} at most): rephrase or simplify the object.","Bac à sable indisponible dans ce navigateur.":"Sandbox unavailable in this browser.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"The object is shown with its defects: the correction could not be requested.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"This object has used up its calls: a new change will count as a new object.","Correction annulée : l’objet est affiché avec ses défauts.":"Correction cancelled: the object is shown with its defects.","Réglages ramenés à la dernière géométrie construite.":"Settings brought back to the last built geometry.","Réglages remis aux valeurs par défaut du code.":"Settings reset to the default values of the code.","BPO crée votre objet paramétrique":"BPO is creating your parametric object","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"The model is thinking… {0} (this can take several minutes)"},
-de:{"Décrire un objet":"Ein Objekt beschreiben","Fermer":"Schließen","Glisser pour déplacer":"Zum Verschieben ziehen","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Beschreiben Sie das Objekt in ein, zwei Sätzen: Typ, Außenmaße, Materialien, Ausstattung.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Beispiel: Werkbank 2,00 × 0,80 m, H 0,90, Buchenplatte, blaues Stahlgestell, unteres Blechfach","Fabriquer":"Bauen","Annuler":"Abbrechen","Recommencer":"Neu beginnen","Écriture du code… {0} caractères":"Code wird geschrieben… {0} Zeichen","Connexion au service…":"Verbindung zum Dienst…","Contrôle…":"Prüfung…","Correction {0}/{1}…":"Korrektur {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Fertig: {0} Dreiecke, {1} × {2} × {3} m","Construction…":"Aufbau…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Aufbau zu lang (über {0} s): der Code wurde abgebrochen.","Cotes hors tout":"Außenmaße","Hypothèses":"Annahmen","Réglages":"Einstellungen","Valeurs par défaut":"Standardwerte","Modifier… (ex. : portes plus hautes, sans roulettes)":"Ändern… (z. B. höhere Türen, ohne Rollen)","Modifier":"Ändern","Garder dans Ma bibliothèque":"In Meine Bibliothek übernehmen","Nom de l’objet":"Objektname","Garder…":"Wird übernommen…","Objet gardé dans Ma bibliothèque.":"Objekt in Meine Bibliothek übernommen.","Objet mis à jour dans Ma bibliothèque.":"Objekt in Meine Bibliothek aktualisiert.","contrôle : {0}":"Prüfung: {0}","{0} faces confondues":"{0} deckungsgleiche Flächen","{0} triangles dégénérés":"{0} degenerierte Dreiecke","{0} pièces à normales rentrantes":"{0} Teile mit nach innen gerichteten Normalen","Connectez-vous pour décrire un objet.":"Melden Sie sich an, um ein Objekt zu beschreiben.","Session absente ou expirée — reconnectez-vous.":"Keine oder abgelaufene Sitzung — bitte erneut anmelden.","Créez votre compte gratuit pour décrire un objet.":"Erstellen Sie Ihr kostenloses Konto, um ein Objekt zu beschreiben.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Ein Objekt beschreiben ist Abonnenten und der kostenlosen Testphase vorbehalten.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"Diese Beschreibung wird bereits gebaut: Warten Sie das Ende ab oder beginnen Sie neu.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Kontingent erreicht: {0} von {1} Objekten in den letzten {2} Tagen.","Réinitialisation le {0}.":"Zurücksetzung am {0}.","Service pas encore ouvert.":"Dienst noch nicht geöffnet.","Service momentanément indisponible (clé absente côté serveur).":"Dienst vorübergehend nicht verfügbar (Schlüssel fehlt serverseitig).","Service saturé : réessayez dans quelques heures.":"Dienst ausgelastet: Versuchen Sie es in einigen Stunden erneut.","Requête refusée par le serveur : {0}":"Anfrage vom Server abgelehnt: {0}","Erreur du serveur ({0}).":"Serverfehler ({0}).","Client Supabase indisponible : {0}":"Supabase-Client nicht verfügbar: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Dienst nicht erreichbar: noch nicht geöffnet, oder Netzwerk nicht verfügbar.","Demande annulée.":"Anfrage abgebrochen.","Le flux s’est interrompu avant la fin.":"Der Datenstrom brach vor dem Ende ab.","Le modèle n’a pas rendu de code.":"Das Modell hat keinen Code geliefert.","Le modèle n’a pas rendu de code ({0}).":"Das Modell hat keinen Code geliefert ({0}).","Le modèle a refusé la demande.":"Das Modell hat die Anfrage abgelehnt.","Délai dépassé côté serveur.":"Zeitüberschreitung auf dem Server.","Erreur du modèle : {0}":"Modellfehler: {0}","Le code produit a été refusé ({0}) : correction demandée.":"Der erzeugte Code wurde abgelehnt ({0}): Korrektur angefordert.","Échec : aucun code ne se construit après {0} tours.":"Fehlgeschlagen: nach {0} Durchgängen baut sich kein Code.","Le module d’import n’est pas chargé : impossible de garder.":"Das Importmodul ist nicht geladen: Übernehmen nicht möglich.","Impossible de garder : {0}":"Übernehmen nicht möglich: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Übernehmen nicht möglich: Speicher voll oder nicht verfügbar. Schaffen Sie Platz (Szenen, Konfigurationen) und versuchen Sie es erneut.","S’abonner":"Abonnieren","Créer un compte":"Konto erstellen","Décrivez d’abord l’objet.":"Beschreiben Sie zuerst das Objekt.","Décrivez la modification souhaitée.":"Beschreiben Sie die gewünschte Änderung.","Impossible de charger le kit de géométrie ({0}).":"Geometrie-Kit konnte nicht geladen werden ({0}).","Erreur d’exécution : {0}":"Ausführungsfehler: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Drehen: ziehen · Zoom: Mausrad · Neu ausrichten: Doppelklick","Reprise de « {0} »":"Wiederaufnahme von „{0}“","Quota : {0}/{1} objets sur {2} jours":"Kontingent: {0}/{1} Objekte in {2} Tagen","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Zu viele Aufrufe für dieses Objekt: beginnen Sie mit einer neuen Beschreibung.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Zu viele Aufrufe in den letzten {0} Tagen: versuchen Sie es später erneut.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Zu viele Aufrufe in den letzten {0} Tagen: versuchen Sie es nach dem {1} erneut.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"Dieses Objekt hat seine Aufrufe aufgebraucht: die Änderung zählt als neues Objekt.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"Datei zu lang ({0} Zeichen, höchstens {1}): formulieren Sie um oder vereinfachen Sie das Objekt.","Bac à sable indisponible dans ce navigateur.":"Sandbox in diesem Browser nicht verfügbar.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"Das Objekt wird mit seinen Mängeln angezeigt: die Korrektur konnte nicht angefordert werden.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"Dieses Objekt hat seine Aufrufe aufgebraucht: eine neue Änderung zählt als neues Objekt.","Correction annulée : l’objet est affiché avec ses défauts.":"Korrektur abgebrochen: das Objekt wird mit seinen Mängeln angezeigt.","Réglages ramenés à la dernière géométrie construite.":"Einstellungen auf die zuletzt gebaute Geometrie zurückgesetzt.","Réglages remis aux valeurs par défaut du code.":"Einstellungen auf die Standardwerte des Codes zurückgesetzt.","BPO crée votre objet paramétrique":"BPO erstellt Ihr parametrisches Objekt","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"Das Modell denkt nach… {0} (das kann mehrere Minuten dauern)"},
-es:{"Décrire un objet":"Describir un objeto","Fermer":"Cerrar","Glisser pour déplacer":"Arrastrar para mover","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Describa el objeto en una o dos frases: tipo, medidas exteriores, materiales, equipamiento.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Ejemplo: banco de taller 2,00 × 0,80 m, h 0,90, tablero de haya, bastidor de acero azul, estante bajo de chapa","Fabriquer":"Fabricar","Annuler":"Cancelar","Recommencer":"Empezar de nuevo","Écriture du code… {0} caractères":"Escribiendo el código… {0} caracteres","Connexion au service…":"Conectando con el servicio…","Contrôle…":"Control…","Correction {0}/{1}…":"Corrección {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Listo: {0} triángulos, {1} × {2} × {3} m","Construction…":"Construcción…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Construcción demasiado larga (más de {0} s): el código se ha interrumpido.","Cotes hors tout":"Medidas exteriores","Hypothèses":"Hipótesis","Réglages":"Ajustes","Valeurs par défaut":"Valores por defecto","Modifier… (ex. : portes plus hautes, sans roulettes)":"Modificar… (p. ej. puertas más altas, sin ruedas)","Modifier":"Modificar","Garder dans Ma bibliothèque":"Guardar en Mi biblioteca","Nom de l’objet":"Nombre del objeto","Garder…":"Guardando…","Objet gardé dans Ma bibliothèque.":"Objeto guardado en Mi biblioteca.","Objet mis à jour dans Ma bibliothèque.":"Objeto actualizado en Mi biblioteca.","contrôle : {0}":"control: {0}","{0} faces confondues":"{0} caras coincidentes","{0} triangles dégénérés":"{0} triángulos degenerados","{0} pièces à normales rentrantes":"{0} piezas con normales hacia dentro","Connectez-vous pour décrire un objet.":"Inicie sesión para describir un objeto.","Session absente ou expirée — reconnectez-vous.":"Sesión ausente o caducada — vuelva a iniciar sesión.","Créez votre compte gratuit pour décrire un objet.":"Cree su cuenta gratuita para describir un objeto.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Describir un objeto está reservado a los suscriptores y a la prueba gratuita.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"Esta descripción ya se está fabricando: espere a que termine o vuelva a empezar.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Cuota alcanzada: {0} de {1} objetos en los últimos {2} días.","Réinitialisation le {0}.":"Se reinicia el {0}.","Service pas encore ouvert.":"Servicio aún no abierto.","Service momentanément indisponible (clé absente côté serveur).":"Servicio temporalmente no disponible (falta la clave en el servidor).","Service saturé : réessayez dans quelques heures.":"Servicio saturado: vuelva a intentarlo dentro de unas horas.","Requête refusée par le serveur : {0}":"Solicitud rechazada por el servidor: {0}","Erreur du serveur ({0}).":"Error del servidor ({0}).","Client Supabase indisponible : {0}":"Cliente Supabase no disponible: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Servicio inaccesible: aún no abierto, o red no disponible.","Demande annulée.":"Solicitud cancelada.","Le flux s’est interrompu avant la fin.":"El flujo se interrumpió antes del final.","Le modèle n’a pas rendu de code.":"El modelo no devolvió código.","Le modèle n’a pas rendu de code ({0}).":"El modelo no devolvió código ({0}).","Le modèle a refusé la demande.":"El modelo rechazó la solicitud.","Délai dépassé côté serveur.":"Tiempo de espera agotado en el servidor.","Erreur du modèle : {0}":"Error del modelo: {0}","Le code produit a été refusé ({0}) : correction demandée.":"El código producido fue rechazado ({0}): corrección solicitada.","Échec : aucun code ne se construit après {0} tours.":"Fallo: ningún código se construye tras {0} intentos.","Le module d’import n’est pas chargé : impossible de garder.":"El módulo de importación no está cargado: no se puede guardar.","Impossible de garder : {0}":"No se puede guardar: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"No se puede guardar: almacenamiento lleno o no disponible. Libere espacio (escenas, configuraciones) y vuelva a intentarlo.","S’abonner":"Suscribirse","Créer un compte":"Crear una cuenta","Décrivez d’abord l’objet.":"Describa primero el objeto.","Décrivez la modification souhaitée.":"Describa el cambio deseado.","Impossible de charger le kit de géométrie ({0}).":"No se pudo cargar el kit de geometría ({0}).","Erreur d’exécution : {0}":"Error de ejecución: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Orbitar: arrastrar · zoom: rueda · reencuadrar: doble clic","Reprise de « {0} »":"Reanudación de «{0}»","Quota : {0}/{1} objets sur {2} jours":"Cuota: {0}/{1} objetos en {2} días","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Demasiadas llamadas para este objeto: empiece de nuevo con una nueva descripción.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Demasiadas llamadas en los últimos {0} días: inténtelo más tarde.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Demasiadas llamadas en los últimos {0} días: inténtelo después del {1}.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"Este objeto ha agotado sus llamadas: la modificación cuenta como un objeto nuevo.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"Archivo demasiado largo ({0} caracteres, {1} como máximo): reformule o simplifique el objeto.","Bac à sable indisponible dans ce navigateur.":"Entorno aislado no disponible en este navegador.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"El objeto se muestra con sus defectos: no se pudo solicitar la corrección.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"Este objeto ha agotado sus llamadas: una nueva modificación contará como un objeto nuevo.","Correction annulée : l’objet est affiché avec ses défauts.":"Corrección cancelada: el objeto se muestra con sus defectos.","Réglages ramenés à la dernière géométrie construite.":"Ajustes devueltos a la última geometría construida.","Réglages remis aux valeurs par défaut du code.":"Ajustes restablecidos a los valores por defecto del código.","BPO crée votre objet paramétrique":"BPO está creando su objeto paramétrico","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"El modelo está pensando… {0} (puede tardar varios minutos)"},
-it:{"Décrire un objet":"Descrivere un oggetto","Fermer":"Chiudi","Glisser pour déplacer":"Trascina per spostare","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Descrivi l’oggetto in una o due frasi: tipo, ingombri, materiali, dotazioni.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Esempio: banco da officina 2,00 × 0,80 m, h 0,90, piano in faggio, telaio in acciaio blu, ripiano basso in lamiera","Fabriquer":"Costruisci","Annuler":"Annulla","Recommencer":"Ricomincia","Écriture du code… {0} caractères":"Scrittura del codice… {0} caratteri","Connexion au service…":"Connessione al servizio…","Contrôle…":"Controllo…","Correction {0}/{1}…":"Correzione {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Pronto: {0} triangoli, {1} × {2} × {3} m","Construction…":"Costruzione…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Costruzione troppo lunga (oltre {0} s): il codice è stato interrotto.","Cotes hors tout":"Ingombri","Hypothèses":"Ipotesi","Réglages":"Regolazioni","Valeurs par défaut":"Valori predefiniti","Modifier… (ex. : portes plus hautes, sans roulettes)":"Modifica… (es. porte più alte, senza ruote)","Modifier":"Modifica","Garder dans Ma bibliothèque":"Salva nella Mia libreria","Nom de l’objet":"Nome dell’oggetto","Garder…":"Salvataggio…","Objet gardé dans Ma bibliothèque.":"Oggetto salvato nella Mia libreria.","Objet mis à jour dans Ma bibliothèque.":"Oggetto aggiornato nella Mia libreria.","contrôle : {0}":"controllo: {0}","{0} faces confondues":"{0} facce coincidenti","{0} triangles dégénérés":"{0} triangoli degeneri","{0} pièces à normales rentrantes":"{0} pezzi con normali rientranti","Connectez-vous pour décrire un objet.":"Accedi per descrivere un oggetto.","Session absente ou expirée — reconnectez-vous.":"Sessione assente o scaduta — accedi di nuovo.","Créez votre compte gratuit pour décrire un objet.":"Crea il tuo account gratuito per descrivere un oggetto.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Descrivere un oggetto è riservato agli abbonati e alla prova gratuita.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"Questa descrizione è già in costruzione: attendi la fine o ricomincia.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Quota raggiunta: {0} oggetti su {1} negli ultimi {2} giorni.","Réinitialisation le {0}.":"Si azzera il {0}.","Service pas encore ouvert.":"Servizio non ancora aperto.","Service momentanément indisponible (clé absente côté serveur).":"Servizio momentaneamente non disponibile (chiave assente sul server).","Service saturé : réessayez dans quelques heures.":"Servizio saturo: riprova tra qualche ora.","Requête refusée par le serveur : {0}":"Richiesta rifiutata dal server: {0}","Erreur du serveur ({0}).":"Errore del server ({0}).","Client Supabase indisponible : {0}":"Client Supabase non disponibile: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Servizio irraggiungibile: non ancora aperto, o rete non disponibile.","Demande annulée.":"Richiesta annullata.","Le flux s’est interrompu avant la fin.":"Il flusso si è interrotto prima della fine.","Le modèle n’a pas rendu de code.":"Il modello non ha restituito codice.","Le modèle n’a pas rendu de code ({0}).":"Il modello non ha restituito codice ({0}).","Le modèle a refusé la demande.":"Il modello ha rifiutato la richiesta.","Délai dépassé côté serveur.":"Tempo scaduto lato server.","Erreur du modèle : {0}":"Errore del modello: {0}","Le code produit a été refusé ({0}) : correction demandée.":"Il codice prodotto è stato rifiutato ({0}): correzione richiesta.","Échec : aucun code ne se construit après {0} tours.":"Fallito: nessun codice si costruisce dopo {0} tentativi.","Le module d’import n’est pas chargé : impossible de garder.":"Il modulo di importazione non è caricato: impossibile salvare.","Impossible de garder : {0}":"Impossibile salvare: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Impossibile salvare: archiviazione piena o non disponibile. Libera spazio (scene, configurazioni), poi riprova.","S’abonner":"Abbonati","Créer un compte":"Crea un account","Décrivez d’abord l’objet.":"Descrivi prima l’oggetto.","Décrivez la modification souhaitée.":"Descrivi la modifica desiderata.","Impossible de charger le kit de géométrie ({0}).":"Impossibile caricare il kit di geometria ({0}).","Erreur d’exécution : {0}":"Errore di esecuzione: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Orbita: trascina · zoom: rotella · inquadra: doppio clic","Reprise de « {0} »":"Ripresa di «{0}»","Quota : {0}/{1} objets sur {2} jours":"Quota: {0}/{1} oggetti su {2} giorni","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Troppe chiamate per questo oggetto: ricomincia con una nuova descrizione.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Troppe chiamate negli ultimi {0} giorni: riprova più tardi.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Troppe chiamate negli ultimi {0} giorni: riprova dopo il {1}.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"Questo oggetto ha esaurito le sue chiamate: la modifica conta come un nuovo oggetto.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"File troppo lungo ({0} caratteri, al massimo {1}): riformula o semplifica l’oggetto.","Bac à sable indisponible dans ce navigateur.":"Ambiente isolato non disponibile in questo browser.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"L’oggetto è mostrato con i suoi difetti: non è stato possibile richiedere la correzione.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"Questo oggetto ha esaurito le sue chiamate: una nuova modifica conterà come un nuovo oggetto.","Correction annulée : l’objet est affiché avec ses défauts.":"Correzione annullata: l’oggetto è mostrato con i suoi difetti.","Réglages ramenés à la dernière géométrie construite.":"Regolazioni riportate all’ultima geometria costruita.","Réglages remis aux valeurs par défaut du code.":"Regolazioni riportate ai valori predefiniti del codice.","BPO crée votre objet paramétrique":"BPO sta creando il tuo oggetto parametrico","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"Il modello sta ragionando… {0} (può richiedere alcuni minuti)"},
-pt:{"Décrire un objet":"Descrever um objeto","Fermer":"Fechar","Glisser pour déplacer":"Arrastar para mover","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Descreva o objeto em uma ou duas frases: tipo, dimensões exteriores, materiais, equipamentos.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Exemplo: bancada de oficina 2,00 × 0,80 m, h 0,90, tampo em faia, estrutura de aço azul, prateleira baixa em chapa","Fabriquer":"Fabricar","Annuler":"Cancelar","Recommencer":"Recomeçar","Écriture du code… {0} caractères":"A escrever o código… {0} caracteres","Connexion au service…":"A ligar ao serviço…","Contrôle…":"Controlo…","Correction {0}/{1}…":"Correção {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Pronto: {0} triângulos, {1} × {2} × {3} m","Construction…":"Construção…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Construção demasiado longa (mais de {0} s): o código foi interrompido.","Cotes hors tout":"Dimensões exteriores","Hypothèses":"Hipóteses","Réglages":"Ajustes","Valeurs par défaut":"Valores por defeito","Modifier… (ex. : portes plus hautes, sans roulettes)":"Modificar… (ex.: portas mais altas, sem rodízios)","Modifier":"Modificar","Garder dans Ma bibliothèque":"Guardar na Minha biblioteca","Nom de l’objet":"Nome do objeto","Garder…":"A guardar…","Objet gardé dans Ma bibliothèque.":"Objeto guardado na Minha biblioteca.","Objet mis à jour dans Ma bibliothèque.":"Objeto atualizado na Minha biblioteca.","contrôle : {0}":"controlo: {0}","{0} faces confondues":"{0} faces coincidentes","{0} triangles dégénérés":"{0} triângulos degenerados","{0} pièces à normales rentrantes":"{0} peças com normais para dentro","Connectez-vous pour décrire un objet.":"Inicie sessão para descrever um objeto.","Session absente ou expirée — reconnectez-vous.":"Sessão ausente ou expirada — inicie sessão novamente.","Créez votre compte gratuit pour décrire un objet.":"Crie a sua conta gratuita para descrever um objeto.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Descrever um objeto é reservado aos assinantes e ao teste gratuito.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"Esta descrição já está a ser fabricada: aguarde o fim ou recomece.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Quota atingida: {0} de {1} objetos nos últimos {2} dias.","Réinitialisation le {0}.":"Reinicia a {0}.","Service pas encore ouvert.":"Serviço ainda não aberto.","Service momentanément indisponible (clé absente côté serveur).":"Serviço temporariamente indisponível (chave ausente no servidor).","Service saturé : réessayez dans quelques heures.":"Serviço saturado: tente novamente dentro de algumas horas.","Requête refusée par le serveur : {0}":"Pedido recusado pelo servidor: {0}","Erreur du serveur ({0}).":"Erro do servidor ({0}).","Client Supabase indisponible : {0}":"Cliente Supabase indisponível: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Serviço inacessível: ainda não aberto, ou rede indisponível.","Demande annulée.":"Pedido cancelado.","Le flux s’est interrompu avant la fin.":"O fluxo interrompeu-se antes do fim.","Le modèle n’a pas rendu de code.":"O modelo não devolveu código.","Le modèle n’a pas rendu de code ({0}).":"O modelo não devolveu código ({0}).","Le modèle a refusé la demande.":"O modelo recusou o pedido.","Délai dépassé côté serveur.":"Tempo esgotado no servidor.","Erreur du modèle : {0}":"Erro do modelo: {0}","Le code produit a été refusé ({0}) : correction demandée.":"O código produzido foi recusado ({0}): correção pedida.","Échec : aucun code ne se construit après {0} tours.":"Falhou: nenhum código se constrói após {0} tentativas.","Le module d’import n’est pas chargé : impossible de garder.":"O módulo de importação não está carregado: impossível guardar.","Impossible de garder : {0}":"Impossível guardar: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Impossível guardar: armazenamento cheio ou indisponível. Liberte espaço (cenas, configurações) e tente novamente.","S’abonner":"Subscrever","Créer un compte":"Criar uma conta","Décrivez d’abord l’objet.":"Descreva primeiro o objeto.","Décrivez la modification souhaitée.":"Descreva a alteração pretendida.","Impossible de charger le kit de géométrie ({0}).":"Não foi possível carregar o kit de geometria ({0}).","Erreur d’exécution : {0}":"Erro de execução: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Orbitar: arrastar · zoom: roda · reenquadrar: duplo clique","Reprise de « {0} »":"Retoma de «{0}»","Quota : {0}/{1} objets sur {2} jours":"Quota: {0}/{1} objetos em {2} dias","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Demasiadas chamadas para este objeto: recomece com uma nova descrição.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Demasiadas chamadas nos últimos {0} dias: tente novamente mais tarde.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Demasiadas chamadas nos últimos {0} dias: tente novamente após {1}.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"Este objeto esgotou as suas chamadas: a alteração conta como um novo objeto.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"Ficheiro demasiado longo ({0} caracteres, {1} no máximo): reformule ou simplifique o objeto.","Bac à sable indisponible dans ce navigateur.":"Área restrita indisponível neste navegador.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"O objeto é apresentado com os seus defeitos: não foi possível pedir a correção.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"Este objeto esgotou as suas chamadas: uma nova alteração contará como um novo objeto.","Correction annulée : l’objet est affiché avec ses défauts.":"Correção cancelada: o objeto é apresentado com os seus defeitos.","Réglages ramenés à la dernière géométrie construite.":"Ajustes repostos na última geometria construída.","Réglages remis aux valeurs par défaut du code.":"Ajustes repostos nos valores por defeito do código.","BPO crée votre objet paramétrique":"O BPO está a criar o seu objeto paramétrico","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"O modelo está a pensar… {0} (pode demorar vários minutos)"}
+en:{"Décrire un objet":"Describe an object","Fermer":"Close","Glisser pour déplacer":"Drag to move","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Describe the object in one or two sentences: type, overall dimensions, materials, fittings.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Example: workshop bench 2.00 × 0.80 m, h 0.90, beech top, blue steel frame, sheet-metal lower shelf","Fabriquer":"Build","Annuler":"Cancel","Recommencer":"Start over","Écriture du code… {0} caractères":"Writing the code… {0} characters","Connexion au service…":"Connecting to the service…","Contrôle…":"Checking…","Correction {0}/{1}…":"Correction {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Ready: {0} triangles, {1} × {2} × {3} m","Construction…":"Building…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Build too long (over {0} s): the code was stopped.","Cotes hors tout":"Overall dimensions","Hypothèses":"Assumptions","Réglages":"Settings","Valeurs par défaut":"Default values","Modifier… (ex. : portes plus hautes, sans roulettes)":"Change… (e.g. taller doors, no casters)","Modifier":"Change","Garder dans Ma bibliothèque":"Keep in My library","Nom de l’objet":"Object name","Garder…":"Keeping…","Objet gardé dans Ma bibliothèque.":"Object kept in My library.","Objet mis à jour dans Ma bibliothèque.":"Object updated in My library.","contrôle : {0}":"check: {0}","{0} faces confondues":"{0} coincident faces","1 face confondue":"1 coincident face","{0} triangles dégénérés":"{0} degenerate triangles","{0} pièces à normales rentrantes":"{0} parts with inward normals","Connectez-vous pour décrire un objet.":"Sign in to describe an object.","Session absente ou expirée — reconnectez-vous.":"No session or session expired — sign in again.","Créez votre compte gratuit pour décrire un objet.":"Create your free account to describe an object.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Describing an object is for subscribers and the free trial.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"This description is already being built: wait for it to finish or start over.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Quota reached: {0} of {1} objects in the last {2} days.","Réinitialisation le {0}.":"Resets on {0}.","Service pas encore ouvert.":"Service not open yet.","Service momentanément indisponible (clé absente côté serveur).":"Service temporarily unavailable (key missing on the server).","Service saturé : réessayez dans quelques heures.":"Service saturated: try again in a few hours.","Requête refusée par le serveur : {0}":"Request refused by the server: {0}","Erreur du serveur ({0}).":"Server error ({0}).","Client Supabase indisponible : {0}":"Supabase client unavailable: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Service unreachable: not open yet, or network unavailable.","Demande annulée.":"Request cancelled.","Le flux s’est interrompu avant la fin.":"The stream stopped before the end.","Le modèle a refusé la demande.":"The model declined the request.","Erreur du modèle : {0}":"Model error: {0}","Le code produit a été refusé ({0}) : correction demandée.":"The produced code was refused ({0}): correction requested.","Échec : aucun code ne se construit après {0} tours.":"Failed: no code builds after {0} rounds.","Le module d’import n’est pas chargé : impossible de garder.":"The import module is not loaded: cannot keep.","Impossible de garder : {0}":"Could not keep: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Could not keep: storage full or unavailable. Free up space (scenes, configurations), then try again.","S’abonner":"Subscribe","Créer un compte":"Create an account","Décrivez d’abord l’objet.":"Describe the object first.","Décrivez la modification souhaitée.":"Describe the change you want.","Impossible de charger le kit de géométrie ({0}).":"Could not load the geometry kit ({0}).","Erreur d’exécution : {0}":"Execution error: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Orbit: drag · zoom: wheel · reframe: double-click","Reprise de « {0} »":"Resuming “{0}”","Quota : {0}/{1} objets sur {2} jours":"Quota: {0}/{1} objects over {2} days","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Too many calls for this object: start again with a new description.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Too many calls in the last {0} days: try again later.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Too many calls in the last {0} days: try again after {1}.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"This object has used up its calls: the change counts as a new object.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"File too long ({0} characters, {1} at most): rephrase or simplify the object.","Bac à sable indisponible dans ce navigateur.":"Sandbox unavailable in this browser.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"The object is shown with its defects: the correction could not be requested.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"This object has used up its calls: a new change will count as a new object.","Correction annulée : l’objet est affiché avec ses défauts.":"Correction cancelled: the object is shown with its defects.","Réglages ramenés à la dernière géométrie construite.":"Settings brought back to the last built geometry.","Réglages remis aux valeurs par défaut du code.":"Settings reset to the default values of the code.","BPO crée votre objet paramétrique":"BPO is creating your parametric object","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"The model is thinking… {0} (this can take several minutes)","Le modèle n’a pas abouti : simplifiez la description, puis relancez. Cet essai ne compte pas dans votre quota.":"The model did not finish: simplify the description, then try again. This attempt does not count towards your quota.","Masquer : l’appel continue":"Hide: the call continues","Un appel au modèle est en cours. Recommencer l’arrête, et ce qu’il a déjà produit est perdu. Recommencer quand même ?":"A call to the model is in progress. Starting over stops it, and what it has produced so far is lost. Start over anyway?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu.":"A call to the model is in progress on another object. Stop it to open this one? What it has produced so far is lost.","Un appel au modèle est en cours. Recommencer l’arrête : ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi. Recommencer quand même ?":"A call to the model is in progress. Starting over stops it: what it has produced so far is lost, and the result shown, not saved yet, is lost too. Start over anyway?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi.":"A call to the model is in progress on another object. Stop it to open this one? What it has produced so far is lost, and the result shown, not saved yet, is lost too.","Modifie les {0} exemplaires de la scène":"Changes the {0} copies in the scene","Réglages indisponibles : {0}":"Settings unavailable: {0}","Un appel au modèle est en cours sur cet objet : ses réglages reviennent ici à la fin.":"A call to the model is in progress on this object: its settings come back here when it ends.","Cet objet est ouvert dans le panneau « Décrire un objet » : fermez-le pour le régler ici.":"This object is open in the “Describe an object” panel: close it to adjust the object here.","maillage absent de ce navigateur, reprenez l’objet par le bouton IA":"no mesh in this browser, reopen the object with the IA button","Objet renommé pendant la construction : réglage abandonné.":"Object renamed during the build: setting dropped.","Cet objet n’existe plus.":"This object no longer exists.","← Retour à la scène":"← Back to the scene","Réglage non enregistré : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Setting not saved: storage full or unavailable. Free up some space (scenes, configurations), then try again.","Réglage non appliqué : {0}":"Setting not applied: {0}","Le modèle n’a pas abouti : simplifiez la description, puis relancez.":"The model did not finish: simplify the description, then try again.","Ce résultat n’est pas gardé dans Ma bibliothèque : Recommencer le perd. Recommencer quand même ?":"This result is not saved in My library: starting over loses it. Start over anyway?","Ce résultat n’est pas gardé dans Ma bibliothèque : le fermer le perd. Fermer quand même ?":"This result is not saved in My library: closing it loses it. Close anyway?","Le résultat affiché n’est pas gardé dans Ma bibliothèque : ouvrir cet objet le perd. L’ouvrir quand même ?":"The result shown is not saved in My library: opening this object loses it. Open it anyway?","Le panneau « Décrire un objet » montre un résultat pas encore gardé pour cet objet : gardez-le ou abandonnez-le pour le régler ici.":"The “Describe an object” panel shows a result for this object that is not saved yet: save or discard it to adjust the object here.","Un nouvel objet est en cours de création : les réglages reviennent ici à la fin.":"A new object is being created: the settings come back here when it ends.","Le panneau « Décrire un objet » travaille sur cet objet : ses réglages reviennent ici à la fin.":"The “Describe an object” panel is working on this object: its settings come back here when it ends.","Les curseurs ne s’annulent pas : Valeurs par défaut.":"Sliders cannot be undone: use Default values.","Cet objet a été re-réglé dans une autre fenêtre : la vue ici n’est plus à jour. Rechargez la page, ou bougez un curseur.":"This object was adjusted in another window: the view here is out of date. Reload the page, or move a slider."},
+de:{"Décrire un objet":"Ein Objekt beschreiben","Fermer":"Schließen","Glisser pour déplacer":"Zum Verschieben ziehen","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Beschreiben Sie das Objekt in ein, zwei Sätzen: Typ, Außenmaße, Materialien, Ausstattung.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Beispiel: Werkbank 2,00 × 0,80 m, H 0,90, Buchenplatte, blaues Stahlgestell, unteres Blechfach","Fabriquer":"Bauen","Annuler":"Abbrechen","Recommencer":"Neu beginnen","Écriture du code… {0} caractères":"Code wird geschrieben… {0} Zeichen","Connexion au service…":"Verbindung zum Dienst…","Contrôle…":"Prüfung…","Correction {0}/{1}…":"Korrektur {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Fertig: {0} Dreiecke, {1} × {2} × {3} m","Construction…":"Aufbau…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Aufbau zu lang (über {0} s): der Code wurde abgebrochen.","Cotes hors tout":"Außenmaße","Hypothèses":"Annahmen","Réglages":"Einstellungen","Valeurs par défaut":"Standardwerte","Modifier… (ex. : portes plus hautes, sans roulettes)":"Ändern… (z. B. höhere Türen, ohne Rollen)","Modifier":"Ändern","Garder dans Ma bibliothèque":"In Meine Bibliothek übernehmen","Nom de l’objet":"Objektname","Garder…":"Wird übernommen…","Objet gardé dans Ma bibliothèque.":"Objekt in Meine Bibliothek übernommen.","Objet mis à jour dans Ma bibliothèque.":"Objekt in Meine Bibliothek aktualisiert.","contrôle : {0}":"Prüfung: {0}","{0} faces confondues":"{0} deckungsgleiche Flächen","1 face confondue":"1 deckungsgleiche Fläche","{0} triangles dégénérés":"{0} degenerierte Dreiecke","{0} pièces à normales rentrantes":"{0} Teile mit nach innen gerichteten Normalen","Connectez-vous pour décrire un objet.":"Melden Sie sich an, um ein Objekt zu beschreiben.","Session absente ou expirée — reconnectez-vous.":"Keine oder abgelaufene Sitzung — bitte erneut anmelden.","Créez votre compte gratuit pour décrire un objet.":"Erstellen Sie Ihr kostenloses Konto, um ein Objekt zu beschreiben.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Ein Objekt beschreiben ist Abonnenten und der kostenlosen Testphase vorbehalten.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"Diese Beschreibung wird bereits gebaut: Warten Sie das Ende ab oder beginnen Sie neu.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Kontingent erreicht: {0} von {1} Objekten in den letzten {2} Tagen.","Réinitialisation le {0}.":"Zurücksetzung am {0}.","Service pas encore ouvert.":"Dienst noch nicht geöffnet.","Service momentanément indisponible (clé absente côté serveur).":"Dienst vorübergehend nicht verfügbar (Schlüssel fehlt serverseitig).","Service saturé : réessayez dans quelques heures.":"Dienst ausgelastet: Versuchen Sie es in einigen Stunden erneut.","Requête refusée par le serveur : {0}":"Anfrage vom Server abgelehnt: {0}","Erreur du serveur ({0}).":"Serverfehler ({0}).","Client Supabase indisponible : {0}":"Supabase-Client nicht verfügbar: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Dienst nicht erreichbar: noch nicht geöffnet, oder Netzwerk nicht verfügbar.","Demande annulée.":"Anfrage abgebrochen.","Le flux s’est interrompu avant la fin.":"Der Datenstrom brach vor dem Ende ab.","Le modèle a refusé la demande.":"Das Modell hat die Anfrage abgelehnt.","Erreur du modèle : {0}":"Modellfehler: {0}","Le code produit a été refusé ({0}) : correction demandée.":"Der erzeugte Code wurde abgelehnt ({0}): Korrektur angefordert.","Échec : aucun code ne se construit après {0} tours.":"Fehlgeschlagen: nach {0} Durchgängen baut sich kein Code.","Le module d’import n’est pas chargé : impossible de garder.":"Das Importmodul ist nicht geladen: Übernehmen nicht möglich.","Impossible de garder : {0}":"Übernehmen nicht möglich: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Übernehmen nicht möglich: Speicher voll oder nicht verfügbar. Schaffen Sie Platz (Szenen, Konfigurationen) und versuchen Sie es erneut.","S’abonner":"Abonnieren","Créer un compte":"Konto erstellen","Décrivez d’abord l’objet.":"Beschreiben Sie zuerst das Objekt.","Décrivez la modification souhaitée.":"Beschreiben Sie die gewünschte Änderung.","Impossible de charger le kit de géométrie ({0}).":"Geometrie-Kit konnte nicht geladen werden ({0}).","Erreur d’exécution : {0}":"Ausführungsfehler: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Drehen: ziehen · Zoom: Mausrad · Neu ausrichten: Doppelklick","Reprise de « {0} »":"Wiederaufnahme von „{0}“","Quota : {0}/{1} objets sur {2} jours":"Kontingent: {0}/{1} Objekte in {2} Tagen","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Zu viele Aufrufe für dieses Objekt: beginnen Sie mit einer neuen Beschreibung.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Zu viele Aufrufe in den letzten {0} Tagen: versuchen Sie es später erneut.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Zu viele Aufrufe in den letzten {0} Tagen: versuchen Sie es nach dem {1} erneut.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"Dieses Objekt hat seine Aufrufe aufgebraucht: die Änderung zählt als neues Objekt.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"Datei zu lang ({0} Zeichen, höchstens {1}): formulieren Sie um oder vereinfachen Sie das Objekt.","Bac à sable indisponible dans ce navigateur.":"Sandbox in diesem Browser nicht verfügbar.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"Das Objekt wird mit seinen Mängeln angezeigt: die Korrektur konnte nicht angefordert werden.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"Dieses Objekt hat seine Aufrufe aufgebraucht: eine neue Änderung zählt als neues Objekt.","Correction annulée : l’objet est affiché avec ses défauts.":"Korrektur abgebrochen: das Objekt wird mit seinen Mängeln angezeigt.","Réglages ramenés à la dernière géométrie construite.":"Einstellungen auf die zuletzt gebaute Geometrie zurückgesetzt.","Réglages remis aux valeurs par défaut du code.":"Einstellungen auf die Standardwerte des Codes zurückgesetzt.","BPO crée votre objet paramétrique":"BPO erstellt Ihr parametrisches Objekt","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"Das Modell denkt nach… {0} (das kann mehrere Minuten dauern)","Le modèle n’a pas abouti : simplifiez la description, puis relancez. Cet essai ne compte pas dans votre quota.":"Das Modell ist nicht zum Ziel gekommen: Vereinfachen Sie die Beschreibung und starten Sie erneut. Dieser Versuch zählt nicht für Ihr Kontingent.","Masquer : l’appel continue":"Ausblenden: Der Aufruf läuft weiter","Un appel au modèle est en cours. Recommencer l’arrête, et ce qu’il a déjà produit est perdu. Recommencer quand même ?":"Ein Aufruf des Modells läuft. „Neu beginnen“ bricht ihn ab, und das bisher Erzeugte geht verloren. Trotzdem neu beginnen?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu.":"Für ein anderes Objekt läuft ein Aufruf des Modells. Abbrechen, um dieses Objekt zu öffnen? Das bisher Erzeugte geht verloren.","Un appel au modèle est en cours. Recommencer l’arrête : ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi. Recommencer quand même ?":"Ein Aufruf des Modells läuft. „Neu beginnen“ bricht ihn ab: Das bisher Erzeugte geht verloren, und auch das angezeigte, noch nicht gespeicherte Ergebnis geht verloren. Trotzdem neu beginnen?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi.":"Für ein anderes Objekt läuft ein Aufruf des Modells. Abbrechen, um dieses Objekt zu öffnen? Das bisher Erzeugte geht verloren, und auch das angezeigte, noch nicht gespeicherte Ergebnis geht verloren.","Modifie les {0} exemplaires de la scène":"Ändert die {0} Exemplare in der Szene","Réglages indisponibles : {0}":"Einstellungen nicht verfügbar: {0}","Un appel au modèle est en cours sur cet objet : ses réglages reviennent ici à la fin.":"Für dieses Objekt läuft ein Aufruf des Modells: Seine Einstellungen erscheinen hier wieder, sobald er beendet ist.","Cet objet est ouvert dans le panneau « Décrire un objet » : fermez-le pour le régler ici.":"Dieses Objekt ist im Fenster „Ein Objekt beschreiben“ geöffnet: Schließen Sie es, um das Objekt hier einzustellen.","maillage absent de ce navigateur, reprenez l’objet par le bouton IA":"kein Netz in diesem Browser, öffnen Sie das Objekt über die Schaltfläche IA","Objet renommé pendant la construction : réglage abandonné.":"Objekt während des Aufbaus umbenannt: Einstellung verworfen.","Cet objet n’existe plus.":"Dieses Objekt existiert nicht mehr.","← Retour à la scène":"← Zurück zur Szene","Réglage non enregistré : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Einstellung nicht gespeichert: Speicher voll oder nicht verfügbar. Geben Sie Platz frei (Szenen, Konfigurationen) und versuchen Sie es erneut.","Réglage non appliqué : {0}":"Einstellung nicht angewendet: {0}","Le modèle n’a pas abouti : simplifiez la description, puis relancez.":"Das Modell ist nicht zum Ziel gekommen: Vereinfachen Sie die Beschreibung und starten Sie erneut.","Ce résultat n’est pas gardé dans Ma bibliothèque : Recommencer le perd. Recommencer quand même ?":"Dieses Ergebnis ist nicht in Meiner Bibliothek gespeichert: „Neu beginnen“ verwirft es. Trotzdem neu beginnen?","Ce résultat n’est pas gardé dans Ma bibliothèque : le fermer le perd. Fermer quand même ?":"Dieses Ergebnis ist nicht in Meiner Bibliothek gespeichert: Beim Schließen geht es verloren. Trotzdem schließen?","Le résultat affiché n’est pas gardé dans Ma bibliothèque : ouvrir cet objet le perd. L’ouvrir quand même ?":"Das angezeigte Ergebnis ist nicht in Meiner Bibliothek gespeichert: Beim Öffnen dieses Objekts geht es verloren. Trotzdem öffnen?","Le panneau « Décrire un objet » montre un résultat pas encore gardé pour cet objet : gardez-le ou abandonnez-le pour le régler ici.":"Das Fenster „Ein Objekt beschreiben“ zeigt für dieses Objekt ein noch nicht gespeichertes Ergebnis: Speichern oder verwerfen Sie es, um das Objekt hier einzustellen.","Un nouvel objet est en cours de création : les réglages reviennent ici à la fin.":"Ein neues Objekt wird erstellt: Die Einstellungen erscheinen hier wieder, sobald es fertig ist.","Le panneau « Décrire un objet » travaille sur cet objet : ses réglages reviennent ici à la fin.":"Das Fenster „Ein Objekt beschreiben“ arbeitet an diesem Objekt: Seine Einstellungen erscheinen hier wieder, sobald es fertig ist.","Les curseurs ne s’annulent pas : Valeurs par défaut.":"Regler lassen sich nicht rückgängig machen: Standardwerte verwenden.","Cet objet a été re-réglé dans une autre fenêtre : la vue ici n’est plus à jour. Rechargez la page, ou bougez un curseur.":"Dieses Objekt wurde in einem anderen Fenster neu eingestellt: Die Ansicht hier ist nicht mehr aktuell. Laden Sie die Seite neu oder bewegen Sie einen Regler."},
+es:{"Décrire un objet":"Describir un objeto","Fermer":"Cerrar","Glisser pour déplacer":"Arrastrar para mover","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Describa el objeto en una o dos frases: tipo, medidas exteriores, materiales, equipamiento.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Ejemplo: banco de taller 2,00 × 0,80 m, h 0,90, tablero de haya, bastidor de acero azul, estante bajo de chapa","Fabriquer":"Fabricar","Annuler":"Cancelar","Recommencer":"Empezar de nuevo","Écriture du code… {0} caractères":"Escribiendo el código… {0} caracteres","Connexion au service…":"Conectando con el servicio…","Contrôle…":"Control…","Correction {0}/{1}…":"Corrección {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Listo: {0} triángulos, {1} × {2} × {3} m","Construction…":"Construcción…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Construcción demasiado larga (más de {0} s): el código se ha interrumpido.","Cotes hors tout":"Medidas exteriores","Hypothèses":"Hipótesis","Réglages":"Ajustes","Valeurs par défaut":"Valores por defecto","Modifier… (ex. : portes plus hautes, sans roulettes)":"Modificar… (p. ej. puertas más altas, sin ruedas)","Modifier":"Modificar","Garder dans Ma bibliothèque":"Guardar en Mi biblioteca","Nom de l’objet":"Nombre del objeto","Garder…":"Guardando…","Objet gardé dans Ma bibliothèque.":"Objeto guardado en Mi biblioteca.","Objet mis à jour dans Ma bibliothèque.":"Objeto actualizado en Mi biblioteca.","contrôle : {0}":"control: {0}","{0} faces confondues":"{0} caras coincidentes","1 face confondue":"1 cara coincidente","{0} triangles dégénérés":"{0} triángulos degenerados","{0} pièces à normales rentrantes":"{0} piezas con normales hacia dentro","Connectez-vous pour décrire un objet.":"Inicie sesión para describir un objeto.","Session absente ou expirée — reconnectez-vous.":"Sesión ausente o caducada — vuelva a iniciar sesión.","Créez votre compte gratuit pour décrire un objet.":"Cree su cuenta gratuita para describir un objeto.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Describir un objeto está reservado a los suscriptores y a la prueba gratuita.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"Esta descripción ya se está fabricando: espere a que termine o vuelva a empezar.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Cuota alcanzada: {0} de {1} objetos en los últimos {2} días.","Réinitialisation le {0}.":"Se reinicia el {0}.","Service pas encore ouvert.":"Servicio aún no abierto.","Service momentanément indisponible (clé absente côté serveur).":"Servicio temporalmente no disponible (falta la clave en el servidor).","Service saturé : réessayez dans quelques heures.":"Servicio saturado: vuelva a intentarlo dentro de unas horas.","Requête refusée par le serveur : {0}":"Solicitud rechazada por el servidor: {0}","Erreur du serveur ({0}).":"Error del servidor ({0}).","Client Supabase indisponible : {0}":"Cliente Supabase no disponible: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Servicio inaccesible: aún no abierto, o red no disponible.","Demande annulée.":"Solicitud cancelada.","Le flux s’est interrompu avant la fin.":"El flujo se interrumpió antes del final.","Le modèle a refusé la demande.":"El modelo rechazó la solicitud.","Erreur du modèle : {0}":"Error del modelo: {0}","Le code produit a été refusé ({0}) : correction demandée.":"El código producido fue rechazado ({0}): corrección solicitada.","Échec : aucun code ne se construit après {0} tours.":"Fallo: ningún código se construye tras {0} intentos.","Le module d’import n’est pas chargé : impossible de garder.":"El módulo de importación no está cargado: no se puede guardar.","Impossible de garder : {0}":"No se puede guardar: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"No se puede guardar: almacenamiento lleno o no disponible. Libere espacio (escenas, configuraciones) y vuelva a intentarlo.","S’abonner":"Suscribirse","Créer un compte":"Crear una cuenta","Décrivez d’abord l’objet.":"Describa primero el objeto.","Décrivez la modification souhaitée.":"Describa el cambio deseado.","Impossible de charger le kit de géométrie ({0}).":"No se pudo cargar el kit de geometría ({0}).","Erreur d’exécution : {0}":"Error de ejecución: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Orbitar: arrastrar · zoom: rueda · reencuadrar: doble clic","Reprise de « {0} »":"Reanudación de «{0}»","Quota : {0}/{1} objets sur {2} jours":"Cuota: {0}/{1} objetos en {2} días","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Demasiadas llamadas para este objeto: empiece de nuevo con una nueva descripción.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Demasiadas llamadas en los últimos {0} días: inténtelo más tarde.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Demasiadas llamadas en los últimos {0} días: inténtelo después del {1}.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"Este objeto ha agotado sus llamadas: la modificación cuenta como un objeto nuevo.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"Archivo demasiado largo ({0} caracteres, {1} como máximo): reformule o simplifique el objeto.","Bac à sable indisponible dans ce navigateur.":"Entorno aislado no disponible en este navegador.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"El objeto se muestra con sus defectos: no se pudo solicitar la corrección.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"Este objeto ha agotado sus llamadas: una nueva modificación contará como un objeto nuevo.","Correction annulée : l’objet est affiché avec ses défauts.":"Corrección cancelada: el objeto se muestra con sus defectos.","Réglages ramenés à la dernière géométrie construite.":"Ajustes devueltos a la última geometría construida.","Réglages remis aux valeurs par défaut du code.":"Ajustes restablecidos a los valores por defecto del código.","BPO crée votre objet paramétrique":"BPO está creando su objeto paramétrico","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"El modelo está pensando… {0} (puede tardar varios minutos)","Le modèle n’a pas abouti : simplifiez la description, puis relancez. Cet essai ne compte pas dans votre quota.":"El modelo no ha llegado a terminar: simplifique la descripción y vuelva a lanzarla. Este intento no cuenta en su cuota.","Masquer : l’appel continue":"Ocultar: la llamada continúa","Un appel au modèle est en cours. Recommencer l’arrête, et ce qu’il a déjà produit est perdu. Recommencer quand même ?":"Hay una llamada al modelo en curso. Empezar de nuevo la detiene y se pierde lo que ya ha producido. ¿Empezar de nuevo de todos modos?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu.":"Hay una llamada al modelo en curso sobre otro objeto. ¿Detenerla para abrir este? Se pierde lo que ya ha producido.","Un appel au modèle est en cours. Recommencer l’arrête : ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi. Recommencer quand même ?":"Hay una llamada al modelo en curso. Empezar de nuevo la detiene: se pierde lo que ya ha producido, y también se pierde el resultado mostrado, aún no guardado. ¿Empezar de nuevo de todos modos?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi.":"Hay una llamada al modelo en curso sobre otro objeto. ¿Detenerla para abrir este? Se pierde lo que ya ha producido, y también se pierde el resultado mostrado, aún no guardado.","Modifie les {0} exemplaires de la scène":"Modifica los {0} ejemplares de la escena","Réglages indisponibles : {0}":"Ajustes no disponibles: {0}","Un appel au modèle est en cours sur cet objet : ses réglages reviennent ici à la fin.":"Hay una llamada al modelo en curso sobre este objeto: sus ajustes volverán aquí cuando termine.","Cet objet est ouvert dans le panneau « Décrire un objet » : fermez-le pour le régler ici.":"Este objeto está abierto en el panel «Describir un objeto»: ciérrelo para ajustarlo aquí.","maillage absent de ce navigateur, reprenez l’objet par le bouton IA":"no hay malla en este navegador, retome el objeto con el botón IA","Objet renommé pendant la construction : réglage abandonné.":"Objeto renombrado durante la construcción: ajuste descartado.","Cet objet n’existe plus.":"Este objeto ya no existe.","← Retour à la scène":"← Volver a la escena","Réglage non enregistré : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Ajuste no guardado: almacenamiento lleno o no disponible. Libere espacio (escenas, configuraciones) y vuelva a intentarlo.","Réglage non appliqué : {0}":"Ajuste no aplicado: {0}","Le modèle n’a pas abouti : simplifiez la description, puis relancez.":"El modelo no ha llegado a terminar: simplifique la descripción y vuelva a lanzarla.","Ce résultat n’est pas gardé dans Ma bibliothèque : Recommencer le perd. Recommencer quand même ?":"Este resultado no está guardado en Mi biblioteca: empezar de nuevo lo pierde. ¿Empezar de nuevo de todos modos?","Ce résultat n’est pas gardé dans Ma bibliothèque : le fermer le perd. Fermer quand même ?":"Este resultado no está guardado en Mi biblioteca: al cerrarlo se pierde. ¿Cerrar de todos modos?","Le résultat affiché n’est pas gardé dans Ma bibliothèque : ouvrir cet objet le perd. L’ouvrir quand même ?":"El resultado mostrado no está guardado en Mi biblioteca: abrir este objeto lo pierde. ¿Abrirlo de todos modos?","Le panneau « Décrire un objet » montre un résultat pas encore gardé pour cet objet : gardez-le ou abandonnez-le pour le régler ici.":"El panel «Describir un objeto» muestra un resultado aún no guardado para este objeto: guárdelo o descártelo para ajustarlo aquí.","Un nouvel objet est en cours de création : les réglages reviennent ici à la fin.":"Se está creando un objeto nuevo: los ajustes volverán aquí cuando termine.","Le panneau « Décrire un objet » travaille sur cet objet : ses réglages reviennent ici à la fin.":"El panel «Describir un objeto» está trabajando sobre este objeto: sus ajustes volverán aquí cuando termine.","Les curseurs ne s’annulent pas : Valeurs par défaut.":"Los controles no se deshacen: use Valores por defecto.","Cet objet a été re-réglé dans une autre fenêtre : la vue ici n’est plus à jour. Rechargez la page, ou bougez un curseur.":"Este objeto se ha reajustado en otra ventana: la vista de aquí ya no está al día. Recargue la página o mueva un control."},
+it:{"Décrire un objet":"Descrivere un oggetto","Fermer":"Chiudi","Glisser pour déplacer":"Trascina per spostare","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Descrivi l’oggetto in una o due frasi: tipo, ingombri, materiali, dotazioni.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Esempio: banco da officina 2,00 × 0,80 m, h 0,90, piano in faggio, telaio in acciaio blu, ripiano basso in lamiera","Fabriquer":"Costruisci","Annuler":"Annulla","Recommencer":"Ricomincia","Écriture du code… {0} caractères":"Scrittura del codice… {0} caratteri","Connexion au service…":"Connessione al servizio…","Contrôle…":"Controllo…","Correction {0}/{1}…":"Correzione {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Pronto: {0} triangoli, {1} × {2} × {3} m","Construction…":"Costruzione…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Costruzione troppo lunga (oltre {0} s): il codice è stato interrotto.","Cotes hors tout":"Ingombri","Hypothèses":"Ipotesi","Réglages":"Regolazioni","Valeurs par défaut":"Valori predefiniti","Modifier… (ex. : portes plus hautes, sans roulettes)":"Modifica… (es. porte più alte, senza ruote)","Modifier":"Modifica","Garder dans Ma bibliothèque":"Salva nella Mia libreria","Nom de l’objet":"Nome dell’oggetto","Garder…":"Salvataggio…","Objet gardé dans Ma bibliothèque.":"Oggetto salvato nella Mia libreria.","Objet mis à jour dans Ma bibliothèque.":"Oggetto aggiornato nella Mia libreria.","contrôle : {0}":"controllo: {0}","{0} faces confondues":"{0} facce coincidenti","1 face confondue":"1 faccia coincidente","{0} triangles dégénérés":"{0} triangoli degeneri","{0} pièces à normales rentrantes":"{0} pezzi con normali rientranti","Connectez-vous pour décrire un objet.":"Accedi per descrivere un oggetto.","Session absente ou expirée — reconnectez-vous.":"Sessione assente o scaduta — accedi di nuovo.","Créez votre compte gratuit pour décrire un objet.":"Crea il tuo account gratuito per descrivere un oggetto.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Descrivere un oggetto è riservato agli abbonati e alla prova gratuita.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"Questa descrizione è già in costruzione: attendi la fine o ricomincia.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Quota raggiunta: {0} oggetti su {1} negli ultimi {2} giorni.","Réinitialisation le {0}.":"Si azzera il {0}.","Service pas encore ouvert.":"Servizio non ancora aperto.","Service momentanément indisponible (clé absente côté serveur).":"Servizio momentaneamente non disponibile (chiave assente sul server).","Service saturé : réessayez dans quelques heures.":"Servizio saturo: riprova tra qualche ora.","Requête refusée par le serveur : {0}":"Richiesta rifiutata dal server: {0}","Erreur du serveur ({0}).":"Errore del server ({0}).","Client Supabase indisponible : {0}":"Client Supabase non disponibile: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Servizio irraggiungibile: non ancora aperto, o rete non disponibile.","Demande annulée.":"Richiesta annullata.","Le flux s’est interrompu avant la fin.":"Il flusso si è interrotto prima della fine.","Le modèle a refusé la demande.":"Il modello ha rifiutato la richiesta.","Erreur du modèle : {0}":"Errore del modello: {0}","Le code produit a été refusé ({0}) : correction demandée.":"Il codice prodotto è stato rifiutato ({0}): correzione richiesta.","Échec : aucun code ne se construit après {0} tours.":"Fallito: nessun codice si costruisce dopo {0} tentativi.","Le module d’import n’est pas chargé : impossible de garder.":"Il modulo di importazione non è caricato: impossibile salvare.","Impossible de garder : {0}":"Impossibile salvare: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Impossibile salvare: archiviazione piena o non disponibile. Libera spazio (scene, configurazioni), poi riprova.","S’abonner":"Abbonati","Créer un compte":"Crea un account","Décrivez d’abord l’objet.":"Descrivi prima l’oggetto.","Décrivez la modification souhaitée.":"Descrivi la modifica desiderata.","Impossible de charger le kit de géométrie ({0}).":"Impossibile caricare il kit di geometria ({0}).","Erreur d’exécution : {0}":"Errore di esecuzione: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Orbita: trascina · zoom: rotella · inquadra: doppio clic","Reprise de « {0} »":"Ripresa di «{0}»","Quota : {0}/{1} objets sur {2} jours":"Quota: {0}/{1} oggetti su {2} giorni","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Troppe chiamate per questo oggetto: ricomincia con una nuova descrizione.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Troppe chiamate negli ultimi {0} giorni: riprova più tardi.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Troppe chiamate negli ultimi {0} giorni: riprova dopo il {1}.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"Questo oggetto ha esaurito le sue chiamate: la modifica conta come un nuovo oggetto.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"File troppo lungo ({0} caratteri, al massimo {1}): riformula o semplifica l’oggetto.","Bac à sable indisponible dans ce navigateur.":"Ambiente isolato non disponibile in questo browser.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"L’oggetto è mostrato con i suoi difetti: non è stato possibile richiedere la correzione.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"Questo oggetto ha esaurito le sue chiamate: una nuova modifica conterà come un nuovo oggetto.","Correction annulée : l’objet est affiché avec ses défauts.":"Correzione annullata: l’oggetto è mostrato con i suoi difetti.","Réglages ramenés à la dernière géométrie construite.":"Regolazioni riportate all’ultima geometria costruita.","Réglages remis aux valeurs par défaut du code.":"Regolazioni riportate ai valori predefiniti del codice.","BPO crée votre objet paramétrique":"BPO sta creando il tuo oggetto parametrico","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"Il modello sta ragionando… {0} (può richiedere alcuni minuti)","Le modèle n’a pas abouti : simplifiez la description, puis relancez. Cet essai ne compte pas dans votre quota.":"Il modello non è arrivato a termine: semplifica la descrizione, poi rilancia. Questo tentativo non conta nella tua quota.","Masquer : l’appel continue":"Nascondi: la chiamata continua","Un appel au modèle est en cours. Recommencer l’arrête, et ce qu’il a déjà produit est perdu. Recommencer quand même ?":"È in corso una chiamata al modello. Ricominciare la interrompe e ciò che ha già prodotto va perso. Ricominciare comunque?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu.":"È in corso una chiamata al modello su un altro oggetto. Interromperla per aprire questo? Ciò che ha già prodotto va perso.","Un appel au modèle est en cours. Recommencer l’arrête : ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi. Recommencer quand même ?":"È in corso una chiamata al modello. Ricominciare la interrompe: ciò che ha già prodotto va perso, e va perso anche il risultato mostrato, non ancora salvato. Ricominciare comunque?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi.":"È in corso una chiamata al modello su un altro oggetto. Interromperla per aprire questo? Ciò che ha già prodotto va perso, e va perso anche il risultato mostrato, non ancora salvato.","Modifie les {0} exemplaires de la scène":"Modifica i {0} esemplari della scena","Réglages indisponibles : {0}":"Regolazioni non disponibili: {0}","Un appel au modèle est en cours sur cet objet : ses réglages reviennent ici à la fin.":"È in corso una chiamata al modello su questo oggetto: le sue regolazioni torneranno qui alla fine.","Cet objet est ouvert dans le panneau « Décrire un objet » : fermez-le pour le régler ici.":"Questo oggetto è aperto nel pannello «Descrivere un oggetto»: chiudilo per regolarlo qui.","maillage absent de ce navigateur, reprenez l’objet par le bouton IA":"mesh assente in questo browser, riprendi l’oggetto con il pulsante IA","Objet renommé pendant la construction : réglage abandonné.":"Oggetto rinominato durante la costruzione: regolazione annullata.","Cet objet n’existe plus.":"Questo oggetto non esiste più.","← Retour à la scène":"← Torna alla scena","Réglage non enregistré : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Regolazione non salvata: spazio pieno o non disponibile. Libera spazio (scene, configurazioni), poi riprova.","Réglage non appliqué : {0}":"Regolazione non applicata: {0}","Le modèle n’a pas abouti : simplifiez la description, puis relancez.":"Il modello non è arrivato a termine: semplifica la descrizione, poi rilancia.","Ce résultat n’est pas gardé dans Ma bibliothèque : Recommencer le perd. Recommencer quand même ?":"Questo risultato non è salvato nella Mia libreria: ricominciare lo perde. Ricominciare comunque?","Ce résultat n’est pas gardé dans Ma bibliothèque : le fermer le perd. Fermer quand même ?":"Questo risultato non è salvato nella Mia libreria: chiudendolo va perso. Chiudere comunque?","Le résultat affiché n’est pas gardé dans Ma bibliothèque : ouvrir cet objet le perd. L’ouvrir quand même ?":"Il risultato mostrato non è salvato nella Mia libreria: aprire questo oggetto lo perde. Aprirlo comunque?","Le panneau « Décrire un objet » montre un résultat pas encore gardé pour cet objet : gardez-le ou abandonnez-le pour le régler ici.":"Il pannello «Descrivere un oggetto» mostra un risultato non ancora salvato per questo oggetto: salvalo o scartalo per regolarlo qui.","Un nouvel objet est en cours de création : les réglages reviennent ici à la fin.":"È in corso la creazione di un nuovo oggetto: le regolazioni torneranno qui alla fine.","Le panneau « Décrire un objet » travaille sur cet objet : ses réglages reviennent ici à la fin.":"Il pannello «Descrivere un oggetto» sta lavorando su questo oggetto: le sue regolazioni torneranno qui alla fine.","Les curseurs ne s’annulent pas : Valeurs par défaut.":"I cursori non si annullano: usa Valori predefiniti.","Cet objet a été re-réglé dans une autre fenêtre : la vue ici n’est plus à jour. Rechargez la page, ou bougez un curseur.":"Questo oggetto è stato regolato in un’altra finestra: la vista qui non è più aggiornata. Ricarica la pagina o sposta un cursore."},
+pt:{"Décrire un objet":"Descrever um objeto","Fermer":"Fechar","Glisser pour déplacer":"Arrastar para mover","Décrivez l’objet en une ou deux phrases : type, cotes hors tout, matières, équipements.":"Descreva o objeto em uma ou duas frases: tipo, dimensões exteriores, materiais, equipamentos.","Exemple : établi d’atelier 2,00 × 0,80 m, h 0,90, plateau hêtre, piètement acier bleu, étagère basse en tôle":"Exemplo: bancada de oficina 2,00 × 0,80 m, h 0,90, tampo em faia, estrutura de aço azul, prateleira baixa em chapa","Fabriquer":"Fabricar","Annuler":"Cancelar","Recommencer":"Recomeçar","Écriture du code… {0} caractères":"A escrever o código… {0} caracteres","Connexion au service…":"A ligar ao serviço…","Contrôle…":"Controlo…","Correction {0}/{1}…":"Correção {0}/{1}…","Prêt : {0} triangles, {1} × {2} × {3} m":"Pronto: {0} triângulos, {1} × {2} × {3} m","Construction…":"Construção…","Construction trop longue (plus de {0} s) : le code est interrompu.":"Construção demasiado longa (mais de {0} s): o código foi interrompido.","Cotes hors tout":"Dimensões exteriores","Hypothèses":"Hipóteses","Réglages":"Ajustes","Valeurs par défaut":"Valores por defeito","Modifier… (ex. : portes plus hautes, sans roulettes)":"Modificar… (ex.: portas mais altas, sem rodízios)","Modifier":"Modificar","Garder dans Ma bibliothèque":"Guardar na Minha biblioteca","Nom de l’objet":"Nome do objeto","Garder…":"A guardar…","Objet gardé dans Ma bibliothèque.":"Objeto guardado na Minha biblioteca.","Objet mis à jour dans Ma bibliothèque.":"Objeto atualizado na Minha biblioteca.","contrôle : {0}":"controlo: {0}","{0} faces confondues":"{0} faces coincidentes","1 face confondue":"1 face coincidente","{0} triangles dégénérés":"{0} triângulos degenerados","{0} pièces à normales rentrantes":"{0} peças com normais para dentro","Connectez-vous pour décrire un objet.":"Inicie sessão para descrever um objeto.","Session absente ou expirée — reconnectez-vous.":"Sessão ausente ou expirada — inicie sessão novamente.","Créez votre compte gratuit pour décrire un objet.":"Crie a sua conta gratuita para descrever um objeto.","Décrire un objet est réservé aux abonnés et à l’essai gratuit.":"Descrever um objeto é reservado aos assinantes e ao teste gratuito.","Cette description est déjà en cours de fabrication : attendez la fin ou recommencez.":"Esta descrição já está a ser fabricada: aguarde o fim ou recomece.","Quota atteint : {0} objets sur {1} ces {2} derniers jours.":"Quota atingida: {0} de {1} objetos nos últimos {2} dias.","Réinitialisation le {0}.":"Reinicia a {0}.","Service pas encore ouvert.":"Serviço ainda não aberto.","Service momentanément indisponible (clé absente côté serveur).":"Serviço temporariamente indisponível (chave ausente no servidor).","Service saturé : réessayez dans quelques heures.":"Serviço saturado: tente novamente dentro de algumas horas.","Requête refusée par le serveur : {0}":"Pedido recusado pelo servidor: {0}","Erreur du serveur ({0}).":"Erro do servidor ({0}).","Client Supabase indisponible : {0}":"Cliente Supabase indisponível: {0}","Service injoignable : pas encore ouvert, ou réseau indisponible.":"Serviço inacessível: ainda não aberto, ou rede indisponível.","Demande annulée.":"Pedido cancelado.","Le flux s’est interrompu avant la fin.":"O fluxo interrompeu-se antes do fim.","Le modèle a refusé la demande.":"O modelo recusou o pedido.","Erreur du modèle : {0}":"Erro do modelo: {0}","Le code produit a été refusé ({0}) : correction demandée.":"O código produzido foi recusado ({0}): correção pedida.","Échec : aucun code ne se construit après {0} tours.":"Falhou: nenhum código se constrói após {0} tentativas.","Le module d’import n’est pas chargé : impossible de garder.":"O módulo de importação não está carregado: impossível guardar.","Impossible de garder : {0}":"Impossível guardar: {0}","Impossible de garder : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Impossível guardar: armazenamento cheio ou indisponível. Liberte espaço (cenas, configurações) e tente novamente.","S’abonner":"Subscrever","Créer un compte":"Criar uma conta","Décrivez d’abord l’objet.":"Descreva primeiro o objeto.","Décrivez la modification souhaitée.":"Descreva a alteração pretendida.","Impossible de charger le kit de géométrie ({0}).":"Não foi possível carregar o kit de geometria ({0}).","Erreur d’exécution : {0}":"Erro de execução: {0}","Orbite : glisser · zoom : molette · recadrer : double clic":"Orbitar: arrastar · zoom: roda · reenquadrar: duplo clique","Reprise de « {0} »":"Retoma de «{0}»","Quota : {0}/{1} objets sur {2} jours":"Quota: {0}/{1} objetos em {2} dias","Trop d’appels pour cet objet : recommencez avec une nouvelle description.":"Demasiadas chamadas para este objeto: recomece com uma nova descrição.","Trop d’appels ces {0} derniers jours : réessayez plus tard.":"Demasiadas chamadas nos últimos {0} dias: tente novamente mais tarde.","Trop d’appels ces {0} derniers jours : réessayez après le {1}.":"Demasiadas chamadas nos últimos {0} dias: tente novamente após {1}.","Cet objet a épuisé ses appels : la modification compte comme un nouvel objet.":"Este objeto esgotou as suas chamadas: a alteração conta como um novo objeto.","Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.":"Ficheiro demasiado longo ({0} caracteres, {1} no máximo): reformule ou simplifique o objeto.","Bac à sable indisponible dans ce navigateur.":"Área restrita indisponível neste navegador.","L’objet est affiché avec ses défauts : la correction n’a pas pu être demandée.":"O objeto é apresentado com os seus defeitos: não foi possível pedir a correção.","Cet objet a épuisé ses appels : une nouvelle modification comptera comme un nouvel objet.":"Este objeto esgotou as suas chamadas: uma nova alteração contará como um novo objeto.","Correction annulée : l’objet est affiché avec ses défauts.":"Correção cancelada: o objeto é apresentado com os seus defeitos.","Réglages ramenés à la dernière géométrie construite.":"Ajustes repostos na última geometria construída.","Réglages remis aux valeurs par défaut du code.":"Ajustes repostos nos valores por defeito do código.","BPO crée votre objet paramétrique":"O BPO está a criar o seu objeto paramétrico","Le modèle réfléchit… {0} (cela peut prendre plusieurs minutes)":"O modelo está a pensar… {0} (pode demorar vários minutos)","Le modèle n’a pas abouti : simplifiez la description, puis relancez. Cet essai ne compte pas dans votre quota.":"O modelo não chegou ao fim: simplifique a descrição e volte a lançar. Esta tentativa não conta para a sua quota.","Masquer : l’appel continue":"Ocultar: a chamada continua","Un appel au modèle est en cours. Recommencer l’arrête, et ce qu’il a déjà produit est perdu. Recommencer quand même ?":"Está em curso uma chamada ao modelo. Recomeçar interrompe-a e o que já produziu perde-se. Recomeçar mesmo assim?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu.":"Está em curso uma chamada ao modelo noutro objeto. Interrompê-la para abrir este? O que já produziu perde-se.","Un appel au modèle est en cours. Recommencer l’arrête : ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi. Recommencer quand même ?":"Está em curso uma chamada ao modelo. Recomeçar interrompe-a: o que já produziu perde-se, e o resultado apresentado, ainda não guardado, também se perde. Recomeçar mesmo assim?","Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi.":"Está em curso uma chamada ao modelo noutro objeto. Interrompê-la para abrir este? O que já produziu perde-se, e o resultado apresentado, ainda não guardado, também se perde.","Modifie les {0} exemplaires de la scène":"Altera os {0} exemplares da cena","Réglages indisponibles : {0}":"Ajustes indisponíveis: {0}","Un appel au modèle est en cours sur cet objet : ses réglages reviennent ici à la fin.":"Está em curso uma chamada ao modelo neste objeto: os seus ajustes voltam aqui no fim.","Cet objet est ouvert dans le panneau « Décrire un objet » : fermez-le pour le régler ici.":"Este objeto está aberto no painel «Descrever um objeto»: feche-o para o ajustar aqui.","maillage absent de ce navigateur, reprenez l’objet par le bouton IA":"malha ausente neste navegador, retome o objeto com o botão IA","Objet renommé pendant la construction : réglage abandonné.":"Objeto renomeado durante a construção: ajuste abandonado.","Cet objet n’existe plus.":"Este objeto já não existe.","← Retour à la scène":"← Voltar à cena","Réglage non enregistré : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.":"Ajuste não guardado: armazenamento cheio ou indisponível. Liberte espaço (cenas, configurações) e tente novamente.","Réglage non appliqué : {0}":"Ajuste não aplicado: {0}","Le modèle n’a pas abouti : simplifiez la description, puis relancez.":"O modelo não chegou ao fim: simplifique a descrição e volte a lançar.","Ce résultat n’est pas gardé dans Ma bibliothèque : Recommencer le perd. Recommencer quand même ?":"Este resultado não está guardado na Minha biblioteca: recomeçar perde-o. Recomeçar mesmo assim?","Ce résultat n’est pas gardé dans Ma bibliothèque : le fermer le perd. Fermer quand même ?":"Este resultado não está guardado na Minha biblioteca: ao fechá-lo perde-se. Fechar mesmo assim?","Le résultat affiché n’est pas gardé dans Ma bibliothèque : ouvrir cet objet le perd. L’ouvrir quand même ?":"O resultado apresentado não está guardado na Minha biblioteca: abrir este objeto perde-o. Abri-lo mesmo assim?","Le panneau « Décrire un objet » montre un résultat pas encore gardé pour cet objet : gardez-le ou abandonnez-le pour le régler ici.":"O painel «Descrever um objeto» mostra um resultado ainda não guardado para este objeto: guarde-o ou abandone-o para o ajustar aqui.","Un nouvel objet est en cours de création : les réglages reviennent ici à la fin.":"Está a ser criado um novo objeto: os ajustes voltam aqui no fim.","Le panneau « Décrire un objet » travaille sur cet objet : ses réglages reviennent ici à la fin.":"O painel «Descrever um objeto» está a trabalhar neste objeto: os seus ajustes voltam aqui no fim.","Les curseurs ne s’annulent pas : Valeurs par défaut.":"Os cursores não se anulam: use Valores por defeito.","Cet objet a été re-réglé dans une autre fenêtre : la vue ici n’est plus à jour. Rechargez la page, ou bougez un curseur.":"Este objeto foi reajustado noutra janela: a vista aqui já não está atualizada. Recarregue a página ou mova um cursor."}
 };
 
 /* langue de l'interface : window.LANG (app.html) → localStorage.bpo_lang → navigator.language (§4.6) */
@@ -262,13 +279,14 @@ function clientSupabase() {
 function messageTropLong(n) {
   return fmt(T('Fichier trop long ({0} caractères, {1} au plus) : reformulez ou simplifiez l’objet.'), n > 0 ? nombre(n, 0) : '?', nombre(PLAFOND_CODE, 0));
 }
-function messageFlux(code, message) {
-  /* E18 : le détail du serveur (« Réponse interrompue (longueur maximale atteinte) : … ») est repris dans le message */
-  if (code === 'vide') return message ? fmt(T('Le modèle n’a pas rendu de code ({0}).'), message) : T('Le modèle n’a pas rendu de code.');
+function messageFlux(code, message, neComptePas) {
+  /* P4 : pas de code rendu (longueur maximale, réponse vide) ou délai dépassé : un conseil. Le détail exact reste dans le journal du serveur.
+     Q5 : la phrase sur le quota n'est dite que si le serveur l'affirme (ne_compte_pas à true : ligne bien écrite en erreur, rien de livré) ; sinon, le conseil seul :
+     un objet déjà livré dont la correction échoue compte, et un ancien serveur n'envoie pas ce champ : ce module ne dit donc rien de faux, quel que soit l'ordre de déploiement. */
+  if (code === 'vide' || code === 'delai') return neComptePas === true ? T('Le modèle n’a pas abouti : simplifiez la description, puis relancez. Cet essai ne compte pas dans votre quota.') : T('Le modèle n’a pas abouti : simplifiez la description, puis relancez.');
   /* E18 : pour une erreur du modèle, le serveur envoie un message générique (le détail reste dans son journal) : tel quel */
   if (code === 'modele' && message) return message;
   if (code === 'refus') return T('Le modèle a refusé la demande.');
-  if (code === 'delai') return T('Délai dépassé côté serveur.');
   if (code === 'code_refuse') return fmt(T('Le code produit a été refusé ({0}) : correction demandée.'), message || code);
   if (code === 'trop_long') {
     /* D4 : le serveur écrit « Fichier trop long (N caractères, 60 000 au plus) : … » ; on reprend N dans la langue de l'interface */
@@ -309,7 +327,8 @@ function erreurHTTP(s, j, fenetre) {
     const q = j.quota || {};
     let msg = fmt(T('Quota atteint : {0} objets sur {1} ces {2} derniers jours.'), q.utilises == null ? '?' : q.utilises, q.plafond == null ? '?' : q.plafond, jours);
     if (q.reinit) msg += ' ' + fmt(T('Réinitialisation le {0}.'), dateCourte(q.reinit));
-    return new ErreurIA('quota', msg, { lien: 'compte.html', quota: q });
+    /* Q8 : un abonné n'a rien à souscrire : la date de réinitialisation, sans lien (quota.abonne du serveur) ; l'essai garde son lien, et un ancien serveur aussi */
+    return new ErreurIA('quota', msg, q.abonne === true ? { quota: q } : { lien: 'compte.html', quota: q });
   }
   if (s === 404) return new ErreurIA('absent', T('Service pas encore ouvert.'));
   if (s === 503) {
@@ -325,7 +344,7 @@ function erreurFlux(d) {
   d = (d && typeof d === 'object') ? d : {};
   const c = d.code || 'erreur', extra = { serveur: true };
   if (d.quota && typeof d.quota === 'object') extra.quota = d.quota;
-  return new ErreurIA(c, messageFlux(c, d.message), extra);
+  return new ErreurIA(c, messageFlux(c, d.message, d.ne_compte_pas), extra);
 }
 /* O1 : onDebut, facultatif, est appelé à l'événement debut du flux (le serveur l'envoie dès qu'il a pris la demande, avant l'appel au modèle) */
 async function demander(corps, onDelta, signal, onDebut) {
@@ -722,12 +741,13 @@ class Bac {
     this.texteKit = opts.texteKit || texteKit;
     this.delai = opts.delai || DELAI_MS;
     this.delaiRelais = opts.delaiRelais || DELAI_RELAIS_MS;
-    this.w = null; this.n = 0; this.file = []; this.courant = null; this.code = null; this.codeCharge = false;
+    this.w = null; this.n = 0; this.file = []; this.courant = null; this.code = null; this.codeCharge = false; this.ferme = false;
   }
   async worker() {
     if (this.w) return this.w;
     const kit = await this.texteKit();
     const w = this.creerWorker ? await this.creerWorker(kit + '\n;\n' + HARNAIS) : await creerBacIframe(kit, HARNAIS, this.delaiRelais);
+    if (this.ferme) { try { w.terminate(); } catch (e) { /* déjà arrêté */ } throw new ErreurIA('remplace', 'remplacé'); }   /* P1 : fermé pendant sa création */
     if (this.w) { try { w.terminate(); } catch (e) { /* doublon d'une création concurrente */ } return this.w; }
     w.onmessage = (ev) => this.recevoir(ev.data, w);
     w.onerror = (e) => { if (this.w === w) this.panne(new ErreurIA('worker', fmt(T('Erreur d’exécution : {0}'), (e && e.message) || 'worker'))); };
@@ -763,6 +783,9 @@ class Bac {
   detruire() {
     if (this.w) { try { this.w.terminate(); } catch (e) { /* déjà arrêté */ } this.w = null; this.codeCharge = false; }
   }
+  /* P1 : fermeture définitive, quand la colonne qui tient ce bac est remplacée : aucune minuterie ne survit (panne arrête le délai en cours et
+     rejette les attentes), l'iframe est retirée, et un bac encore en création n'y reste pas */
+  fermer() { this.ferme = true; this.panne(new ErreurIA('remplace', 'remplacé')); }
   pomper() {
     if (this.courant || !this.file.length) return;
     const a = this.file.shift();
@@ -781,6 +804,7 @@ class Bac {
   }
   envoyer(msg, remplacable) {
     return new Promise((res, rej) => {
+      if (this.ferme) { rej(new ErreurIA('remplace', 'remplacé')); return; }
       if (remplacable) {
         /* un réglage de curseur remplace celui qui attend encore son tour */
         this.file = this.file.filter(function (a) { if (a.remplacable) { a.rej(new ErreurIA('remplace', 'remplacé')); return false; } return true; });
@@ -805,12 +829,74 @@ class Bac {
 }
 
 /* ----------------------------------------------------------------------------
-   Aperçu 3D — canvas 2D, rendu logiciel : projection perspective, élimination des faces arrière, tri peintre par
-   profondeur, ombrage plat (normale · lumière fixe + ambiant) avec la couleur de la pièce, sol en grille, orbite au
-   glisser, molette = zoom, double clic = recadrer, devicePixelRatio. Normales et centres précalculés par géométrie.
+   Aperçu 3D — perspective, élimination des faces arrière, ombrage plat (normale · lumière fixe + ambiant) avec la couleur de la pièce,
+   sol en grille, orbite au glisser, molette = zoom, double clic = recadrer, devicePixelRatio. Normales et centres précalculés par géométrie.
+   P1bis (06/11) : le rendu est WebGL (webgl2, sinon webgl), à vrai tampon de profondeur. Le tri du peintre sur la profondeur moyenne de chaque
+   triangle, seul mode d'avant, peignait le long triangle d'un plateau AVANT le tube sombre qui passe dessous : longs triangles sombres en travers
+   du plateau, sur une géométrie sans aucun triangle en trop (outils/rendu-profondeur.mjs). Le canvas 2D reste en REPLI, si WebGL manque, si les shaders
+   ne se construisent pas ou si le contexte est perdu : un canvas qui a un contexte WebGL ne peut plus en donner un autre, il est donc remplacé par
+   une copie (remplacerCanvas), écouteurs rebranchés. Rien ne dépend du moteur WebGL d'app.html, et le rendu reste dans la page, sur les tableaux
+   déjà validés par geometrieRecevable. Contexte créé au premier dessin d'une géométrie, tampons téléversés une seule fois par géométrie, dessin à la
+   demande (aucune boucle), contexte libéré quand le panneau se cache (liberer) : le navigateur limite leur nombre, et l'app en tient déjà un.
    ---------------------------------------------------------------------------- */
 const LUM = (function () { const l = [0.35, 0.8, 0.5], n = Math.hypot(l[0], l[1], l[2]); return [l[0] / n, l[1] / n, l[2] / n]; })();
 const NIV = 20;
+/* P1bis : les shaders, en GLSL ES 1.00 (valables en webgl et webgl2). Même ombrage que rendre2D, quantifié sur les mêmes NIV niveaux */
+const GL_VS_OBJET = [
+  'attribute vec3 aP; attribute vec3 aN; attribute vec3 aC;',
+  'uniform mat4 uM; uniform vec3 uF; uniform vec3 uL;',
+  'varying vec3 vC;',
+  'void main() {',
+  '  float e = 0.34 + 0.56 * max(0.0, dot(aN, uL)) + 0.10 * max(0.0, -dot(aN, uF));',
+  '  vC = aC * (floor(min(1.0, e) * ' + NIV + '.0 + 0.5) / ' + NIV + '.0);',
+  '  gl_Position = uM * vec4(aP, 1.0);',
+  '}'
+].join('\n');
+const GL_FS_OBJET = 'precision mediump float; varying vec3 vC; void main() { gl_FragColor = vec4(vC, 1.0); }';
+const GL_VS_LIGNE = 'attribute vec3 aP; uniform mat4 uM; void main() { gl_Position = uM * vec4(aP, 1.0); }';
+const GL_FS_LIGNE = 'precision mediump float; uniform vec4 uC; void main() { gl_FragColor = uC; }';
+const GL_STRIDE = 24;   /* position 3 × float32 (12 octets), normale 3 × int16 normés + 2 de bourrage (8), couleur 3 × uint8 normés + 1 de bourrage (4) */
+function programmeGL(gl, vs, fs) {
+  const faire = function (type, texte) { const s = gl.createShader(type); gl.shaderSource(s, texte); gl.compileShader(s); return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null; };
+  const v = faire(gl.VERTEX_SHADER, vs), f = faire(gl.FRAGMENT_SHADER, fs);
+  if (!v || !f) return null;
+  const p = gl.createProgram();
+  gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
+  gl.deleteShader(v); gl.deleteShader(f);
+  return gl.getProgramParameter(p, gl.LINK_STATUS) ? p : null;
+}
+/* Q2 : faces confondues de deux pièces : à profondeur égale, l'arrondi décide triangle par triangle, d'où des stries qui changent avec la vue. Les pièces citées par le contrôle sont donc dessinées à
+   part, avec un décalage de profondeur croissant : la dernière gagne, de façon stable. Les unités règlent le cas de face ; la pente, les faces rasantes (les sommets, calés au 1/256 de pixel, y font
+   bouger la profondeur).
+   R1 : un décalage a un prix : une pièce décalée passe devant ce qui la précède de moins que ce décalage, jusqu'à plusieurs millimètres à la taille de l'aperçu (mesuré sur RTX 4090 avec la pente de Q2 :
+   une plaque de 3 mm en saillie, déclarée avant sa caisse, disparaissait ; un plancher se voyait à travers les parois). D'où deux limites : la pente totale reste sous 0,5, quel que soit le nombre de
+   pièces ; et seules les pièces citées ont un rang (decalagesDe). Une pièce citée reste exposée à ce prix sur ce qui la touche, dans la limite de cette pente. */
+function decalagePiece(rang, nb) {
+  const n = Math.max(1, nb);
+  return [-rang * Math.min(0.0625, 0.5 / n), -rang * Math.min(4, 1000 / n)];
+}
+/* R1 : les rangs de décalage d'une géométrie, ou null : aucune face confondue signalée, aucun décalage. Le rapport cite les pièces par leur nom (« a / b @ x=0.1 », bpo-geo-kit.js) : seuls les groupes
+   de ces noms ont un rang, dans l'ordre de déclaration, à partir de 0 ; les autres restent à 0. Le nom d'une pièce peut lui-même contenir « / » ou « @ » : la paire se lit donc sur les noms des groupes.
+   Une entrée qui ne se lit pas ainsi : tous les groupes ont un rang, l'objet entier. Le contrôle ne voit que les faces alignées sur les axes : des faces confondues obliques ne sont pas signalées, et
+   restent sans décalage. */
+function decalagesDe(geo) {
+  const copl = geo && geo.rapport && geo.rapport.coplanaires, groups = (geo && geo.groups) || [];
+  if (!Array.isArray(copl) || !copl.length || !groups.length) return null;
+  const noms = new Set(groups.map(function (g) { return g.name; })), cites = new Set();
+  const lue = function (e) {
+    const t = e && typeof e.pieces === 'string' ? e.pieces : '', paire = t.slice(0, Math.max(0, t.lastIndexOf(' @ ')));
+    let vu = false;
+    for (let i = paire.indexOf(' / '); i >= 0; i = paire.indexOf(' / ', i + 1)) {
+      const a = paire.slice(0, i), b = paire.slice(i + 3);
+      if (noms.has(a) && noms.has(b)) { cites.add(a); cites.add(b); vu = true; }
+    }
+    return vu;
+  };
+  const tout = !copl.every(lue);
+  let nb = 0;
+  const rangs = groups.map(function (g) { return tout || cites.has(g.name) ? nb++ : 0; });
+  return { rangs: rangs, nb: nb };
+}
 function joli(x) {
   if (!(x > 0)) return 1;
   const p = Math.pow(10, Math.floor(Math.log10(x))), m = x / p;
@@ -818,7 +904,9 @@ function joli(x) {
 }
 class Vue {
   constructor(cv) {
-    this.cv = cv; this.ctx = cv.getContext('2d'); this.geo = null; this.n = 0;
+    this.cv = cv; this.ctx = null; this.geo = null; this.n = 0;
+    this.gl = null; this.glr = null; this.sansGL = false; this.surCanvas = null;   /* P1bis */
+    this.decalages = null;   /* R1 */
     this.theta = 0.75; this.phi = 0.40; this.dist = 4; this.cible = [0, 0.5, 0]; this.rayon = 1; this.fov = 0.6;
     this.raf = 0; this.W = 1; this.H = 1; this.dpr = 1;
     this.brancher();
@@ -845,6 +933,7 @@ class Vue {
   charger(geo) {
     const pos = geo.pos, idx = geo.idx, n = idx.length / 3 | 0;
     this.geo = geo; this.n = n;
+    this.decalages = decalagesDe(geo);   /* R1 */
     this.ctr = new Float32Array(n * 3); this.nrm = new Float32Array(n * 3); this.grp = new Uint16Array(n);
     this.prof = new Float32Array(n); this.ordre = new Int32Array(n);
     const nv = pos.length / 3 | 0;
@@ -885,12 +974,8 @@ class Vue {
     if (!cache[niv]) { const c = this.cols[gi], k = niv / NIV; cache[niv] = 'rgb(' + Math.round(c[0] * k) + ',' + Math.round(c[1] * k) + ',' + Math.round(c[2] * k) + ')'; }
     return cache[niv];
   }
-  rendre() {
-    this.dimensionner();
-    const ctx = this.ctx, W = this.W, H = this.H;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-    if (!this.geo) return;
+  /* la caméra, commune aux deux rendus : repère (r, u, f) direct, comme une caméra WebGL qui regarde vers −z */
+  repere() {
     const cp = Math.cos(this.phi), sp = Math.sin(this.phi), ct = Math.cos(this.theta), st = Math.sin(this.theta);
     const c = this.cible, d = this.dist;
     const cam = [c[0] + d * cp * st, c[1] + d * sp, c[2] + d * cp * ct];
@@ -898,6 +983,168 @@ class Vue {
     let l = Math.hypot(f[0], f[1], f[2]) || 1; f = [f[0] / l, f[1] / l, f[2] / l];
     let r = [-f[2], 0, f[0]]; l = Math.hypot(r[0], r[2]); r = l > 1e-6 ? [r[0] / l, 0, r[2] / l] : [1, 0, 0];
     const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+    return { cam: cam, f: f, r: r, u: u };
+  }
+  /* P1bis : un canvas caché ne dessine rien et ne prend aucun contexte (le panneau rouvert redemande un dessin) ; sans géométrie ni contexte, rien à effacer */
+  rendre() {
+    const rect = this.cv.getBoundingClientRect();
+    if (!(rect.width > 0 && rect.height > 0)) return;
+    if (!this.geo && !this.gl && !this.ctx) return;
+    this.dimensionner();
+    if ((this.gl || this.ouvrirGL()) && this.rendreGL()) return;
+    this.rendre2D();
+  }
+  /* P1bis : le contexte, au premier dessin d'une géométrie. getContext qui rend null laisse le canvas libre pour le 2D ; des shaders qui ne se construisent
+     pas, non : le canvas est alors remplacé. L'antialiasing ne coûte que si le navigateur l'accorde. */
+  ouvrirGL() {
+    if (this.sansGL || !this.geo) return false;
+    const cv = this.cv, opts = { alpha: true, premultipliedAlpha: true, antialias: true, depth: true, stencil: false, preserveDrawingBuffer: false };
+    let gl = null;
+    try { gl = cv.getContext('webgl2', opts) || cv.getContext('webgl', opts); } catch (e) { gl = null; }
+    if (!gl || typeof gl.createShader !== 'function') { this.sansGL = true; return false; }
+    let objet = null, ligne = null;
+    try { objet = programmeGL(gl, GL_VS_OBJET, GL_FS_OBJET); ligne = programmeGL(gl, GL_VS_LIGNE, GL_FS_LIGNE); } catch (e) { objet = null; }
+    if (!objet || !ligne) { this.sansGL = true; this.remplacerCanvas(); return false; }
+    cv.addEventListener('webglcontextlost', () => { this.perteGL(cv); });
+    this.gl = gl;
+    this.glr = {
+      objet: objet, ligne: ligne, vbo: gl.createBuffer(), lignes: gl.createBuffer(), geo: null, nFines: 0, nAxes: 0, televersements: 0,
+      o: { aP: gl.getAttribLocation(objet, 'aP'), aN: gl.getAttribLocation(objet, 'aN'), aC: gl.getAttribLocation(objet, 'aC'), uM: gl.getUniformLocation(objet, 'uM'), uF: gl.getUniformLocation(objet, 'uF'), uL: gl.getUniformLocation(objet, 'uL') },
+      l: { aP: gl.getAttribLocation(ligne, 'aP'), uM: gl.getUniformLocation(ligne, 'uM'), uC: gl.getUniformLocation(ligne, 'uC') }
+    };
+    return true;
+  }
+  /* P1bis : un canvas neuf à la place du canvas donné (mêmes attributs, donc même classe et même infobulle), écouteurs rebranchés */
+  remplacerCanvas() {
+    const ancien = this.cv;
+    this.ctx = null;
+    if (typeof ancien.cloneNode !== 'function' || !ancien.parentNode) return;
+    const neuf = ancien.cloneNode(false);
+    if (ancien.__fr_title !== undefined) neuf.__fr_title = ancien.__fr_title;
+    ancien.parentNode.replaceChild(neuf, ancien);
+    this.cv = neuf;
+    this.brancher();
+    if (this.surCanvas) this.surCanvas(neuf);
+  }
+  /* P1bis : contexte perdu en plein usage : repli sur le canvas 2D, jusqu'à la prochaine ouverture du panneau */
+  perteGL(cv) {
+    if (cv !== this.cv || !this.gl) return;    /* libéré par liberer(), ou canvas déjà remplacé */
+    this.gl = null; this.glr = null; this.sansGL = true;
+    this.remplacerCanvas();
+    this.demander();
+  }
+  /* P1bis : le panneau se cache : le contexte est rendu tout de suite (WEBGL_lose_context), sans attendre le ramasse-miettes, et le canvas remplacé, seul moyen d'en
+     rouvrir un ; l'ouverture suivante retente WebGL, même après un repli */
+  liberer() {
+    const gl = this.gl, R = this.glr;
+    if (!gl && !this.sansGL) return;
+    this.gl = null; this.glr = null; this.sansGL = false;
+    if (gl) {
+      try {
+        gl.deleteBuffer(R.vbo); gl.deleteBuffer(R.lignes); gl.deleteProgram(R.objet); gl.deleteProgram(R.ligne);
+        const ext = gl.getExtension('WEBGL_lose_context');
+        if (ext) ext.loseContext();
+      } catch (e) { /* contexte déjà perdu */ }
+    }
+    this.remplacerCanvas();
+  }
+  /* P1bis : une seule fois par géométrie : chaque triangle a ses trois sommets, avec sa normale de face et la couleur de sa pièce (ombrage plat, sans table d'indices :
+     200 000 triangles tiennent en webgl sans extension) ; la grille, dans le même repère que rendre2D */
+  televerser() {
+    const gl = this.gl, R = this.glr, n = this.n, pos = this.geo.pos, idx = this.geo.idx, nrm = this.nrm, grp = this.grp, cols = this.cols;
+    const data = new ArrayBuffer(n * 3 * GL_STRIDE), fl = new Float32Array(data), en = new Int16Array(data), oc = new Uint8Array(data);
+    for (let t = 0; t < n; t++) {
+      const k = t * 3, col = cols[grp[t]] || [160, 160, 160];
+      const nx = Math.round(nrm[k] * 32767), ny = Math.round(nrm[k + 1] * 32767), nz = Math.round(nrm[k + 2] * 32767);
+      for (let q = 0; q < 3; q++) {
+        const i = k + q, v = idx[i] * 3;
+        fl[i * 6] = pos[v]; fl[i * 6 + 1] = pos[v + 1]; fl[i * 6 + 2] = pos[v + 2];
+        en[i * 12 + 6] = nx; en[i * 12 + 7] = ny; en[i * 12 + 8] = nz;
+        oc[i * 24 + 20] = col[0]; oc[i * 24 + 21] = col[1]; oc[i * 24 + 22] = col[2];
+      }
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, R.vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    const seg = this.segmentsGrille(), plat = [];
+    seg.fines.concat(seg.axes).forEach(function (s) { plat.push(s[0][0], s[0][1], s[0][2], s[1][0], s[1][1], s[1][2]); });
+    gl.bindBuffer(gl.ARRAY_BUFFER, R.lignes);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(plat), gl.STATIC_DRAW);
+    R.nFines = seg.fines.length * 2; R.nAxes = seg.axes.length * 2;
+    R.pieces = this.piecesGL();
+    R.geo = this.geo; R.televersements++;
+    return gl.getError() !== gl.OUT_OF_MEMORY;
+  }
+  /* Q2 : les tronçons de triangles de chaque pièce, dans l'ordre : chaque triangle est dessiné une fois et une seule, même si les groupes laissent un trou (il prend la teinte et le rang du 1er groupe) */
+  piecesGL() {
+    const out = [], grp = this.grp, n = this.n;
+    for (let t = 0; t < n;) { const g = grp[t]; let f = t + 1; while (f < n && grp[f] === g) f++; out.push({ debut: t * 3, n: (f - t) * 3, rang: g }); t = f; }
+    return out;
+  }
+  /* P1bis : rend false si le contexte n'est plus là (repli sur le 2D, canvas déjà remplacé) */
+  rendreGL() {
+    const gl = this.gl, R = this.glr, cv = this.cv;
+    if (gl.isContextLost()) { this.perteGL(cv); return false; }
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.depthMask(true);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (!this.geo) return true;
+    if (R.geo !== this.geo && !this.televerser()) { this.perteGL(cv); return false; }
+    const v = this.repere(), cam = v.cam, f = v.f, r = v.r, u = v.u;
+    /* plans de coupe : tout l'objet tient dans sa sphère englobante, autour de la cible ; la grille s'étend au-delà */
+    const E = this.etendue || 1, proche = Math.max(0.005, (this.dist - this.rayon) * 0.5), loin = this.dist + Math.max(this.rayon, E * 2.5) + 1;
+    const fy = 1 / Math.tan(this.fov / 2), fx = fy * this.H / this.W, cz = (loin + proche) / (proche - loin), dz = 2 * loin * proche / (proche - loin);
+    const px = -(r[0] * cam[0] + r[1] * cam[1] + r[2] * cam[2]), py = -(u[0] * cam[0] + u[1] * cam[1] + u[2] * cam[2]), pz = f[0] * cam[0] + f[1] * cam[1] + f[2] * cam[2];
+    const M = new Float32Array([
+      fx * r[0], fy * u[0], -cz * f[0], f[0],
+      fx * r[1], fy * u[1], -cz * f[1], f[1],
+      fx * r[2], fy * u[2], -cz * f[2], f[2],
+      fx * px, fy * py, cz * pz + dz, -pz
+    ]);
+    /* la grille d'abord, sans profondeur : l'objet passe toujours devant, comme en 2D */
+    gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+    gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(R.ligne);
+    gl.uniformMatrix4fv(R.l.uM, false, M);
+    gl.bindBuffer(gl.ARRAY_BUFFER, R.lignes);
+    gl.enableVertexAttribArray(R.l.aP); gl.vertexAttribPointer(R.l.aP, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform4f(R.l.uC, 128 / 255, 140 / 255, 160 / 255, 0.22);
+    gl.drawArrays(gl.LINES, 0, R.nFines);
+    gl.uniform4f(R.l.uC, 128 / 255, 140 / 255, 160 / 255, 0.45);
+    gl.drawArrays(gl.LINES, R.nFines, R.nAxes);
+    gl.disableVertexAttribArray(R.l.aP);
+    /* l'objet : vrai tampon de profondeur, faces arrière éliminées (sens direct, comme le test de rendre2D) */
+    gl.disable(gl.BLEND);
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+    gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); gl.frontFace(gl.CCW);
+    gl.useProgram(R.objet);
+    gl.uniformMatrix4fv(R.o.uM, false, M);
+    gl.uniform3f(R.o.uF, f[0], f[1], f[2]);
+    gl.uniform3f(R.o.uL, LUM[0], LUM[1], LUM[2]);
+    gl.bindBuffer(gl.ARRAY_BUFFER, R.vbo);
+    gl.enableVertexAttribArray(R.o.aP); gl.vertexAttribPointer(R.o.aP, 3, gl.FLOAT, false, GL_STRIDE, 0);
+    gl.enableVertexAttribArray(R.o.aN); gl.vertexAttribPointer(R.o.aN, 3, gl.SHORT, true, GL_STRIDE, 12);
+    gl.enableVertexAttribArray(R.o.aC); gl.vertexAttribPointer(R.o.aC, 3, gl.UNSIGNED_BYTE, true, GL_STRIDE, 20);
+    /* R1 : sans face confondue signalée, l'objet d'un seul dessin, sans aucun décalage ; Q2 : sinon pièce par pièce, chaque pièce citée un peu devant la précédente */
+    const dec = this.decalages;
+    if (!dec) gl.drawArrays(gl.TRIANGLES, 0, this.n * 3);
+    else {
+      gl.enable(gl.POLYGON_OFFSET_FILL);
+      R.pieces.forEach(function (p) { const d = decalagePiece(dec.rangs[p.rang], dec.nb); gl.polygonOffset(d[0], d[1]); gl.drawArrays(gl.TRIANGLES, p.debut, p.n); });
+      gl.disable(gl.POLYGON_OFFSET_FILL);
+    }
+    gl.disableVertexAttribArray(R.o.aP); gl.disableVertexAttribArray(R.o.aN); gl.disableVertexAttribArray(R.o.aC);
+    return true;
+  }
+  /* le repli : tri du peintre, le rendu d'avant P1bis */
+  rendre2D() {
+    if (!this.ctx) this.ctx = this.cv.getContext('2d');
+    if (!this.ctx) return;
+    const ctx = this.ctx, W = this.W, H = this.H;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    if (!this.geo) return;
+    const v = this.repere(), cam = v.cam, f = v.f, r = v.r, u = v.u;
     const F = (H / 2) / Math.tan(this.fov / 2), cx = W / 2, cy = H / 2, NEAR = 0.02;
     const pos = this.geo.pos, idx = this.geo.idx, px = this.px, py = this.py, pz = this.pz;
     for (let i = 0, j = 0; j < pos.length; i++, j += 3) {
@@ -928,8 +1175,14 @@ class Vue {
     }
     if (cur) { ctx.fill(); ctx.stroke(); }
   }
-  grille(ctx, cam, r, u, f, F, cx, cy, NEAR) {
+  /* la grille au sol, commune aux deux rendus : lignes fines, puis les deux axes passant par la cible */
+  segmentsGrille() {
     const E0 = this.etendue || 1, pas = joli(E0 / 6), E = Math.ceil(E0 * 0.85 / pas) * pas + pas;
+    const ox = this.cible[0], oz = this.cible[2], y = -0.0005, fines = [];
+    for (let k = -E; k <= E + 1e-9; k += pas) { if (Math.abs(k) < 1e-9) continue; fines.push([[ox - E, y, oz + k], [ox + E, y, oz + k]]); fines.push([[ox + k, y, oz - E], [ox + k, y, oz + E]]); }
+    return { fines: fines, axes: [[[ox - E, y, oz], [ox + E, y, oz]], [[ox, y, oz - E], [ox, y, oz + E]]] };
+  }
+  grille(ctx, cam, r, u, f, F, cx, cy, NEAR) {
     const vue = (x, y, z) => { const dx = x - cam[0], dy = y - cam[1], dz = z - cam[2]; return [dx * r[0] + dy * r[1] + dz * r[2], dx * u[0] + dy * u[1] + dz * u[2], dx * f[0] + dy * f[1] + dz * f[2]]; };
     const seg = (a, b) => {
       let A = vue(a[0], a[1], a[2]), B = vue(b[0], b[1], b[2]);
@@ -938,12 +1191,12 @@ class Vue {
       if (B[2] < NEAR) { const k = (NEAR - B[2]) / (A[2] - B[2]); B = [B[0] + (A[0] - B[0]) * k, B[1] + (A[1] - B[1]) * k, NEAR]; }
       ctx.moveTo(cx + A[0] * F / A[2], cy - A[1] * F / A[2]); ctx.lineTo(cx + B[0] * F / B[2], cy - B[1] * F / B[2]);
     };
-    const ox = this.cible[0], oz = this.cible[2], y = -0.0005;
+    const s = this.segmentsGrille();
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(128,140,160,0.22)'; ctx.beginPath();
-    for (let k = -E; k <= E + 1e-9; k += pas) { if (Math.abs(k) < 1e-9) continue; seg([ox - E, y, oz + k], [ox + E, y, oz + k]); seg([ox + k, y, oz - E], [ox + k, y, oz + E]); }
+    s.fines.forEach(function (x) { seg(x[0], x[1]); });
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(128,140,160,0.45)'; ctx.beginPath(); seg([ox - E, y, oz], [ox + E, y, oz]); seg([ox, y, oz - E], [ox, y, oz + E]); ctx.stroke();
+    ctx.strokeStyle = 'rgba(128,140,160,0.45)'; ctx.beginPath(); s.axes.forEach(function (x) { seg(x[0], x[1]); }); ctx.stroke();
   }
 }
 
@@ -1003,12 +1256,18 @@ const CSS = [
 '.bpo-ia-cotes{font-size:11px;color:var(--dm,#8b92a0)}',
 '.bpo-ia-desig{font-size:11px;color:var(--dm,#8b92a0);margin-top:3px}',
 '.bpo-ia-hyp{margin:0;padding-left:16px;font-size:11px;color:var(--dm,#8b92a0);max-height:110px;overflow:auto}',
-'.bpo-ia-curs{display:grid;grid-template-columns:1fr 72px;gap:3px 8px;align-items:center;font-size:11px}',
+'.bpo-ia-curs{display:grid;grid-template-columns:1fr 72px;gap:8px 8px;align-items:center;font-size:11px}',
 '.bpo-ia-curs label{display:flex;flex-direction:column;gap:1px;color:var(--dm,#8b92a0)}',
-'.bpo-ia-curs input[type=range]{width:100%;margin:0;accent-color:var(--am,#ff8a3d)}',
+'.bpo-ia-curs input[type=range]{width:100%;margin:8px 0 0;accent-color:var(--am,#ff8a3d)}',
 '.bpo-ia-val{text-align:right;color:var(--tx,#e8e9ec);font-variant-numeric:tabular-nums;align-self:end;padding-bottom:3px}',
 '.bpo-ia-sec{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--dm,#8b92a0);margin-top:2px}',
-'.bpo-ia-cache{display:none !important}'
+'.bpo-ia-cache{display:none !important}',
+'.bpo-ia-reg{display:flex;flex-direction:column;gap:5px;margin:0 0 8px}',
+'.bpo-ia-regnote{font-size:10.5px;line-height:1.35;color:var(--am,#ff8a3d)}',
+'.bpo-ia-regaide{font-size:10.5px;line-height:1.35;color:var(--dm,#8b92a0)}',
+'.bpo-ia-reg .bpo-ia-curs{margin-bottom:6px}',
+'.bpo-ia-regetat{font-size:10.5px;line-height:1.35;min-height:14px;color:var(--dm,#8b92a0);white-space:pre-wrap;word-break:break-word}',
+'.bpo-ia-regetat.erreur{color:#ff7a6b}.bpo-ia-regetat.alerte{color:var(--am,#ff8a3d)}.bpo-ia-regetat.ok{color:var(--tx,#e8e9ec)}'
 ].join('\n');
 
 let P = null;   /* panneau courant : éléments + état */
@@ -1040,6 +1299,7 @@ function retraduire() {
   /* J6 : le libellé du petit bouton « Annuler » de la ligne d'état (data-libelle, lu par ::before, et aria-label) */
   if (P.bAnnEtat) { P.bAnnEtat.setAttribute('data-libelle', T('Annuler')); P.bAnnEtat.setAttribute('aria-label', T('Annuler')); }
   libellesBarre();   /* O1 */
+  titreX();          /* P2 */
 }
 /* D10 : la description est plafonnée à 1 500 caractères (textarea maxlength, et ici pour ce qui n'en vient pas) */
 function descriptionPropre(s) { return String(s == null ? '' : s).trim().slice(0, PLAFOND_DESCRIPTION); }
@@ -1173,6 +1433,10 @@ function construirePanneau() {
     /* N1 : la place existe à droite de Ma bibliothèque → la gauche affichée n'y passe pas dessous ; sinon rien ne change */
     const bib = bordBibliotheque();
     if (bib !== null && window.innerWidth - largeur() - MARGE_COTE >= bib + MARGE_COTE) l = Math.max(+l || 0, bib + MARGE_COTE);
+    /* Q9 : une section Réglages vit dans la colonne Paramètres et la place existe à sa gauche : le panneau s'y pose, curseurs libres ; comme N1, seule la gauche AFFICHÉE change, ni la position
+       voulue ni le mémo. Sans la place (fenêtre étroite), rien ne change. Recalé aussi quand la section s'ouvre ou se ferme (recalerPanneau). */
+    const col = bordColonne();
+    if (col !== null && col - largeur() - MARGE_COTE >= (bib !== null ? bib + MARGE_COTE : MARGE_COTE)) l = Math.min(+l || 0, col - largeur() - MARGE_COTE);
     pan.style.left = gauchePermise(l) + 'px';
     /* L2 : 250 px de hauteur au moins ; M2 : la borne ne descend pas sous RESERVE_VERTICALE − MARGE_BAS (74), jamais sur l'en-tête */
     placer(Math.min(hautPermis(v.t), Math.max(window.innerHeight - MARGE_BAS - HAUTEUR_UTILE, RESERVE_VERTICALE - MARGE_BAS)));
@@ -1208,11 +1472,11 @@ function construirePanneau() {
   };
   titre.addEventListener('pointerup', finGlisse); titre.addEventListener('pointercancel', finGlisse);
   const vue = new Vue(cv);
-  P = ici = { pan, titre, quota, desc, bFab, bAnn, bRec, etat, bAnnEtat, pTitre, pBarre, pPlein, avance: null, cv, badge, cotes, nom, desig, hyp, curs, bDef, modif, bMod, bGar, zoneObjet, vue,
+  P = ici = { pan, titre, quota, bX: x, masque: false, desc, bFab, bAnn, bRec, etat, bAnnEtat, pTitre, pBarre, pPlein, avance: null, cv, badge, cotes, nom, desig, hyp, curs, bDef, modif, bMod, bGar, zoneObjet, vue, corps,
         bac: new Bac(), E: etatNeuf(), minuterie: 0, verrou: false, garde: 0, curseurs: {},
         recaler: recaler, voulue: voulueLue, redimPose: false, obsBib: null, surRedim: function () { if (P && P.pan === pan && pan.style.display !== 'none') recaler(); } };
   recaler();   /* J2, K1 : la place de construction est la position voulue, bornée */
-  x.onclick = function () { fermer(); };
+  x.onclick = function () { fermerX(); };   /* Q3 : un résultat non gardé demande confirmation */
   bFab.onclick = function () { fabriquer(); };
   bAnn.onclick = function () { annuler(); };
   bAnnEtat.onclick = function () { annuler(); };   /* J6 : même action que le bouton « Annuler » */
@@ -1223,15 +1487,23 @@ function construirePanneau() {
   desc.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); fabriquer(); } });
   bGar.onclick = function () { garder(); };
   try { document.addEventListener('bpo-lang', retraduire); } catch (e) { /* sans évènement de langue */ }
-  if (window.ResizeObserver) { try { new ResizeObserver(function () { vue.demander(); }).observe(cv); } catch (e) { /* pas d'observateur */ } }
+  /* P1bis : l'observateur et P.cv suivent le canvas quand la vue le remplace */
+  let obsVue = null;
+  const suivreCanvas = function (c) {
+    ici.cv = c;
+    if (!window.ResizeObserver) return;
+    try { if (obsVue) obsVue.disconnect(); obsVue = new ResizeObserver(function () { vue.demander(); }); obsVue.observe(c); } catch (e) { /* pas d'observateur */ }
+  };
+  vue.surCanvas = suivreCanvas;
+  suivreCanvas(cv);
   return P;
 }
 function etatNeuf() {
   /* I1 : paramsGeo = réglages qui ont construit la géométrie affichée ; attente = reconstructions de curseur en cours dans le bac ;
      differe = anti-rebond d'un curseur en cours. I4 : retablir = remise de l'objet affiché (carte, session, description) quand
-     « Fabriquer » ne produit rien. I5 : tentative = { description, session } de la dernière création ratée */
-  return { session: null, description: '', code: null, meta: null, geo: null, params: {}, paramsGeo: null, attente: 0, differe: false,
-           modele: null, quota: null, cfg: null, enCours: null, repli: null, retablir: null, tentative: null, jeton: 0, defauts: false };
+     « Fabriquer » ne produit rien. I5 : tentative = { description, session } de la dernière création ratée. R3 : codeGarde = le code retenu par le dernier « Garder » ou la reprise (nonGarde) */
+  return { session: null, description: '', code: null, codeGarde: null, meta: null, geo: null, params: {}, paramsGeo: null, attente: 0, differe: false,
+           modele: null, quota: null, cfg: null, cfgAvant: null, enCours: null, repli: null, retablir: null, tentative: null, jeton: 0, defauts: false };
 }
 
 /* ---- affichage ---- */
@@ -1265,7 +1537,7 @@ function statut(texte, type, lien, libelle) {
    dit la fin réelle. Connexion : 3 %. Réflexion : barreReflexion, de 3 % vers 70 % sans l'atteindre. Écriture : barreEcriture, de la valeur
    atteinte à 92 %. Contrôle et construction : 96 %. P.avance est l'état de la barre du tour en cours (null : pas d'appel) ; boucle() en lance
    une à chaque tour (lancerBarre) : la largeur repart du début sans remonter à reculons, et l'ancienne minuterie est arrêtée. Tout état
-   qui n'est pas un travail (statut) et la fin du verrou (verrouiller) la retirent : fin, erreur, « Annuler », fermeture du panneau, Recommencer.
+   qui n'est pas un travail (statut) et la fin du verrou (verrouiller) la retirent : fin, erreur, « Annuler », Recommencer ; P2 : ✕ masque le panneau, la barre continue.
    Temps et valeurs se calculent sur l'horloge, jamais en comptant les tics : un onglet en arrière-plan ralentit les minuteries, pas la lecture.
    aria-live est coupé pendant la barre (le temps change chaque seconde, un lecteur d'écran n'arrêterait pas de parler) : la barre porte la
    ligne de détail dans aria-valuetext, et aria-live revient avant le texte qui dit l'issue. */
@@ -1343,6 +1615,12 @@ function majBoutons() {
   P.bFab.disabled = on; P.bMod.disabled = on; P.bDef.disabled = on; P.bRec.disabled = P.garde > 0;
   P.curs.querySelectorAll('input').forEach(function (i) { i.disabled = on; });
   majGarder();
+  titreX();
+}
+/* P2 : l'infobulle de ✕ dit ce qu'il fait : pendant un appel, il masque et l'appel continue */
+function titreX() {
+  if (!P || !P.bX) return;
+  poserTitre(P.bX, P.E.enCours ? T('Masquer : l’appel continue') : T('Fermer'));
 }
 /* I1 (b) : « Garder » n'est actif que pour une géométrie affichée dont les réglages sont connus (E.paramsGeo) : ni verrou (boucle,
    reprise), ni « Garder » en cours, ni réglage de curseur qui attend sa géométrie (anti-rebond, ou reconstruction dans le bac) */
@@ -1358,7 +1636,7 @@ function majQuota(q) {
 }
 function texteDefauts(rapport) {
   const parts = [];
-  if (rapport.coplanaires && rapport.coplanaires.length) parts.push(fmt(T('{0} faces confondues'), rapport.coplanaires.length));
+  if (rapport.coplanaires && rapport.coplanaires.length) parts.push(rapport.coplanaires.length === 1 ? T('1 face confondue') : fmt(T('{0} faces confondues'), rapport.coplanaires.length));   /* R4 */
   if (rapport.degeneres) parts.push(fmt(T('{0} triangles dégénérés'), rapport.degeneres));
   if (rapport.volumesNegatifs && rapport.volumesNegatifs.length) parts.push(fmt(T('{0} pièces à normales rentrantes'), rapport.volumesNegatifs.length));
   return parts.join(', ');
@@ -1539,7 +1817,7 @@ function nbDefauts(resultat) {
    H1 : quand la REQUÊTE d'un tour corriger n'aboutit pas (503 sature, 429 appels ou appels_session, erreur du modèle, flux, réseau,
    délai du serveur, fichier trop long…) alors qu'un code de cette boucle s'est déjà construit avec des défauts (meilleur), ce code est
    affiché — l'objet produit n'est plus perdu — avec deux lignes d'alerte sous « Prêt : … » : la cause, puis le message de l'erreur (son
-   lien conservé) ; la session ne change pas. Arrêtée par l'utilisateur pendant un tour corriger (« Annuler », fermeture du panneau), la
+   lien conservé) ; la session ne change pas. Arrêtée par l'utilisateur pendant un tour corriger (« Annuler » ; P2 : ✕ ne l'arrête plus), la
    boucle montre de même son meilleur état : annuler() appelle E.repli. boucle() rend true quand un objet a été appliqué pendant cet appel
    (succès, meilleur état après le 3e tour, meilleur état après une correction qui n'a pas abouti), false sinon.
    I1 (c) : en sortie SANS objet appliqué alors qu'un objet est au panneau (E.code), le bac retient le code affiché : les curseurs
@@ -1555,10 +1833,12 @@ async function boucle(mode, extra) {
      sans annulation du fetch en cours */
   const ctrl = (typeof AbortController === 'function') ? new AbortController() : { signal: undefined, abort: function () {} };
   E.enCours = ctrl;
+  majDepart();                                     /* P2, Q3 : un rechargement ou une fermeture d'onglet demande confirmation, le temps de l'appel et tant que le résultat n'est pas gardé */
   if (mode !== 'creer') E.retablir = null;   /* I4 : seul « Fabriquer » détache l'objet affiché de sa carte (et pose de quoi l'y remettre) */
   const jeton = ++E.jeton;
   const vivant = function () { return P && P.E === E && E.jeton === jeton; };
   verrouiller(true);
+  colonneSuit();                                   /* Q9 : la section de cet objet dit tout de suite ce qui se passe : un appel sur lui, ou un nouvel objet */
   let corps = { session: E.session, mode: mode, description: E.description, lang: langue() };
   if (mode !== 'creer') corps.code = E.code || '';
   if (mode === 'modifier') {
@@ -1709,7 +1989,10 @@ async function boucle(mode, extra) {
         if (typeof E.retablir === 'function') E.retablir();
       }
       verrouiller(false);
+      if (P.masque) montrer();                     /* P2 : à la fin d'un appel masqué, le panneau revient seul, avec le résultat ou l'erreur */
+      colonneSuit();                               /* P1 */
     }
+    majDepart();                                   /* Q3 : sans appel, seul un résultat non gardé la retient ; un appel annulé, et un appel suivant, ont déjà la leur */
   }
   return applique;
 }
@@ -1727,6 +2010,7 @@ function fabriquer() {
   if (!d) { statut(T('Décrivez d’abord l’objet.'), 'erreur'); P.desc.focus(); return; }
   if (E.code || E.cfg) {
     const avant = { cfg: E.cfg, session: E.session, description: E.description };
+    E.cfgAvant = E.cfg;                            /* P1, P2 : le temps de la création, le panneau reste lié à cette carte */
     E.retablir = function () { E.retablir = null; E.cfg = avant.cfg; E.session = avant.session; E.description = avant.description; };
   } else E.retablir = null;
   const t = E.tentative;
@@ -1745,7 +2029,7 @@ function modifier() {
   /* H1 : le champ n'est vidé que si un objet a été appliqué (la modification, ou son meilleur état) ; sinon l'instruction reste */
   boucle('modifier', { instruction: ins.slice(0, 800) }).then(function (applique) { if (applique && P && P.E === E && !E.enCours) P.modif.value = ''; });
 }
-/* H1 : arrêtée pendant un tour corriger (bouton « Annuler », fermeture du panneau), la boucle montre son meilleur état au lieu de
+/* H1 : arrêtée pendant un tour corriger (bouton « Annuler » ; P2 : ✕ ne l'arrête plus), la boucle montre son meilleur état au lieu de
    « Demande annulée. » ; sansRepli : recommencer() et la reprise d'une autre carte remplacent l'état, il n'y a rien à montrer.
    Sans repli : I1 (c) le bac retient le code affiché ; I4 une création annulée rend l'objet affiché à sa carte (E.retablir). */
 function annuler(sansRepli) {
@@ -1753,25 +2037,133 @@ function annuler(sansRepli) {
   const E = P.E, repli = E.repli;
   if (E.enCours) { try { E.enCours.abort(); } catch (e) { /* déjà terminé */ } }
   E.jeton++; E.enCours = null; E.repli = null;
+  P.masque = false;     /* P2 */
   verrouiller(false);
-  if (!sansRepli && typeof repli === 'function' && repli()) return;
+  if (!sansRepli && typeof repli === 'function' && repli()) { majDepart(); colonneSuit(); return; }
   if (!sansRepli) {
     if (E.code) P.bac.retenir(E.code);
     if (typeof E.retablir === 'function') E.retablir();
   }
   statut(T('Demande annulée.'), 'alerte');
+  majDepart();          /* P2, Q3 */
+  colonneSuit();        /* P1 */
 }
-function recommencer() {
-  if (!P || P.garde > 0) return;   /* J1 : pas pendant un « Garder » (pendant une boucle, Recommencer l'arrête) */
-  annuler(true);
-  P.bac.detruire();
+/* P2 : window.confirm, comme le reste de l'app (deleteImport, nouvelle scène) ; sans dialogue, on ne coupe rien */
+function confirmer(texte) {
+  try { return typeof window.confirm === 'function' && !!window.confirm(texte); } catch (e) { return false; }
+}
+/* Q3 : un résultat payé n'est « gardé » que si son code est celui que ce panneau a gardé ou repris : pas de carte (objet neuf), ou code différent (un « Modifier » pas encore gardé), c'est un résultat
+   qu'une reprise, Recommencer, ✕ ou un rechargement perdraient. La carte est celle du panneau (E.cfgAvant pendant une création lancée depuis elle).
+   R3 : le code de référence est E.codeGarde, retenu à « Garder » et à la reprise, et non celui de la fiche relue : une fiche réécrite par une autre fenêtre, par la synchronisation, ou retirée
+   entre-temps ne fait pas de ce code un résultat payé ici et non gardé. */
+function nonGarde() {
+  if (!P || !P.E.code) return false;
+  return !carteDuPanneau() || P.E.code !== P.E.codeGarde;
+}
+/* P2, Q3 : un rechargement ou une fermeture d'onglet demande confirmation pendant un appel, et tant qu'un résultat n'est pas gardé ; hors de ces deux cas, aucun écouteur */
+function surDepart(e) { e.preventDefault(); e.returnValue = ''; return ''; }
+function gardeDepart(on) {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  if (on) window.addEventListener('beforeunload', surDepart); else window.removeEventListener('beforeunload', surDepart);
+}
+function majDepart() { gardeDepart(!!P && (!!P.E.enCours || nonGarde())); }
+/* Le panneau repart de zéro : Recommencer, abandon d'un résultat non gardé (✕ confirmé), reprise arrêtée par ✕ */
+function viderPanneau() {
+  clearTimeout(P.minuterie);
+  P.bac.panne(new ErreurIA('remplace', 'remplacé'));   /* Q9 : ni attente ni délai qui survit */
   P.E = etatNeuf();
   P.zoneObjet.classList.add('bpo-ia-cache');
   P.badge.style.display = 'none'; P.cotes.textContent = ''; P.hyp.innerHTML = ''; P.curs.innerHTML = ''; P.curseurs = {}; P.nom.value = ''; P.desig.textContent = ''; P.modif.value = '';
   P.vue.vider();
   P.quota.textContent = '';
   statut('', '');
+  majDepart();
+}
+function recommencer() {
+  if (!P || P.garde > 0) return;   /* J1 : pas pendant un « Garder » (pendant une boucle, Recommencer l'arrête) */
+  /* P2 : pendant un appel, il coupe un appel payé ; Q3 : hors appel, il perd un résultat non gardé : sur confirmation seulement ; R2 : pendant un appel aussi, la question dit le résultat non gardé */
+  if (P.E.enCours && !confirmer(nonGarde() ? T('Un appel au modèle est en cours. Recommencer l’arrête : ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi. Recommencer quand même ?') : T('Un appel au modèle est en cours. Recommencer l’arrête, et ce qu’il a déjà produit est perdu. Recommencer quand même ?'))) return;
+  if (!P.E.enCours && nonGarde() && !confirmer(T('Ce résultat n’est pas gardé dans Ma bibliothèque : Recommencer le perd. Recommencer quand même ?'))) return;
+  annuler(true);
+  viderPanneau();
   P.desc.focus();
+  colonneSuit();   /* P1 */
+}
+/* Q3 : ✕ hors appel sur un résultat non gardé : sur confirmation seulement, et le résultat est alors abandonné ; pendant un appel, il masque (fermer) ; pendant un « Garder », le résultat est en train d'être gardé */
+function fermerX() {
+  if (!P) return;
+  if (!P.E.enCours && !(P.garde > 0) && nonGarde()) {
+    if (!confirmer(T('Ce résultat n’est pas gardé dans Ma bibliothèque : le fermer le perd. Fermer quand même ?'))) return;
+    viderPanneau();
+  }
+  fermer();
+}
+
+/* ---- plis vifs (Q1) ----
+   K.prisme et K.pyramide partagent leurs sommets entre parois et fonds, et ensureNormals de bpo-import.js moyenne les normales autour de chaque sommet : sur une arête vive, une paroi plane reçoit
+   des normales qui ne sont pas les siennes (jusqu'à 62° d'écart), et s'ombre en pans triangulaires dans la vue principale et la scène. L'aperçu du panneau, en ombrage plat, n'a pas ce défaut :
+   seul le maillage remis à BPO_import.bake et rebake passe ici. Ni le kit, ni le prompt, ni les imports ordinaires ne changent.
+   Autour de chaque sommet, les faces se groupent par ADJACENCE : deux triangles du sommet qui partagent une arête passant par lui, et dont les normales s'écartent d'au plus ANGLE_PLI, sont du même
+   groupe (union-recherche sur les coins) ; on ne compare donc jamais à un triangle de référence, et un cylindre ou une sphère restent lisses tout autour. Chaque groupe reçoit sa copie du sommet : le
+   premier garde l'indice d'origine, les suivants sont ajoutés à la fin. Les positions ne bougent pas ; idx garde sa longueur, son ordre et la position de chaque coin : les groupes (start, count)
+   restent valables tels quels, les triangles sont les mêmes pour les exports. Un triangle dégénéré n'a pas de normale : il ne relie rien (il ne doit pas souder une paroi à un fond), et ses coins
+   gardent l'indice d'origine, sans copie. Rend des tableaux neufs ; pos et idx reçus ne sont pas touchés. */
+function separerPlis(pos, idx, angle) {
+  const nt = Math.floor(idx.length / 3), nv = Math.floor(pos.length / 3), seuil = Math.cos((angle == null ? ANGLE_PLI : angle) * Math.PI / 180);
+  const N = new Float64Array(nt * 3), plat = new Uint8Array(nt);
+  for (let t = 0; t < nt; t++) {
+    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2], wx = vx - ux, wy = vy - uy, wz = vz - uz;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz);
+    const cote = Math.max(ux * ux + uy * uy + uz * uz, vx * vx + vy * vy + vz * vz, wx * wx + wy * wy + wz * wz);
+    /* hauteur du triangle sur son plus long côté, rapportée à ce côté : sous 1e-6, sa normale n'est que du bruit d'arrondi */
+    if (!(l > 1e-6 * cote) || a === b || b === c || a === c) { plat[t] = 1; continue; }
+    N[t * 3] = nx / l; N[t * 3 + 1] = ny / l; N[t * 3 + 2] = nz / l;
+  }
+  /* les coins de chaque sommet : leurs positions dans idx */
+  const debut = new Int32Array(nv + 2);
+  for (let i = 0; i < nt * 3; i++) debut[idx[i] + 2]++;
+  for (let v = 0; v < nv; v++) debut[v + 2] += debut[v + 1];
+  const coins = new Int32Array(nt * 3);
+  for (let i = 0; i < nt * 3; i++) coins[debut[idx[i] + 1]++] = i;
+  /* union-recherche sur les coins */
+  const pere = new Int32Array(nt * 3);
+  for (let i = 0; i < nt * 3; i++) pere[i] = i;
+  const racine = function (i) { while (pere[i] !== i) { pere[i] = pere[pere[i]]; i = pere[i]; } return i; };
+  /* autour d'un sommet v, pour chaque autre extrémité w d'une arête : la liste chaînée des coins de v dont le triangle porte cette arête ; marque[w] = v dit qu'elle est de ce sommet */
+  const marque = new Int32Array(nv).fill(-1), tete = new Int32Array(nv), suite = new Int32Array(nt * 6);
+  for (let v = 0; v < nv; v++) {
+    for (let q = debut[v]; q < debut[v + 1]; q++) {
+      const i = coins[q], t = Math.floor(i / 3);
+      if (plat[t]) continue;
+      const k = i - t * 3, nx = N[t * 3], ny = N[t * 3 + 1], nz = N[t * 3 + 2];
+      for (let s = 1; s <= 2; s++) {
+        const w = idx[t * 3 + (k + s) % 3], e = i * 2 + s - 1;
+        if (marque[w] !== v) { marque[w] = v; tete[w] = -1; }
+        for (let p = tete[w], vus = 0; p >= 0 && vus < PLAFOND_ARETE; p = suite[p], vus++) {
+          const j = p >> 1, u = Math.floor(j / 3);
+          if (nx * N[u * 3] + ny * N[u * 3 + 1] + nz * N[u * 3 + 2] >= seuil) { const a = racine(i), b = racine(j); if (a !== b) pere[a] = b; }
+        }
+        suite[e] = tete[w]; tete[w] = e;
+      }
+    }
+  }
+  /* une copie du sommet par groupe, le premier garde l'indice ; les coins des triangles dégénérés suivent l'indice d'origine */
+  const sortie = new Uint32Array(nt * 3), copie = new Int32Array(nt * 3).fill(-1), origines = [];
+  for (let v = 0; v < nv; v++) {
+    let premier = true;
+    for (let q = debut[v]; q < debut[v + 1]; q++) {
+      const i = coins[q];
+      if (plat[Math.floor(i / 3)]) { sortie[i] = v; continue; }
+      const a = racine(i);
+      if (copie[a] < 0) { if (premier) { copie[a] = v; premier = false; } else { copie[a] = nv + origines.length; origines.push(v); } }
+      sortie[i] = copie[a];
+    }
+  }
+  const pos2 = new Float32Array((nv + origines.length) * 3);
+  pos2.set(pos);
+  for (let k = 0; k < origines.length; k++) { const d = (nv + k) * 3, o = origines[k] * 3; pos2[d] = pos[o]; pos2[d + 1] = pos[o + 1]; pos2[d + 2] = pos[o + 2]; }
+  return { pos: pos2, idx: sortie, ajoutes: origines.length };
 }
 
 /* ---- « Garder » (§4.5) ----
@@ -1802,12 +2194,13 @@ async function garder() {
   const E = P.E, g = E.geo, BI = window.BPO_import;
   if (!BI || typeof BI.bake !== 'function') { statut(T('Le module d’import n’est pas chargé : impossible de garder.'), 'erreur'); return; }
   const nom = (P.nom.value || '').trim() || (E.meta && E.meta.nom) || 'Objet';
-  const pos = g.pos.slice(), idx = g.idx.slice(), groups = g.groups.map(function (gr) { return Object.assign({}, gr); });
+  const plis = separerPlis(g.pos, g.idx), pos = plis.pos, idx = plis.idx, groups = g.groups.map(function (gr) { return Object.assign({}, gr); });   /* Q1 : le maillage gardé a ses plis vifs ; E.geo reste celui de l'aperçu */
   /* J1 : le jeton de l'objet affiché au départ ; après les await de bake / rebake, E.cfg n'est posé que si cet objet est toujours
      celui du panneau (même état, jeton inchangé, aucune boucle en cours) — défense en profondeur derrière les boutons inactifs */
   const jeton = E.jeton;
   const libre = function () { return !!P && P.E === E && E.jeton === jeton && !E.enCours; };
   P.garde = (P.garde || 0) + 1; majBoutons();   /* I1 (b) : « Garder » inactif pendant l'opération ; J1 : Fabriquer, Modifier… aussi */
+  let gardee = null;   /* P1 : la fiche écrite : le panneau laisse la place à la colonne */
   try {
     statut(T('Garder…'), 'travail');   /* E18 */
     const dossiers = (typeof window.cfgFoldLoad === 'function' && typeof window.cfgFoldStore === 'function');
@@ -1848,7 +2241,8 @@ async function garder() {
         if (!ecrite) { plein(); return; }
       }
       let pid = ancien;
-      try { pid = (await BI.rebake(ancien, pos, idx, groups)) || ancien; }
+      /* P1 : enPlace : orientation, échelle et finitions gardées, et rien ne reconstruit la colonne ni la vue */
+      try { pid = (await BI.rebake(ancien, pos, idx, groups, { enPlace: true })) || ancien; }
       catch (e) {
         if (avant) { window.cfgStore(avant); rendre(); }
         statut(fmt(T('Impossible de garder : {0}'), (e && e.message) || e), 'erreur');
@@ -1856,8 +2250,9 @@ async function garder() {
       }
       /* E17 : le nom tenu par bpo-import (étiquette de scène et d'export, enregistrement IndexedDB) suit le panneau */
       if (nom !== nomAvant && typeof BI.renommer === 'function') { try { await BI.renommer(pid, nom); } catch (e) { /* la fiche porte déjà le nom */ } }
-      if (fiche) { if (libre()) E.cfg = fiche; rendre(); }   /* J1 */
+      if (fiche) { if (libre()) { E.cfg = fiche; E.codeGarde = ia.code; } rendre(); }   /* J1, R3 */
       statut(T('Objet mis à jour dans Ma bibliothèque.'), 'ok');
+      if (fiche && libre()) gardee = fiche;
       return;
     }
     /* objet neuf, ou fiche sans maillage (E17) : bake d'abord, puis la fiche, relue (E15) */
@@ -1902,10 +2297,11 @@ async function garder() {
         plein();
         return;
       }
-      if (libre()) E.cfg = trouve;   /* J1 : seulement si l'objet du départ est toujours celui du panneau */
+      if (libre()) { E.cfg = trouve; E.codeGarde = ia.code; }   /* J1 : seulement si l'objet du départ est toujours celui du panneau ; R3 */
       /* D7 : « Objets importes » n'existait pas et rien n'y est rangé : on retire ce dossier vide avant le rendu */
       if (dossiers && !avaitImport) retirerDossierVide(FID_IMPORT, list);
       rendre();
+      if (libre()) gardee = trouve;
     }
     /* E17 : les instances de scène de l'ancien pid (sans maillage) passent sur le nouveau, au mieux */
     if (reporter && window.SCENE && Array.isArray(window.SCENE.instances)) {
@@ -1919,6 +2315,10 @@ async function garder() {
     statut(fmt(T('Impossible de garder : {0}'), (e && e.message) || e), 'erreur');   /* E18 */
   } finally {
     P.garde = Math.max(0, (P.garde || 1) - 1); majBoutons();   /* J1 : les boutons reviennent */
+    majDepart();                                               /* Q3 : gardé, plus rien ne retient la page */
+    colonneSuit();                                             /* Q3 : la note de la section suit l'issue (raté : le résultat n'est toujours pas gardé) */
+    /* P1 : l'objet gardé s'ouvre dans la colonne, avec ses curseurs (ancien bpo-import.js en cache, sans ouvrirColonne : le panneau reste) */
+    if (gardee && typeof BI.ouvrirColonne === 'function') { fermer(); messageColonne = P.etat.textContent; BI.ouvrirColonne(gardee); }
   }
 }
 
@@ -1932,6 +2332,7 @@ async function reprendre(cfg) {
   const E = P.E, ia = cfg.ia || {}, code = typeof ia.code === 'string' ? ia.code : '';
   const valeurs = (ia.params && typeof ia.params === 'object') ? ia.params : null;
   E.cfg = cfg; E.session = ia.session || uuid(); E.description = descriptionPropre(ia.description); E.modele = ia.modele || null;   /* D10 */
+  E.codeGarde = code;   /* R3 */
   P.desc.value = E.description;
   const jeton = ++E.jeton;
   const vivant = function () { return P && P.E === E && E.jeton === jeton; };
@@ -1962,7 +2363,7 @@ async function reprendre(cfg) {
     if (cfg.name) P.nom.value = cfg.name;
     afficherErreur(e);
   } finally {
-    if (vivant()) verrouiller(false);
+    if (vivant()) { verrouiller(false); colonneSuit(); }   /* P1 : la section en note dit que la reprise est finie */
   }
 }
 
@@ -1976,11 +2377,12 @@ async function reprendre(cfg) {
    M1 : au lâcher, le côté le plus proche ; M2 : le haut affiché ne monte jamais au-dessus de 74 px, sauf haut voulu plus haut ;
    N1 : la gauche affichée laisse Ma bibliothèque libre quand la fenêtre a la place de poser le panneau à côté ; un ResizeObserver sur
    son conteneur, posé ici et retiré par fermer, recale quand elle se replie, se rouvre ou change de largeur.
+   R4 : le corps repart du haut à chaque ouverture, donc à chaque reprise : le panneau rouvert laissait description et « Fabriquer » hors de vue.
    J4 : une reprise vide le champ « Modifier… », comme Recommencer : l'instruction tapée pour l'objet d'avant ne part pas vers la carte. */
-export function ouvrir(opts) {
-  opts = opts || {};
-  if (!P) construirePanneau();
+function montrer() {
+  P.masque = false;
   P.pan.style.display = 'flex';
+  P.corps.scrollTop = 0;   /* R4 */
   P.recaler();
   if (!P.redimPose && typeof window.addEventListener === 'function') { window.addEventListener('resize', P.surRedim); P.redimPose = true; }
   /* N1 : la bibliothèque qui se replie, se rouvre ou change de largeur recale aussi le panneau (observateur retiré par fermer) */
@@ -1989,27 +2391,369 @@ export function ouvrir(opts) {
     if (bib) { try { P.obsBib = new window.ResizeObserver(P.surRedim); P.obsBib.observe(bib); } catch (e) { P.obsBib = null; } }
   }
   retraduire();
-  if (opts.cfg && opts.cfg.ia) {
-    if (P.garde > 0) { P.vue.demander(); return P.pan; }
-    if (P.E.enCours) annuler(true);              /* H1 : l'état est remplacé par la reprise, rien à montrer */
-    P.bac.detruire(); P.E = etatNeuf();
-    P.zoneObjet.classList.add('bpo-ia-cache'); P.vue.vider();
-    P.modif.value = '';                          /* J4 */
-    reprendre(opts.cfg);
-  } else if (!P.E.code) {
-    P.desc.focus();
-  }
   P.vue.demander();
-  return P.pan;
 }
-export function fermer() {
-  if (!P) return;
-  if (P.E.enCours) annuler();
+function cacher() {
   P.pan.style.display = 'none';
   /* J2 : l'écouteur resize vit le temps de l'ouverture */
   if (P.redimPose) { try { window.removeEventListener('resize', P.surRedim); } catch (e) { /* sans window */ } P.redimPose = false; }
   if (P.obsBib) { try { P.obsBib.disconnect(); } catch (e) { /* observateur déjà parti */ } P.obsBib = null; }   /* N1 */
-  P.bac.detruire();   /* le worker est recréé au prochain usage (kit en cache) */
+  P.vue.liberer();    /* P1bis : le contexte WebGL ne reste pas tenu par un panneau caché */
+}
+/* la carte à laquelle le panneau est lié : celle de l'objet affiché, ou, pendant une création lancée depuis lui (I4), celle qu'il retrouvera si elle échoue */
+function carteDuPanneau() { const E = P.E; return E.cfg || (E.retablir ? E.cfgAvant : null); }
+/* I1, J4 : la carte remplace l'état du panneau */
+function repriseCarte(fiche) {
+  P.bac.detruire(); P.E = etatNeuf();
+  P.zoneObjet.classList.add('bpo-ia-cache'); P.vue.vider();
+  P.modif.value = '';                            /* J4 */
+  majDepart();                                   /* Q3 */
+  reprendre(fiche);
+}
+/* P2 : pendant un appel, « Décrire un objet » et le bouton IA de la même fiche réaffichent le panneau, avec sa progression ; le bouton IA d'une AUTRE fiche ne coupe l'appel
+   que sur confirmation. P1 : le panneau rouvert relit les réglages à jour : la carte vient de la bibliothèque, pas du bouton qui a pu être rendu avant ; et, sans carte, un
+   objet affiché que la colonne a re-réglé entre-temps (même code, date changée) est repris, de même qu'un objet gardé dont une autre fenêtre a changé la fiche (R3) ; une modification pas encore gardée reste.
+   Q3 : le bouton IA d'une carte sur un résultat pas encore gardé (nonGarde) ne le remplace que sur confirmation. */
+export function ouvrir(opts) {
+  opts = opts || {};
+  if (!P) construirePanneau();
+  montrer();
+  if (opts.cfg && opts.cfg.ia) {
+    if (P.garde > 0) { colonneSuit(); return P.pan; }
+    const lue = ficheDe(opts.cfg), fiche = (lue && lue.ia && lue.ia.date !== opts.cfg.ia.date) ? lue : opts.cfg;
+    if (P.E.enCours) {
+      /* R2 : la question dit aussi le résultat non gardé */
+      if (memeObjet(carteDuPanneau(), fiche) || !confirmer(nonGarde() ? T('Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu, et le résultat affiché, pas encore gardé, est perdu aussi.') : T('Un appel au modèle est en cours sur un autre objet. L’arrêter pour ouvrir celui-ci ? Ce qu’il a déjà produit est perdu.'))) { colonneSuit(); return P.pan; }
+      annuler(true);                             /* H1 : l'état est remplacé par la reprise, rien à montrer */
+    } else if (nonGarde() && !confirmer(T('Le résultat affiché n’est pas gardé dans Ma bibliothèque : ouvrir cet objet le perd. L’ouvrir quand même ?'))) {
+      colonneSuit(); return P.pan;               /* Q3 : un résultat payé ne se perd pas sans le dire */
+    }
+    repriseCarte(fiche);
+  } else {
+    const E = P.E, lue = (E.cfg && E.cfg.ia && !E.enCours && !occupe()) ? ficheDe(E.cfg) : null;
+    if (lue && lue.ia && lue.ia.date !== E.cfg.ia.date && (lue.ia.code === E.code || !nonGarde())) repriseCarte(lue);
+    else if (!E.code) P.desc.focus();
+  }
+  colonneSuit();
+  P.vue.demander();
+  return P.pan;
+}
+/* P2 : pendant un appel, ✕ MASQUE le panneau : rien n'est coupé, ni le flux ni le bac ; l'appel continue et le panneau revient à sa fin (boucle). Annuler reste le seul geste
+   qui arrête un appel sans confirmation.
+   Q9 : hors appel, le bac s'arrête par panne : l'attente en cours est rejetée et sa minuterie coupée, sans quoi le travail finissait en faux délai dépassé (detruire laissait courir le délai),
+   et la colonne attendait un appel qui n'existe pas. Une reprise encore en cours s'arrête aussi : rien n'en reste, le bouton IA la relance. Un réglage du panneau pas encore construit revient
+   à la géométrie affichée. */
+export function fermer() {
+  if (!P) return;
+  if (P.E.enCours) { P.masque = true; cacher(); colonneSuit(); return; }
+  P.masque = false;
+  const E = P.E, reprise = !!P.verrou;
+  clearTimeout(P.minuterie); E.differe = false;
+  cacher();
+  if (reprise) { E.jeton++; verrouiller(false); viderPanneau(); }
+  else {
+    P.bac.panne(new ErreurIA('remplace', 'remplacé'));   /* le worker est recréé au prochain usage (kit en cache) */
+    if (E.geo) ramenerReglages();
+    majGarder();
+  }
+  colonneSuit();      /* P1 */
+}
+/* ----------------------------------------------------------------------------
+   Réglages dans la colonne (P1) — reglagesDans(hote, cfg) pose, dans hote (l'en-tête de la colonne Paramètres, bpo-import.js), les curseurs d'un objet décrit : mêmes
+   libellés, unités et bornes que le panneau (meta.params de son code), la valeur affichée, « Valeurs par défaut ». Bouger un curseur NE COÛTE AUCUN appel au modèle : le code
+   tourne dans un bac à sable à lui (iframe + worker, 6 s) ; anti-rebond ; une seule construction à la fois, la dernière valeur gagne (une valeur dépassée n'est pas écrite).
+   En cas de succès, l'ordre de « Garder » (H, J) : la fiche (ia.params) est écrite et relue AVANT BPO_import.rebake (enPlace : orientation, échelle et finitions gardées,
+   maillage, IndexedDB, scène, sans toucher à la colonne) ; rebake qui échoue : les fiches d'avant reviennent. En cas d'échec (exception, délai, plafonds, stockage plein), la
+   géométrie reste, les curseurs reviennent à la dernière bonne valeur et la section le dit. Un objet décrit n'a qu'une géométrie : toutes ses poses changent, et la section le
+   dit s'il y en a plusieurs.
+   UN SEUL ÉCRIVAIN : jamais deux séries de curseurs vivantes sur le même objet. Ouvrir la colonne sur un objet ouvert dans le panneau ferme le panneau, sauf s'il travaille sur lui
+   (un appel, même masqué, une reprise, un « Garder ») ou s'il montre un résultat payé pas encore gardé (Q3) : la section le dit alors, sans curseurs ; ouvrir le panneau sur un objet de la colonne met de même la section en
+   note. colonneSuit() la remet en service dès que le panneau a lâché l'objet.
+   Une seule colonne à la fois (C). Colonne remplacée (#params reconstruit par un autre objet ou un autre mode, vu par un MutationObserver et revérifié à chaque étape), objet
+   supprimé ou renommé pendant une construction : aucune écriture après coup, aucune minuterie qui survit, le bac se ferme.
+   ---------------------------------------------------------------------------- */
+let C = null;            /* la colonne vivante */
+let messageColonne = '';  /* le message de « Garder », repris par la section qui lui succède */
+let _bacColonne = function () { return new Bac(); };
+let _langueColonne = false;
+function memeObjet(a, b) { return !!a && !!b && a.prod === b.prod && (a.id == null || b.id == null || a.id === b.id); }
+/* la fiche à jour, relue dans la bibliothèque, ou null */
+function ficheDe(cfg) {
+  if (!cfg || typeof window.cfgLoad !== 'function') return null;
+  return (window.cfgLoad() || []).filter(function (c) { return memeObjet(c, cfg); })[0] || null;
+}
+/* le panneau et cet objet : 'travail' (un appel sur cet objet, même masqué), 'creation' (un NOUVEL objet créé depuis sa carte : Q9), 'occupe' (une reprise, un « Garder » : pas d'appel, Q9),
+   'nongarde' (un résultat payé, pas encore gardé : Q3, le panneau reste), 'ouvert' (affiché, au repos) ou null */
+function panneauSur(fiche) {
+  if (!P || !memeObjet(carteDuPanneau(), fiche)) return null;
+  if (P.E.enCours) return P.E.cfg ? 'travail' : 'creation';
+  if (P.verrou || P.garde > 0) return 'occupe';
+  if (nonGarde()) return 'nongarde';
+  return P.pan.style.display === 'none' ? null : 'ouvert';
+}
+function exemplaires(pid) {
+  let n = 0;
+  const compter = function (i, d) { if (!i || d > 8) return; if (i.prod === pid) n++; (i.children || []).forEach(function (x) { compter(x, d + 1); }); };
+  try { ((window.SCENE && window.SCENE.instances) || []).forEach(function (i) { compter(i, 0); }); } catch (e) { /* pas de scène */ }
+  return n;
+}
+function ligneColonne(c, texte, type) { c.ligne.textContent = texte || ''; c.ligne.className = 'bpo-ia-regetat' + (type ? ' ' + type : ''); }
+function majExemplaires(c) {
+  const n = c.etat === 'vivant' ? exemplaires(c.fiche.prod) : 0;
+  c.note.textContent = n > 1 ? fmt(T('Modifie les {0} exemplaires de la scène'), n) : '';
+  c.note.style.display = n > 1 ? '' : 'none';
+}
+function viderCurseurs(c) { c.zone.innerHTML = ''; c.zone.style.display = 'none'; c.lDef.style.display = 'none'; c.curseurs = {}; }
+function ramenerColonne(c) {
+  c.valeurs = Object.assign({}, c.bonnes);
+  Object.keys(c.curseurs).forEach(function (k) { const x = c.curseurs[k], v = c.valeurs[k]; x.range.value = String(v); x.val.textContent = texteCurseur(x.p, x.dec, v); });
+}
+function poserCurseurs(c, params, valeurs) {
+  c.zone.innerHTML = ''; c.curseurs = {}; c.valeurs = {};
+  Object.keys(params).forEach(function (k) {
+    const p = params[k], pas = pasDe(p), dec = decimalesDe(pas), v = valeurCurseur(p, valeurs ? valeurs[k] : undefined);
+    c.valeurs[k] = v;
+    const range = el('input', { type: 'range', min: String(p.min), max: String(p.max), step: String(pas), value: String(v) });
+    const val = el('div', { cls: 'bpo-ia-val', text: texteCurseur(p, dec, v) });
+    c.curseurs[k] = { range: range, val: val, p: p, dec: dec };
+    range.addEventListener('input', function () {
+      if (C !== c) return;
+      const nv = +range.value;
+      c.valeurs[k] = nv; val.textContent = texteCurseur(p, dec, nv);
+      planifierColonne(c);
+    });
+    c.zone.appendChild(el('label', {}, [el('span', { text: p.label }), range]));
+    c.zone.appendChild(val);
+  });
+  c.bonnes = Object.assign({}, c.valeurs);
+  c.zone.style.display = ''; c.lDef.style.display = '';
+}
+function planifierColonne(c) {
+  clearTimeout(c.minuterie);
+  c.minuterie = setTimeout(function () { c.minuterie = 0; lancerColonne(c); }, ANTIREBOND_COLONNE);
+}
+/* I1 (b) : la reconstruction qui attend décide ; sinon, retour à la dernière géométrie */
+function echecColonne(c, e) {
+  if (c.aRefaire || c.minuterie) return;
+  ramenerColonne(c);
+  ligneColonne(c, ((e && e.message) || String(e)) + '\n' + T('Réglages ramenés à la dernière géométrie construite.'), 'erreur');
+}
+function objetDisparu(c) {
+  const hote = c.hote, racine = c.racine;
+  fermerColonne();
+  if (hote.isConnected === false) return;
+  racine.innerHTML = '';
+  racine.appendChild(el('div', { cls: 'bpo-ia-regnote', fr: 'Cet objet n’existe plus.' }));
+}
+function lancerColonne(c) {
+  if (C !== c) return;
+  if (c.hote.isConnected === false) { fermerColonne(); return; }
+  if (c.occupe) { c.aRefaire = true; return; }
+  const f = ficheDe(c.fiche);
+  if (!f || !f.ia) { objetDisparu(c); return; }
+  c.nom = f.name; c.occupe = true; c.aRefaire = false;
+  const jeton = ++c.jeton, params = Object.assign({}, c.valeurs);
+  ligneColonne(c, T('Construction…'), '');
+  c.bac.construire(params).then(function (geo) { return ecrireColonne(c, jeton, params, geo); })
+    .catch(function (e) { if (C === c && c.jeton === jeton) echecColonne(c, e); })
+    .then(function () {
+      if (C !== c || c.jeton !== jeton) return;
+      c.occupe = false;
+      if (c.aRefaire && !c.minuterie) lancerColonne(c);
+    });
+}
+/* la géométrie de ces réglages est construite : la fiche, relue, puis le maillage. Rien n'est écrit si une valeur plus récente attend, si la colonne a été remplacée, si l'objet a
+   disparu ou s'il a été renommé pendant la construction (la fiche lue au départ n'est plus la sienne). */
+async function ecrireColonne(c, jeton, params, geo) {
+  if (C !== c || c.jeton !== jeton || c.aRefaire || c.minuterie) return;
+  if (c.hote.isConnected === false) { fermerColonne(); return; }
+  const BI = window.BPO_import, pid = c.fiche.prod;
+  const liste = (typeof window.cfgLoad === 'function' && window.cfgLoad()) || [];
+  const f = liste.filter(function (x) { return memeObjet(x, c.fiche); })[0];
+  if (!f || !f.ia || !(window.TEX_OBJECTS && window.TEX_OBJECTS[pid])) { objetDisparu(c); return; }
+  if (f.name !== c.nom) {
+    c.jeton++; c.occupe = false; c.bac.detruire();
+    ramenerColonne(c);
+    ligneColonne(c, T('Objet renommé pendant la construction : réglage abandonné.'), 'alerte');
+    return;
+  }
+  if (f.ia.code !== c.code) { demarrerColonne(c); return; }   /* un « Garder » a changé le code entre-temps : la section repart de la fiche */
+  if (!BI || typeof BI.rebake !== 'function') { ramenerColonne(c); ligneColonne(c, T('Le module d’import n’est pas chargé : impossible de garder.'), 'erreur'); return; }
+  const copie = JSON.parse(JSON.stringify(liste)), date = new Date().toISOString();
+  copie.forEach(function (x) { if (memeObjet(x, c.fiche) && x.ia) { x.ia.params = Object.assign({}, params); x.ia.date = date; } });
+  window.cfgStore(copie);
+  const notre = function (l) { return (l || []).some(function (x) { return memeObjet(x, c.fiche) && x.ia && x.ia.date === date; }); };
+  if (!notre(window.cfgLoad())) {
+    ramenerColonne(c);
+    ligneColonne(c, T('Réglage non enregistré : stockage plein ou indisponible. Libérez de la place (scènes, configurations), puis recommencez.'), 'erreur');
+    return;
+  }
+  const groups = geo.groups.map(function (gr) { return Object.assign({}, gr); }), plis = separerPlis(geo.pos, geo.idx);   /* Q1 : le maillage a ses plis vifs ; un objet gardé avant est donc corrigé ici, au premier curseur bougé */
+  try { await BI.rebake(pid, plis.pos, plis.idx, groups, { enPlace: true }); }
+  catch (e) {
+    /* H2, Q9 : la fiche relue reprend ses réglages et sa date d'avant, si rien ne l'a réécrite ; rien d'autre : une autre fiche, modifiée pendant ce temps, reste telle quelle */
+    const relues = window.cfgLoad() || [], x = relues.filter(function (y) { return memeObjet(y, c.fiche) && y.ia && y.ia.date === date; })[0];
+    if (x) { x.ia.params = f.ia.params; x.ia.date = f.ia.date; window.cfgStore(relues); }
+    if (C === c && c.jeton === jeton) {
+      if (e && e.retire) { objetDisparu(c); return; }
+      ramenerColonne(c);
+      ligneColonne(c, fmt(T('Réglage non appliqué : {0}'), (e && e.message) || e), 'erreur');
+    }
+    return;
+  }
+  if (typeof window.cfgRender === 'function') window.cfgRender();   /* P1 : la bibliothèque tient ses fiches telles qu'elle les a lues (_folderTree les réécrit quand on range une carte) : elle relit les réglages à jour */
+  if (C !== c || c.jeton !== jeton) return;
+  c.bonnes = Object.assign({}, params);
+  const d = geo.dims || {}, rap = geo.rapport || {};
+  majExemplaires(c);
+  if (c.aRefaire || c.minuterie) return;
+  ligneColonne(c, fmt(T('Prêt : {0} triangles, {1} × {2} × {3} m'), nombre(geo.triangles, 0), nombre(d.L, 2), nombre(d.P, 2), nombre(d.H, 2)) + (rap.ok === false ? '\n' + fmt(T('contrôle : {0}'), texteDefauts(rap)) : ''), rap.ok === false ? 'alerte' : 'ok');
+}
+/* Q9 : la fiche et IndexedDB sont communs aux fenêtres du navigateur, le maillage en mémoire non : une fiche re-réglée depuis une autre fenêtre laisse ici un maillage périmé (noté par bpo-import.js,
+   qui écoute l'événement storage dès le chargement de la page). La section le dit, à l'ouverture comme à l'événement : c'est le plus simple qui ne mente pas. Un curseur bougé ici refait le maillage
+   et la note s'efface ; un rechargement de la page aussi. */
+function majPerime(c) {
+  const BI = window.BPO_import;
+  if (BI && typeof BI.maillagePerime === 'function' && BI.maillagePerime(c.fiche.prod)) ligneColonne(c, T('Cet objet a été re-réglé dans une autre fenêtre : la vue ici n’est plus à jour. Rechargez la page, ou bougez un curseur.'), 'alerte');
+}
+function surStockageColonne() { if (C && C.etat === 'vivant') majPerime(C); }
+/* la section vivante, depuis la fiche à jour */
+async function demarrerColonne(c) {
+  const f = ficheDe(c.fiche), ia = (f && f.ia) || c.source.ia;
+  const jeton = ++c.jeton;
+  clearTimeout(c.minuterie); c.minuterie = 0; c.occupe = false; c.aRefaire = false;
+  c.etat = 'charge'; c.code = ia.code; c.nom = f ? f.name : c.source.name; c.noteFr = '';
+  viderCurseurs(c); majExemplaires(c); c.messagePanneau.style.display = 'none';
+  c.bac.panne(new ErreurIA('remplace', 'remplacé'));
+  ligneColonne(c, messageColonne, messageColonne ? 'ok' : ''); messageColonne = '';
+  let meta = null;
+  try { meta = await c.bac.charger(c.code); }
+  catch (e) {
+    if (C !== c || c.jeton !== jeton) return false;
+    c.etat = 'erreur'; c.bac.detruire();
+    ligneColonne(c, fmt(T('Réglages indisponibles : {0}'), (e && e.message) || e), 'erreur');
+    return true;
+  }
+  if (C !== c || c.jeton !== jeton) return false;
+  /* E17 : une fiche synchronisée d'un autre appareil n'a pas de maillage ici : le bouton IA le refabrique */
+  if (!(window.TEX_OBJECTS && window.TEX_OBJECTS[c.fiche.prod])) {
+    c.etat = 'erreur'; c.bac.detruire();
+    ligneColonne(c, fmt(T('Réglages indisponibles : {0}'), T('maillage absent de ce navigateur, reprenez l’objet par le bouton IA')), 'erreur');
+    return true;
+  }
+  const params = meta.params || {};
+  if (!Object.keys(params).length) {
+    /* un code sans paramètres : pas de section */
+    const racine = c.racine;
+    fermerColonne();
+    if (racine.parentNode) racine.parentNode.removeChild(racine);
+    return false;
+  }
+  poserCurseurs(c, params, (ia.params && typeof ia.params === 'object') ? ia.params : null);
+  c.etat = 'vivant';
+  majExemplaires(c);
+  majPerime(c);
+  return true;
+}
+function passerEnNote(c, s) {
+  c.jeton++;
+  clearTimeout(c.minuterie); c.minuterie = 0; c.occupe = false; c.aRefaire = false;
+  c.bac.panne(new ErreurIA('remplace', 'remplacé'));
+  c.etat = 'note';
+  viderCurseurs(c); majExemplaires(c); ligneColonne(c, '', '');
+  c.noteFr = s;
+  majNoteColonne(c);
+}
+function majNoteColonne(c) {
+  const s = c.noteFr;
+  c.messagePanneau.textContent = s === 'travail' ? T('Un appel au modèle est en cours sur cet objet : ses réglages reviennent ici à la fin.')
+    : s === 'creation' ? T('Un nouvel objet est en cours de création : les réglages reviennent ici à la fin.')   /* Q9 */
+    : s === 'occupe' ? T('Le panneau « Décrire un objet » travaille sur cet objet : ses réglages reviennent ici à la fin.')   /* Q9 */
+    : s === 'nongarde' ? T('Le panneau « Décrire un objet » montre un résultat pas encore gardé pour cet objet : gardez-le ou abandonnez-le pour le régler ici.')   /* Q3 */
+    : T('Cet objet est ouvert dans le panneau « Décrire un objet » : fermez-le pour le régler ici.');
+  c.messagePanneau.style.display = '';
+}
+/* appelé dès que le panneau change : ouverture, fermeture, fin d'un appel, Annuler, Recommencer */
+function colonneSuit() {
+  const c = C;
+  if (!c || c.etat === 'init') return;
+  if (c.hote.isConnected === false) { fermerColonne(); return; }
+  const s = panneauSur(c.fiche);
+  if (s) {
+    if (c.etat !== 'note') passerEnNote(c, s);
+    else if (c.noteFr !== s) { c.noteFr = s; majNoteColonne(c); }
+  } else if (c.etat === 'note') {
+    if (ficheDe(c.fiche)) demarrerColonne(c); else objetDisparu(c);
+  }
+}
+function fermerColonne() {
+  const c = C;
+  if (!c) return;
+  C = null;
+  c.jeton++;
+  clearTimeout(c.minuterie); c.minuterie = 0;
+  if (c.obs) { try { c.obs.disconnect(); } catch (e) { /* déjà parti */ } c.obs = null; }
+  c.bac.fermer();
+  if (typeof window.removeEventListener === 'function') window.removeEventListener('storage', surStockageColonne);   /* Q9 */
+  recalerPanneau();   /* Q9 : la colonne libérée, le panneau retrouve sa place voulue */
+}
+/* Q9 : la bordure gauche de la colonne Paramètres, si une section Réglages y vit ; sinon null */
+function bordColonne() {
+  if (!C || C.hote.isConnected === false) return null;
+  let r = null;
+  try { const n = document.getElementById('params') || C.hote; r = n.getBoundingClientRect(); } catch (e) { r = null; }
+  return (r && r.width > 0 && Number.isFinite(+r.left)) ? +r.left : null;
+}
+function recalerPanneau() { if (P && P.pan.style.display !== 'none') P.recaler(); }
+function retraduireColonne() {
+  if (!C) return;
+  C.racine.querySelectorAll('[data-fr]').forEach(function (n) { n.textContent = T(n.getAttribute('data-fr')); });
+  if (C.etat === 'note') majNoteColonne(C); else majExemplaires(C);
+}
+export function reglagesDans(hote, cfg, opts) {
+  fermerColonne();
+  if (!hote || !cfg || !cfg.prod) return Promise.resolve(false);
+  const lue = ficheDe(cfg), fiche = (lue && lue.ia) ? lue : cfg;
+  if (!fiche.ia || typeof fiche.ia.code !== 'string' || !fiche.ia.code) return Promise.resolve(false);
+  injecterStyles();
+  if (!_langueColonne) { try { document.addEventListener('bpo-lang', retraduireColonne); _langueColonne = true; } catch (e) { /* sans évènement de langue */ } }
+  /* Q9 : un curseur ne s'annule pas (↶ de la scène défait les actions de scène, pas lui) : la section le dit */
+  const zone = el('div', { cls: 'bpo-ia-curs' }), bDef = el('button', { cls: 'tex-none', type: 'button', fr: 'Valeurs par défaut' }), lDef = el('div', { cls: 'bpo-ia-ligne' }, [bDef, el('span', { cls: 'bpo-ia-regaide', fr: 'Les curseurs ne s’annulent pas : Valeurs par défaut.' })]);
+  const note = el('div', { cls: 'bpo-ia-regnote' }), messagePanneau = el('div', { cls: 'bpo-ia-regnote' }), ligne = el('div', { cls: 'bpo-ia-regetat', 'aria-live': 'polite' });
+  const enfants = [el('div', { cls: 'slbl', fr: 'Réglages' }), note, messagePanneau, zone, lDef, ligne];
+  /* depuis la liste de la scène, la vue reste sur la scène : un bouton y ramène la liste */
+  if (opts && opts.enScene && typeof window.buildSceneUI === 'function') {
+    const bRetour = el('button', { cls: 'tex-none', type: 'button', fr: '← Retour à la scène' });
+    bRetour.onclick = function () { window.buildSceneUI(); };
+    enfants.push(el('div', { cls: 'bpo-ia-ligne' }, [bRetour]));
+  }
+  const racine = el('div', { cls: 'bpo-ia-reg' }, enfants);
+  const c = { hote: hote, racine: racine, source: fiche, fiche: { id: fiche.id, prod: fiche.prod }, code: fiche.ia.code, nom: fiche.name, bac: _bacColonne(), jeton: 0, minuterie: 0,
+              occupe: false, aRefaire: false, etat: 'init', noteFr: '', valeurs: {}, bonnes: {}, curseurs: {}, zone: zone, lDef: lDef, note: note, messagePanneau: messagePanneau, ligne: ligne, obs: null };
+  C = c;
+  hote.appendChild(racine);
+  viderCurseurs(c); note.style.display = 'none'; messagePanneau.style.display = 'none';
+  bDef.onclick = function () {
+    if (C !== c || c.etat !== 'vivant') return;
+    Object.keys(c.curseurs).forEach(function (k) { const x = c.curseurs[k]; c.valeurs[k] = x.p.def; x.range.value = String(x.p.def); x.val.textContent = texteCurseur(x.p, x.dec, x.p.def); });
+    planifierColonne(c);
+  };
+  /* colonne remplacée : #params reconstruit par un autre objet ou un autre mode */
+  if (typeof MutationObserver === 'function') {
+    const cible = document.getElementById('params') || hote.parentNode;
+    if (cible) {
+      try {
+        c.obs = new MutationObserver(function () { if (C === c && c.hote.isConnected === false) fermerColonne(); });
+        c.obs.observe(cible, { childList: true });
+      } catch (e) { c.obs = null; }
+    }
+  }
+  if (typeof window.addEventListener === 'function') window.addEventListener('storage', surStockageColonne);   /* Q9 */
+  if (panneauSur(fiche) === 'ouvert') fermer();
+  recalerPanneau();   /* Q9 : le panneau resté ouvert (autre objet, résultat non gardé) laisse les curseurs libres */
+  const s = panneauSur(fiche);
+  if (s) { passerEnNote(c, s); return Promise.resolve(true); }
+  return demarrerColonne(c);
 }
 export async function disponible() {
   try { const cli = await clientSupabase(); return !!(await cli.sb.auth.getSession()).data.session; }
@@ -2038,7 +2782,7 @@ export const _essai = {
       if (P && P.E === E && E.jeton === jeton) verrouiller(false);
     }
   },
-  rendu: function () { if (!P) return null; P.vue.rendre(); return P.cv; },
+  rendu: function () { if (!P) return null; P.vue.rendre(); return P.vue.cv; },
   parserSSE: parserSSE,
   /* compléments de banc (hors §4.1, additifs) : tampon de flux, harnais du worker, filtre et masque (D3), rapport envoyé au
      serveur (D10), erreurs HTTP et messages du flux (D4, D9, E18), bac et délais, CSP et srcdoc de l'iframe sandbox (E1), plafonds de
@@ -2078,5 +2822,19 @@ export const _essai = {
   RAFRAICHISSEMENT_MS: RAFRAICHISSEMENT_MS,
   panneau: function () { return P; },
   boucle: boucle,
+  /* P1 : la colonne vivante, sa fermeture, la fabrique de son bac (bancs Node), le compte des poses ; P1bis : la vue */
+  colonne: function () { return C; },
+  fermerColonne: fermerColonne,
+  remplacerBacColonne: function (fn) { _bacColonne = (typeof fn === 'function') ? fn : function () { return new Bac(); }; },
+  exemplaires: exemplaires,
+  ANTIREBOND_COLONNE: ANTIREBOND_COLONNE,
+  Vue: Vue,
+  GL_STRIDE: GL_STRIDE,
+  /* Q1, Q2, Q3, R1 */
+  separerPlis: separerPlis,
+  ANGLE_PLI: ANGLE_PLI,
+  decalagePiece: decalagePiece,
+  decalagesDe: decalagesDe,
+  nonGarde: nonGarde,
   remplacerDemander: function (fn) { const avant = _demander; _demander = (typeof fn === 'function') ? fn : demander; return avant; }
 };

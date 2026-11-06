@@ -59,6 +59,20 @@
  * finit par « , ligne <id> » (« ligne ? » si l'id n'est pas connu ou n'a pas la forme d'un UUID v4), pour rapprocher une ligne de la
  * table restée en_cours de l'arrêt annoncé. Rien d'autre ne change : rien n'est annulé, écrit en base ni envoyé au navigateur.
  *
+ * Après les essais réels du 06/11 (décisions P3 et P4) : P3 une ligne statut « erreur » et tours 0 (rien de livré : max_tokens sans
+ * fichier, réponse vide, garde murale après le premier événement, refus du modèle, fichier refusé) ne compte plus au quota d'objets
+ * de l'utilisateur (rienLivre, compteAuQuota, compterLignes) ; elle reste comptée dans les gardes d'appels et dans les plafonds
+ * globaux, qui bornent la dépense. Relancer une telle ligne la fait compter de nouveau : même contrôle du quota qu'une création.
+ * Le quota de debut et de chaque événement erreur suit ce que la base compte alors. Lignes abandon et en_cours : inchangées.
+ * P4 MESSAGE_PAS_ABOUTI, pour une réponse coupée sans fichier (vide) et pour le délai dépassé (delai) ; le journal garde ses lignes.
+ *
+ * Après les relectures du lot colonne (06/11, décisions Q5 à Q8) : Q5 la phrase « Cet essai ne compte pas dans votre quota. » ne part
+ * plus que si elle est vraie : pour vide et delai, l'événement erreur porte ne_compte_pas — la ligne est bien écrite en erreur et n'a
+ * rien livré (tours 0) — et le message court MESSAGE_PAS_ABOUTI_COURT sinon. Q6 la garde des appels sur la fenêtre va par catégorie
+ * (Limites.maxAppels30j : essai 15, actif 50). Q7 des comptes nommés, par le secret OBJET_IA_COMPTES_ETENDUS (lireComptesEtendus,
+ * plafondsDe), ont un quota et une garde élargis, quelle que soit leur catégorie, session anonyme exclue ; la garde par objet et les
+ * plafonds globaux ne changent pas. Q8 le 429 quota porte quota.abonne : le module ne propose l'abonnement qu'à qui n'est pas abonné.
+ *
  * Ce fichier est du TypeScript sans import : il tourne tel quel sous Node 24 (node fichier.ts). Pas d'enum, pas de namespace.
  */
 
@@ -67,8 +81,8 @@ export type Mode = 'creer' | 'corriger' | 'modifier';
 export type Utilisateur = { id: string; is_anonymous: boolean };
 export type Profil = { plan: string | null; trial_ends_at: string | null };
 /** Compte d'un utilisateur sur la fenêtre glissante, sur les lignes créées OU reprises dans la fenêtre (F1, compterLignes) :
- *  objets = lignes créées dans la fenêtre ; appels = appels de toutes les lignes rendues ; plusAncien = plus petit created_at de la
- *  fenêtre (reinit du 429 quota) ; plusAncienMaj = plus petit updated_at des lignes rendues (information) ; H8 : appelsParMaj =
+ *  objets = lignes créées dans la fenêtre, hors lignes sans rien de livré (P3, compteAuQuota) ; appels = appels de toutes les lignes
+ *  rendues ; plusAncien = plus petit created_at des lignes comptées dans objets (reinit du 429 quota) ; plusAncienMaj = plus petit updated_at des lignes rendues (information) ; H8 : appelsParMaj =
  *  [updated_at en ms, appels] de chaque ligne rendue dont la date se lit, par updated_at croissant — reinitAppels en tire le reinit
  *  du 429 appels ; absent (deps d'un autre banc), ce reinit vaut null. */
 export type Compte = {
@@ -113,10 +127,13 @@ export type Quotas = { anonyme: number; essai: number; actif: number };
 /** E9 : anonymesAdmis (ANONYMES_ADMIS d'index.ts) ouvre ou ferme la fonction aux sessions anonymes (403 anonyme sinon) ;
  *  maxObjetsGlobal24h (MAX_OBJETS_GLOBAL_24H) plafonne les objets créés par TOUS les utilisateurs sur 24 h (503 sature au-delà) ;
  *  F2 : maxAppelsGlobal24h (MAX_APPELS_GLOBAL_24H) plafonne les appels au modèle de TOUS les utilisateurs sur 24 h, création ou session
- *  connue (503 sature au-delà, avant toute écriture). */
+ *  connue (503 sature au-delà, avant toute écriture). Q6 : maxAppels30j (MAX_APPELS_30J) est la garde des appels sur la fenêtre, par
+ *  catégorie. Q7 : comptesEtendus = les identifiants du secret OBJET_IA_COMPTES_ETENDUS, en minuscules (lireComptesEtendus) ; pour eux,
+ *  quotaEtendu (QUOTA_ETENDU) et appels30jEtendu (APPELS_30J_ETENDU) remplacent le quota et la garde de la catégorie (plafondsDe). */
 export type Limites = {
-  quotas: Quotas; fenetreJours: number; maxAppelsSession: number; maxAppels30j: number;
+  quotas: Quotas; fenetreJours: number; maxAppelsSession: number; maxAppels30j: Quotas;
   anonymesAdmis: boolean; maxObjetsGlobal24h: number; maxAppelsGlobal24h: number;
+  comptesEtendus: ReadonlySet<string>; quotaEtendu: number; appels30jEtendu: number;
 };
 
 export type Deps = {
@@ -142,8 +159,8 @@ export type Deps = {
   flux: (messages: MessageModele[], lang: string, signal: AbortSignal) => AsyncIterable<EvenementFlux>;
   maintenant: () => Date;
   cleAnthropique: boolean;
-  /** Les constantes d'index.ts ; chaque champ est facultatif, quotas compris (les défauts : LIMITES_DEFAUT). */
-  limites?: Partial<Omit<Limites, 'quotas'>> & { quotas?: Partial<Quotas> };
+  /** Les constantes d'index.ts ; chaque champ est facultatif, quotas et maxAppels30j compris (les défauts : LIMITES_DEFAUT). */
+  limites?: Partial<Omit<Limites, 'quotas' | 'maxAppels30j'>> & { quotas?: Partial<Quotas>; maxAppels30j?: Partial<Quotas> };
   /** Période des lignes de maintien « : battement » du flux SSE (ms) ; 0 = aucune. Défaut 15 s. */
   battementMs?: number;
   /** Journal des incidents : écriture en base ratée, erreur du modèle pendant le flux (D5), échec de l'appel avant le début du flux
@@ -166,20 +183,32 @@ export const ORIGINES: ReadonlyArray<string> = [
 ];
 export const ORIGINE_REPLI = 'https://bpo.archi';
 
-/** Défauts = les constantes en tête d'index.ts (E9, E10, F2 du 02/11) : QUOTAS, FENETRE_JOURS, MAX_APPELS_SESSION, MAX_APPELS_30J,
- *  ANONYMES_ADMIS, MAX_OBJETS_GLOBAL_24H, MAX_APPELS_GLOBAL_24H. index.ts les passe dans deps.limites ; les tests exercent ceux-ci. */
+/** Défauts = les constantes en tête d'index.ts (E9, E10, F2 du 02/11 ; Q6, Q7 du 06/11) : QUOTAS, FENETRE_JOURS, MAX_APPELS_SESSION,
+ *  MAX_APPELS_30J, ANONYMES_ADMIS, MAX_OBJETS_GLOBAL_24H, MAX_APPELS_GLOBAL_24H, QUOTA_ETENDU, APPELS_30J_ETENDU. index.ts les passe dans
+ *  deps.limites ; les tests exercent ceux-ci. Q7 : sans le secret, aucun compte étendu. */
 export const LIMITES_DEFAUT: Limites = {
   quotas: { anonyme: 0, essai: 2, actif: 10 },
   fenetreJours: 30,
   maxAppelsSession: 6,
-  maxAppels30j: 50,
+  maxAppels30j: { anonyme: 15, essai: 15, actif: 50 },
   anonymesAdmis: false,
   maxObjetsGlobal24h: 40,
   maxAppelsGlobal24h: 150,
+  comptesEtendus: new Set<string>(),
+  quotaEtendu: 200,
+  appels30jEtendu: 500,
 };
 
 /** E12 : le navigateur ne reçoit qu'un message générique sur une erreur du modèle pendant le flux ; le détail reste au journal. */
 export const MESSAGE_MODELE = 'Erreur du service de génération : réessayez dans un instant.';
+/** P4 : l'appel a tourné sans livrer de fichier, faute de place ou de temps : une réponse coupée par MAX_TOKENS sans fichier OBJET
+ *  (erreur/vide) ou la garde murale après le premier événement (erreur/delai). Le module l'affiche dans la langue de l'interface, d'après
+ *  le code ; ce texte français est ce que le serveur envoie, et ce qu'un module d'avant P4 recopie.
+ *  Q5 : les deux formes. La longue n'est envoyée que si elle est vraie, ne_compte_pas à true : la ligne est bien écrite en erreur et n'a
+ *  rien livré (tours 0 : P3, elle sort du quota). La courte sinon, ne_compte_pas à false : un objet déjà livré dont la correction échoue
+ *  compte, et compte parfois depuis ce même clic ; une écriture ratée laisse la ligne en_cours, comptée. Dans tous les cas l'appel compte. */
+export const MESSAGE_PAS_ABOUTI_COURT = "Le modèle n'a pas abouti : simplifiez la description, puis relancez.";
+export const MESSAGE_PAS_ABOUTI = "Le modèle n'a pas abouti : simplifiez la description, puis relancez. Cet essai ne compte pas dans votre quota.";
 /** F3 : le texte des deux 503 sature (plafond global d'objets, E9 ; plafond global d'appels, F2), avec Retry-After: 3600. */
 export const MESSAGE_SATURE = 'service saturé : réessayez dans quelques heures';
 
@@ -366,6 +395,29 @@ export function categorieQuota(user: Utilisateur, profil: Profil): keyof Quotas 
   return 'essai';
 }
 
+/** Q7 : la valeur du secret OBJET_IA_COMPTES_ETENDUS → les identifiants retenus, en minuscules : une liste séparée par des virgules ;
+ *  casse et blancs autour d'un identifiant tolérés ; tout morceau qui n'est pas un UUID v4 est ignoré ; absente ou vide, personne. Rien
+ *  n'en est écrit au journal, ni la valeur, ni le nombre retenu. */
+export function lireComptesEtendus(brut: string | null | undefined): ReadonlySet<string> {
+  const retenus = new Set<string>();
+  for (const morceau of String(brut ?? '').split(',')) {
+    const id = morceau.trim().toLowerCase();
+    if (UUID_V4.test(id)) retenus.add(id);
+  }
+  return retenus;
+}
+
+/** Q6, Q7 : les deux plafonds de l'utilisateur sur la fenêtre, objets et appels : ceux de sa catégorie, ou, si son compte est nommé dans
+ *  comptesEtendus, quotaEtendu et appels30jEtendu, quelle que soit sa catégorie d'abonnement. Une session anonyme n'y a jamais droit, même
+ *  nommée. Rien d'autre ne change pour un compte étendu : l'accès (aAcces), maxAppelsSession et les plafonds globaux restent les mêmes. */
+export function plafondsDe(user: Utilisateur, profil: Profil, lim: Limites): { objets: number; appels: number } {
+  const categorie = categorieQuota(user, profil);
+  if (categorie !== 'anonyme' && lim.comptesEtendus.has(String(user.id).toLowerCase())) {
+    return { objets: lim.quotaEtendu, appels: lim.appels30jEtendu };
+  }
+  return { objets: lim.quotas[categorie], appels: lim.maxAppels30j[categorie] };
+}
+
 /** F4 : un utilisateur GoTrue est anonyme si le champ is_anonymous le dit, OU s'il n'a pas de courriel (dans BPO un compte a toujours
  *  un courriel) : la garde 403 anonyme ne repose plus sur un seul champ facultatif (elle était fail-open sans lui). getUser d'index.ts
  *  l'applique à data.user. */
@@ -373,14 +425,30 @@ export function estAnonyme(u: { is_anonymous?: boolean | null; email?: string | 
   return u.is_anonymous === true || !u.email;
 }
 
-/** Ce que compterObjets lit d'une ligne objets_ia (F1). */
-export type LigneComptee = { appels: number; created_at: string; updated_at: string };
+/** Ce que compterObjets lit d'une ligne objets_ia (F1 ; P3 : statut et tours). statut ou tours absents : la ligne compte (jamais fail-open). */
+export type LigneComptee = { appels: number; created_at: string; updated_at: string; statut?: string | null; tours?: number | null };
+
+/** P3 : rien n'a été livré sur cette ligne — statut « erreur » et aucune réponse qui ait livré un fichier. Comparaison stricte : un
+ *  statut ou un nombre de tours absent ou illisible n'efface jamais une ligne du quota. Une ligne abandon ou en_cours n'est jamais
+ *  concernée, même à 0 tour ; une ligne en erreur qui a déjà livré un fichier (tours > 0) non plus. */
+export function rienLivre(l: { statut?: string | null; tours?: number | null }): boolean {
+  return l.statut === 'erreur' && l.tours === 0;
+}
+
+/** P3 : la ligne compte-t-elle au quota d'objets de la fenêtre qui commence à `depuis` ? Créée dans la fenêtre (F1 ; une date illisible
+ *  compte, jamais fail-open), et pas rienLivre. La seule règle, pour compterLignes et pour traiter. */
+export function compteAuQuota(l: Pick<LigneComptee, 'created_at' | 'statut' | 'tours'>, depuis: Date): boolean {
+  const cree = Date.parse(String(l.created_at));
+  if (Number.isFinite(cree) && cree < depuis.getTime()) return false;
+  return !rienLivre(l);
+}
 
 /** F1 : le compte d'un utilisateur sur la fenêtre, à partir des lignes créées OU reprises depuis `depuis` — index.ts les lit par
  *  updated_at ≥ depuis (une ligne créée dans la fenêtre a updated_at ≥ created_at ≥ depuis : elles y sont toutes). objets = lignes dont
- *  created_at ≥ depuis (le quota d'objets ne compte que les créations) ; appels = somme des appels de TOUTES les lignes rendues (les
- *  appels faits aujourd'hui sur un objet de plus de 30 jours comptent dans la garde des 50) ; plusAncien = plus petit created_at ≥ depuis
- *  (réinitialisation du 429 quota) ; plusAncienMaj = plus petit updated_at des lignes rendues (information : depuis H8, le reinit du
+ *  created_at ≥ depuis (le quota d'objets ne compte que les créations), hors lignes sans rien de livré (P3, compteAuQuota) ; appels = somme des appels de TOUTES les lignes rendues (les
+ *  appels faits aujourd'hui sur un objet de plus de 30 jours comptent dans la garde MAX_APPELS_30J ; P3 : ceux d'une ligne sans rien de livré
+ *  aussi) ; plusAncien = plus petit created_at des lignes comptées dans objets (réinitialisation du 429 quota : une ligne qui ne compte pas
+ *  n'avance pas cette date) ; plusAncienMaj = plus petit updated_at des lignes rendues (information : depuis H8, le reinit du
  *  429 appels se calcule sur appelsParMaj). La base filtre déjà sur updated_at ; ici une ligne datée AVANT depuis est
  *  écartée de nouveau, et une date illisible ne fait jamais écarter une ligne (jamais fail-open). H8 : appelsParMaj = [updated_at en
  *  ms, appels] des lignes rendues dont updated_at se lit, triés par updated_at croissant (index.ts les lit déjà dans cet ordre ; le tri
@@ -399,8 +467,8 @@ export function compterLignes(lignes: ReadonlyArray<LigneComptee>, depuis: Date)
       appelsParMaj.push([maj, n]);
       if (plusAncienMaj === null || maj < plusAncienMaj) plusAncienMaj = maj;
     }
-    const cree = Date.parse(String(l.created_at));
-    if (!Number.isFinite(cree) || cree >= seuil) {
+    if (compteAuQuota(l, depuis)) {
+      const cree = Date.parse(String(l.created_at));
       objets++;
       if (Number.isFinite(cree) && (plusAncien === null || cree < plusAncien)) plusAncien = cree;
     }
@@ -445,10 +513,13 @@ export function limitesEffectives(partielles?: Deps['limites']): Limites {
     quotas: { ...LIMITES_DEFAUT.quotas, ...(p.quotas || {}) },
     fenetreJours: p.fenetreJours ?? LIMITES_DEFAUT.fenetreJours,
     maxAppelsSession: p.maxAppelsSession ?? LIMITES_DEFAUT.maxAppelsSession,
-    maxAppels30j: p.maxAppels30j ?? LIMITES_DEFAUT.maxAppels30j,
+    maxAppels30j: { ...LIMITES_DEFAUT.maxAppels30j, ...(p.maxAppels30j || {}) },
     anonymesAdmis: p.anonymesAdmis ?? LIMITES_DEFAUT.anonymesAdmis,
     maxObjetsGlobal24h: p.maxObjetsGlobal24h ?? LIMITES_DEFAUT.maxObjetsGlobal24h,
     maxAppelsGlobal24h: p.maxAppelsGlobal24h ?? LIMITES_DEFAUT.maxAppelsGlobal24h,
+    comptesEtendus: p.comptesEtendus ?? LIMITES_DEFAUT.comptesEtendus,
+    quotaEtendu: p.quotaEtendu ?? LIMITES_DEFAUT.quotaEtendu,
+    appels30jEtendu: p.appels30jEtendu ?? LIMITES_DEFAUT.appels30jEtendu,
   };
 }
 
@@ -706,7 +777,9 @@ export async function traiter(req: Request, deps: Deps): Promise<Response> {
   const profil = await deps.lireProfil(user.id);
   if (!profil || !aAcces(profil, maintenant)) return json(403, { error: 'Abonnement ou essai en cours requis.', code: 'abonnement' });
   if (!deps.cleAnthropique) return json(503, { error: 'service pas encore ouvert', code: 'cle_absente' });
-  const plafond = lim.quotas[categorieQuota(user, profil)];
+  /* Q6, Q7 : les plafonds de cet utilisateur : ceux de sa catégorie, ou ceux des comptes étendus. */
+  const plafonds = plafondsDe(user, profil, lim);
+  const plafond = plafonds.objets;
 
   /* ---- 4. La session d'objet : gardes, quota, ligne ---- */
   let ligne = await deps.lireObjet(r.session);
@@ -720,10 +793,11 @@ export async function traiter(req: Request, deps: Deps): Promise<Response> {
   }
   const depuis = new Date(maintenant.getTime() - lim.fenetreJours * JOUR_MS);
   const compte = await deps.compterObjets(user.id, depuis);
-  if (compte.appels >= lim.maxAppels30j) {
+  if (compte.appels >= plafonds.appels) {
     /* F1 : le compte porte sur les lignes créées OU reprises dans la fenêtre (compterLignes). H8 : reinit = la date où la somme repasse
-       SOUS la garde, les lignes sortant de la fenêtre par updated_at croissant (reinitAppels) ; null si les dates ne le permettent pas. */
-    const reinit = reinitAppels(compte, lim.maxAppels30j, lim.fenetreJours);
+       SOUS la garde, les lignes sortant de la fenêtre par updated_at croissant (reinitAppels) ; null si les dates ne le permettent pas.
+       Q6, Q7 : la garde de cet utilisateur (plafondsDe). */
+    const reinit = reinitAppels(compte, plafonds.appels, lim.fenetreJours);
     return json(429, { error: "trop d'appels sur " + lim.fenetreJours + ' jours', code: 'appels', fenetre_jours: lim.fenetreJours, reinit });
   }
   /* F2 : plafond global d'APPELS sur 24 h, tous utilisateurs confondus, pour TOUTE requête qui appellerait le modèle (création comme
@@ -734,21 +808,26 @@ export async function traiter(req: Request, deps: Deps): Promise<Response> {
      requêtes simultanées (MAX_APPELS_GLOBAL_24H d'index.ts ; DEPLOIEMENT.md §6, dossier de travail, hors dépôt). */
   const appelsGlobal = await deps.compterAppelsGlobal(new Date(maintenant.getTime() - JOUR_MS));
   if (appelsGlobal >= lim.maxAppelsGlobal24h) return json(503, { error: MESSAGE_SATURE, code: 'sature' }, { 'Retry-After': '3600' });
-  let utilises = compte.objets;
+  /* P3 : compteeAvant = cette ligne est déjà dans compte.objets ; consomme = la requête ajoute un objet au quota : une création, ou la reprise
+     d'une ligne sans rien de livré, qui repasse en_cours et compte de nouveau (sans quoi relancer d'anciens échecs ferait passer le plafond). */
+  const compteeAvant = !!ligne && compteAuQuota(ligne, depuis);
+  const consomme = ligne ? !compteeAvant && compteAuQuota({ ...ligne, statut: 'en_cours' }, depuis) : true;
+  if (consomme && compte.objets >= plafond) {
+    const base = compte.plusAncien ? new Date(compte.plusAncien).getTime() : maintenant.getTime();
+    const reinit = new Date((Number.isFinite(base) ? base : maintenant.getTime()) + lim.fenetreJours * JOUR_MS).toISOString();
+    return json(429, {
+      error: 'quota atteint : ' + plafond + ' objets par ' + lim.fenetreJours + ' jours',
+      code: 'quota',
+      /* Q8 : abonne dit au module de ne pas proposer l'abonnement à qui l'a déjà : il dit la date de réinitialisation, sans lien. Un
+         compte d'essai garde son lien, comme tout le monde sur un serveur qui n'envoie pas ce champ. */
+      quota: { utilises: compte.objets, plafond, reinit, fenetre_jours: lim.fenetreJours, abonne: categorieQuota(user, profil) === 'actif' },
+    });
+  }
   /* H7, I11 : ce qu'il faudra rendre si l'appel échoue avant le début du flux (refus de l'API, délai compris) — null : la ligne est
      créée par cette requête (elle sera supprimée) ; sinon appels, statut et updated_at de la ligne reprise, tels qu'avant cette requête. */
   let avant: Avant | null = null;
   if (!ligne) {
-    /* Création (creer, ou modifier sur une session inconnue, D1) : le quota d'objets, puis la ligne. */
-    if (compte.objets >= plafond) {
-      const base = compte.plusAncien ? new Date(compte.plusAncien).getTime() : maintenant.getTime();
-      const reinit = new Date((Number.isFinite(base) ? base : maintenant.getTime()) + lim.fenetreJours * JOUR_MS).toISOString();
-      return json(429, {
-        error: 'quota atteint : ' + plafond + ' objets par ' + lim.fenetreJours + ' jours',
-        code: 'quota',
-        quota: { utilises: compte.objets, plafond, reinit, fenetre_jours: lim.fenetreJours },
-      });
-    }
+    /* Création (creer, ou modifier sur une session inconnue, D1) : le quota d'objets (plus haut, P3), puis la ligne. */
     /* E9 : plafond global d'OBJETS sur 24 h, tous utilisateurs confondus : 503 sature avec Retry-After, aucune ligne insérée, aucun
        appel au modèle. Lu après le quota de l'utilisateur : une requête de moins pour qui est déjà au quota ; les appels sur une
        session connue ne sont pas concernés par celui-ci (ils le sont par le plafond d'appels, F2). F3 : même texte que l'autre 503. */
@@ -768,7 +847,6 @@ export async function traiter(req: Request, deps: Deps): Promise<Response> {
       if (estDoublon(e)) return json(409, { error: 'session déjà en cours : attendez la fin ou recommencez avec une nouvelle description', code: 'session' });
       throw e;
     }
-    utilises = compte.objets + 1;
   } else {
     if (!r.description) r.description = ligne.description;
     avant = { appels: ligne.appels, statut: ligne.statut, updated_at: ligne.updated_at };
@@ -778,14 +856,19 @@ export async function traiter(req: Request, deps: Deps): Promise<Response> {
     await deps.majObjet(r.session, champs);
   }
   const tour = ligne.appels;
-  const quota = { utilises, plafond, fenetre_jours: lim.fenetreJours };
+  const quota = { utilises: compte.objets + (consomme ? 1 : 0), plafond, fenetre_jours: lim.fenetreJours };
   /* I7 : le quota que porte l'événement erreur quand la ligne a été rendue (I11, H7) — le compte d'avant cette requête : une création
-     supprimée n'est pas comptée ; pour une session connue, c'est la valeur de debut. */
+     supprimée n'est pas comptée, une ligne reprise retrouve son état d'avant. */
   const quotaRendu = { utilises: compte.objets, plafond, fenetre_jours: lim.fenetreJours };
+  /* P3 : le quota d'une ligne marquée erreur : sans rien de livré, elle ne compte plus (le compte d'avant, sans elle) ; sinon elle ne change
+     pas de camp (la valeur de debut). */
+  const quotaErreur = rienLivre({ statut: 'erreur', tours: ligne.tours })
+    ? { utilises: Math.max(0, compte.objets - (compteeAvant ? 1 : 0)), plafond, fenetre_jours: lim.fenetreJours }
+    : quota;
   const messages = assemblerMessages(r);
 
   /* ---- 5. Le flux ---- */
-  return reponseFlux(req, deps, ligne, avant, r, messages, tour, quota, quotaRendu, maintenant, origine);
+  return reponseFlux(req, deps, ligne, avant, r, messages, tour, quota, quotaRendu, quotaErreur, maintenant, origine);
 }
 
 type Quota = { utilises: number; plafond: number; fenetre_jours: number };
@@ -833,11 +916,12 @@ export function signalerArret(raison: unknown): number {
   return n;
 }
 
-/** I7 : quota = celui de debut, que portent aussi fin et chaque événement erreur ; quotaRendu = le compte d'avant la requête, que
- *  porte l'événement erreur quand la ligne a bien été rendue (I11, H7). */
+/** I7 : quota = celui de debut, que porte aussi fin ; quotaRendu = le compte d'avant la requête, que porte l'événement erreur quand la
+ *  ligne a bien été rendue (I11, H7) ; P3 : quotaErreur = celui de l'événement erreur quand la ligne est marquée erreur, quota si cette
+ *  écriture a échoué (la ligne reste alors en_cours, comptée). */
 function reponseFlux(
   req: Request, deps: Deps, ligne: Ligne, avant: Avant | null, r: Requete, messages: MessageModele[], tour: number, quota: Quota,
-  quotaRendu: Quota, depart: Date, origine: string | null,
+  quotaRendu: Quota, quotaErreur: Quota, depart: Date, origine: string | null,
 ): Response {
   const enc = new TextEncoder();
   const ctl = new AbortController();
@@ -852,22 +936,27 @@ function reponseFlux(
      l'id de sa ligne, connu ici (insérée ou reprise par traiter avant reponseFlux). */
   const appel: AppelEnCours = { phase: 'avant parti', depart: depart.getTime(), ligne: ligne.id, maintenant: () => deps.maintenant(), journal };
 
-  const maj = async (champs: Partial<Ligne>) => {
-    try { await deps.majObjet(ligne.id, champs); } catch (e) { journal('mise à jour de la ligne ratée : ' + classe(e)); }
+  /* P3 : rend true si l'écriture a réussi : le quota annoncé est celui que la base comptera (quotaApres). */
+  const maj = async (champs: Partial<Ligne>): Promise<boolean> => {
+    try { await deps.majObjet(ligne.id, champs); return true; } catch (e) { journal('mise à jour de la ligne ratée : ' + classe(e)); return false; }
   };
+  const quotaApres = (ecrit: boolean): Quota => (ecrit ? quotaErreur : quota);
+  /* Q5 : vide et delai ne disent « Cet essai ne compte pas dans votre quota. » que si c'est vrai : la ligne est écrite en erreur et n'a
+     rien livré (P3 : elle sort du quota). ligne.tours est celui d'avant cette requête : seule une réussite l'incrémente, sans passer ici. */
+  const sansQuota = (ecrit: boolean): boolean => ecrit && ligne.tours === 0;
+  const messagePasAbouti = (ecrit: boolean): string => (sansQuota(ecrit) ? MESSAGE_PAS_ABOUTI : MESSAGE_PAS_ABOUTI_COURT);
   /* H7, I11 : l'appel a échoué avant tout événement du flux (refus de l'API, délai compris) : rien n'est consommé. La ligne créée
      par cette requête est supprimée ; une ligne reprise retrouve appels, statut et updated_at d'avant. Un échec est journalisé (« mise
-     à jour de la ligne ratée »), jamais remonté au navigateur ; la ligne est alors marquée erreur, comme avant H7 (elle reste
-     comptée). I7 : rend true quand la ligne est rendue, false quand elle reste comptée — le quota de l'événement erreur en dépend. */
-  const rendre = async (): Promise<boolean> => {
+     à jour de la ligne ratée »), jamais remonté au navigateur ; la ligne est alors marquée erreur, comme avant H7 : l'appel reste compté
+     (P3 : l'objet aussi, sauf si rien n'a été livré). I7, P3 : rend le quota que l'événement erreur doit porter. */
+  const rendre = async (): Promise<Quota> => {
     try {
       if (avant) await deps.majObjet(ligne.id, { appels: avant.appels, statut: avant.statut, updated_at: avant.updated_at });
       else await deps.supprimerObjet(ligne.id);
-      return true;
+      return quotaRendu;
     } catch (e) {
       journal('mise à jour de la ligne ratée : ' + classe(e));
-      await maj({ statut: 'erreur', updated_at: deps.maintenant().toISOString() });
-      return false;
+      return quotaApres(await maj({ statut: 'erreur', updated_at: deps.maintenant().toISOString() }));
     }
   };
 
@@ -902,7 +991,7 @@ function reponseFlux(
   });
 
   async function boucle(envoyer: (evenement: string, data: unknown) => void): Promise<void> {
-    envoyer('debut', { session: ligne.id, tour, quota });   /* I7 : fin et chaque événement erreur portent aussi le quota */
+    envoyer('debut', { session: ligne.id, tour, quota });   /* I7 : fin et chaque événement erreur portent aussi le quota (P3 : celui d'après l'écriture de la ligne) */
     let texte = '';
     let fin: { usage: Usage; stop_reason: string | null; modele: string } | null = null;
     /* H7 : vrai au premier événement de deps.flux, quel qu'il soit ('parti' d'index.ts, delta ou fin). */
@@ -922,31 +1011,33 @@ function reponseFlux(
            rien n'est compté — ni objet, ni appel, ni unité des plafonds globaux. Une ligne de journal ; le navigateur reçoit le message
            générique (E12), et la ligne est rendue AVANT, pour qu'un nouvel essai la trouve à jour. I7 : l'erreur porte le quota d'après
            la remise. Seul l'abandon réel du client (requête coupée, flux fermé) reste compté, en statut abandon ; après le premier
-           événement, l'abandon, la garde murale et toute erreur restent comptés (des jetons ont pu être facturés). */
+           événement, l'abandon, la garde murale et toute erreur restent comptés (des jetons ont pu être facturés) : dans les gardes d'appels
+           et les plafonds globaux ; P3 : au quota d'objets, l'abandon seul, ou une ligne qui avait déjà livré un fichier. */
         journal('flux du modèle : refus avant le début : ' + classe(e));
-        const rendu = await rendre();
-        envoyer('erreur', { code: 'modele', message: MESSAGE_MODELE, quota: rendu ? quotaRendu : quota });
+        const q = await rendre();
+        envoyer('erreur', { code: 'modele', message: MESSAGE_MODELE, quota: q });
         return;
       }
       /* I11 : le partage delai / modele ne vaut plus qu'une fois l'appel parti (un abandon n'envoie rien). J9 : sur le nom de
          nomErreur — la garde murale coupe un appel parti par APIUserAbortError, dont seul le constructeur porte le nom : delai. */
       const nom = nomErreur(e);
       const delai = ctl.signal.aborted || /timeout|abort/i.test(nom);
-      await maj({ statut: abandon ? 'abandon' : 'erreur', updated_at: deps.maintenant().toISOString() });
+      const ecrit = await maj({ statut: abandon ? 'abandon' : 'erreur', updated_at: deps.maintenant().toISOString() });
       if (!abandon) {
         /* D5 : l'incident est journalisé — nom et message de l'exception, jamais de texte utilisateur. E12 : le navigateur ne
-           reçoit qu'un message générique ; le détail (texte d'erreur du SDK ou de l'API) reste dans le journal. I7 : quota de debut. */
+           reçoit qu'un message générique ; le détail (texte d'erreur du SDK ou de l'API) reste dans le journal. I7, P3 : le quota d'après
+           l'écriture. P4 : le délai dépassé dit quoi faire. Q5 : la phrase sur le quota seulement si elle est vraie. */
         journal('flux du modèle : ' + classe(e));
         envoyer('erreur', delai
-          ? { code: 'delai', message: "Le modèle n'a pas répondu à temps ; réessayez.", quota }
-          : { code: 'modele', message: MESSAGE_MODELE, quota });
+          ? { code: 'delai', message: messagePasAbouti(ecrit), ne_compte_pas: sansQuota(ecrit), quota: quotaApres(ecrit) }
+          : { code: 'modele', message: MESSAGE_MODELE, quota: quotaApres(ecrit) });
       }
       return;
     }
     if (!fin) {
       journal("flux du modèle : flux arrêté sans événement de fin");   /* D5 */
-      await maj({ statut: 'erreur', updated_at: deps.maintenant().toISOString() });
-      envoyer('erreur', { code: 'modele', message: 'Flux interrompu avant la fin de la réponse.', quota });
+      const ecrit = await maj({ statut: 'erreur', updated_at: deps.maintenant().toISOString() });
+      envoyer('erreur', { code: 'modele', message: 'Flux interrompu avant la fin de la réponse.', quota: quotaApres(ecrit) });
       return;
     }
     /* E13 : les quatre compteurs de jetons, dont l'écriture de cache ; une ligne antérieure à la colonne jetons_cache_ecrit
@@ -963,18 +1054,20 @@ function reponseFlux(
       updated_at: deps.maintenant().toISOString(),
     };
     if (fin.stop_reason === 'refusal') {
-      await maj({ ...jetons, statut: 'erreur' });
-      envoyer('erreur', { code: 'refus', message: 'Le modèle a refusé cette demande.', quota });
+      const ecrit = await maj({ ...jetons, statut: 'erreur' });
+      envoyer('erreur', { code: 'refus', message: 'Le modèle a refusé cette demande.', quota: quotaApres(ecrit) });
       return;
     }
     const ex = extraireCode(texte);
     const coupe = fin.stop_reason === 'max_tokens';
     if (!ex.code) {
-      await maj({ ...jetons, statut: 'erreur' });
-      /* E11 : une réponse coupée par MAX_TOKENS sans fichier OBJET est journalisée (sans texte) pour en mesurer la fréquence. */
+      const ecrit = await maj({ ...jetons, statut: 'erreur' });
+      /* E11 : une réponse coupée par MAX_TOKENS sans fichier OBJET est journalisée (sans texte) pour en mesurer la fréquence. P4 : le
+         navigateur reçoit le message qui dit quoi faire, le journal garde sa ligne. Q5 : la phrase sur le quota seulement si elle est
+         vraie ; le module lit ne_compte_pas pour tout vide, coupé ou non. */
       if (coupe) journal('flux du modèle : arrêt max_tokens');
-      const tete = coupe ? 'Réponse interrompue (longueur maximale atteinte) : ' : 'Pas de fichier OBJET dans la réponse : ';
-      envoyer('erreur', { code: 'vide', message: tete + (ex.raison || 'code introuvable') + '.', quota });
+      const message = coupe ? messagePasAbouti(ecrit) : 'Pas de fichier OBJET dans la réponse : ' + (ex.raison || 'code introuvable') + '.';
+      envoyer('erreur', { code: 'vide', message, ne_compte_pas: sansQuota(ecrit), quota: quotaApres(ecrit) });
       return;
     }
     /* F6 / H10 : un fichier s'extrait malgré la coupure max_tokens (make tronqué, syntaxe peut-être cassée : le bac à sable du
@@ -984,21 +1077,21 @@ function reponseFlux(
     /* D4 : au-delà du plafond, le fichier n'est ni gardé ni corrigé automatiquement (le module affiche le message,
        l'utilisateur reformule) ; les jetons sont comptés. */
     if (ex.code.length > PLAFONDS.code) {
-      await maj({ ...jetons, statut: 'erreur' });
+      const ecrit = await maj({ ...jetons, statut: 'erreur' });
       if (coupe) journal('flux du modèle : arrêt max_tokens (fichier refusé : trop_long)');
       envoyer('erreur', {
         code: 'trop_long',
         message: 'Fichier trop long (' + nombreFr(ex.code.length) + ' caractères, ' + nombreFr(PLAFONDS.code) +
           " au plus) : reformulez ou simplifiez l'objet.",
-        quota,
+        quota: quotaApres(ecrit),
       });
       return;
     }
     const mot = motInterdit(ex.code);
     if (mot) {
-      await maj({ ...jetons, statut: 'erreur' });
+      const ecrit = await maj({ ...jetons, statut: 'erreur' });
       if (coupe) journal('flux du modèle : arrêt max_tokens (fichier refusé : code_refuse)');
-      envoyer('erreur', { code: 'code_refuse', message: 'Le code contient le mot interdit « ' + mot + ' » (hors commentaires) : remplace-le.', quota });
+      envoyer('erreur', { code: 'code_refuse', message: 'Le code contient le mot interdit « ' + mot + ' » (hors commentaires) : remplace-le.', quota: quotaApres(ecrit) });
       return;
     }
     await maj({

@@ -4,8 +4,8 @@
  * Le navigateur (bpo-objet-ia.js) envoie la description — ou, pour une correction ou une modification, la description, le code
  * précédent et le rapport du contrôle, ou la demande et les réglages (J5) — avec le jeton de session de l'utilisateur. Ici : contrôle de session,
  * d'admission des anonymes (ANONYMES_ADMIS, E9 ; F4 : anonyme = champ GoTrue ou pas de courriel), d'abonnement ou d'essai, de quota
- * (en objets sur 30 jours glissants), de gardes (appels par objet, appels par 30 jours sur les objets créés OU repris dans la
- * fenêtre, F1) et de plafonds globaux (F2 : appels de tous les utilisateurs sur 24 h, MAX_APPELS_GLOBAL_24H, pour toute requête ;
+ * (en objets sur 30 jours glissants ; P3 : une ligne en erreur sans rien de livré n'y compte pas), de gardes (appels par objet, appels
+ * par 30 jours sur les objets créés OU repris dans la fenêtre, F1, selon la catégorie, Q6 ; comptes nommés, Q7) et de plafonds globaux (F2 : appels de tous les utilisateurs sur 24 h, MAX_APPELS_GLOBAL_24H, pour toute requête ;
  * E9 : objets créés sur 24 h, MAX_OBJETS_GLOBAL_24H, à la création), puis l'appel au modèle en flux ; la réponse est un
  * text/event-stream (debut, delta…, fin | erreur), et la ligne objets_ia tient la comptabilité (appels, tours, jetons, statut,
  * dernier code). Contrat : PROTOCOLE.md §3 (dossier de travail, hors dépôt).
@@ -19,6 +19,9 @@
  *     Anthropic à part, à limite de dépense mensuelle, PRÉREQUIS de la mise en service (DEPLOIEMENT.md §2, dossier de travail, hors dépôt).
  *     Sans elle (absente ou vide), la fonction répond 503 cle_absente et le bouton le dit : échec fermé, aucun repli sur une autre clé.
  *     Retirer ce secret arrête donc proprement la dépense, au prochain chargement du module (redéployer pour le forcer).
+ *   · OBJET_IA_COMPTES_ETENDUS — facultatif (Q7) : les comptes à quota élargi, une liste d'identifiants de comptes (UUID v4) séparés par
+ *     des virgules ; casse et blancs tolérés, le reste ignoré ; absente ou vide, personne. Lue au chargement du module, comme la clé.
+ *     Aucun identifiant de compte dans le dépôt, public : la liste ne vit que dans ce secret, et n'est jamais écrite au journal.
  *
  * CE QUI SORT DU PROJET : la description de l'utilisateur, son instruction, les réglages courants de l'objet modifié (des nombres
  * nommés, J5) et le code produit partent chez Anthropic. Rien d'autre : ni courriel, ni identifiant (le jeton ne quitte pas Supabase).
@@ -48,7 +51,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";   /* E14 : épinglé ; validé par tsc contre ce paquet */
-import { classe, compterLignes, enTetes, estAnonyme, signalerArret, sommerAppels, traiter } from "./traitement.ts";
+import { classe, compterLignes, enTetes, estAnonyme, lireComptesEtendus, signalerArret, sommerAppels, traiter } from "./traitement.ts";
 import type { Deps, EvenementFlux, Ligne, LigneComptee, MessageModele } from "./traitement.ts";
 import { PROMPT_SYSTEME } from "./prompt.ts";
 
@@ -57,16 +60,25 @@ const MODELE = "claude-opus-5-5";
 /** Essais réels du 06/11/2026, un objet : "high" coupé par la garde à 300 s, sans code ; "medium" 260 à 335 s et 26 000 à 32 000 jetons de sortie,
  *  dont un appel arrêté à MAX_TOKENS, sans code ; "low" 137 s, 13 386 jetons, 0,35 $. */
 const EFFORT: "low" | "medium" | "high" | "xhigh" | "max" = "low";
-/** E10 : 16 000 coupait des réponses (la réflexion compte dans la limite) → erreur vide, comptée au quota. */
+/** E10 : 16 000 coupait des réponses (la réflexion compte dans la limite) → erreur vide (P3 : l'appel compte ; l'objet non, sauf s'il avait déjà livré un fichier). */
 const MAX_TOKENS = 32000;
 /** E9 : sessions anonymes (essai sans compte). false = 403 anonyme (« créez votre compte gratuit »), avant tout quota. */
 const ANONYMES_ADMIS = false;
 /** Objets par utilisateur et par fenêtre glissante, selon sa catégorie (E10 ; anonyme 0 : aucun objet même si ANONYMES_ADMIS). */
 const QUOTAS = { anonyme: 0, essai: 2, actif: 10 };
 const FENETRE_JOURS = 30;
-/** Gardes : appels au modèle par objet (session), et par utilisateur sur la fenêtre (E10). */
+/** Gardes : appels au modèle par objet (session), et par utilisateur sur la fenêtre, selon sa catégorie (E10). Q6 : essai 15, actif 50,
+ *  car une ligne sans rien de livré ne compte pas au quota d'objets (P3) : cette garde est la seule borne des échecs par utilisateur.
+ *  Tout appel sans code peut atteindre l'appel maximal : essai 15 × 0,72 à 0,79 $, soit 10,9 à 11,9 $ ; actif 50 × 0,72 à 0,79 $,
+ *  soit 36,2 à 39,7 $. Il faut au moins 3 comptes d'essai pour saturer MAX_OBJETS_GLOBAL_24H ; la limite de dépense de la clé reste la
+ *  borne dure. anonyme : sans objet tant que son quota vaut 0 (429 quota) ; même valeur que l'essai s'il était ouvert. */
 const MAX_APPELS_SESSION = 6;
-const MAX_APPELS_30J = 50;
+const MAX_APPELS_30J = { anonyme: 15, essai: 15, actif: 50 };
+/** Q7 : pour les comptes nommés dans le secret OBJET_IA_COMPTES_ETENDUS, objets et appels sur la fenêtre, quelle que soit la catégorie
+ *  d'abonnement, session anonyme exclue. MAX_APPELS_SESSION et les plafonds globaux ne changent pas pour eux. Au pire 500 × 0,72 à 0,79 $,
+ *  soit 362 à 397 $ par compte et par fenêtre : la limite de dépense de la clé et MAX_APPELS_GLOBAL_24H restent les bornes. */
+const QUOTA_ETENDU = 200;
+const APPELS_30J_ETENDU = 500;
 /** E9 : plafond des créations de tous les utilisateurs sur 24 h ; au-delà 503 sature + Retry-After 3600 (aucune ligne, aucun appel
  *  au modèle). La borne de dépense d'une journée est MAX_APPELS_GLOBAL_24H, sur une clé dédiée (H13). */
 const MAX_OBJETS_GLOBAL_24H = 40;
@@ -79,7 +91,7 @@ const MAX_APPELS_GLOBAL_24H = 150;
 const AVEC_REPLI = true;
 /** Garde murale d'un appel au modèle : au-delà, le flux est coupé. Avant le premier événement de l'API, rien n'est compté (I11 :
  *  erreur/modele) ; après, l'appel reste compté, en erreur/delai (J9 : le SDK lève alors APIUserAbortError, nom lu sur le
- *  constructeur). L6 : les 400 s de la plateforme (offre payante) sont la vie du WORKER, partagée entre les requêtes qu'il sert :
+ *  constructeur ; P3 : sans rien de livré, l'objet ne compte pas). L6 : les 400 s de la plateforme (offre payante) sont la vie du WORKER, partagée entre les requêtes qu'il sert :
  *  cette garde ne protège à coup sûr qu'un appel servi par un worker neuf (voir l'abonnement à beforeunload, plus bas). */
 const GARDE_MURALE_MS = 370_000;
 
@@ -87,6 +99,8 @@ const URL_SUPABASE = Deno.env.get("SUPABASE_URL") ?? "";
 const CLE_SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 /* H12 : la clé dédiée seule, sans repli ni ligne de journal ; absente ou vide, 503 cle_absente (échec fermé). */
 const CLE_ANTHROPIC = Deno.env.get("ANTHROPIC_API_KEY_OBJET_IA") ?? "";
+/* Q7 : absente, vide ou sans identifiant valable : personne. Rien n'en est écrit au journal. */
+const COMPTES_ETENDUS = lireComptesEtendus(Deno.env.get("OBJET_IA_COMPTES_ETENDUS"));
 
 const admin = createClient(URL_SUPABASE, CLE_SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
 const anthropic = CLE_ANTHROPIC ? new Anthropic({ apiKey: CLE_ANTHROPIC, maxRetries: 0, timeout: GARDE_MURALE_MS }) : null;
@@ -147,8 +161,9 @@ const deps: Deps = {
   },
   compterObjets: async (uid, depuis) => {
     /* F1 : les lignes créées OU reprises dans la fenêtre (updated_at ≥ depuis) ; compterLignes en tire objets (créées dans la
-       fenêtre), appels (toutes), plusAncien (created_at) et plusAncienMaj (updated_at). */
-    const { data, error } = await admin.from("objets_ia").select("appels,created_at,updated_at")
+       fenêtre ; P3 : hors statut erreur à 0 tour, d'où statut et tours), appels (toutes), plusAncien (created_at) et plusAncienMaj
+       (updated_at). */
+    const { data, error } = await admin.from("objets_ia").select("appels,created_at,updated_at,statut,tours")
       .eq("user_id", uid).gte("updated_at", depuis.toISOString()).order("updated_at", { ascending: true });
     if (error) throw error;
     return compterLignes((data ?? []) as LigneComptee[], depuis);
@@ -191,6 +206,7 @@ const deps: Deps = {
   limites: {
     quotas: QUOTAS, fenetreJours: FENETRE_JOURS, maxAppelsSession: MAX_APPELS_SESSION, maxAppels30j: MAX_APPELS_30J,
     anonymesAdmis: ANONYMES_ADMIS, maxObjetsGlobal24h: MAX_OBJETS_GLOBAL_24H, maxAppelsGlobal24h: MAX_APPELS_GLOBAL_24H,
+    comptesEtendus: COMPTES_ETENDUS, quotaEtendu: QUOTA_ETENDU, appels30jEtendu: APPELS_30J_ETENDU,
   },
   journal: (message) => console.error("objet-ia:", message),
 };
