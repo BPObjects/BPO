@@ -24,7 +24,10 @@
  *     Aucun identifiant de compte dans le dépôt, public : la liste ne vit que dans ce secret, et n'est jamais écrite au journal.
  *
  * CE QUI SORT DU PROJET : la description de l'utilisateur, son instruction, les réglages courants de l'objet modifié (des nombres
- * nommés, J5) et le code produit partent chez Anthropic. Rien d'autre : ni courriel, ni identifiant (le jeton ne quitte pas Supabase).
+ * nommés, J5), les images qu'il a jointes (S2 : 3 au plus, JPEG ou PNG réduits par le navigateur — une photo, ou une page de PDF rendue
+ * en image —, en base64 dans le premier message, à chaque appel de la session ; elles ne sont conservées nulle part : ni en base, ni au
+ * journal, qui n'en dit que le nombre et la taille) et le code produit partent chez Anthropic. Rien d'autre : ni courriel, ni
+ * identifiant (le jeton ne quitte pas Supabase).
  *
  * JOURNAL : console.error, toujours préfixé « objet-ia: », cinq formes de lignes : {"statut":…,"duree_ms":…} par réponse autre
  * que 200/204 ; « flux du modèle : … », écrites par traitement.ts (erreur du modèle pendant le flux, D5 ; « refus avant le début : … »
@@ -34,7 +37,9 @@
  * « mise à jour de la ligne ratée : … » ; « erreur interne: … » (exception hors du flux, réponse 500) ; « boucle du flux : … » (ne
  * devrait jamais apparaître). L6 : en plus de ces cinq formes, quand la plateforme annonce l'arrêt du worker (beforeunload, plus bas),
  * une ligne par appel en cours, « arrêt du worker annoncé (<raison>) pendant un appel <phase>, <n> s, ligne <id> » (signalerArret de
- * traitement.ts ; M5 : l'id de la ligne objets_ia, un UUID, ou « ? »), qui n'annule rien. Rien au chargement du module (H12). La
+ * traitement.ts ; M5 : l'id de la ligne objets_ia, un UUID, ou « ? »), qui n'annule rien. S2 : et une ligne d'information par appel au
+ * modèle qui porte des images jointes, « images jointes : <n>, <taille> caractères de base64, ligne <id> » (le nombre, la taille et la
+ * session validée, pour rapprocher les jetons d'entrée de la ligne ; jamais le contenu). Rien au chargement du module (H12). La
  * comptabilité (appels, tours, jetons) est dans la table objets_ia, pas dans le journal ; jamais le texte des descriptions ni le code.
  * Une erreur s'y écrit « nom: message », le nom étant celui de son
  * constructeur (J9, nomErreur de traitement.ts : les erreurs du SDK 1.3.0 ont toutes e.name « Error » ; APIUserAbortError ou
@@ -85,7 +90,11 @@ const MAX_OBJETS_GLOBAL_24H = 40;
 /** F2 : plafond global d'APPELS au modèle sur 24 h, tous utilisateurs confondus, pour toute requête (création ou session connue),
  *  sommés sur les lignes touchées dans les 24 h (updated_at) ; au-delà 503 sature + Retry-After 3600, avant toute écriture.
  *  150 ≈ 40 créations × 3,75 appels ; borne de dépense ≈ 150 × 0,71 $ = 107 $/jour, ordre de grandeur au pire, hors requêtes
- *  simultanées ; ≈ 45 $ réaliste (DEPLOIEMENT.md §6, dossier de travail, hors dépôt). */
+ *  simultanées ; ≈ 45 $ réaliste (DEPLOIEMENT.md §6, dossier de travail, hors dépôt). S4 (T8) : une image du module (grand côté 1 568 px)
+ *  coûte ⌈l/28⌉ × ⌈h/28⌉ jetons d'entrée au palier haute résolution de claude-opus-5-5 (2 576 px / 4 784 jetons au plus) :
+ *  ≈ 2 240 à 3 136 jetons, ≈ 0,009 à 0,0125 $ ; trois ≈ 0,03 à 0,04 $ par appel, 0,057 $ au plus pour un client qui enverrait 2 576 px ;
+ *  à chaque appel de la session ; la réflexion induite n'est pas mesurée — à relever au premier essai réel (jetons_entree de la ligne
+ *  objets_ia ; DEPLOIEMENT.md §6, dossier de travail, hors dépôt) — ; quotas, gardes et plafonds inchangés. */
 const MAX_APPELS_GLOBAL_24H = 150;
 /** Repli serveur sur refus (fallbacks: 'default'). false = appel sans repli, sans en-tête beta. */
 const AVEC_REPLI = true;
@@ -112,12 +121,17 @@ async function* flux(messages: MessageModele[], _lang: string, signal: AbortSign
   /* Le client parti (req.signal) ou la garde murale : l'un ou l'autre annule le flux Claude. */
   const garde = AbortSignal.timeout(GARDE_MURALE_MS);
   const combine = AbortSignal.any([signal, garde]);
+  /* S2 : les messages passent tels quels. Le contenu du premier est une chaîne, ou des blocs — les images jointes (base64, image/jpeg
+     ou image/png, vérifiées par validerCorps) PUIS le texte —, de la forme BetaContentBlockParam du SDK : l'annotation ci-dessous fait
+     vérifier par tsc que BlocContenu de traitement.ts y est assignable. Ni outil ni bloc document : un PDF est rendu en images par le
+     navigateur avant l'envoi. */
+  const contenu: Anthropic.Beta.BetaMessageParam[] = messages;
   const base = {
     model: MODELE,
     max_tokens: MAX_TOKENS,
     output_config: { effort: EFFORT },
     system: [{ type: "text" as const, text: PROMPT_SYSTEME, cache_control: { type: "ephemeral" as const } }],
-    messages,
+    messages: contenu,
   };
   const repli = AVEC_REPLI
     ? { betas: ["server-side-fallback-2026-07-01" as const], fallbacks: "default" as const }

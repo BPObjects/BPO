@@ -956,7 +956,7 @@
     if (cfg.ia && typeof cfg.ia.code === 'string' && cfg.ia.code) {
       var _pan = doc.getElementById('panel'); if (_pan) _pan.scrollTop = 0;   /* R4 : la section Réglages s'ouvre en haut de la colonne, même depuis une liste de la scène défilée */
       var _reg = doc.createElement('div'); wrap.appendChild(_reg);
-      import('./bpo-objet-ia.js?v=20261106b').then(function (m) { if (doc.body.contains(_reg)) return m.reglagesDans(_reg, cfg, { enScene: enScene }); })
+      import('./bpo-objet-ia.js?v=20261107a').then(function (m) { if (doc.body.contains(_reg)) return m.reglagesDans(_reg, cfg, { enScene: enScene }); })
         .catch(function (e) { _reg.textContent = 'Réglages indisponibles (' + (e && e.message) + ')'; });
     }
     var add = doc.createElement('button'); add.className = 'save-add'; add.textContent = '+ Ajouter a la scene'; add.style.margin = '2px 0 8px'; add.onclick = function () { addToScene(cfg); }; wrap.appendChild(add);
@@ -1003,7 +1003,7 @@
     /* « Décrire un objet » (02/11/2026) : un objet qui porte cfg.ia (description, code, réglages) se rouvre dans le panneau du
        module bpo-objet-ia.js, chargé à la demande, pour être modifié en langage naturel ou re-réglé. */
     if (cfg.ia) row.appendChild(mk('IA', 'Reprendre la description, modifier ou re-régler', function () {
-      import('./bpo-objet-ia.js?v=20261106b').then(function (m) { m.ouvrir({ cfg: cfg }); })
+      import('./bpo-objet-ia.js?v=20261107a').then(function (m) { m.ouvrir({ cfg: cfg }); })
         .catch(function (e) { glob.alert('Décrire un objet : module indisponible (' + (e && e.message) + ')'); });
     }));
     row.appendChild(mk('+ Scene', 'Ajouter a la scene', function () { addToScene(cfg); }));
