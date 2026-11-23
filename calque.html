@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calque — la revue de projet, sur un simple lien</title>
+<meta name="description" content="Calque : déposez vos plans PDF, vos maquettes IFC et vos photos de chantier, invitez votre client et vos partenaires, et recueillez leurs remarques directement sur les documents. Dans le navigateur, sans rien installer.">
+<link rel="canonical" href="https://bpo.archi/calque.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Building Product Objects">
+<meta property="og:title" content="Calque — la revue de projet, sur un simple lien">
+<meta property="og:description" content="Plans, maquettes IFC et photos de chantier partagés et annotés par toute l'équipe du projet, dans le navigateur.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/favicon-180.png">
+<meta name="theme-color" content="#182034">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/bpo-ui.css">
+<style>
+  .feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:clamp(30px,5vh,48px) 0 0;}
+  .feat{border:1px solid var(--ln);border-radius:14px;padding:18px 20px;background:var(--card);}
+  .feat h3{font-size:15.5px;font-weight:600;color:var(--ink);margin:0 0 6px;}
+  .feat p{font-size:14px;line-height:1.6;color:var(--dm);margin:0;}
+  .prix{margin:clamp(26px,4vh,40px) 0 0;border-radius:16px;background:var(--bg2);padding:22px 26px;display:flex;flex-wrap:wrap;gap:8px 40px;align-items:baseline;}
+  .prix .p{font-size:26px;font-weight:300;letter-spacing:-.02em;color:var(--ink);}
+  .prix .p small{font-size:14px;font-weight:400;color:var(--dm);letter-spacing:0;}
+  .prix .s{flex-basis:100%;font-size:13.5px;color:var(--dm);}
+  .steps{margin:clamp(30px,5vh,48px) 0;}
+  .form-section{padding-bottom:clamp(56px,9vh,96px);}
+  .form-head{margin:0 0 18px;}
+  .form-head h2{font-size:22px;font-weight:600;letter-spacing:0;margin-bottom:6px;}
+  .form-head p{color:var(--dm);font-size:14.5px;}
+  @media (max-width:640px){ .steps{grid-template-columns:1fr;} }
+</style>
+</head>
+<body class="page">
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+
+<!-- ============================ TOPBAR ============================ -->
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <span class="blockup">
+      <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="BPO">
+        <g stroke="#ff8a3d" stroke-width="1" opacity=".5"><path d="M16 4 27 12 23 25 9 25 5 12Z"/><path d="M16 16 16 4M16 16 27 12M16 16 23 25M16 16 9 25M16 16 5 12"/></g>
+        <g fill="#e5701c"><circle cx="16" cy="4" r="2.1"/><circle cx="27" cy="12" r="2.1"/><circle cx="23" cy="25" r="2.1"/><circle cx="9" cy="25" r="2.1"/><circle cx="5" cy="12" r="2.1"/><circle cx="16" cy="16" r="2.6"/></g>
+      </svg>
+      <span class="bt">BPO</span>
+      </span>
+      <span class="btag">Architectural Parametrics</span>
+    </a>
+    <nav class="nav-mini" aria-label="Navigation">
+      <a href="index.html" class="hide-sm">← Retour au site</a>
+      <a href="https://calque.bpo.archi/" class="cta">Déjà invité ? Ouvrir Calque →</a>
+    </nav>
+  </div>
+</header>
+
+<main id="contenu">
+<!-- ============================ HERO ============================ -->
+<section class="subhero">
+  <div class="wrap-narrow">
+    <span class="eyebrow">Calque · revue de projet</span>
+    <h1>La revue de projet, sur un simple lien</h1>
+    <p class="lead">Déposez vos plans PDF, vos maquettes IFC et vos photos de chantier. Votre client, vos bureaux d'études et vos entreprises les ouvrent dans un navigateur ou sur une tablette, sans rien installer, et posent leurs remarques directement dessus.</p>
+  </div>
+</section>
+
+<!-- ============================ CE QUE FAIT CALQUE ============================ -->
+<section class="form-section">
+  <div class="wrap-narrow">
+
+    <div class="feats">
+      <div class="feat"><h3>Des remarques qui survivent aux versions</h3><p>Chaque réserve est une punaise posée sur un élément de la maquette, un point d'un plan ou une photo, avec son fil de discussion et son statut. Vous déposez l'indice suivant : les remarques restent, parce qu'elles appartiennent au projet et non au fichier.</p></div>
+      <div class="feat"><h3>Une maquette qui se visite</h3><p>On tourne autour, on y marche, on règle le soleil et les ombres, et on mesure : distance, dénivelé, surface.</p></div>
+      <div class="feat"><h3>Des choix de produits validés en ligne</h3><p>Un onglet aligne les fiches — photo, référence, prix — par catégorie et par alternative. Le client coche ce qu'il retient, le total suit.</p></div>
+      <div class="feat"><h3>Le chantier aussi</h3><p>Les photos de visite se rangent en albums et reçoivent leurs réserves. Les comptes rendus reprennent les remarques d'une réunion à la suivante.</p></div>
+      <div class="feat"><h3>Confidentiel par construction</h3><p>Accès sur invitation nominative, dossier par dossier. Documents hébergés à Paris, chaque consultation journalisée.</p></div>
+      <div class="feat"><h3>Vos remarques repartent avec vous</h3><p>Les réserves s'exportent en BCF, pour retrouver dans votre logiciel de CAO ce qui s'est dit sur la maquette.</p></div>
+    </div>
+
+    <div class="prix">
+      <div class="p">100 € <small>par an</small></div>
+      <div class="p">180 € <small>par an, avec l'abonnement BPO</small></div>
+      <div class="s">Calque est une plateforme à part du configurateur BPO : l'un s'utilise sans l'autre.</div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Vous demandez un accès</h3><p>Dites-nous qui vous êtes et quel projet vous voulez y mettre.</p></div>
+      <div class="step"><span class="n">2</span><h3>Nous ouvrons votre espace</h3><p>Vous recevez une invitation nominative et votre premier dossier.</p></div>
+      <div class="step"><span class="n">3</span><h3>Vous invitez votre équipe</h3><p>Client, bureaux d'études, entreprises : chacun entre par son adresse.</p></div>
+    </div>
+
+    <!-- Envoi vers al@architecture-al.com via FormSubmit — même mécanisme que
+         espace-fabricants.html (aucun compte requis, captcha, pot de miel).
+         Le champ « Origine » reprend ?ref= de l'adresse (newsletter, LinkedIn…). -->
+    <form class="form-card" id="demande" action="https://formsubmit.co/al@architecture-al.com" method="POST">
+      <div class="form-head">
+        <h2>Demander un accès à Calque</h2>
+        <p>Calque s'ouvre sur invitation. Réponse sous quelques jours ouvrés.</p>
+      </div>
+
+      <input type="hidden" name="_subject" value="Demande d'accès Calque">
+      <input type="hidden" name="_captcha" value="true">
+      <input type="hidden" name="_template" value="table">
+      <input type="hidden" name="Origine" id="f-origine" value="">
+      <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+      <div class="grid2">
+        <div class="fld"><label for="f-societe">Agence ou société <span class="req" aria-hidden="true">*</span></label>
+          <input id="f-societe" type="text" name="Societe" autocomplete="organization" required></div>
+        <div class="fld"><label for="f-contact">Votre nom <span class="req" aria-hidden="true">*</span></label>
+          <input id="f-contact" type="text" name="Contact" autocomplete="name" required></div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="f-email">E-mail professionnel <span class="req" aria-hidden="true">*</span></label>
+          <input id="f-email" type="email" name="email" autocomplete="email" required></div>
+        <div class="fld"><label for="f-tel">Téléphone</label>
+          <input id="f-tel" type="tel" name="Telephone" autocomplete="tel"></div>
+      </div>
+      <div class="grid2">
+        <div class="fld"><label for="f-role">Vous êtes</label>
+          <select id="f-role" name="Profil">
+            <option>Architecte / agence d'architecture</option><option>Maître d'ouvrage</option><option>Bureau d'études</option>
+            <option>Entreprise</option><option>Autre</option>
+          </select>
+        </div>
+        <div class="fld"><label for="f-bpo">Abonné au configurateur BPO</label>
+          <select id="f-bpo" name="Abonne_BPO">
+            <option>Non</option><option>Oui</option><option>Je veux les deux</option>
+          </select>
+        </div>
+      </div>
+      <div class="fld"><label for="f-msg">Votre projet <span class="hint">facultatif</span></label>
+        <textarea id="f-msg" name="Message" placeholder="Le dossier que vous voulez y mettre, le nombre de personnes à inviter, vos fichiers (PDF, IFC)…"></textarea></div>
+
+      <label class="check"><input type="checkbox" name="Newsletter" value="Oui"><span>Je souhaite recevoir la newsletter Building Product Objects (nouveautés, mises à jour). Désinscription possible à tout moment.</span></label>
+      <label class="check"><input type="checkbox" required><span>J'accepte que mes données soient utilisées pour traiter ma demande (RGPD). <span class="req" aria-hidden="true">*</span></span></label>
+
+      <button type="submit" class="btn btn-primary">Demander mon accès <span class="btn-arrow">→</span></button>
+      <p class="note">Vos informations ne servent qu'au traitement de votre demande et ne sont jamais revendues. Réponse à l'adresse <a href="mailto:al@architecture-al.com">al@architecture-al.com</a>.</p>
+    </form>
+
+  </div>
+</section>
+</main>
+
+<!-- ============================ FOOTER ============================ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <div class="foot-brand">
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-label="BPO">
+          <g stroke="#ffa155" stroke-width="1" opacity=".55"><path d="M16 4 27 12 23 25 9 25 5 12Z"/><path d="M16 16 16 4M16 16 27 12M16 16 23 25M16 16 9 25M16 16 5 12"/></g>
+          <g fill="#ff8a3d"><circle cx="16" cy="4" r="2.1"/><circle cx="27" cy="12" r="2.1"/><circle cx="23" cy="25" r="2.1"/><circle cx="9" cy="25" r="2.1"/><circle cx="5" cy="12" r="2.1"/><circle cx="16" cy="16" r="2.6"/></g>
+        </svg>
+        <span><b>BUILDING PRODUCT OBJECTS</b></span>
+      </div>
+      <div class="copyr">© 2026 Building Product Objects — Antoine Lacronique, architecte</div>
+    </div>
+    <div class="foot-links">
+      <a href="mentions-legales.html">Mentions légales</a>
+      <a href="cgu.html">CGU</a>
+      <a href="cgv.html">CGV</a>
+      <a href="politique-confidentialite.html">Confidentialité</a>
+      <a href="index.html">Accueil</a>
+    </div>
+    <div class="foot-sig">Powered by <b>Architecture-AL</b> · by architects, for architects</div>
+  </div>
+</footer>
+
+<script>
+/* Origine de la visite : ?ref=<canal> recopié dans le champ caché du formulaire
+   (même règle que bpo-auth.js : lettres, chiffres, _ et -, 32 caractères). */
+try{
+  var r = /[?&]ref=([A-Za-z0-9_\-]{1,32})/.exec(location.search);
+  if(r) document.getElementById("f-origine").value = r[1].toLowerCase();
+}catch(e){}
+
+/* i18n FR/EN — même convention qu'espace-fabricants.html : la chaîne française
+   est la clé. Langue : ?lang=en|fr sinon navigateur. Les champs du formulaire
+   (name, champs cachés FormSubmit) ne changent JAMAIS — seuls les libellés. */
+(function(){
+  var EN = {
+    "Aller au contenu":"Skip to content",
+    "← Retour au site":"← Back to site",
+    "Déjà invité ? Ouvrir Calque →":"Already invited? Open Calque →",
+    "Calque · revue de projet":"Calque · project review",
+    "La revue de projet, sur un simple lien":"Project review, from a single link",
+    "Déposez vos plans PDF, vos maquettes IFC et vos photos de chantier. Votre client, vos bureaux d'études et vos entreprises les ouvrent dans un navigateur ou sur une tablette, sans rien installer, et posent leurs remarques directement dessus.":"Upload your PDF drawings, your IFC models and your site photos. Your client, your engineers and your contractors open them in a browser or on a tablet, with nothing to install, and put their comments right on them.",
+    "Des remarques qui survivent aux versions":"Comments that outlive revisions",
+    "Chaque réserve est une punaise posée sur un élément de la maquette, un point d'un plan ou une photo, avec son fil de discussion et son statut. Vous déposez l'indice suivant : les remarques restent, parce qu'elles appartiennent au projet et non au fichier.":"Each issue is a pin placed on a model element, a point on a drawing or a photo, with its own thread and status. Upload the next revision and the comments stay, because they belong to the project, not to the file.",
+    "Une maquette qui se visite":"A model you can walk through",
+    "On tourne autour, on y marche, on règle le soleil et les ombres, et on mesure : distance, dénivelé, surface.":"Orbit around it, walk inside it, set the sun and shadows, and measure: distance, height difference, area.",
+    "Des choix de produits validés en ligne":"Product choices approved online",
+    "Un onglet aligne les fiches — photo, référence, prix — par catégorie et par alternative. Le client coche ce qu'il retient, le total suit.":"One tab lines up the product sheets — photo, reference, price — by category and by alternative. The client ticks what they keep, and the total follows.",
+    "Le chantier aussi":"The site too",
+    "Les photos de visite se rangent en albums et reçoivent leurs réserves. Les comptes rendus reprennent les remarques d'une réunion à la suivante.":"Site-visit photos are filed in albums and take their own issues. Meeting reports carry the open items from one meeting to the next.",
+    "Confidentiel par construction":"Confidential by design",
+    "Accès sur invitation nominative, dossier par dossier. Documents hébergés à Paris, chaque consultation journalisée.":"Access by personal invitation, project by project. Documents hosted in Paris, every view logged.",
+    "Vos remarques repartent avec vous":"Your comments leave with you",
+    "Les réserves s'exportent en BCF, pour retrouver dans votre logiciel de CAO ce qui s'est dit sur la maquette.":"Issues export to BCF, so what was said on the model shows up in your CAD software.",
+    "100 €":"€100 ",
+    "par an":"per year",
+    "180 €":"€180 ",
+    "par an, avec l'abonnement BPO":"per year, with the BPO subscription",
+    "Calque est une plateforme à part du configurateur BPO : l'un s'utilise sans l'autre.":"Calque is a platform of its own, separate from the BPO configurator: each works without the other.",
+    "Vous demandez un accès":"You request access",
+    "Dites-nous qui vous êtes et quel projet vous voulez y mettre.":"Tell us who you are and which project you want to bring.",
+    "Nous ouvrons votre espace":"We open your space",
+    "Vous recevez une invitation nominative et votre premier dossier.":"You receive a personal invitation and your first project.",
+    "Vous invitez votre équipe":"You invite your team",
+    "Client, bureaux d'études, entreprises : chacun entre par son adresse.":"Client, engineers, contractors: each one signs in with their own address.",
+    "Demander un accès à Calque":"Request access to Calque",
+    "Calque s'ouvre sur invitation. Réponse sous quelques jours ouvrés.":"Calque is invitation-only. We reply within a few business days.",
+    "Agence ou société":"Practice or company",
+    "Votre nom":"Your name",
+    "E-mail professionnel":"Work email",
+    "Téléphone":"Phone",
+    "Vous êtes":"You are",
+    "Architecte / agence d'architecture":"Architect / architecture practice",
+    "Maître d'ouvrage":"Client / owner",
+    "Bureau d'études":"Engineering firm",
+    "Entreprise":"Contractor",
+    "Autre":"Other",
+    "Abonné au configurateur BPO":"BPO configurator subscriber",
+    "Non":"No",
+    "Oui":"Yes",
+    "Je veux les deux":"I want both",
+    "Votre projet":"Your project",
+    "facultatif":"optional",
+    "Je souhaite recevoir la newsletter Building Product Objects (nouveautés, mises à jour). Désinscription possible à tout moment.":"I would like to receive the Building Product Objects newsletter (news, updates). Unsubscribe anytime.",
+    "J'accepte que mes données soient utilisées pour traiter ma demande (RGPD).":"I agree to my data being used to process my request (GDPR).",
+    "Demander mon accès":"Request my access ",
+    "Vos informations ne servent qu'au traitement de votre demande et ne sont jamais revendues. Réponse à l'adresse":"Your information is used only to process your request and is never resold. Replies come from ",
+    "© 2026 Building Product Objects — Antoine Lacronique, architecte":"© 2026 Building Product Objects — Antoine Lacronique, architect",
+    "Mentions légales":"Legal notice",
+    "CGU":"Terms of Use",
+    "CGV":"Terms of Sale",
+    "Confidentialité":"Privacy",
+    "Accueil":"Home"
+  };
+  var lang;
+  try{ var p = new URLSearchParams(location.search).get("lang"); if(p==="en"||p==="fr") lang = p; }catch(e){}
+  if(!lang) lang = ((navigator.language||"fr").toLowerCase().indexOf("fr")===0) ? "fr" : "en";
+  if(lang !== "en") return;
+  document.documentElement.lang = "en";
+  document.title = "Calque — project review, from a single link";
+  var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for(var n; (n = w.nextNode()); ){
+    var t = n.nodeValue.replace(/ /g," ").replace(/\s+/g," ").trim();
+    if(t && EN[t] !== undefined) n.nodeValue = EN[t];
+  }
+  var el = document.getElementById("f-msg");
+  if(el) el.placeholder = "The project you want to bring, how many people to invite, your files (PDF, IFC)…";
+})();
+</script>
+</body>
+</html>
