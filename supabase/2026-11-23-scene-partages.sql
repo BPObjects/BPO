@@ -3,6 +3,7 @@
 --  2026-11-23 — à coller dans SQL Editor (projet ockdepvqxjfwudthmusa).
 --
 --  MODE D'EMPLOI. Coller TOUT le fichier dans une requête vide, ne rien sélectionner, lancer (Run).
+--    (La garde de projet, plus bas, ne protège que si tout le texte part ainsi, d'un seul envoi.)
 --    - L'éditeur affiche « Potential issue detected — This query includes destructive operations » : c'est attendu
 --      (le fichier retire puis recrée SES trois règles et SON déclencheur ; au premier passage il ne retire rien).
 --      Confirmer (« Run query »).
@@ -11,11 +12,11 @@
 --    - Rejouable sans dégât (if not exists / or replace / drop ... if exists) : rejouer RÉPARE droits, règles et fonctions.
 --      Il ne retire PAS ce qui aurait été ajouté à la main : plus de sept lignes = une règle, un déclencheur ou une fonction
 --      en trop, nommé dans le tableau, à retirer à la main (par exemple : drop policy <nom> on public.scene_partages;).
---      Ne pas recoller une copie plus ancienne de ce fichier (son tableau porte « controle » au lieu de « controle_v3 ») ;
---      si c'est fait, rejouer celui-ci remet tout en état.
+--      Ne pas recoller une copie plus ancienne de ce fichier (son tableau ne porte pas « controle_v3 » : il porte
+--      « controle », ou « policyname » pour la toute première) ; si c'est fait, rejouer celui-ci remet tout en état.
 --    - Tant que ce fichier n'est pas joué, l'application répond « Le partage de scènes n'est pas encore en service. ».
---      Si elle le dit encore APRÈS les sept lignes : vérifier que c'était bien le projet de BPO, puis rejouer seule la
---      ligne   notify pgrst, 'reload schema';
+--      Si elle le dit encore APRÈS les sept lignes : vérifier que c'était bien le projet de BPO, puis jouer seul
+--      ce qui suit les deux points, et rien d'autre :   notify pgrst, 'reload schema';
 --    - Après exécution, le conseiller de sécurité de Supabase signale public.scene_partagee (alerte 0029 : fonction
 --      SECURITY DEFINER appelable par les sessions). C'est VOULU : c'est par elle, et par elle seule, qu'un lien se lit.
 --      N'appliquer aucun des remèdes proposés (ni « revoke execute », ni « security invoker ») : plus aucun destinataire
@@ -31,8 +32,8 @@
 --  l'ENSEMBLE des liens. Ce dernier protège le disque du projet : les comptes sont gratuits, la somme des comptes ne doit
 --  pas pouvoir remplir la base (qui passerait en lecture seule, pour tout BPO). Quand il est atteint, la création de liens
 --  répond « Le partage de scènes est complet pour le moment. » ; les liens existants se lisent toujours. Ce sont des
---  constantes de la fonction scene_partages_avant_insertion : pour en changer une, changer le nombre ET le même nombre dans
---  le message juste en dessous, puis rejouer le fichier.
+--  constantes de la fonction scene_partages_avant_insertion : pour en changer une, changer le nombre ET sa valeur rappelée
+--  dans le message juste en dessous (celui du plafond d'ensemble n'en rappelle aucune), puis rejouer le fichier.
 --  Deux envois simultanés d'un même compte passent l'un après l'autre (verrou par compte) ; le plafond d'ensemble, lui,
 --  peut être dépassé de quelques envois partis en même temps de comptes différents.
 --
@@ -55,11 +56,13 @@
 --      select s.id, u.email, s.nom, pg_size_pretty(s.poids::bigint) as poids, s.created_at::date as cree_le
 --        from public.scene_partages s left join auth.users u on u.id = s.owner order by s.poids desc limit 20;
 --    Retirer tous les liens d'un compte (abus) ; irréversible. Le tableau rendu liste les liens retirés ; aucun tableau =
---    adresse inconnue, rien n'a été retiré :
---      delete from public.scene_partages where owner = (select id from auth.users where email = lower('adresse@exemple.fr'))
---        returning id, nom;
---    Reposer à la main des lignes sauvegardées : sans session (éditeur SQL, clé de service), l'identifiant et la date
---    fournis sont GARDÉS, les liens déjà envoyés restent donc valables ; le poids est remesuré, les plafonds s'appliquent.
+--    adresse inconnue ou compte sans lien, rien n'a été retiré (recopier les DEUX lignes) :
+--      delete from public.scene_partages where owner = (
+--        select id from auth.users where email = lower('adresse@exemple.fr')) returning id, nom;
+--    Reposer à la main des lignes sauvegardées : sans session (éditeur SQL dans son rôle postgres, sans imitation d'un
+--    utilisateur ; clé de service), l'identifiant et la date fournis sont GARDÉS, les liens déjà envoyés restent donc
+--    valables ; le poids est remesuré, les plafonds s'appliquent. Pour en reposer beaucoup pendant que l'application
+--    tourne : suspendre d'abord la création (ci-dessous), reposer les lignes, puis rejouer ce fichier.
 --
 --  SUSPENDRE la création de liens sans rien perdre (lecture, liste et révocation continuent ; rejouer ce fichier
 --  rétablit le droit) :
