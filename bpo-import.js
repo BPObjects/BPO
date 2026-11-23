@@ -1369,6 +1369,203 @@
     }
   }
 
+  /* ===================== OBJETS AU COMPTE (23/11/2026) =====================
+     Retour de Noémie le 23/11 : ses objets générés et ses meubles se voient dans Chrome, pas dans Safari. La fiche d'un
+     objet importé suit le compte (bibliothèque synchronisée), mais sa géométrie ne vivait que dans l'IndexedDB du
+     navigateur où il a été créé : ailleurs l'objet est dans la scène et ne s'affiche pas. Un terrain figé est un objet
+     importé comme les autres : même sort.
+     Ici, chaque objet importé va AUSSI dans un fichier du compte (Supabase Storage, espace privé « objets-importes »,
+     <identifiant du compte>/<pid>.json.gz : l'enregistrement IndexedDB en JSON, compressé). La FICHE de bibliothèque
+     porte l'empreinte du fichier (fiche.geo = {h, n, t}) : elle voyage déjà avec la synchro d'atelier, c'est elle qui dit
+     aux autres navigateurs qu'un objet existe et dans quelle version.
+       - écriture locale (import, génération, orientation, échelle, renommage) -> envoi, quelques secondes après ;
+       - objet déjà là avant ce lot (fiche sans empreinte) -> envoi de rattrapage ;
+       - fiche qui cite un objet absent d'ici, ou dans une autre version que celle d'ici -> téléchargement ;
+       - modifié des deux côtés -> le plus récent gagne ;
+       - objet supprimé -> fichier supprimé.
+     Comptes seulement (pas l'essai anonyme). Sans session, sans l'espace de stockage (SQL pas encore joué), sans
+     CompressionStream, ou dans la fenêtre SketchUp : rien ne se passe, tout marche comme avant.
+     Les passes sont pilotées par les FICHES : un enregistrement local sans fiche (objet supprimé ailleurs) n'est jamais
+     renvoyé au compte. */
+  var CPT = { BUCKET: 'objets-importes', MAX: 25 * 1048576, hs: false, enCours: false, encore: false, t: null, el: null, cli: null,
+              hc: {}, refus: {}, etat: { passes: 0, envoyes: 0, pris: 0, supprimes: 0, dernier: '' } };
+  function cptDit() { try { if (glob.console) glob.console.log.apply(glob.console, ['BPO objets au compte :'].concat([].slice.call(arguments))); } catch (e) {} }
+  function cptT(s) { return (typeof glob.trI18N === 'function') ? glob.trI18N(s) : s; }
+  function cptPidOk(pid) { return typeof pid === 'string' && /^[A-Za-z0-9_-]{3,80}$/.test(pid); }
+  /* empreinte : la même que celle de la synchro d'atelier (longueur + deux hachages de 32 bits) */
+  function cptH(s) { var a = 0x811c9dc5, b = 0x9747b28c, i, x;
+    for (i = 0; i < s.length; i++) { x = s.charCodeAt(i); a = Math.imul(a ^ x, 16777619); b = Math.imul(b ^ x, 0x5bd1e995); b ^= b >>> 15; }
+    return s.length.toString(36) + '-' + ('0000000' + (a >>> 0).toString(16)).slice(-8) + ('0000000' + (b >>> 0).toString(16)).slice(-8); }
+  /* l'enregistrement tel qu'il part : les champs de l'objet, dans un ordre fixe ; ni l'empreinte ni la date locales.
+     Un tableau typé (IndexedDB les garde, JSON non) part étiqueté et revient typé. */
+  function cptJson(rec) {
+    var p = { v: 1, pid: rec.pid, name: rec.name, date: rec.date, groups: rec.groups, xform: rec.xform, orig: rec.orig, D: rec.D };
+    return JSON.stringify(p, function (k, v) {
+      if (v && typeof v === 'object' && typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(v) && !(v instanceof DataView)) return { __bpoTA: v.constructor.name, d: Array.prototype.slice.call(v) };
+      return v; });
+  }
+  function cptLire(json) {
+    return JSON.parse(json, function (k, v) {
+      if (v && typeof v === 'object' && typeof v.__bpoTA === 'string' && Array.isArray(v.d) && /^(Float32|Float64|Int8|Uint8|Uint8Clamped|Int16|Uint16|Int32|Uint32)Array$/.test(v.__bpoTA) && typeof glob[v.__bpoTA] === 'function') return new glob[v.__bpoTA](v.d);
+      return v; });
+  }
+  function cptGz(u8) { return new glob.Response(new glob.Blob([u8]).stream().pipeThrough(new glob.CompressionStream('gzip'))).arrayBuffer().then(function (ab) { return new Uint8Array(ab); }); }
+  function cptGunz(ab) { return new glob.Response(new glob.Blob([ab]).stream().pipeThrough(new glob.DecompressionStream('gzip'))).text(); }
+  /* session du compte : {url, cle, jeton, uid, anon} ou null. Celle du partage de scène si l'application l'offre ;
+     sinon le même chemin (import dynamique écrit par Function : un moteur ancien ne bute pas sur le mot à l'analyse). */
+  function cptSession() {
+    if (glob.BPO_OLD_ENGINE || CPT.hs) return Promise.resolve(null);
+    if (typeof glob.scnPartSession === 'function') { try { return Promise.resolve(glob.scnPartSession()).catch(function () { return null; }); } catch (e) { return Promise.resolve(null); } }
+    try {
+      if (!CPT.cli) {
+        var imp = new Function('u', 'return import(u)');
+        CPT.cli = Promise.all([imp('./vendor/supabase-js-2.110.7.js'), imp('./bpo-config.js')]).then(function (r) {
+          return { sb: r[0].createClient(r[1].SUPABASE_URL, r[1].SUPABASE_ANON, { auth: { detectSessionInUrl: false, autoRefreshToken: false } }), url: r[1].SUPABASE_URL, cle: r[1].SUPABASE_ANON }; });
+        CPT.cli.catch(function () { CPT.cli = null; });
+      }
+      return CPT.cli.then(function (c) { return c.sb.auth.getSession().then(function (r) {
+        var s = r && r.data && r.data.session; if (!s || !s.user) return null;
+        return { url: c.url, cle: c.cle, jeton: s.access_token, uid: s.user.id, anon: !!s.user.is_anonymous }; }); }).catch(function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
+  }
+  /* un appel au stockage ; rend la réponse si elle est bonne, sinon lève {status, message, absent, lourd, refus} */
+  function cptAppel(s, methode, chemin, corps, entetes) {
+    var h = { apikey: s.cle, Authorization: 'Bearer ' + s.jeton }, k;
+    for (k in (entetes || {})) h[k] = entetes[k];
+    return glob.fetch(s.url + '/storage/v1/' + chemin, { method: methode, headers: h, body: corps }).then(function (r) {
+      if (r.ok) return r;
+      return r.text().then(function (t) {
+        var j = null; try { j = JSON.parse(t); } catch (e) {}
+        var m = String((j && (j.message || j.error)) || t || ('HTTP ' + r.status)), st = +((j && j.statusCode) || r.status);
+        var er = new Error(m); er.status = st;
+        er.sansEspace = /bucket not found/i.test(m);
+        er.absent = !er.sansEspace && (st === 404 || /not found/i.test(m));
+        er.lourd = (st === 413 || /maximum allowed size|too large|payload/i.test(m));
+        er.refus = (st === 403 || st === 401 || /row-level security|unauthorized|not authorized/i.test(m));
+        throw er; });
+    });
+  }
+  function cptChemin(s, pid) { return CPT.BUCKET + '/' + s.uid + '/' + pid + '.json.gz'; }
+  /* petit témoin en bas à gauche, au-dessus de celui de l'autosauvegarde */
+  function cptTemoin(txt, nom, tient) {
+    try {
+      if (!doc || !doc.body) return;
+      if (!CPT.el) { CPT.el = doc.createElement('div'); CPT.el.id = 'bpoObjCompte';
+        CPT.el.style.cssText = 'position:fixed;left:12px;bottom:40px;z-index:80;font:600 10px system-ui;color:#cfe3ff;background:rgba(18,22,28,.9);border:1px solid #2c3a52;border-radius:10px;padding:3px 9px;display:none;pointer-events:none;max-width:60vw;';
+        CPT.el.appendChild(doc.createElement('span')); CPT.el.appendChild(doc.createElement('span')); doc.body.appendChild(CPT.el); }
+      if (!txt) { CPT.el.style.display = 'none'; return; }
+      CPT.el.firstChild.textContent = cptT(txt); CPT.el.lastChild.textContent = nom ? ' ' + nom : '';
+      CPT.el.style.display = '';
+      clearTimeout(CPT.tEl); if (!tient) CPT.tEl = setTimeout(function () { if (CPT.el) CPT.el.style.display = 'none'; }, 6000);
+    } catch (e) {}
+  }
+  /* la fiche de bibliothèque d'un objet : lue fraîche, modifiée, réécrite */
+  function cptFiche(pid, geo) {
+    try { var l = glob.cfgLoad(), i, ch = false;
+      for (i = 0; i < l.length; i++) { if (l[i] && l[i].type === 'import' && l[i].prod === pid) { l[i].geo = geo; ch = true; } }
+      if (ch) { glob.cfgStore(l); if (typeof glob.cfgRender === 'function') glob.cfgRender(); }
+      return ch; } catch (e) { return false; }
+  }
+  /* un enregistrement arrivé du compte entre en service, comme au démarrage */
+  function cptAdopte(rec) {
+    IMP_NAMES[rec.pid] = rec.name || rec.pid;
+    IMP_REC[rec.pid] = { orig: rec.orig || (rec.D ? { geo: rec.D.geo, meta: rec.D.meta } : null), groups: rec.groups || (rec.D && rec.D.groups) || [], tex: rec.D && rec.D.tex, xform: rec.xform || { rx: 0, ry: 0, rz: 0, sc: 100 } };
+    if (rec.D) registerMesh(rec.pid, rec.D);
+  }
+  function cptEnvoie(s, f, rec) {
+    var json = cptJson(rec), h = cptH(json);
+    return cptGz(new glob.TextEncoder().encode(json)).then(function (gz) {
+      if (gz.length > CPT.MAX) { var e = new Error('trop lourd'); e.lourd = true; e.poids = gz.length; throw e; }
+      return cptAppel(s, 'POST', 'object/' + cptChemin(s, rec.pid), gz, { 'Content-Type': 'application/gzip', 'x-upsert': 'true', 'cache-control': 'no-cache' }).then(function () {
+        rec.he = h; CPT.hc[rec.pid] = h;
+        return _idbPut0(rec).then(function () { cptFiche(rec.pid, { h: h, n: gz.length, t: Date.now() }); CPT.etat.envoyes++; });
+      });
+    });
+  }
+  function cptPrend(s, f) {
+    return cptAppel(s, 'GET', 'object/authenticated/' + cptChemin(s, f.prod)).then(function (r) { return r.arrayBuffer(); }).then(cptGunz).then(function (json) {
+      var rec = cptLire(json);
+      if (!rec || rec.pid !== f.prod || !rec.D || typeof rec.D.geo !== 'string' || !rec.D.meta) throw new Error('contenu inattendu');
+      delete rec.v; rec.he = cptH(json); CPT.hc[rec.pid] = rec.he;
+      return _idbPut0(rec).then(function () { cptAdopte(rec); CPT.etat.pris++;
+        if (f.geo && f.geo.h !== rec.he) cptFiche(rec.pid, { h: rec.he, n: f.geo.n, t: f.geo.t });   /* la fiche était en retard d'une version */
+      });
+    });
+  }
+  /* LA PASSE : compare les fiches du compte et les enregistrements d'ici, puis prend et envoie, un objet à la fois */
+  function cptPasse() {
+    if (CPT.hs) return Promise.resolve();
+    if (CPT.enCours) { CPT.encore = true; return Promise.resolve(); }
+    if (typeof glob.CompressionStream === 'undefined' || typeof glob.DecompressionStream === 'undefined' || typeof glob.TextEncoder === 'undefined' || typeof glob.fetch !== 'function') { CPT.hs = true; return Promise.resolve(); }
+    CPT.enCours = true; CPT.encore = false;
+    var change = false;
+    return cptSession().then(function (s) {
+      if (!s || s.anon || typeof glob.cfgLoad !== 'function') return;
+      var fiches = [], vus = {};
+      glob.cfgLoad().forEach(function (c) { if (c && c.type === 'import' && c.mode === 'fabprod' && cptPidOk(c.prod) && !vus[c.prod]) { vus[c.prod] = 1; fiches.push(c); } });
+      if (!fiches.length) return;
+      return idbGetAll().then(function (all) {
+        var par = {}; all.forEach(function (r) { if (r && r.pid) par[r.pid] = r; });
+        var prendre = [], envoyer = [];
+        fiches.forEach(function (f) {
+          var rec = par[f.prod], g = f.geo, pid = f.prod;
+          if (CPT.refus[pid]) return;
+          if (!rec) { if (g && g.h) prendre.push(f); return; }
+          var h = CPT.hc[pid] || (CPT.hc[pid] = cptH(cptJson(rec)));
+          if (!g || !g.h) { envoyer.push([f, rec]); return; }               /* jamais envoyé : rattrapage */
+          if (g.h === h) { if (rec.he !== h) { rec.he = h; _idbPut0(rec).catch(function () {}); } return; }   /* même contenu des deux côtés */
+          if (rec.he === g.h) envoyer.push([f, rec]);                       /* modifié ici depuis la version du compte */
+          else if (rec.he === h) prendre.push(f);                            /* inchangé ici, le compte a une autre version */
+          else if ((+rec.tm || 0) > (+g.t || 0)) envoyer.push([f, rec]);     /* modifié des deux côtés : le plus récent gagne */
+          else prendre.push(f);
+        });
+        var file = Promise.resolve(), averti = false;
+        var echec = function (f, quoi) { return function (e) {
+          var nom = f.name || f.prod;
+          if (e && e.sansEspace) { CPT.hs = true; cptDit('espace de stockage absent (SQL pas encore joué) : rien n\'est envoyé.'); return; }
+          if (e && e.lourd) { CPT.refus[f.prod] = 'lourd'; averti = true; cptTemoin('Objet trop lourd pour suivre le compte :', nom); cptDit('trop lourd, gardé dans ce navigateur :', nom); return; }
+          if (e && e.refus && quoi === 'envoi') { CPT.refus[f.prod] = 'refus'; averti = true; cptTemoin('Place du compte dépassée, objet gardé dans ce navigateur :', nom); cptDit('envoi refusé (place ou droits) :', nom, e.message); return; }
+          if (e && e.absent && quoi === 'prise') { CPT.refus[f.prod] = 'absent'; cptDit('absent du compte :', nom); return; }
+          CPT.etat.dernier = quoi + ' ' + nom + ' : ' + ((e && e.message) || e); cptDit('échec', CPT.etat.dernier);   /* réseau, panne : la prochaine passe réessaie */
+        }; };
+        prendre.forEach(function (f) { file = file.then(function () { if (CPT.hs) return;
+          cptTemoin('Téléchargement des objets du compte…', f.name || '', true);
+          return cptPrend(s, f).then(function () { change = true; }, echec(f, 'prise')); }); });
+        envoyer.forEach(function (p) { file = file.then(function () { if (CPT.hs) return;
+          cptTemoin('Envoi des objets au compte…', p[0].name || '', true);
+          return cptEnvoie(s, p[0], p[1]).then(null, echec(p[0], 'envoi')); }); });
+        return file.then(function () { if ((prendre.length || envoyer.length) && !averti) cptTemoin(''); });   /* un avis de refus reste affiché quelques secondes */
+      });
+    }).catch(function (e) { CPT.etat.dernier = String((e && e.message) || e); cptDit('passe interrompue :', CPT.etat.dernier); }).then(function () {
+      CPT.enCours = false; CPT.etat.passes++;
+      if (change) { try { if (typeof glob.build === 'function' && glob.MODE === 'scene') glob.build(); glob.DIRTY = true; if (glob.WGL && glob.WGL.gActive && glob.WGL.render) glob.WGL.render(); if (typeof glob.cfgRender === 'function') glob.cfgRender(); } catch (e) {} }
+      if (CPT.encore) cptBientot(1500);
+    });
+  }
+  function cptBientot(ms) { clearTimeout(CPT.t); CPT.t = setTimeout(cptPasse, ms || 4000); }
+  /* crochets posés sur idbPut / idbDel : une écriture locale date l'objet et demande une passe ; une suppression
+     retire le fichier du compte (au mieux : hors ligne, il restera un fichier sans fiche, que personne ne lit) */
+  function cptNote(rec) { if (rec && rec.pid) { rec.tm = Date.now(); delete CPT.hc[rec.pid]; delete CPT.refus[rec.pid]; } }
+  function cptRetire(pid) {
+    if (!cptPidOk(pid) || CPT.hs) return;
+    delete CPT.hc[pid]; delete CPT.refus[pid];
+    cptSession().then(function (s) { if (!s || s.anon) return;
+      return cptAppel(s, 'DELETE', 'object/' + cptChemin(s, pid)).then(function () { CPT.etat.supprimes++; }, function (e) { if (e && e.sansEspace) CPT.hs = true; }); }).catch(function () {});
+  }
+  try {
+    var _idbPut0 = idbPut, _idbDel0 = idbDel;
+    idbPut = function (rec) { try { cptNote(rec); } catch (e) {} return _idbPut0(rec).then(function (r) { cptBientot(4000); return r; }); };
+    idbDel = function (pid) { try { cptRetire(pid); } catch (e) {} return _idbDel0(pid); };
+    if (glob.addEventListener) {
+      glob.addEventListener('bpo-sync-applique', function () { cptBientot(1500); });   /* des fiches viennent d'arriver du compte */
+      if (doc) doc.addEventListener('visibilitychange', function () { if (!doc.hidden) cptBientot(3000); });
+    }
+    setTimeout(function () { try { if (glob.BPO_import) glob.BPO_import.compte = { passe: cptPasse, etat: CPT.etat, reglages: CPT, json: cptJson, lire: cptLire }; } catch (e) {} }, 0);
+    setTimeout(cptPasse, 6000);                                   /* après le démarrage et le premier tirage de la synchro */
+    setInterval(function () { if (!doc || !doc.hidden) cptPasse(); }, 300000);
+  } catch (e) {}
+  /* ================== fin OBJETS AU COMPTE ================== */
+
   function boot() {
     installHooks();
     injectImportButton();
