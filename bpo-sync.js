@@ -10,8 +10,8 @@
    FUSION. Par clé, dernier écrit gagne (horodatages tenus dans
    BPO_SYNC_META_v1 — le localStorage n'en fournit pas). Pour les listes à
    `id` (configs, scènes, gabarits), UNION par id : deux appareils qui
-   ajoutent chacun des éléments ne s'écrasent pas ; à id égal, la version du
-   côté le plus récent gagne. JAMAIS de perte muette : une valeur locale
+   ajoutent chacun des éléments ne s'écrasent pas ; à id égal, fusion à trois
+   voies élément par élément (28/09, voir plus bas). JAMAIS de perte muette : une valeur locale
    jamais synchronisée que le serveur remplacerait est d'abord copiée dans
    BPO_SYNC_RESCUE_v1 (et dit en console).
 
@@ -39,7 +39,18 @@
    changé, le perdant part D'ABORD en copie de sauvetage. Une clé « dernier
    écrit gagne » reçue sans rechargement (planches, cartouche) n'est jamais
    écrasée par l'ancienne version que l'app gardait en mémoire.
-   RETOUR ARRIÈRE : GROS_ACTIF = false — JAMAIS l'ancien fichier (LISEZMOI). */
+   RETOUR ARRIÈRE : GROS_ACTIF = false — JAMAIS l'ancien fichier (LISEZMOI).
+
+   LISTES À ID, ÉLÉMENT PAR ÉLÉMENT (28/09/2026). Constat (simulation, vrai
+   module) : à id égal, l'union donnait l'élément au côté dont la CLÉ ENTIÈRE
+   était la plus récente — un appareil ouvert avant, qui enregistrait une AUTRE
+   config, remettait l'ancienne version de toutes celles qu'il n'avait pas
+   touchées, sans conflit ni copie. Désormais chaque élément est comparé à sa
+   version de BASE (dernière version commune, BPO_SYNC_BASE_v1) : changé d'un
+   seul côté -> ce côté ; des deux (ou base inconnue) -> la plus récente, et
+   l'autre part D'ABORD en copie de sauvetage (« clé #id »), annoncée à
+   l'écran. Pierres tombales inchangées ; une version modifiée qu'une
+   suppression retire part aussi en copie. Voir fusionIds. */
 
 const KEYS = {
   /* clé localStorage            fusion   quoi                               */
@@ -83,7 +94,9 @@ const PUSH_DELAY = 3000;
    lire plus grand) ; au-delà, la clé va dans la colonne `gros`. */
 const GROS_COL    = "gros";
 const GROS_ACTIF  = true;                  /* (26/09) false = RETOUR ARRIÈRE SÛR (« étape 0 ») : `gros` ni lu ni écrit, grosses clés écartées mais jamais réécrites. Ne JAMAIS republier l'ancien bpo-sync.js à la place. */
-const BASE_KEY    = "BPO_SYNC_BASE_v1";    /* { u: uid, k: {clé: empreinte de la dernière version commune}, e: {clé: [empreintes envoyées d'ici]}, l: délai de lecture complète } */
+const BASE_KEY    = "BPO_SYNC_BASE_v1";    /* { u: uid, k: {clé: empreinte de la dernière version commune}, e: {clé: [empreintes envoyées d'ici]}, l: délai de lecture complète,
+                                              (28/09) i: {clé: {h: k[clé], m: {id: empreinte de l'élément}}}, j: {clé: {id: [empreintes d'éléments envoyées d'ici]}} } */
+const AVIS_KEY    = "BPO_SYNC_AVIS";       /* (28/09) sessionStorage : conflits annoncés juste avant un rechargement, réannoncés après */
 const DATA_MAX    = 4000000;               /* octets ~UTF-8 de `data`  (CHECK workspaces_data_size < 4 194 304) */
 const GROS_MAX    = 15000000;              /* octets ~UTF-8 de `gros`  (CHECK workspaces_gros_size < 16 777 216) */
 const PUSH_RETRY  = 30000;                 /* nouvel essai d'une poussée différée ou restée sans réponse (puis 60, 120, 240 s) */
@@ -111,19 +124,99 @@ function warn(m){ try{ console.warn("BPO sync : " + m); }catch(e){} }
 function readMeta(){ try{ return JSON.parse(RAW.get(META_KEY)) || {}; }catch(e){ return {}; } }
 function writeMeta(m){ try{ RAW.set(META_KEY, JSON.stringify(m)); }catch(e){} }
 
-/* Union de listes à id. `win`/`lose` = chaînes JSON. Rend null si la forme ne
-   s'y prête pas (pas deux tableaux d'objets) -> repli dernier-écrit-gagne. */
-function mergeIds(win, lose, morts){
+/* (28/09) propriété PROPRE d'un objet lu en JSON (un id « constructor » n'est pas Object.prototype.constructor) */
+function propre(o, k){ return (o && Object.prototype.hasOwnProperty.call(o, k)) ? o[k] : undefined; }
+/* (28/09/2026) Empreintes des éléments d'une liste à id : { id: empreinte } (le
+   PREMIER élément de chaque id, comme la fusion), null si la forme ne s'y prête
+   pas (pas un tableau d'objets à id). Empreinte de JSON.stringify de l'élément :
+   l'app écrit ses listes par JSON.stringify, l'ordre des clés est donc stable.
+   `arr` : la liste déjà lue, pour ne pas la relire. */
+const EC = new Map();                      /* petit cache : empreinte de la liste -> empreintes de ses éléments */
+function empreintesElems(v, arr){
+  if(typeof v !== "string") return null;
+  const hv = empreinte(v), c = EC.get(hv);
+  if(c) return c;
+  let a = arr;
+  if(!a){ try{ a = JSON.parse(v); }catch(e){ return null; } }
+  if(!Array.isArray(a)) return null;
+  const out = {};
+  for(const x of a){
+    if(!x || typeof x !== "object" || !("id" in x)) return null;
+    const id = String(x.id);
+    if(propre(out, id) === undefined) out[id] = empreinte(JSON.stringify(x), true);
+  }
+  EC.set(hv, out); if(EC.size > 8) EC.delete(EC.keys().next().value);
+  return out;
+}
+/* (28/09/2026) FUSION À TROIS VOIES, ÉLÉMENT PAR ÉLÉMENT, de deux listes à id
+   (chaînes JSON L et R, horodatées t). Remplace l'union du 06/08, qui donnait
+   chaque collision d'id au côté dont la CLÉ ENTIÈRE était la plus récente (voir
+   l'en-tête). Pour chaque id présent des deux côtés, comparé à o.base (son
+   empreinte dans la dernière version commune) :
+     identiques, ou changé seulement au compte  -> l'élément de R ;
+     changé seulement ici                       -> l'élément de L ;
+     changé des deux côtés, ou base inconnue    -> CONFLIT : le plus récent
+       gagne (date de la clé de chaque côté ; o.departage "compte" : R gagne
+       toujours), l'autre est rendu dans `pertes` — l'appelant le met D'ABORD
+       en copie de sauvetage et l'annonce.
+   Une version envoyée d'ici et retrouvée en R (o.envoyes : réponse perdue, envoi
+   arrivé en retard) est la nôtre : celle d'ici, plus récente, la remplace, sans
+   conflit. Élément reçu ici sans rechargement (o.nv[id] = {a:
+   version appliquée, p: [versions qu'il a remplacées]}) : l'app peut garder
+   l'ancienne en mémoire (config ouverte) et la réécrire — ce n'est pas une
+   modification ; toute autre écriture part de ce que l'app montrait, donc
+   conflit si le compte a changé depuis. Présent d'un seul côté : gardé (union,
+   comme avant). Sous pierre tombale (o.morts) : retiré, comme avant — mais une
+   version modifiée depuis la base part dans `pertes` (suppression contre
+   modification). Ordre : celui du côté le plus récent, comme avant ; un doublon
+   d'id est gardé tel quel, comme avant. Aucun effet de bord.
+   Rend { v, pertes, gagnes (ids où L l'emporte) }, ou null si la forme ne s'y
+   prête pas (repli dernier-écrit-gagne, comme avant). */
+function fusionIds(k, L, R, o){
   let a, b;
-  try{ a = JSON.parse(win); b = JSON.parse(lose); }catch(e){ return null; }
+  try{ a = JSON.parse(L.v); b = JSON.parse(R.v); }catch(e){ return null; }
   if(!Array.isArray(a) || !Array.isArray(b)) return null;
-  const okItem = x => x && typeof x === "object" && ("id" in x);
-  if(!(a.every(okItem) && b.every(okItem))) return null;
-  const mort = id => !!(morts && morts[String(id)]);
-  const seen = new Set(a.map(x => String(x.id)));
-  const out = a.filter(x => !mort(x.id));
-  for(const it of b) if(!seen.has(String(it.id)) && !mort(it.id)) out.push(it);
-  return JSON.stringify(out);
+  const hA = empreintesElems(L.v, a), hB = empreintesElems(R.v, b);
+  if(!hA || !hB) return null;
+  const mort = id => !!propre(o.morts, id);
+  const lt = L.t ? Date.parse(L.t) : 0, rt = R.t ? Date.parse(R.t) : 0;
+  const ici = o.departage !== "compte" && lt > rt;   /* L gagne les conflits et donne l'ordre */
+  const premier = l => { const m = new Map(); for(const x of l){ const id = String(x.id); if(!m.has(id)) m.set(id, x); } return m; };
+  const ml = premier(a), mr = premier(b);
+  const pris = new Map(), pertes = [], gagnes = [];
+  const perte = (id, x, h, cote, quoi) => pertes.push({ cle: k, id: id, nom: String(x.name || x.label || id).slice(0, 80), quoi: quoi, cote: cote,
+    perdu: o.noms[cote], garde: o.noms[cote === "l" ? "r" : "l"], h: h, s: JSON.stringify(x) });
+  for(const id of new Set([...ml.keys(), ...mr.keys()])){
+    const xl = ml.get(id), xr = mr.get(id);
+    const hl = xl ? hA[id] : null, hr = xr ? hB[id] : null;
+    const b0 = propre(o.base, id), n = propre(o.nv, id), env = propre(o.envoyes, id);
+    const notre = !!xr && Array.isArray(env) && env.indexOf(hr) >= 0;   /* R porte une version partie d'ici */
+    const lm = !!xl && !(n ? (hl === n.a || n.p.indexOf(hl) >= 0) : hl === b0);
+    const rm = !!xr && !notre && !(n ? n.p.indexOf(hr) >= 0 : hr === b0);
+    if(mort(id)){
+      if(lm) perte(id, xl, hl, "l", "suppr");
+      if(rm && !(lm && hl === hr)) perte(id, xr, hr, "r", "suppr");
+      continue;
+    }
+    if(!xl || !xr || hl === hr) continue;
+    if(notre){ pris.set(id, xl); gagnes.push(id); continue; }        /* notre version d'aujourd'hui remplace celle d'hier */
+    if(!lm){ pris.set(id, xr); continue; }
+    if(!rm){ pris.set(id, xl); gagnes.push(id); continue; }
+    pris.set(id, ici ? xl : xr);
+    if(ici){ gagnes.push(id); perte(id, xr, hr, "r", "conflit"); }
+    else perte(id, xl, hl, "l", "conflit");
+  }
+  const ordre = ici ? a : b, autre = ici ? b : a, vus = new Set(), out = [];
+  for(const x of ordre){
+    const id = String(x.id);
+    if(mort(id)) continue;
+    if(vus.has(id)){ out.push(x); continue; }
+    vus.add(id);
+    out.push(pris.has(id) ? pris.get(id) : x);
+  }
+  for(const x of autre){ const id = String(x.id); if(!vus.has(id) && !mort(id)) out.push(x); }
+  const meme = l => l.length === out.length && l.every((x, i) => x === out[i]);
+  return { v: meme(b) ? R.v : (meme(a) ? L.v : JSON.stringify(out)), pertes: pertes, gagnes: gagnes };
 }
 /* Retire d'une liste JSON les éléments dont l'identifiant est sous pierre.
    Rend la valeur inchangée s'il n'y a rien à retirer, null si la forme ne s'y
@@ -194,10 +287,10 @@ function placePour(k, v){
    grosse valeur, identité d'une version. "null" pour une suppression. */
 const HC = new Map();                      /* petit cache : les grosses chaînes reviennent souvent identiques */
 const imul = Math.imul;
-function empreinte(s){
+function empreinte(s, sansCache){             /* (28/09) sansCache : empreintes d'éléments, qui chasseraient celles des valeurs entières */
   if(s === null || s === undefined) return "null";
   s = String(s);
-  const c = (s.length > 4096) ? HC.get(s.length) : null;
+  const c = (s.length > 4096 && !sansCache) ? HC.get(s.length) : null;
   if(c && c.s === s) return c.h;
   let a = 0x811c9dc5, b = 0x9747b28c;
   for(let i = 0; i < s.length; i++){
@@ -206,7 +299,7 @@ function empreinte(s){
     b = imul(b ^ x, 0x5bd1e995); b ^= b >>> 15;
   }
   const h = s.length.toString(36) + "-" + ("0000000" + (a >>> 0).toString(16)).slice(-8) + ("0000000" + (b >>> 0).toString(16)).slice(-8);
-  if(s.length > 4096){ HC.set(s.length, { s: s, h: h }); if(HC.size > 16) HC.delete(HC.keys().next().value); }
+  if(s.length > 4096 && !sansCache){ HC.set(s.length, { s: s, h: h }); if(HC.size > 16) HC.delete(HC.keys().next().value); }
   return h;
 }
 function estGros(v){ return typeof v === "string" && v.length > MAX_VAL; }
@@ -269,6 +362,8 @@ export function startSync(sb){
     encore: false,            /* (26/09) une poussée demandée pendant une autre : refaite après, plus perdue */
     essais: 0,
     nonVus: {},               /* (26/09) clés « dernier écrit gagne » appliquées ici SANS rechargement {clé: empreinte} : l'app garde l'ancienne en mémoire */
+    nonVusIds: {},            /* (28/09) éléments de listes à id remplacés ici SANS rechargement {clé: {id: {a, p:[…]}}} (voir fusionIds) */
+    conflits: [],             /* (28/09) conflits annoncés dans cette session (BPO_SYNC.status().conflits) */
     dataDouteuse: false,      /* (26/09) notre dernière écriture est partie sans `data` : un client ancien a pu l'écrire juste avant */
     lecture: null,            /* (26/09) lecture de démarrage en cours (uid) : pas de seconde lecture complète en parallèle */
     dits: {},                 /* (26/09) avertissements déjà donnés (une fois par session) */
@@ -313,7 +408,7 @@ export function startSync(sb){
     let b = null;
     try{ b = JSON.parse(RAW.get(BASE_KEY)); }catch(e){}
     const ok = !!(b && typeof b === "object"), moi = ok && b.u === S.uid;
-    return { u: S.uid, k: (moi && b.k) || {}, e: (moi && b.e) || {}, l: (ok && b.l) || 0 };
+    return { u: S.uid, k: (moi && b.k) || {}, e: (moi && b.e) || {}, l: (ok && b.l) || 0, i: (moi && b.i) || {}, j: (moi && b.j) || {} };
   }
   function ecrireBase(B){ try{ RAW.set(BASE_KEY, JSON.stringify(B)); }catch(e){} }
   /* ce que vaut une clé au compte, tel que cette session le connaît */
@@ -331,7 +426,11 @@ export function startSync(sb){
     const B = lireBase();
     for(const k in m.communs){
       if(m.trop[k] || S.nonVus[k] !== undefined) continue;
-      if(empreinte(valeurCompte(k)) === m.communs[k]) B.k[k] = m.communs[k];
+      if(empreinte(valeurCompte(k)) === m.communs[k]){
+        B.k[k] = m.communs[k];
+        /* (28/09) la même base, élément par élément (voir baseElems) */
+        if(KEYS[k] === "ids"){ const bi = empreintesElems(m.merged[k].v); if(bi) B.i[k] = { h: m.communs[k], m: bi }; else delete B.i[k]; }
+      }
     }
     ecrireBase(B);
   }
@@ -346,8 +445,37 @@ export function startSync(sb){
       if(m.trop[k] || S.nonVus[k] !== undefined) continue;
       const h = m.communs[k], l = Array.isArray(B.e[k]) ? B.e[k] : [];
       if(empreinte(valeurCompte(k)) !== h && l.indexOf(h) < 0){ B.e[k] = [h].concat(l).slice(0, 8); n++; }
+      /* (28/09) élément par élément : les versions d'ici qui partent (quatre par élément), pour les
+         ids encore présents — un envoi arrivé en retard n'est pas un changement du compte (fusionIds) */
+      if(KEYS[k] === "ids"){
+        const pe = empreintesElems(m.merged[k].v), pc = empreintesElems(valeurCompte(k)) || {};
+        if(!pe) continue;
+        const j0 = B.j[k] || {}, j1 = {};
+        for(const id in pe){
+          const l0 = Array.isArray(propre(j0, id)) ? j0[id] : [];
+          const l1 = (propre(pc, id) !== pe[id] && l0.indexOf(pe[id]) < 0) ? [pe[id]].concat(l0).slice(0, 4) : l0;
+          if(l1.length) j1[id] = l1;
+          if(l1 !== l0) n++;
+        }
+        if(Object.keys(j1).length !== Object.keys(j0).length) n++;
+        if(Object.keys(j1).length) B.j[k] = j1; else delete B.j[k];
+      }
     }
     if(n) ecrireBase(B);
+  }
+  /* (28/09) Base élément par élément d'une liste à id : B.i, écrite avec B.k ; sinon (base
+     d'avant le 28/09, ou réécrite par un onglet pas rechargé) celle que dit B.k quand un
+     côté EST la dernière version commune ; le compte porte une version envoyée d'ici (B.e) :
+     ses éléments sont les nôtres. Sinon inconnue (null) : tout écart est un conflit. */
+  function baseElems(k, L, R, B){
+    const hr = empreinte(R.v);
+    if(Array.isArray(B.e[k]) && B.e[k].indexOf(hr) >= 0) return empreintesElems(R.v);
+    const bk = B.k[k], bi = B.i[k];
+    if(bk === undefined) return null;
+    if(bi && bi.h === bk && bi.m && typeof bi.m === "object") return bi.m;
+    if(bk === empreinte(L.v)) return empreintesElems(L.v);
+    if(bk === hr) return empreintesElems(R.v);
+    return null;
   }
 
   /* ---- lecture de l'état local des clés suivies ---- */
@@ -366,13 +494,26 @@ export function startSync(sb){
      que la dernière version courte). g.d = empreinte de la version courte que la
      grosse a déjà intégrée : tant que `data` n'a pas bougé, il ne compte pas
      (sinon ses éléments supprimés reviendraient, pierres oubliées). */
-  function fondGros(k, D, g, mk){
+  function fondGros(k, D, g, mk, conflits){
     const R = { v: g.v, t: g.t };
     if(!D || empreinte(D.v) === g.d) return R;
     if(KEYS[k] === "ids" && D.v !== null){
-      const dt = D.t ? Date.parse(D.t) : 0, gt = g.t ? Date.parse(g.t) : 0;
-      const u = (dt > gt) ? mergeIds(D.v, g.v, mk) : mergeIds(g.v, D.v, mk);
-      if(u !== null) return { v: u, t: (dt > gt) ? D.t : g.t };
+      /* (28/09) élément par élément (fusionIds) : la base est la version courte que la grosse avait
+         intégrée (g.di, empreintes de ses éléments, posées par range) ; sans elle (grosse écrite par
+         un module d'avant le 28/09), la grosse gagne chaque collision — la courte vient d'un appareil
+         qui ne la voyait pas — et l'élément du client ancien part en copie de sauvetage, annoncé. */
+      const di = (g.di && typeof g.di === "object") ? g.di : null;
+      const f = fusionIds(k, D, R, { base: di, morts: mk, departage: di ? "date" : "compte",
+                                     noms: { l: "la version d'un onglet pas rechargé (ancien module)", r: "la version du compte" } });
+      if(f){
+        if(!sauve(k, f.pertes, false)){
+          uneFois("att " + k, "« " + k + " » écrite au compte par un client ancien, en conflit : copie de sauvetage impossible ici (place) — rien n'est intégré ni écrasé, clé en attente sur cet appareil.");
+          return null;
+        }
+        for(const c of f.pertes) conflits.push(c);
+        const dt = D.t ? Date.parse(D.t) : 0, gt = g.t ? Date.parse(g.t) : 0;
+        return { v: f.v, t: (dt > gt) ? D.t : g.t };
+      }
     }
     /* (26/09) copie refusée (place) : rien n'est intégré, la clé attend (null) */
     if(!rescue(k, D.v, "« " + k + " » écrite au compte par un client ancien après la grosse version (qui est gardée)")){
@@ -412,11 +553,25 @@ export function startSync(sb){
     }
     return local ? "local" : "compte";
   }
+  /* (28/09) Copies de sauvetage des éléments écartés par fusionIds, sous « clé #id », AVANT
+     que la fusion ne les remplace. toutL : la valeur locale entière vient d'être copiée (jamais
+     synchronisée) — ses éléments y sont déjà. Rend false si ce navigateur refuse une copie
+     (place) : l'appelant n'écrase alors rien. */
+  function sauve(k, pertes, toutL){
+    for(const p of pertes){
+      if(toutL && p.cote === "l") continue;
+      const quoi = (p.quoi === "suppr" ? "« " + p.nom + " » (" + k + ", " + p.id + ") supprimée d'un côté, modifiée de l'autre : "
+                                       : "conflit sur « " + p.nom + " » (" + k + ", " + p.id + ") : ") + p.perdu + " non retenue";
+      if(!rescue(k + " #" + p.id, p.s, quoi)) return false;
+    }
+    return true;
+  }
 
   /* ---- fusion locale/serveur -> { merged, applied[], dirty[], trop{} } ---- */
   function merge(loc, srv, gros){
     const merged = {}, applied = [], dirty = [];
     const trop = {};   /* (26/09, AL : « Corriger la synchro ») clés tenues à l'écart ici : ni appliquées, ni poussées, ni filtrées */
+    const conflits = [];   /* (28/09) éléments écartés (copie de sauvetage faite) : annoncés par fusion() */
     const G = S.avecGros ? (gros || {}) : {};
     const B = lireBase();
     const keys = new Set([...Object.keys(loc), ...Object.keys(srv), ...Object.keys(G)]);
@@ -460,7 +615,7 @@ export function startSync(sb){
           warn("clé « " + k + " » : copie du compte abîmée (longueur ou empreinte) — réparée depuis cet appareil.");
           g = { v: L.v, t: (h0 === g.h) ? g.t : (L.t || now()), d: g.d };
         }
-        const F = fondGros(k, R, g, morts[k] || null);
+        const F = fondGros(k, R, g, morts[k] || null, conflits);
         if(!F){ if(R) merged[k] = R; trop[k] = 1; continue; }
         R = F; gk = true;
       }
@@ -475,14 +630,25 @@ export function startSync(sb){
       if(L.v === R.v){ merged[k] = { v: R.v, t: R.t }; continue; }
       const lt = L.t ? Date.parse(L.t) : 0;
       const rt = R.t ? Date.parse(R.t) : 0;
-      /* listes à id : UNION, le côté le plus récent gagne les collisions */
+      /* listes à id : UNION ; à id égal, fusion à trois voies élément par élément (28/09, fusionIds) —
+         plus « le côté le plus récent gagne toutes les collisions » */
       if(KEYS[k] === "ids" && L.v !== null && R.v !== null){
-        const mk = morts[k] || null;
-        const u = (rt >= lt) ? mergeIds(R.v, L.v, mk) : mergeIds(L.v, R.v, mk);
-        if(u !== null){
+        const nv = S.nonVusIds[k] || null;
+        const f = fusionIds(k, L, R, { base: baseElems(k, L, R, B), envoyes: B.j[k] || null, morts: morts[k] || null, nv: nv,
+                                       departage: "date", noms: { l: "la version d'ici", r: "la version du compte (autre appareil)" } });
+        if(f){
+          const u = f.v;
+          const toutL = (u !== L.v && !L.t) ? rescue(k, L.v) : false;     /* jamais synchronisée -> sauvetage, comme avant */
+          if(!sauve(k, f.pertes, toutL)){
+            uneFois("att " + k, "conflit sur « " + k + " » : copie de sauvetage impossible ici (place) — rien n'est écrasé, clé en attente sur cet appareil.");
+            merged[k] = srv[k] || R; trop[k] = 1;
+            continue;
+          }
+          for(const c of f.pertes) conflits.push(c);
+          if(nv) for(const id of f.gagnes) delete nv[id];                  /* l'app a gagné : le compte porte ce qu'elle montre */
           merged[k] = { v: u, t: now() };
           if(u !== R.v) dirty.push(k);
-          if(u !== L.v){ if(!L.t) rescue(k, L.v); applied.push(k); }
+          if(u !== L.v) applied.push(k);
           continue;
         }
       }
@@ -527,7 +693,7 @@ export function startSync(sb){
         if(applied.indexOf(k) < 0) applied.push(k);
       }
     }
-    return { merged, applied, dirty, trop };
+    return { merged, applied, dirty, trop, conflits };
   }
 
   /* (26/09) Découpe le résultat de la fusion entre `data` — clés ≤ MAX_VAL, au
@@ -551,6 +717,9 @@ export function startSync(sb){
         const a = !connu ? (D ? [d] : []) : (g0.h === h ? a0 : [g0.h].concat(a0).slice(0, LIGNEE));
         gros[k] = (ok0 && g0.v === e.v && g0.t === e.t && g0.d === d) ? g0
                 : { v: e.v, t: e.t, n: e.v.length, h: h, d: d, a: a };
+        /* (28/09) liste à id : di = empreintes des éléments de cette version courte, base de fondGros
+           si un client ancien la réécrit (champ ignoré par les modules d'avant, qui le perdent) */
+        if(gros[k] !== g0 && KEYS[k] === "ids" && D){ const di = empreintesElems(D.v); if(di) gros[k].di = di; }
         if(D) data[k] = D;
       } else {
         data[k] = e;
@@ -612,7 +781,8 @@ export function startSync(sb){
      enPoussee : appliquée SANS rechargement (poussée, ou lecture de démarrage après
      un rechargement déjà fait) — l'app ne voit pas ce qui arrive. */
   function fusion(enPoussee){
-    const m = merge(localMap(), S.server, S.gros);
+    const loc = localMap();
+    const m = merge(loc, S.server, S.gros);
     const r = range(m.merged, m.trop);
     m.appliedOk = m.applied.length ? applyLocally(m.merged, m.applied) : [];
     m.data = r.data; m.gros = r.gros; m.pd = r.pd; m.pg = r.pg;
@@ -626,9 +796,64 @@ export function startSync(sb){
     }
     /* clé « dernier écrit gagne » reçue sans rechargement : l'app garde l'ancienne en
        mémoire (planches, cartouche) et la réécrira ; on retient ce qu'on a appliqué */
-    if(enPoussee) for(const k of m.appliedOk) if(KEYS[k] === "lww") S.nonVus[k] = empreinte(m.merged[k].v);
+    if(enPoussee) for(const k of m.appliedOk){
+      if(KEYS[k] === "lww") S.nonVus[k] = empreinte(m.merged[k].v);
+      else if(KEYS[k] === "ids" && loc[k]) nonVuesIds(k, loc[k].v, m.merged[k].v);   /* (28/09) */
+    }
     S.ecartees = Object.keys(m.trop);
+    if(m.conflits.length) annonce(m.conflits);
     return m;
+  }
+  /* (28/09) liste à id appliquée sans rechargement : chaque élément qu'elle remplace ici peut
+     rester dans la mémoire de l'app (config ou scène ouverte) et être réécrit ; on retient la
+     version appliquée (a) et celles remplacées (p) — voir fusionIds */
+  function nonVuesIds(k, avant, apres){
+    const pa = empreintesElems(avant), pb = empreintesElems(apres);
+    if(!pa || !pb) return;
+    const t = S.nonVusIds[k] = S.nonVusIds[k] || {};
+    for(const id in pb){
+      const p = propre(pa, id);
+      if(p === undefined || p === pb[id]) continue;
+      const e = propre(t, id), l = (e && Array.isArray(e.p)) ? e.p : [];
+      t[id] = { a: pb[id], p: (l.indexOf(p) < 0 ? l.concat([p]) : l).slice(-4) };
+    }
+  }
+  /* (28/09) CONFLIT ANNONCÉ À L'ÉCRAN — une copie de sauvetage ne sert que si l'on sait qu'elle
+     existe : bandeau en bas de page (fenêtre SketchUp comprise) jusqu'à ce qu'on le ferme,
+     évènement « bpo-sync-conflit » pour l'app, BPO_SYNC.status().conflits. Une fois par
+     conflit (clé, élément, version écartée). Aucune alerte modale. */
+  function annonce(liste){
+    const neufs = liste.filter(c => { const d = "cf " + c.cle + " " + c.id + " " + c.h; if(S.dits[d]) return false; S.dits[d] = 1; return true; });
+    if(!neufs.length) return;
+    const quoi = { BPO_CONFIGS_v1: ["Config", "e"], BPO_SCENES_v1: ["Scène", "e"], BPO_TEMPLATES_v1: ["Gabarit", ""] };
+    const lignes = neufs.map(c => { const q = quoi[c.cle] || [c.cle, ""], e = q[1];
+      return q[0] + " « " + c.nom + " » : " +
+        (c.quoi === "suppr" ? "supprimé" + e + " d'un côté, modifié" + e + " de l'autre — la suppression est gardée ; "
+                            : "modifié" + e + " des deux côtés — " + c.garde + " est gardée ; ") + c.perdu + " est en copie de sauvetage."; });
+    S.conflits = S.conflits.concat(neufs.map(c => ({ cle: c.cle, id: c.id, nom: c.nom, quoi: c.quoi, perdu: c.perdu, t: now() }))).slice(-50);
+    warn("CONFLIT — " + lignes.join(" | "));
+    try{ window.dispatchEvent(new CustomEvent("bpo-sync-conflit", { detail: { lignes: lignes.slice(), conflits: S.conflits.slice(-neufs.length) } })); }catch(e){}
+    const montre = () => {
+      try{
+        let el = document.getElementById("bpo-sync-avis"), l = document.getElementById("bpo-sync-avis-l");
+        if(!el || !l){
+          el = document.createElement("div"); el.id = "bpo-sync-avis"; el.setAttribute("role", "alert");
+          el.style.cssText = "position:fixed;right:12px;bottom:12px;z-index:2147483000;max-width:440px;max-height:60vh;overflow:auto;box-sizing:border-box;" +
+            "font:12px/1.4 system-ui,sans-serif;color:#f4e7d0;background:rgba(30,23,14,.97);border:1px solid #d08a2c;border-radius:10px;padding:10px 30px 10px 12px;box-shadow:0 6px 22px rgba(0,0,0,.5);";
+          const x = document.createElement("button"); x.textContent = "×"; x.title = "Fermer";
+          x.style.cssText = "position:absolute;top:3px;right:6px;border:0;background:none;color:#f4e7d0;font:18px/1 system-ui,sans-serif;cursor:pointer;padding:2px 4px;";
+          x.onclick = () => { if(el.parentNode) el.parentNode.removeChild(el); };
+          const t = document.createElement("div"); t.textContent = "Synchro de l'atelier : conflit"; t.style.cssText = "font-weight:700;margin-bottom:4px;color:#ffb44d;";
+          l = document.createElement("div"); l.id = "bpo-sync-avis-l";
+          const p = document.createElement("div"); p.style.cssText = "margin-top:6px;opacity:.75;font-size:11px;";
+          p.textContent = "Copies de sauvetage sur CET appareil (BPO_SYNC_RESCUE_v1) : Préférences (⚙) › Sauvegarde des données › ⬇ Exporter les contient.";
+          el.appendChild(x); el.appendChild(t); el.appendChild(l); el.appendChild(p);
+          (document.body || document.documentElement).appendChild(el);
+        }
+        for(const s of lignes){ const d = document.createElement("div"); d.style.cssText = "margin:3px 0;"; d.textContent = s; l.appendChild(d); }
+      }catch(e){}
+    };
+    try{ if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", montre); else montre(); }catch(e){}
   }
   /* (26/09) appliqué sans rechargement : on le dit, et un évènement permet à l'app
      de relire (plotLoad, cartLoad…) le jour où elle l'écoutera */
@@ -737,6 +962,8 @@ export function startSync(sb){
       if(boot){ signale(applied); }
       else{
         try{ sessionStorage.setItem(BOOT_FLAG, "1"); }catch(e){}
+        /* (28/09) le bandeau d'un conflit tranché ici disparaîtrait avec la page : réannoncé après */
+        if(m.conflits.length) try{ sessionStorage.setItem(AVIS_KEY, JSON.stringify(m.conflits.slice(-20).map(c => Object.assign({}, c, { s: "" })))); }catch(e){}
         log("atelier du compte appliqué (" + applied.join(", ") + ") — rechargement.");
         location.reload();
         return;
@@ -858,6 +1085,13 @@ export function startSync(sb){
   document.addEventListener("visibilitychange", () => { if(document.visibilityState === "hidden") flushOnHide(); });
   window.addEventListener("pagehide", flushOnHide);
 
+  /* (28/09) conflits annoncés juste avant le rechargement de démarrage : réannoncés ici */
+  try{
+    const av = JSON.parse(sessionStorage.getItem(AVIS_KEY) || "null");
+    sessionStorage.removeItem(AVIS_KEY);
+    if(Array.isArray(av) && av.length) annonce(av);
+  }catch(e){}
+
   /* ---- démarrage + suivi de session (conversion anonyme, changement de compte) ---- */
   (async () => {
     try{
@@ -878,7 +1112,8 @@ export function startSync(sb){
     flush: () => push(),
     status: () => ({ uid: S.uid, disabled: S.disabled, dirty: [...S.dirty], serveur: Object.keys(S.server), ecartees: S.ecartees || [],
                      gros: (S.avecGros === null) ? "?" : (S.avecGros ? Object.keys(S.gros).map(k => k + " " + ((S.gros[k] && S.gros[k].n) || "?")) : ("colonne `gros` : " + (S.pourquoi || "absente au compte"))),
-                     aRecharger: Object.keys(S.nonVus),
+                     aRecharger: Object.keys(S.nonVus).concat(Object.keys(S.nonVusIds).filter(k => Object.keys(S.nonVusIds[k]).length)),
+                     conflits: S.conflits.map(c => c.cle + " #" + c.id + " « " + c.nom + " » (" + c.quoi + ", " + c.t + ")"),
                      sauvetage: (RAW.get(RESCUE_KEY) || "").length, mesures: S.mesures })
   };
   return S;
