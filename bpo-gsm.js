@@ -307,16 +307,14 @@ function gsmZip(ex, opts){
   emitBody(plainIdx,false);
   emitBody(texIdx,true);
   var gdl=L.join('\n');
-  /* symbole 2D cuit : silhouette vue de dessus (boucles -> <Line> du Fragment2) */
-  var loops=_silhouette2D(g), f2lines=[];
-  loops.forEach(function(lp){ for(var i=0;i<lp.length-1;i++){
-    f2lines.push('\t<Line>\n\t\t<DrawIndex>9</DrawIndex>\n\t\t<Pen>1</Pen>\n\t\t<Layer>1</Layer>\n\t\t<Pattern>1</Pattern>\n\t\t<InIndex>0</InIndex>\n\t\t<BegX>'+_f6(lp[i][0])+'</BegX>\n\t\t<BegY>'+_f6(lp[i][1])+'</BegY>\n\t\t<EndX>'+_f6(lp[i+1][0])+'</EndX>\n\t\t<EndY>'+_f6(lp[i+1][1])+'</EndY>\n\t\t<IsContour>true</IsContour>\n\t</Line>'); } });
-  var fragment2='<?xml version="1.0" encoding="UTF-8"?>\n<Fragment2 Ordering="DrawQueue">\n'+f2lines.join('\n')+'\n</Fragment2>\n';
+  /* CUISSON RETIREE (AL 23/11) : PROJECT2 suffit au symbole plan depuis le
+     seuil T9 — plus de silhouette calculee ni de fragment2.xml, generation
+     plus rapide et paquet plus leger. _silhouette2D reste exposee (bancs). */
   /* la vignette est FOURNIE : _previewPNG tirait tout le moteur WebGL de la
      moulinette. Absente, la balise <Picture> est simplement omise. */
   var preview=opts.preview||null;
   var H='_hsf/'+safe+'/';
-  var libpartdata='<?xml version="1.0" encoding="UTF-8"?>\n<LibpartData Owner="0" Signature="1196644685" Version="46">\n\t<Identification>\n\t\t<MainGUID>'+mainGuid+'</MainGUID>\n\t\t<IsPlaceable>true</IsPlaceable>\n\t\t<IsArchivable>false</IsArchivable>\n\t\t<MigrationValue>Normal</MigrationValue>\n\t\t<IsTemplate>false</IsTemplate>\n\t</Identification>\n\t<SubKind SectVersion="1" SectionFlags="0" SubIdent="0"/>\n\t<Fragment2 SectVersion="36" SectionFlags="0" SubIdent="0"/>\n\t<Script_2D SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<Script_3D SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<Comment SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<ParamSection SectVersion="16" SectionFlags="0" SubIdent="0"/>\n'+(preview?'\t<Picture MIME="image/png" Name="Preview_0.png" SectVersion="19" SectionFlags="0" SubIdent="0"/>\n':'')+'\t<Ancestry SectVersion="1" SectionFlags="0" SubIdent="0"/>\n</LibpartData>\n';
+  var libpartdata='<?xml version="1.0" encoding="UTF-8"?>\n<LibpartData Owner="0" Signature="1196644685" Version="46">\n\t<Identification>\n\t\t<MainGUID>'+mainGuid+'</MainGUID>\n\t\t<IsPlaceable>true</IsPlaceable>\n\t\t<IsArchivable>false</IsArchivable>\n\t\t<MigrationValue>Normal</MigrationValue>\n\t\t<IsTemplate>false</IsTemplate>\n\t</Identification>\n\t<SubKind SectVersion="1" SectionFlags="0" SubIdent="0"/>\n\t<Script_2D SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<Script_3D SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<Comment SectVersion="20" SectionFlags="0" SubIdent="0"/>\n\t<ParamSection SectVersion="16" SectionFlags="0" SubIdent="0"/>\n'+(preview?'\t<Picture MIME="image/png" Name="Preview_0.png" SectVersion="19" SectionFlags="0" SubIdent="0"/>\n':'')+'\t<Ancestry SectVersion="1" SectionFlags="0" SubIdent="0"/>\n</LibpartData>\n';
   var ancestry='<?xml version="1.0" encoding="UTF-8"?>\n<Ancestry>\n\t<MainGUID>F938E33A-329D-4A36-BE3E-85E126820996</MainGUID>\n\t<MainGUID>103E8D2C-8230-42E1-9597-46F84CCE28C0</MainGUID>\n</Ancestry>\n';
   var docs='<?xml version="1.0" encoding="UTF-8"?>\n<libpartdocs>\n\t<CommentSection>\n\t\t<![CDATA[!'+name+' \u2014 allege par BPO Moulinette (QEM)]]>\n\t</CommentSection>\n\n</libpartdocs>\n';
   var params='<?xml version="1.0" encoding="UTF-8"?>\n<ParamSection>\n\t<ParamSectHeader>\n\t\t<AutoHotspots>true</AutoHotspots>\n\t\t<WDLeftFrame>0</WDLeftFrame>\n\t\t<WDRightFrame>0</WDRightFrame>\n\t\t<WDTopFrame>0</WDTopFrame>\n\t\t<WDBotFrame>0</WDBotFrame>\n\t\t<LayFlags>65535</LayFlags>\n\t\t<WDMirrorThickness>0</WDMirrorThickness>\n\t\t<WDWallInset>0</WDWallInset>\n\t</ParamSectHeader>\n\t<Parameters SectVersion="16" SectionFlags="0" SubIdent="0">\n\t\t<Length Name="A">\n\t\t\t<Description><![CDATA["Largeur"]]></Description>\n\t\t\t<Value>'+_f6(g.dim[0])+'</Value>\n\t\t</Length>\n\t\t<Length Name="B">\n\t\t\t<Description><![CDATA["Profondeur"]]></Description>\n\t\t\t<Value>'+_f6(g.dim[1])+'</Value>\n\t\t</Length>\n\t\t<Length Name="zzyzx">\n\t\t\t<Description><![CDATA["Hauteur"]]></Description>\n\t\t\t<Value>'+_f6(g.dim[2])+'</Value>\n\t\t</Length>\n\t</Parameters>\n</ParamSection>\n';
@@ -351,8 +349,7 @@ function gsmZip(ex, opts){
     {name:H+'libpartdocs.xml',data:_bom(docs)},
     {name:H+'paramlist.xml',data:_bom(params)},
     {name:H+'binaries/subkind.bin',data:_b64bytes(SUBKIND_B64)},
-    {name:H+'binaries/fragment2.xml',data:_bom(fragment2)},
-    {name:H+'scripts/2d.gdl',data:_bom('! symbole plan HYBRIDE (banc T1-T11 AL, 28/10) : la silhouette cuite donne les\n! contours lisses exacts, la projection ajoute les plis durs du modele (et le\n! modele parait en elevation/coupe). GDL : 3 = vue de dessus, 2 = lignes cachees.\nFRAGMENT2 ALL, 1\nPROJECT2 3, 270, 2\n')},
+    {name:H+'scripts/2d.gdl',data:_bom('! symbole plan : PROJECT2 seul (AL 23/11 — la projection suffit, cuisson\n! retiree). GDL : 3 = vue de dessus, 270 = azimut, 2 = lignes cachees ; les\n! plis durs sont visibles dans le corps 3D (statut 0, seuil ~25 deg).\nPROJECT2 3, 270, 2\n')},
     {name:H+'scripts/3d.gdl',data:_bom(gdl)},
     {name:'CONVERTIR EN GSM.bat',data:enc.encode(bat)},
     {name:'CONVERTIR EN GSM.command',data:enc.encode(cmd)},
